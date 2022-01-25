@@ -4,20 +4,14 @@ use gtk4::subclass::prelude::*;
 use gtk4::Box;
 use gtk4::DropTarget;
 use gtk4::EventControllerMotion;
-use gtk4::Revealer;
 use once_cell::sync::OnceCell;
 
-use crate::dock_list::DockList;
+use crate::window_inner::DockWindowInner;
 
 // Object holding the state
 #[derive(Default)]
 pub struct Window {
-    pub revealer: OnceCell<Revealer>,
-    pub cursor_handle: OnceCell<Box>,
-    pub cursor_motion_controller: OnceCell<EventControllerMotion>,
-    pub window_drop_controller: OnceCell<DropTarget>,
-    pub saved_list: OnceCell<DockList>,
-    pub active_list: OnceCell<DockList>,
+    pub inner: OnceCell<DockWindowInner>,
 }
 
 // The central trait for subclassing a GObject

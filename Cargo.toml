@@ -30,6 +30,7 @@ zbus = "2.0.1"
 zvariant = "3.1.0"
 zvariant_derive = "3.1.0"
 libloading = "0.7.3"
+cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
 
 [profile.release]
 incremental = true

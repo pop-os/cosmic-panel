@@ -29,6 +29,7 @@ mod dock_popover;
 mod plugin;
 mod utils;
 mod window;
+mod window_inner;
 
 const ID: &str = "com.cosmic.dock";
 const DEST: &str = "com.System76.PopShell";
@@ -114,8 +115,6 @@ fn load_css() {
 }
 
 fn main() {
-    assert!(utils::BoxedWindowList::static_type().is_valid());
-    assert!(plugin::BoxedDockPlugin::static_type().is_valid());
     let app = gtk4::Application::builder().application_id(ID).build();
 
     app.connect_startup(|_app| {
