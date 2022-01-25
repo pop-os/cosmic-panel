@@ -4,17 +4,6 @@ use std::path::PathBuf;
 use gtk4::glib;
 use std::future::Future;
 
-use crate::DockObject;
-use crate::Item;
-
-#[derive(Clone, Debug, Default, glib::Boxed)]
-#[boxed_type(name = "BoxedWindowList")]
-pub struct BoxedWindowList(pub Vec<Item>);
-
-#[derive(Clone, Debug, Default, glib::Boxed)]
-#[boxed_type(name = "BoxedDockObject")]
-pub struct BoxedDockObject(pub Option<DockObject>);
-
 pub fn data_path() -> PathBuf {
     let mut path = glib::user_data_dir();
     path.push(crate::ID);

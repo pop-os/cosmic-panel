@@ -7,30 +7,32 @@ edition = "2021"
 
 [dependencies]
 cascade = "1.0.0"
-gtk4 = { version = "0.4.4", features = ["v4_4"] }
-gtk4-sys = "0.4.2"
+gtk4 = { version = "0.4.5", features = ["v4_4"] }
+gtk4-sys = "0.4.5"
 glib-sys = "0.15.1"
 gdk4 = "0.4.4"
 gdk4-wayland = { version = "0.4.2", features = [ "wayland_crate" ], optional = true }
 gdk4-x11 = { version = "0.4.2", features = [ "xlib" ] }
-gio = "0.15.2"
+gio = "0.15.3"
 gobject-sys = "0.15.1"
 wayland-client = { version = "0.29.4", optional = true }
 wayland-protocols = { version = "0.29.4", features = [ "client", "unstable_protocols" ], optional = true }
-libcosmic = { git = "https://github.com/pop-os/libcosmic" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic", branch = "ccs" }
+cosmic-component-system = { git = "https://github.com/pop-os/libcosmic", branch = "ccs" }
 relm4-macros = { git = "https://github.com/AaronErhardt/Relm4" }
-serde = "1.0.134"
-serde_json = "1.0.75"
+serde = "1.0.135"
+serde_json = "1.0.78"
 tokio = { version = "1.15.0", features = ["sync"] }
 futures = "0.3.19"
 futures-util = "0.3.19"
 once_cell = "1.9.0"
 xdg = "2.4.0"
 zbus = "2.0.1"
-zvariant = "3.1.0"
-zvariant_derive = "3.1.0"
+zvariant = "3.1.1"
+zvariant_derive = "3.1.1"
 libloading = "0.7.3"
 cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
+notify = "5.0.0-pre.13"
 
 [profile.release]
 incremental = true
