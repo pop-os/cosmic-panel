@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use cascade::cascade;
+use cosmic_plugin::PluginManager;
 use glib::Object;
 use glib::Type;
 use gtk4::prelude::*;
@@ -84,10 +85,12 @@ impl DockWindowInner {
         imp.revealer.set(revealer).unwrap();
         imp.saved_list.set(saved_app_list_view).unwrap();
         imp.active_list.set(active_app_list_view).unwrap();
-        // Setup
+        // // Setup
         self_.setup_motion_controller();
         self_.setup_drop_target();
         self_.setup_callbacks();
+
+        self_.load_plugins();
 
         Self::setup_callbacks(&self_);
 
@@ -170,5 +173,23 @@ impl DockWindowInner {
         imp.window_drop_controller
             .set(window_drop_target_controller)
             .expect("Could not set dock dnd drop controller");
+    }
+
+    fn load_plugins(&self) {
+        let imp = imp::DockWindowInner::from_instance(self);
+        let mut plugin_manager = PluginManager::new();
+        let mut path_dir = glib::user_data_dir();
+        path_dir.push(crate::ID);
+        std::fs::create_dir_all(&path_dir).expect("Could not create directory.");
+        path_dir.push("plugins");
+        std::fs::create_dir_all(&path_dir).expect("Could not create directory.");
+        let mut path = path_dir.clone();
+        path.push("libcosmic_dock_plugin_uwu.so");
+
+        unsafe { plugin_manager.load_plugin(path) }.unwrap();
+        for applet in plugin_manager.applets() {
+            self.append(applet);
+        }
+        imp.plugin_manager.replace(plugin_manager);
     }
 }

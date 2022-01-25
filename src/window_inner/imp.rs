@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+
+use cosmic_plugin::PluginManager;
 // SPDX-License-Identifier: GPL-3.0-only
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
@@ -6,6 +9,7 @@ use gtk4::DropTarget;
 use gtk4::EventControllerMotion;
 use gtk4::Revealer;
 use once_cell::sync::OnceCell;
+use std::rc::Rc;
 
 use crate::dock_list::DockList;
 
@@ -17,6 +21,7 @@ pub struct DockWindowInner {
     pub window_drop_controller: OnceCell<DropTarget>,
     pub saved_list: OnceCell<DockList>,
     pub active_list: OnceCell<DockList>,
+    pub(super) plugin_manager: Rc<RefCell<PluginManager>>,
 }
 
 #[glib::object_subclass]
