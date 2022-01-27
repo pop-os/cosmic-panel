@@ -46,5 +46,5 @@ fn wayland_create(app: &Application, monitor: &gdk4_wayland::WaylandMonitor) {
 }
 
 fn x_create(app: &Application) {
-    x_window::XDockWindow::default().register(app.clone());
+    x_window::XDockWindow::init(app.clone());
 }

@@ -41,22 +41,23 @@ label.window_title {
     margin: 4px;
 }
 
-popover contents {
-    border-width: 0px;
-    border-radius: 12px;
-    padding: 12px;
-    background: #333333DD;
-}
+/* popover contents { */
+/*     border-width: 0px; */
+/*     border-radius: 12px; */
+/*     padding: 12px */
+/*     background: #333333DD; */
+/* } */
 
-popover arrow {
-    border-width: 0px;
-    border-radius: 12px;
-    padding: 12px;
-    background: #333333DD;
-}
+/* popover arrow { */
+/*     border-width: 0px; */
+/*     border-radius: 12px; */
+/*     padding: 12px; */
+/*     background: #333333DD; */
+/* } */
 
 box.dock {
     border-radius: 12px;
+    padding: 12px;
     background: #000000DD;
 }
 

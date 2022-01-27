@@ -1,43 +1,40 @@
-use super::window_inner::DockWindowInner;
+use super::window_inner::DockWindowInnerModel;
 use crate::components::window_inner::*;
 use ccs::*;
 use gdk4_x11::X11Display;
 use gtk4::{gdk, gio, glib, prelude::*};
 use libcosmic::x;
 
-pub enum AppEvent {
-    PluginList(String),
-}
-
 component! {
     #[derive(Default)]
-    pub struct XDockWindow(gtk4::Application) {}
+    pub struct XDockWindow {}
 
-    pub struct XDockWindowWidgets(gtk4::ApplicationWindow) {
+    pub struct XDockWindowWidgets {
         inner: Handle<gtk4::Box, DockWindowInnerInput>,
     }
 
     type Input = ();
     type Output = ();
 
-    fn init_view(self, app, _input, _output) {
-        let inner = DockWindowInner::default()
-            .register(()).forward(_input.clone(), |()| {});
-
+    type Root = gtk4::ApplicationWindow {
         ccs::view! {
-            window = gtk4::ApplicationWindow {
+            root = gtk4::ApplicationWindow {
                 set_height_request: 80,
                 set_width_request: 128,
                 set_title: Some("Cosmic Dock"),
                 set_decorated: false,
                 set_resizable: false,
                 add_css_class: "root_window",
+            }
+        }
+        root
+    };
 
-                set_application: Some(&app),
-                set_child: Some(inner.widget()),
+    fn init(args: gtk4::Application, root, input, output) {
+        let inner = DockWindowInnerModel::init(()).forward(input.clone(), |()| {});
 
-                connect_realize: |window| {
-                    if let Some((display, surface)) = x::get_window_x11(window) {
+        root.connect_realize(|window| {
+            if let Some((display, surface)) = x::get_window_x11(window) {
                 // ignore all x11 errors...
                 let xdisplay = display.clone().downcast::<X11Display>().expect("Failed to downgrade X11 Display.");
                 xdisplay.error_trap_push();
@@ -85,19 +82,22 @@ component! {
                 println!("failed to get X11 window");
             }
 
-                }
-            }
-        }
+            });
 
-        window.show();
+        root.set_application(Some(&args));
+        root.set_child(Some(inner.widget()));
 
-        (
-            XDockWindowWidgets {
+        root.show();
+
+        ComponentInner {
+            model: XDockWindow::default(),
+            widgets: XDockWindowWidgets {
                 inner,
             },
-            window,
-        )
+            input,
+            output
+        }
     }
 
-    fn update(self, _widgets, _msg, _input, _output) {}
+    fn update(_component, _event) {}
 }
