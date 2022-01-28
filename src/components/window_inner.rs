@@ -86,6 +86,7 @@ component! {
                                 gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
                             );
                             println!("adding applet for {}", f);
+
                             widgets.applet_box.append(applet);
                         }
                         Err(e) => eprintln!("{}", e)
@@ -105,7 +106,7 @@ component! {
                     EventKind::Remove(_) => {
                         for f in e.paths {
                             if let Some(applet_to_remove) = model.plugin_manager.library_path_to_applet(&f) {
-                                widgets.applet_box.remove(&applet_to_remove);
+                                widgets.applet_box.remove(applet_to_remove);
                             }
                             unsafe { model.plugin_manager.unload_plugin(f) };
                         }
@@ -124,7 +125,6 @@ component! {
                                         css_provider,
                                         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
                                     );
-
                                     widgets.applet_box.append(applet);
                                 }
                                 Err(e) => eprintln!("{}", e)
@@ -133,13 +133,15 @@ component! {
 
                     }
                     e => {
-                        dbg!(e);
+                        // dbg!(e);
                     }
                 };
             }
             DockWindowInnerInput::Orientation(o) => {
-                for a in model.plugin_manager.applets() {
-                    a.set_orientation(o)
+                while let Some(c) = widgets.applet_box.first_child() {
+                    if let Ok(b) = c.downcast::<gtk4::Box>() {
+                        b.set_orientation(o)
+                    }
                 }
             }
             DockWindowInnerInput::Scale(s) => {

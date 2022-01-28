@@ -307,7 +307,7 @@ dependencies = [
 [[package]]
 name = "cosmic-plugin"
 version = "0.1.0"
-source = "git+https://github.com/wash2/dock-plugin#5922e65dd728010f24f2b0c161665831195718ac"
+source = "git+https://github.com/wash2/dock-plugin#b17382a8f4d4f62f8f1c0eb48c02aa6695e77d54"
 dependencies = [
  "anyhow",
  "cbindgen",
@@ -1670,9 +1670,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.16.0"
+version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95e99d373042c30406d317cfc5bfad7b5d604bdd31dab72cf8739abebaa64aee"
+checksum = "0c27a64b625de6d309e8c57716ba93021dccf1b3b5c97edd6d3dd2d2135afc0a"
 dependencies = [
  "bytes",
  "libc",
