@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 component! {
     #[derive(Default)]
     pub struct DockWindowInnerModel {
-        pub plugin_manager: PluginManager,
+        pub plugin_manager: PluginManager<'static>,
     }
 
     pub struct DockWindowInnerWidgets {
