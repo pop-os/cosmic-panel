@@ -31,8 +31,8 @@ zbus = "2.0.1"
 zvariant = "3.1.2"
 zvariant_derive = "3.1.2"
 libloading = "0.7.3"
-cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
-# cosmic-plugin = { path = "../cosmic-plugin" }
+# cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
+cosmic-plugin = { path = "../cosmic-plugin" }
 notify = "5.0.0-pre.13"
 ron = "0.7.0"
 

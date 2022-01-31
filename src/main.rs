@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-
-use ccs::AppRunner;
+use ccs::*;
 use gdk4::Display;
 use gtk4::prelude::*;
 use gtk4::{CssProvider, StyleContext};
@@ -27,14 +26,16 @@ fn load_css() {
 }
 
 fn main() {
-    gtk4::builders::ApplicationBuilder::new()
+    let app = gtk4::builders::ApplicationBuilder::new()
         .application_id(ID)
-        .cosmic_run(|app| {
-            load_css();
-            let display = Display::default().unwrap();
-            window::create(
-                &app,
-                display.monitors().item(0).unwrap().downcast().unwrap(),
-            );
-        });
+        .build();
+    app.connect_activate(|app| {
+        load_css();
+        let display = Display::default().unwrap();
+        window::create(
+            &app,
+            display.monitors().item(0).unwrap().downcast().unwrap(),
+        );
+    });
+    app.run();
 }

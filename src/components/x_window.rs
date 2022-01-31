@@ -1,19 +1,30 @@
-use super::window_inner::DockWindowInnerModel;
+use super::window_inner::{DockWindowInnerModel, DockWindowInnerOutput};
 use crate::components::window_inner::*;
 use ccs::*;
+use cosmic_plugin::Position;
 use gdk4_x11::X11Display;
 use gtk4::{gdk, gio, glib, prelude::*};
 use libcosmic::x;
+use std::cell::Cell;
+use std::rc::Rc;
+
+#[derive(Clone, Copy, Debug)]
+pub enum XWindowInput {
+    Position(Position),
+}
 
 component! {
     #[derive(Default)]
-    pub struct XDockWindow {}
-
-    pub struct XDockWindowWidgets {
-        inner: Handle<gtk4::Box, DockWindowInnerInput>,
+    pub struct XDockWindow {
+        position: Rc<Cell<Position>>,
     }
 
-    type Input = ();
+    pub struct XDockWindowWidgets {
+        inner: Controller<gtk4::Box, DockWindowInnerInput>,
+        window: gtk4::ApplicationWindow,
+    }
+
+    type Input = XWindowInput;
     type Output = ();
 
     type Root = gtk4::ApplicationWindow {
@@ -30,10 +41,17 @@ component! {
         root
     };
 
-    fn init(args: gtk4::Application, root, input, output) {
-        let inner = DockWindowInnerModel::init(()).forward(input.clone(), |()| {});
+    fn init(args: (gtk4::Application, gdk::Monitor), root, input, output) {
+        let model = XDockWindow::default();
 
-        root.connect_realize(|window| {
+        let inner = DockWindowInnerModel::init().launch_stateful(()).forward(input.clone(), |e| {
+            match e {
+                DockWindowInnerOutput::Position(p) => XWindowInput::Position(p),
+            }
+        });
+
+        let monitor = args.1;
+        root.connect_realize(glib::clone!(@weak model.position as position => move |window| {
             if let Some((display, surface)) = x::get_window_x11(window) {
                 // ignore all x11 errors...
                 let xdisplay = display.clone().downcast::<X11Display>().expect("Failed to downgrade X11 Display.");
@@ -47,25 +65,29 @@ component! {
                         &[x::Atom::new(&display, "_NET_WM_WINDOW_TYPE_DOCK").unwrap()],
                     );
                 }
-                let resize = glib::clone!(@weak window => move || {
-                    let _height = window.height();
+                let resize = glib::clone!(@weak window, @weak position, @strong monitor => move || {
+                    dbg!(position.get());
+                    let height = window.height();
                     let width = window.width();
 
                     if let Some((display, _surface)) = x::get_window_x11(&window) {
-                        let geom = display
-                            .primary_monitor().geometry();
+                        let geom = monitor.geometry();
                         let monitor_x = geom.x();
-                        let _monitor_y = geom.y();
+                        let monitor_y = geom.y();
                         let monitor_width = geom.width();
-                        let _monitor_height = geom.height();
-                        unsafe { x::set_position(&display, &surface,
-                                 (monitor_x + monitor_width / 2 - width / 2).clamp(0, monitor_x + monitor_width - 1),
-                                  50);
-                        }
-                                                    // (monitor_y + monitor_height - height).clamp(0, monitor_y + monitor_height - 1));}
+                        let monitor_height = geom.height();
+                        let (x, y) = match position.get() {
+                            Position::Top => (monitor_x + monitor_width / 2 - width / 2, monitor_y + 50),
+                            Position::Bottom => (monitor_x + monitor_width / 2 - width / 2, monitor_y + monitor_height - height),
+                            Position::Start => (monitor_x, monitor_y + monitor_height / 2 - height / 2),
+                            Position::End => (monitor_x + monitor_width - width, monitor_y + monitor_height / 2 - height / 2),
+                        };
+                        dbg!((x,y));
+                        unsafe { x::set_position(&display, &surface, x, y);}
                     }
                 });
 
+                resize.clone()();
                 let s = window.surface();
                 let resize_height = resize.clone();
                 s.connect_height_notify(move |_s| {
@@ -82,22 +104,43 @@ component! {
                 println!("failed to get X11 window");
             }
 
-            });
+        }));
 
-        root.set_application(Some(&args));
-        root.set_child(Some(inner.widget()));
+        root.set_application(Some(&args.0));
+        root.set_child(Some(&inner.widget));
 
         root.show();
 
-        ComponentInner {
-            model: XDockWindow::default(),
+        Fuselage {
+            model,
             widgets: XDockWindowWidgets {
+                window: root.clone(),
                 inner,
             },
-            input,
-            output
         }
     }
 
-    fn update(_component, _event) {}
+    fn update(&mut self, widgets, event, _input, _output) {
+        let model = self;
+        dbg!(event.clone());
+        match event {
+            XWindowInput::Position(p) => {
+                model.position.replace(p);
+                match p {
+                    Position::Start | Position::End => {
+                        widgets.window.set_height_request(128);
+                        widgets.window.set_width_request(80);
+                    }
+                    Position::Top | Position::Bottom => {
+                        widgets.window.set_height_request(80);
+                        widgets.window.set_width_request(128);
+                    }
+                };
+            }
+        }
+        Some(())
+    }
+    async fn command(_message: (), _input) {
+
+    }
 }

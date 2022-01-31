@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use std::path::PathBuf;
-
-use gtk4::glib;
+use gtk4::{glib, Orientation};
 use std::future::Future;
+use std::path::PathBuf;
 
 pub fn data_path() -> PathBuf {
     let mut path = glib::user_data_dir();

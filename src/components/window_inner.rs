@@ -1,21 +1,26 @@
 use ccs::*;
-use cosmic_plugin::PluginManager;
+use cosmic_plugin::{PluginManager, Position};
 use futures::{channel::mpsc::Receiver, SinkExt, StreamExt};
-use gtk4::{glib, prelude::*, Orientation};
+use gtk4::prelude::*;
 use notify::{
-    event::{AccessKind, AccessMode, EventKind},
+    event::{AccessKind, AccessMode, DataChange, EventKind, ModifyKind},
     Event, INotifyWatcher, RecursiveMode, Watcher,
 };
+use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf};
 extern crate notify;
 
 pub enum DockWindowInnerInput {
     PluginList(Vec<String>),
     PluginUpdate(notify::Event),
-    Orientation(Orientation),
+    Position(Position),
     Scale(i32),
 }
-use serde::{Deserialize, Serialize};
+
+pub enum DockWindowInnerOutput {
+    Position(Position),
+}
 
 component! {
     #[derive(Default)]
@@ -28,7 +33,7 @@ component! {
     }
 
     type Input = DockWindowInnerInput;
-    type Output = ();
+    type Output = DockWindowInnerOutput;
 
     type Root = gtk::Box {
         ccs::view! {
@@ -55,7 +60,7 @@ component! {
         ccs::view! {
            applet_box = &gtk4::Box {
                     set_orientation: gtk4::Orientation::Horizontal,
-                    set_spacing: 4,
+                    set_spacing: 0,
                     set_vexpand: true,
                     set_hexpand: true,
                     set_valign: gtk4::Align::Center,
@@ -63,13 +68,13 @@ component! {
                 }
         }
         root.append(&applet_box);
-        ComponentInner
-        { model: DockWindowInnerModel{plugin_manager}, widgets: DockWindowInnerWidgets {applet_box}, input, output}
+        Fuselage
+        { model: DockWindowInnerModel{plugin_manager}, widgets: DockWindowInnerWidgets {applet_box}}
     }
 
-    fn update(component, message) {
-        let ComponentInner { widgets, model, .. } = component;
-        match message {
+    fn update(&mut self, widgets, event, _input, output) {
+        let model = self;
+        match event {
             DockWindowInnerInput::PluginList(plugin_filenames) => {
                 while let Some(c) = widgets.applet_box.first_child() {
                     widgets.applet_box.remove(&c);
@@ -95,14 +100,6 @@ component! {
             }
             DockWindowInnerInput::PluginUpdate(e) => {
                 match e.kind {
-                    // EventKind::Modify(_) => {
-                    //     for f in e.paths {
-                    //         if let Some(applet_to_remove) = model.plugin_manager.library_path_to_applet(&f) {
-                    //             widgets.applet_box.remove(&applet_to_remove);
-                    //         }
-                    //         unsafe { model.plugin_manager.unload_plugin(&f) }
-                    //     }
-                    // }
                     EventKind::Remove(_) => {
                         for f in e.paths {
                             if let Some(applet_to_remove) = model.plugin_manager.library_path_to_applet(&f) {
@@ -137,17 +134,22 @@ component! {
                     }
                 };
             }
-            DockWindowInnerInput::Orientation(o) => {
-                while let Some(c) = widgets.applet_box.first_child() {
-                    if let Ok(b) = c.downcast::<gtk4::Box>() {
-                        b.set_orientation(o)
-                    }
+            DockWindowInnerInput::Position(p) => {
+                dbg!(p);
+                model.plugin_manager.set_position(p);
+                if let Err(_e) = output.send(DockWindowInnerOutput::Position(p)) {
+                    eprintln!("failed to send position to window");
                 }
             }
             DockWindowInnerInput::Scale(s) => {
                 dbg!(s);
             }
         }
+        Some(())
+    }
+
+    async fn command(command: (), input) {
+
     }
 }
 
@@ -174,7 +176,9 @@ fn async_watcher() -> notify::Result<(INotifyWatcher, Receiver<notify::Result<Ev
 
     let watcher = INotifyWatcher::new(move |res| {
         futures::executor::block_on(async {
-            tx.send(res).await.unwrap();
+            if let Err(e) = tx.send(res).await {
+                dbg!(e);
+            }
         })
     })?;
 
@@ -182,9 +186,12 @@ fn async_watcher() -> notify::Result<(INotifyWatcher, Receiver<notify::Result<Ev
 }
 
 async fn async_watch_plugin_settings(sender: Sender<DockWindowInnerInput>) {
-    let settings = DockSettings::load_settings();
+    let config_path = settings_config_path();
+    let settings = DockSettings::load_settings(config_path.clone());
     let mut cached_settings = Some(settings.clone());
     let _ = sender.send(DockWindowInnerInput::PluginList(settings.plugins));
+    let _ = sender.send(DockWindowInnerInput::Position(settings.position));
+    let _ = sender.send(DockWindowInnerInput::Scale(settings.scale));
 
     let (mut watcher, mut rx) = match async_watcher() {
         Ok(res) => res,
@@ -201,52 +208,46 @@ async fn async_watch_plugin_settings(sender: Sender<DockWindowInnerInput>) {
             return;
         };
     }
-
+    let config_path = match config_path {
+        Some(p) => p,
+        None => return,
+    };
     while let Some(res) = rx.next().await {
         match res {
-            Ok(_event) => {
-                let settings = match settings_config_path()
-                    .ok_or("settings file missing")
-                    .map(|f| File::open(f))
-                    .map(|file| ron::de::from_reader::<_, DockSettings>(file?))
-                {
-                    Ok(Ok(s)) => s,
-                    _ => DockSettings::default(),
-                };
+            Ok(event)
+                if event.kind == EventKind::Access(AccessKind::Close(AccessMode::Write))
+                    || event.kind == EventKind::Modify(ModifyKind::Any) =>
+            {
+                let mut p = config_path.clone();
+                p.push("settings.ron");
+                let settings =
+                    match File::open(p).map(|file| ron::de::from_reader::<_, DockSettings>(file)) {
+                        Ok(Ok(s)) => s,
+                        _ => continue,
+                    };
+                dbg!((settings.clone(), cached_settings.clone()));
                 if cached_settings.is_none() {
                     cached_settings = Some(settings.clone());
                     let _ = sender.send(DockWindowInnerInput::PluginList(settings.plugins));
-                    let _ = sender.send(DockWindowInnerInput::Orientation(
-                        settings.orientation.into(),
-                    ));
+                    let _ = sender.send(DockWindowInnerInput::Position(settings.position));
                     let _ = sender.send(DockWindowInnerInput::Scale(settings.scale));
                 } else {
                     let old_settings = cached_settings.clone().unwrap();
-                    cached_settings = Some(settings.clone());
+                    let new_settings = settings.clone();
                     let _ = sender.send(DockWindowInnerInput::PluginList(settings.plugins));
-
-                    // if old_settings.plugins.len() != settings.plugins.len()
-                    //     || settings
-                    //         .plugins
-                    //         .iter()
-                    //         .zip(old_settings.plugins.iter())
-                    //         .filter(|(a, b)| a != b)
-                    //         .count()
-                    //         != 0
-                    // {
-                    //     cached_settings = Some(settings.clone());
-                    //     let _ = sender.send(DockWindowInnerInput::PluginList(settings.plugins));
-                    // } else
-                    if old_settings.orientation != settings.orientation {
-                        let _ = sender.send(DockWindowInnerInput::Orientation(
-                            settings.orientation.into(),
-                        ));
+                    if old_settings.position != settings.position {
+                        dbg!((old_settings.position, settings.position));
+                        let _ = sender.send(DockWindowInnerInput::Position(settings.position));
                     } else if old_settings.scale != settings.scale {
                         let _ = sender.send(DockWindowInnerInput::Scale(settings.scale));
                     }
+                    cached_settings = Some(new_settings);
                 }
             }
-            Err(e) => eprintln!("watch error: {:?}", e),
+
+            e => {
+                dbg!(e);
+            }
         }
     }
 }
@@ -254,11 +255,12 @@ async fn async_watch_plugin_settings(sender: Sender<DockWindowInnerInput>) {
 fn settings_config_path() -> Option<PathBuf> {
     let mut data_dirs = vec![gtk4::glib::user_config_dir()];
     data_dirs.append(&mut gtk4::glib::system_config_dirs());
-    for mut p in data_dirs {
-        p.push(crate::ID);
-        p.push("settings.ron");
-        if p.exists() {
-            return Some(p);
+    for mut d in data_dirs {
+        d.push(crate::ID);
+        let mut f = d.clone();
+        f.push("settings.ron");
+        if f.exists() {
+            return Some(d);
         }
     }
     None
@@ -267,17 +269,19 @@ fn settings_config_path() -> Option<PathBuf> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DockSettings {
     pub(super) plugins: Vec<String>,
-    pub(super) orientation: DockOrientation,
+    pub(super) position: Position,
     pub(super) scale: i32,
 }
 impl DockSettings {
-    pub fn load_settings() -> Self {
-        match settings_config_path()
-            .ok_or("settings file missing")
-            .map(|f| File::open(f))
+    pub fn load_settings(p: Option<PathBuf>) -> Self {
+        match p
+            .map(|mut p| {
+                p.push("settings.ron");
+                File::open(p)
+            })
             .map(|file| ron::de::from_reader::<_, DockSettings>(file?))
         {
-            Ok(Ok(s)) => s,
+            Some(Ok(s)) => s,
             _ => DockSettings::default(),
         }
     }
@@ -285,39 +289,9 @@ impl DockSettings {
 impl Default for DockSettings {
     fn default() -> Self {
         Self {
-            plugins: vec!["uwu_plugin".into(), "app_plugin".into()],
-            orientation: DockOrientation::Horizontal,
+            plugins: vec!["apps_plugin".into()],
+            position: Position::Bottom,
             scale: 1,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum DockOrientation {
-    /// The element is in horizontal orientation.
-    Horizontal,
-    /// The element is in vertical orientation.
-    Vertical,
-    Unknown(i32),
-}
-
-impl From<Orientation> for DockOrientation {
-    fn from(item: Orientation) -> Self {
-        match item {
-            Orientation::Horizontal => Self::Horizontal,
-            Orientation::Vertical => Self::Vertical,
-            Orientation::__Unknown(x) => Self::Unknown(x),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl Into<Orientation> for DockOrientation {
-    fn into(self) -> Orientation {
-        match self {
-            Self::Horizontal => Orientation::Horizontal,
-            Self::Vertical => Orientation::Vertical,
-            Self::Unknown(x) => Orientation::__Unknown(x),
         }
     }
 }

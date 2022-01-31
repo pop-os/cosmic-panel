@@ -1,68 +1,88 @@
-listview.docklist {
-    border-radius: 12px;
-    background: transparent;
-    transition: 100ms;
-}
-
-listview.docklist row:hover {
-    background: #888888CC;
-    border-radius: 12px;
-    padding: 0px;
-}
-
-listview.docklist row {
-    transition: 100ms;
-    background: transparent;
-    border-radius: 12px;
-    padding: 0px;
-}
-
-button:hover {
+button:hover.dock_item {
     transition: 300ms;
     border-width: 0px;
     background: #888888CC;
     border-radius: 12px;
 }
 
-button {
+button.dock_item {
     transition: 300ms;
     background: transparent;
     border-radius: 12px;
     border-width: 0px;
 }
 
-list {
+box:hover.dock_item {
+    transition: 300ms;
+    border-width: 0px;
+    background: #888888CC;
     border-radius: 12px;
-    background: #333333CC;
 }
 
-label.window_title {
+box.dock_item {
+    transition: 300ms;
+    background: transparent;
+    border-radius: 12px;
+    border-width: 0px;
+}
+
+label.dock_popover_title {
     color: white;
     margin: 4px;
 }
 
-/* popover contents { */
-/*     border-width: 0px; */
-/*     border-radius: 12px; */
-/*     padding: 12px */
-/*     background: #333333DD; */
-/* } */
+popover.dock contents {
+    border-width: 0px;
+    border-radius: 12px;
+    padding: 12px;
+    background: #333333DD;
+}
 
-/* popover arrow { */
-/*     border-width: 0px; */
-/*     border-radius: 12px; */
-/*     padding: 12px; */
-/*     background: #333333DD; */
-/* } */
+popover.dock arrow {
+    border-width: 0px;
+    border-radius: 12px;
+    padding: 12px;
+    background: #333333DD;
+}
+
+box.popover_menu {
+    border-width: 0px;
+    border-radius: 12px;
+    padding: 12px;
+    background: #333333DD;
+}
+
+list.popover_menu {
+    border-width: 0px;
+    border-radius: 12px;
+    padding: 12px;
+    background: #333333DD;
+}
 
 box.dock {
     border-radius: 12px;
-    padding: 12px;
     background: #000000DD;
+}
+
+box.popover_menu {
+    transition: 300ms;
+    border-width: 0px;
+    background: transparent;
+    border-radius: 12px;
 }
 
 image.dock {
     border-radius: 12px;
+}
+
+box.dock_dots {
+    border-radius: 2px;
+    padding: 2px;
+    background: white;
+}
+
+box.transparent {
+    background:: transparent;
 }
 
 window.root_window {

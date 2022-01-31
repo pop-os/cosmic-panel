@@ -1,7 +1,7 @@
 use crate::components::x_window;
 use ccs::*;
+use gtk4::gdk;
 use gtk4::Application;
-use gtk4::{gdk, gio, glib};
 
 pub fn create(app: &Application, monitor: gdk::Monitor) {
     #[cfg(feature = "layer-shell")]
@@ -10,7 +10,7 @@ pub fn create(app: &Application, monitor: gdk::Monitor) {
         return;
     }
 
-    x_create(app);
+    x_create(app, monitor);
 }
 
 #[cfg(feature = "layer-shell")]
@@ -20,10 +20,8 @@ fn wayland_create(app: &Application, monitor: &gdk4_wayland::WaylandMonitor) {
 
     let window = cascade! {
         LayerShellWindow::new(Some(monitor), Layer::Top, "");
-        ..set_width_request(800);
-        ..set_height_request(600);
-        // ..set_title(Some("Cosmic App Library"));
-        // ..set_decorated(false);
+        ..set_width_request(120);
+        ..set_height_request(80);
         ..set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         ..add_css_class("root_window");
         ..set_anchor(Anchor::empty());
@@ -45,6 +43,6 @@ fn wayland_create(app: &Application, monitor: &gdk4_wayland::WaylandMonitor) {
     unsafe { window.set_data("cosmic-app-hold", app.hold()) };
 }
 
-fn x_create(app: &Application) {
-    x_window::XDockWindow::init(app.clone());
+fn x_create(app: &Application, monitor: gdk::Monitor) {
+    x_window::XDockWindow::init().launch_stateful((app.clone(), monitor));
 }
