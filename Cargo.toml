@@ -17,7 +17,7 @@ gio = "0.15.3"
 gobject-sys = "0.15.1"
 wayland-client = { version = "0.29.4", optional = true }
 wayland-protocols = { version = "0.29.4", features = [ "client", "unstable_protocols" ], optional = true }
-libcosmic = { git = "https://github.com/pop-os/libcosmic", branch = "ccs" }
+libcosmic = { path = "../libcosmic", features =["layer-shell"] }
 cosmic-component-system = { git = "https://github.com/pop-os/libcosmic", branch = "ccs" }
 relm4-macros = { git = "https://github.com/AaronErhardt/Relm4" }
 serde = "1.0.136"
@@ -31,8 +31,8 @@ zbus = "2.0.1"
 zvariant = "3.1.2"
 zvariant_derive = "3.1.2"
 libloading = "0.7.3"
-# cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
-cosmic-plugin = { path = "../cosmic-plugin" }
+cosmic-plugin = { git = "https://github.com/wash2/dock-plugin" }
+# cosmic-plugin = { path = "../cosmic-plugin" }
 notify = "5.0.0-pre.13"
 ron = "0.7.0"
 

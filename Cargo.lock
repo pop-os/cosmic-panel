@@ -276,7 +276,7 @@ dependencies = [
 [[package]]
 name = "cosmic-component-system"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=ccs#3e4a00a8d83073351677fdd914abc52d5a66b0dd"
+source = "git+https://github.com/pop-os/libcosmic?branch=ccs#cfb3d0667230107fd5eba65a711ff8c3730200cd"
 dependencies = [
  "relm4",
  "relm4-macros 0.4.1 (git+https://github.com/AaronErhardt/relm4?branch=new-approach)",
@@ -320,6 +320,7 @@ dependencies = [
 [[package]]
 name = "cosmic-plugin"
 version = "0.1.0"
+source = "git+https://github.com/wash2/dock-plugin#407f2821ef3263f0e8c5c1af6385685359e73189"
 dependencies = [
  "anyhow",
  "cbindgen",
@@ -1020,15 +1021,18 @@ checksum = "565dbd88872dbe4cc8a46e527f26483c1d1f7afa6b884a3bd6cd893d4f98da74"
 [[package]]
 name = "libcosmic"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=ccs#3e4a00a8d83073351677fdd914abc52d5a66b0dd"
 dependencies = [
  "cascade",
+ "derivative",
  "gdk4",
+ "gdk4-wayland",
  "gdk4-x11",
  "gio",
  "gobject-sys",
  "gtk4",
  "once_cell",
+ "wayland-client",
+ "wayland-protocols",
  "x11",
 ]
 
@@ -1375,7 +1379,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "relm4"
 version = "0.4.1"
-source = "git+https://github.com/AaronErhardt/relm4?branch=new-approach#60f1edd4e8227c44b9d3001ccd0add198d1ee8bb"
+source = "git+https://github.com/AaronErhardt/relm4?branch=new-approach#c945e3a68fc96f95bedb286c77ec67a529e72fb6"
 dependencies = [
  "blocking",
  "fragile",
@@ -1389,7 +1393,7 @@ dependencies = [
 [[package]]
 name = "relm4-macros"
 version = "0.4.1"
-source = "git+https://github.com/AaronErhardt/relm4?branch=new-approach#60f1edd4e8227c44b9d3001ccd0add198d1ee8bb"
+source = "git+https://github.com/AaronErhardt/relm4?branch=new-approach#c945e3a68fc96f95bedb286c77ec67a529e72fb6"
 dependencies = [
  "proc-macro2",
  "quote",
