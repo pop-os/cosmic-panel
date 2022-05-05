@@ -1,0 +1,26 @@
+[package]
+name = "cosmic-dock-epoch-bin"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "cosmic-dock-epoch"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.53"
+shlex = "1.1.0"
+slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
+slog-term = "2.8.1"
+slog-async = "2.7.0"
+slog-stdlog = "4.1.0"
+slog-scope = "4.4.0"
+cosmic-dock-epoch-config = { path = "../cosmic-dock-epoch-config" }
+cosmic-dock-epoch-xdg-wrapper = { path = "../cosmic-dock-epoch-xdg-wrapper" }
+
+[profile.release]
+incremental = true
+debug = 1
+

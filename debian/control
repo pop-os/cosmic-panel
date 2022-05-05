@@ -1,0 +1,20 @@
+Source: cosmic-dock-epoch
+Section: admin
+Priority: optional
+Maintainer: System76 <info@system76.com>
+Build-Depends:
+  debhelper (>= 11),
+  debhelper-compat (= 11),
+  cargo,
+  libwayland-dev,
+  libxkbcommon-dev,
+  pkg-config,
+Standards-Version: 4.3.0
+Homepage: https://github.com/pop-os/cosmic-dock-epoch
+
+Package: cosmic-dock-epoch
+Architecture: amd64 arm64
+Depends:
+  ${misc:Depends},
+  ${shlibs:Depends}
+Description: XDG Shell Wrapper
