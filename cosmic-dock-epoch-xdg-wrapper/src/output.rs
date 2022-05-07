@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{client::Env, space::Space, shared_state::OutputGroup, CosmicDockConfig};
+use crate::{client::Env, shared_state::OutputGroup, space::Space, CosmicDockConfig};
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -17,7 +17,7 @@ use smithay::{
         wayland_protocols::wlr::unstable::layer_shell::v1::client::zwlr_layer_shell_v1,
         wayland_server::{
             protocol::{wl_output::Subpixel as s_Subpixel, wl_surface::WlSurface},
-            Display as s_Display,
+            Client, Display as s_Display,
         },
     },
     wayland::output::{Mode as s_Mode, Output as s_Output, PhysicalProperties},
@@ -35,6 +35,9 @@ pub fn handle_output(
     server_display: &mut s_Display,
     s_outputs: &mut Vec<OutputGroup>,
     focused_surface: Rc<RefCell<Option<WlSurface>>>,
+    clients_left: &Vec<Client>,
+    clients_center: &Vec<Client>,
+    clients_right: &Vec<Client>,
 ) {
     // remove output with id if obsolete
     // add output to list if new output
@@ -118,6 +121,9 @@ pub fn handle_output(
             .create_auto_pool()
             .expect("Failed to create a memory pool!");
         *renderer_handle = Some(Space::new(
+            clients_left,
+            clients_center,
+            clients_right,
             new_output,
             pool,
             config.clone(),

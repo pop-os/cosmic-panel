@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
+use itertools::Itertools;
 use sctk::{
     data_device, default_environment,
     environment::SimpleGlobal,
@@ -27,6 +28,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc};
 
+use crate::space::Space;
 use crate::{
     output::handle_output,
     seat::{
@@ -35,9 +37,7 @@ use crate::{
     },
     shared_state::*,
 };
-use crate::{space::Space};
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
-
 
 default_environment!(Env,
     fields = [
@@ -78,6 +78,17 @@ pub fn new_client(
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let mut space = None;
     let mut s_outputs = Vec::new();
+    let EmbeddedServerState {
+        clients_left,
+        clients_center,
+        clients_right,
+        ..
+    } = &embedded_server_state;
+    let (clients_left, clients_center, clients_right) = (
+        clients_left.clone(),
+        clients_center.clone(),
+        clients_right.clone(),
+    );
     if let Some(preferred_output) = config.output.as_ref() {
         // swap preffered output to front of list if it is available
         let mut outputs = env.get_all_outputs();
@@ -110,11 +121,17 @@ pub fn new_client(
                     server_display,
                     &mut s_outputs,
                     focused_surface.clone(),
+                    &clients_left,
+                    &clients_center,
+                    &clients_right,
                 );
             }
         }
     } else {
         space = Some(Space::new(
+            &clients_left,
+            &clients_center,
+            &clients_right,
             None,
             env.create_auto_pool()
                 .expect("Failed to create a memory pool!"),
@@ -150,6 +167,9 @@ pub fn new_client(
                     server_display,
                     outputs,
                     focused_surface.clone(),
+                    &clients_left,
+                    &clients_center,
+                    &clients_right,
                 );
             }),
         )
@@ -175,7 +195,9 @@ pub fn new_client(
         let EmbeddedServerState {
             focused_surface,
             last_button,
-            clients,
+            clients_left,
+            clients_center,
+            clients_right,
             ..
         } = &state.embedded_server_state;
 
@@ -190,8 +212,14 @@ pub fn new_client(
                     x,
                     y,
                 } => {
-                    // TODO get client for seat
-                    set_data_device_focus(&seat.server.0, None);
+                    let client = focused_surface
+                        .borrow()
+                        .as_ref()
+                        .and_then(|focused_surface| {
+                            let res = focused_surface.as_ref();
+                            res.client().clone()
+                        });
+                    set_data_device_focus(&seat.server.0, client);
 
                     set_focused_surface(focused_surface, space, &surface, x, y);
                     let offer = match offer {

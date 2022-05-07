@@ -2,7 +2,10 @@
 
 use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
+use itertools::Itertools;
 use shared_state::GlobalState;
+use shlex::Shlex;
+use slog::{trace, Logger};
 use smithay::{
     reexports::{nix::fcntl, wayland_server::Display},
     wayland::data_device::set_data_device_selection,
@@ -11,13 +14,11 @@ use space::CachedBuffers;
 use std::{
     cell::Cell,
     os::unix::io::AsRawFd,
-    process::{Command, Stdio, Child},
+    process::{Child, Command, Stdio},
     rc::Rc,
     thread,
     time::{Duration, Instant},
 };
-use shlex::Shlex;
-use slog::{trace, Logger};
 
 mod client;
 mod output;
@@ -58,7 +59,13 @@ pub fn xdg_shell_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
     )?;
 
-    let mut children: Vec<_> = config.plugins_left.iter().map(|c| exec_child(c, log.clone(), raw_fd)).collect();
+    let mut children = config
+        .plugins_left
+        .iter()
+        .chain(config.plugins_center.iter())
+        .chain(config.plugins_right.iter())
+        .map(|c| exec_child(c, log.clone(), raw_fd))
+        .collect_vec();
 
     let mut shared_data = (global_state, display);
     let mut last_dirty = Instant::now();
@@ -135,7 +142,7 @@ pub fn xdg_shell_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
 
         if children.iter_mut().map(|c| c.try_wait()).all(|r| match r {
             Ok(Some(_)) => true,
-            _ => false
+            _ => false,
         }) {
             return Ok(());
         }
@@ -153,23 +160,22 @@ pub fn xdg_shell_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
 }
 
 fn exec_child(c: &str, log: Logger, raw_fd: i32) -> Child {
-        let mut exec_iter = Shlex::new(&c);
-        let exec = exec_iter
-            .next()
-            .expect("exec parameter must contain at least on word");
-        trace!(log, "child: {}", &exec);
-    
-        let mut child = Command::new(exec);
-        while let Some(arg) = exec_iter.next() {
-            trace!(log, "child argument: {}", &arg);
-            child.arg(arg);
-        }
-        child
+    let mut exec_iter = Shlex::new(&c);
+    let exec = exec_iter
+        .next()
+        .expect("exec parameter must contain at least on word");
+    trace!(log, "child: {}", &exec);
+
+    let mut child = Command::new(exec);
+    while let Some(arg) = exec_iter.next() {
+        trace!(log, "child argument: {}", &arg);
+        child.arg(arg);
+    }
+    child
         .env("WAYLAND_SOCKET", raw_fd.to_string())
         .env_remove("WAYLAND_DEBUG")
         // .env("WAYLAND_DEBUG", "1")
         .stderr(Stdio::null())
         .spawn()
         .expect("Failed to start child process")
-
 }

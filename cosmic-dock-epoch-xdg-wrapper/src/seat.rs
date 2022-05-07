@@ -30,7 +30,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     client::Env,
-    shared_state::{EmbeddedServerState, DesktopClientState, GlobalState, ClientSeat, Seat},
+    shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, GlobalState, Seat},
     space::{ServerSurface, Space},
 };
 
@@ -50,7 +50,9 @@ pub fn send_keyboard_event(
     } = &mut state.desktop_client_state;
 
     let EmbeddedServerState {
-        clients,
+        clients_left,
+        clients_center,
+        clients_right,
         focused_surface,
         selected_data_provider,
         ..
@@ -69,38 +71,9 @@ pub fn send_keyboard_event(
         };
         match event {
             wl_keyboard::Event::Key {
-                serial,
-                time,
-                key,
-                state,
+                serial, ..
             } => {
                 last_input_serial.replace(serial);
-                let state = match state {
-                    client::protocol::wl_keyboard::KeyState::Pressed => KeyState::Pressed,
-                    client::protocol::wl_keyboard::KeyState::Released => KeyState::Released,
-                    _ => return,
-                };
-                match kbd.input::<(), _>(
-                    key,
-                    state,
-                    SERIAL_COUNTER.next_serial(),
-                    time,
-                    move |modifiers, keysym| {
-                        // Alt + tab cycles the active top level
-                        if modifiers.alt && keysym.raw_code() == 23 && state == KeyState::Released {
-                            FilterResult::Intercept(())
-                        } else {
-                            FilterResult::Forward // TODO intercept some key presses maybe
-                        }
-                    },
-                ) {
-                    Some(_) => {
-                        if let Some(renderer) = space {
-                            renderer.cycle_active();
-                        }
-                    }
-                    None => {}
-                }
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 kbd.change_repeat_info(rate, delay);
@@ -112,8 +85,14 @@ pub fn send_keyboard_event(
                     &seat.server.0,
                     &selected_data_provider.seat,
                 );
-                // TODO: get client for seat
-                set_data_device_focus(&seat.server.0, None);
+                let client = focused_surface
+                    .borrow()
+                    .as_ref()
+                    .and_then(|focused_surface| {
+                        let res = focused_surface.as_ref();
+                        res.client().clone()
+                    });
+                set_data_device_focus(&seat.server.0, client);
                 *kbd_focus = true;
                 kbd.set_focus(
                     focused_surface.borrow().as_ref(),

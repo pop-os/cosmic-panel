@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::collections::HashMap;
 use std::fs::File;
+use std::ops::Range;
+use std::path::PathBuf;
+use std::{collections::HashMap, path::Path};
 
-use serde::{Deserialize, Serialize};
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
+use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
 
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
@@ -121,16 +123,31 @@ pub enum DockSize {
     M,
     L,
     XL,
-    Custom(u32),
+    /// Custom Dock Size range,
+    Custom(Range<u32>),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum CosmicDockBackground {
+    /// theme default color
+    ThemeDefault,
+    /// RGBA hex string for now like #AABBCCFF
+    Color(String),
+    /// Image
+    Image(PathBuf),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CosmicDockConfig {
     pub anchor: Anchor,
+    pub anchor_gap: bool,
     pub layer: Layer,
     pub keyboard_interactivity: KeyboardInteractivity,
     pub size: DockSize,
+    // TODO: option for replicating the same dock on all outputs at once with a single process running
     pub output: Option<String>,
+    /// customized background, or
+    pub background: Option<CosmicDockBackground>,
     pub plugins_left: Vec<String>,
     pub plugins_center: Vec<String>,
     pub plugins_right: Vec<String>,
@@ -140,13 +157,15 @@ impl Default for CosmicDockConfig {
     fn default() -> Self {
         Self {
             anchor: Anchor::Top,
+            anchor_gap: false,
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
             size: DockSize::M,
             output: None,
+            background: None,
             plugins_left: Default::default(),
             plugins_center: Default::default(),
-            plugins_right: Default::default(),      
+            plugins_right: Default::default(),
         }
     }
 }
@@ -182,15 +201,15 @@ impl CosmicDockConfig {
             _ => HashMap::new(),
         }
     }
-    
-    pub fn get_dimensions(&self) -> (Option<u32>, Option<u32>)  {
-        let bar_thickness = match self.size {
-            DockSize::XS => 40,
-            DockSize::S => 60,
-            DockSize::M => 80,
-            DockSize::L => 100,
-            DockSize::XL => 120,
-            DockSize::Custom(c) => c,
+
+    pub fn get_dimensions(&self) -> (Option<Range<u32>>, Option<Range<u32>>) {
+        let bar_thickness = match &self.size {
+            DockSize::XS => (1..41),
+            DockSize::S => (1..60),
+            DockSize::M => (1..80),
+            DockSize::L => (1..100),
+            DockSize::XL => (1..120),
+            DockSize::Custom(c) => c.clone(),
         };
 
         match self.anchor {

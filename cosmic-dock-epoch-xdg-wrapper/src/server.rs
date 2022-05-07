@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
+use crate::shared_state::*;
 use anyhow::Result;
+use cosmic_dock_epoch_config::config::CosmicDockConfig;
 use once_cell::sync::OnceCell;
 use sctk::reexports::{
     calloop::{self, generic::Generic, Interest, Mode},
@@ -31,8 +33,6 @@ use std::{
     os::unix::{io::AsRawFd, net::UnixStream},
     rc::Rc,
 };
-use cosmic_dock_epoch_config::config::CosmicDockConfig;
-use crate::shared_state::*;
 
 pub fn new_server(
     loop_handle: calloop::LoopHandle<'static, (GlobalState, wayland_server::Display)>,
@@ -55,8 +55,24 @@ pub fn new_server(
 
     // mapping from wl type using wayland_server::resource to client
     // TODO: create multiple clients, one for each plugin
-    let num_clients = config.plugins_left.len() + config.plugins_center.len() + config.plugins_right.len();
-    let clients = (0..num_clients).map(|_| unsafe { display.create_client(raw_fd, &mut ()) }).collect();
+    let num_clients =
+        config.plugins_left.len() + config.plugins_center.len() + config.plugins_right.len();
+
+    let clients_left: Vec<_> = config
+        .plugins_left
+        .iter()
+        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .collect();
+    let clients_center: Vec<_> = config
+        .plugins_center
+        .iter()
+        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .collect();
+    let clients_right: Vec<_> = config
+        .plugins_right
+        .iter()
+        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .collect();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);
     loop_handle.insert_source(display_event_source, move |_e, _metadata, _shared_data| {
@@ -347,7 +363,9 @@ pub fn new_server(
 
     Ok((
         EmbeddedServerState {
-            clients,
+            clients_left,
+            clients_center,
+            clients_right,
             shell_state,
             popup_manager,
             root_window: Default::default(),
