@@ -50,7 +50,6 @@ pub struct TopLevelSurface {
     pub dirty: bool,
     pub dimensions: (u32, u32),
     pub popups: Vec<Popup>,
-    pub is_root: bool,
     pub log: Logger,
     pub active: ActiveState,
     pub loc_offset: Point<i32, Logical>,

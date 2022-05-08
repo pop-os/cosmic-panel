@@ -321,10 +321,8 @@ impl Space {
     pub fn add_top_level(&mut self, s_top_level: Rc<RefCell<Window>>) {
         let surface_client = s_top_level.borrow().toplevel().get_surface().and_then(|s| s.as_ref().client().clone());
         if let Some(surface_client) = surface_client {
-            let is_root = self.client_top_levels_mut().count() == 0;
             let top_level = TopLevelSurface {
                 dimensions: (0, 0).into(),
-                is_root,
                 s_top_level,
                 popups: Default::default(),
                 log: self.log.clone(),
