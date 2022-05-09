@@ -253,8 +253,8 @@ impl CosmicDockConfig {
         };
 
         match self.anchor {
-            Anchor::Left | Anchor::Right => (Some(bar_thickness),  if self.expand_to_edges() {Some(1..output_dims.1)} else {None}),
-            Anchor::Top | Anchor::Bottom => (if self.expand_to_edges() {Some(1..output_dims.0)} else {None}, Some(bar_thickness)),
+            Anchor::Left | Anchor::Right => (Some(bar_thickness),  if self.expand_to_edges() {Some(output_dims.1..output_dims.1)} else {None}),
+            Anchor::Top | Anchor::Bottom => (if self.expand_to_edges() {Some(output_dims.1..output_dims.0)} else {None}, Some(bar_thickness)),
         }
     }
 }
