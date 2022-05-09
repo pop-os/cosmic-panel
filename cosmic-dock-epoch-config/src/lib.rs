@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
+#![warn(missing_debug_implementations, rust_2018_idioms, missing_docs)]
+
+//! Config for cosmic-dock-epoch
 
 pub mod config;
 
