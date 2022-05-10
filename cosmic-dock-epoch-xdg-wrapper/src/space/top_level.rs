@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::rc::Rc;
 
 use slog::Logger;
-use smithay::utils::{Logical, Point};
+use smithay::utils::{Logical, Rectangle};
 
 use super::{Popup, PopupRenderEvent};
 
@@ -16,43 +15,15 @@ pub enum RenderEvent {
     Closed,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Eq)]
-pub enum ActiveState {
-    InactiveCleared(bool),
-    ActiveFullyRendered(bool),
-}
-
-impl PartialOrd for ActiveState {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ActiveState {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (ActiveState::InactiveCleared(_), ActiveState::InactiveCleared(_)) => Ordering::Equal,
-            (ActiveState::InactiveCleared(_), ActiveState::ActiveFullyRendered(_)) => {
-                Ordering::Less
-            }
-            (ActiveState::ActiveFullyRendered(_), ActiveState::InactiveCleared(_)) => {
-                Ordering::Greater
-            }
-            (ActiveState::ActiveFullyRendered(_), ActiveState::ActiveFullyRendered(_)) => {
-                Ordering::Equal
-            }
-        }
-    }
-}
 #[derive(Debug, Clone)]
 pub struct TopLevelSurface {
     pub s_top_level: Rc<RefCell<smithay::desktop::Window>>,
     pub dirty: bool,
-    pub dimensions: (u32, u32),
     pub popups: Vec<Popup>,
     pub log: Logger,
-    pub active: ActiveState,
-    pub loc_offset: Point<i32, Logical>,
+    /// location offset of the window within the dock
+    /// dimensions of the window in the dock
+    pub rectangle: Rectangle<i32, Logical>,
 }
 
 impl TopLevelSurface {

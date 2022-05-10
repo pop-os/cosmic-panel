@@ -55,9 +55,6 @@ pub fn new_server(
 
     // mapping from wl type using wayland_server::resource to client
     // TODO: create multiple clients, one for each plugin
-    let num_clients =
-        config.plugins_left.len() + config.plugins_center.len() + config.plugins_right.len();
-
     let clients_left: Vec<_> = config
         .plugins_left
         .iter()
@@ -113,13 +110,17 @@ pub fn new_server(
                         }
                     }
                 }
-                DataDeviceEvent::DnDStarted { source, icon, seat } => {
+                DataDeviceEvent::DnDStarted {
+                    source: _,
+                    icon: _,
+                    seat: _,
+                } => {
                     // dbg!(source);
                     // dbg!(icon);
                     // dbg!(seat);
                 }
 
-                DataDeviceEvent::DnDDropped { seat } => {
+                DataDeviceEvent::DnDDropped { seat: _ } => {
                     // dbg!(seat);
                 }
                 DataDeviceEvent::NewSelection(_) => {}
@@ -136,11 +137,12 @@ pub fn new_server(
             let state = dispatch_data.get::<GlobalState>().unwrap();
             let DesktopClientState {
                 cursor_surface,
-                space,
+                space_manager,
                 seats,
                 shm,
                 ..
             } = &mut state.desktop_client_state;
+            let mut space = space_manager.active_space();
             let EmbeddedServerState {
                 popup_manager,
                 shell_state,
@@ -227,10 +229,11 @@ pub fn new_server(
                 seats,
                 kbd_focus,
                 env_handle,
-                space,
+                space_manager,
                 xdg_wm_base,
                 ..
             } = &mut state.desktop_client_state;
+            let mut space = space_manager.active_space();
 
             let EmbeddedServerState {
                 focused_surface,

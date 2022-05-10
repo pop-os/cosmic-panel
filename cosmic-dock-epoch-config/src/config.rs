@@ -181,7 +181,11 @@ pub struct CosmicDockConfig {
     /// list of plugins on the right or bottom of the dock
     pub plugins_right: Vec<String>,
     /// whether the dock should stretch to the edges of output
-    pub expand_to_edges: bool
+    pub expand_to_edges: bool,
+    /// padding around the dock
+    pub padding: u32,
+    /// space between dock plugins
+    pub spacing: u32,
 }
 
 impl Default for CosmicDockConfig {
@@ -190,14 +194,16 @@ impl Default for CosmicDockConfig {
             anchor: Anchor::Top,
             anchor_gap: false,
             layer: Layer::Top,
-            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+            keyboard_interactivity: KeyboardInteractivity::None,
             size: DockSize::M,
             output: None,
             background: None,
             plugins_left: Default::default(),
-            plugins_center: Default::default(),
-            plugins_right: Default::default(),
+            plugins_center: vec!["flatpak run com.system76.Time.Devel".into()],
+            plugins_right: Default::default(),   
             expand_to_edges: true,
+            padding: 4,
+            spacing: 4
         }
     }
 }
@@ -243,18 +249,20 @@ impl CosmicDockConfig {
 
     /// get constraints for the thickness of the dock bar
     pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
-        let bar_thickness = match &self.size {
-            DockSize::XS => (10..41),
-            DockSize::S => (10..61),
-            DockSize::M => (10..81),
-            DockSize::L => (10..101),
-            DockSize::XL => (10..121),
+        let mut bar_thickness = match &self.size {
+            DockSize::XS => (8..41),
+            DockSize::S => (8..61),
+            DockSize::M => (8..81),
+            DockSize::L => (8..101),
+            DockSize::XL => (8..121),
             DockSize::Custom(c) => c.clone(),
         };
+        assert!(2 * self.padding < bar_thickness.end);
+        bar_thickness.end -= 4 * self.padding;
 
         match self.anchor {
-            Anchor::Left | Anchor::Right => (Some(bar_thickness),  if self.expand_to_edges() {Some(output_dims.1..output_dims.1)} else {None}),
-            Anchor::Top | Anchor::Bottom => (if self.expand_to_edges() {Some(output_dims.1..output_dims.0)} else {None}, Some(bar_thickness)),
+            Anchor::Left | Anchor::Right => (Some(bar_thickness),  if self.expand_to_edges() {Some(output_dims.1..output_dims.1 + 1)} else {None}),
+            Anchor::Top | Anchor::Bottom => (if self.expand_to_edges() {Some(output_dims.0..output_dims.0 + 1)} else {None}, Some(bar_thickness)),
         }
     }
 }

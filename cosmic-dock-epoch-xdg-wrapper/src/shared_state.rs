@@ -35,7 +35,7 @@ use smithay::{
     wayland::{output::Output, seat, shell::xdg::ShellState},
 };
 
-use crate::space::Space;
+use crate::space::SpaceManager;
 use crate::{client::Env, CachedBuffers};
 
 #[derive(Debug)]
@@ -96,8 +96,8 @@ pub struct EmbeddedServerState {
 pub struct DesktopClientState {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
-    pub(crate) _output_listener: Option<OutputStatusListener>,
-    pub(crate) space: Option<Space>,
+    pub(crate) _output_listener: OutputStatusListener,
+    pub(crate) space_manager: SpaceManager,
     pub(crate) cursor_surface: c_wl_surface::WlSurface,
     pub(crate) axis_frame: AxisFrameData,
     pub(crate) kbd_focus: bool,

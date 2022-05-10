@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use itertools::Itertools;
 use sctk::{
     data_device, default_environment,
     environment::SimpleGlobal,
@@ -28,7 +27,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc};
 
-use crate::space::Space;
+use crate::space::SpaceManager;
 use crate::{
     output::handle_output,
     seat::{
@@ -76,7 +75,6 @@ pub fn new_client(
     let _attached_display = (*display).clone().attach(queue.token());
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-    let mut space = None;
     let mut s_outputs = Vec::new();
     let EmbeddedServerState {
         clients_left,
@@ -89,93 +87,62 @@ pub fn new_client(
         clients_center.clone(),
         clients_right.clone(),
     );
-    if let Some(preferred_output) = config.output.as_ref() {
-        // swap preffered output to front of list if it is available
-        let mut outputs = env.get_all_outputs();
-        if let Some(preferred_output_index) = outputs.iter().position(|o| {
-            if let Some(info) = with_output_info(&o, Clone::clone) {
-                &info.name == preferred_output
-            } else {
-                false
-            }
-        }) {
-            outputs.swap(preferred_output_index, 0);
-        }
+    // swap preffered output to front of list if it is available
+    let outputs = env.get_all_outputs();
 
-        for output in outputs {
-            if let Some(info) = with_output_info(&output, Clone::clone) {
-                let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-                let env_handle = env.clone();
-                let logger = log.clone();
-                let display_ = display.clone();
-                let config = config.clone();
-                handle_output(
-                    config,
-                    &layer_shell,
-                    env_handle,
-                    &mut space,
-                    logger,
-                    display_,
-                    output,
-                    &info,
-                    server_display,
-                    &mut s_outputs,
-                    focused_surface.clone(),
-                    &clients_left,
-                    &clients_center,
-                    &clients_right,
-                );
-            }
+    let mut space_manager = SpaceManager::default();
+    for output in outputs {
+        if let Some(info) = with_output_info(&output, Clone::clone) {
+            let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
+            let env_handle = env.clone();
+            let logger = log.clone();
+            let display_ = display.clone();
+            let config = config.clone();
+            handle_output(
+                config,
+                &layer_shell,
+                env_handle,
+                &mut space_manager,
+                logger,
+                display_,
+                output,
+                &info,
+                server_display,
+                &mut s_outputs,
+                focused_surface.clone(),
+                &clients_left,
+                &clients_center,
+                &clients_right,
+            );
         }
-    } else {
-        space = Some(Space::new(
-            &clients_left,
-            &clients_center,
-            &clients_right,
-            None,
-            env.create_auto_pool()
-                .expect("Failed to create a memory pool!"),
-            config.clone(),
-            display.clone(),
-            layer_shell.clone(),
-            log.clone(),
-            env.create_surface(),
-            embedded_server_state.focused_surface.clone(),
-        ));
     }
 
     let env_handle = env.clone();
     let logger = log.clone();
     let display_ = display.clone();
-    let output_listener = if config.output.is_some() {
-        Some(
-            env.listen_for_outputs(move |output, info, mut dispatch_data| {
-                let (state, server_display) = dispatch_data
-                    .get::<(GlobalState, wayland_server::Display)>()
-                    .unwrap();
-                let outputs = &mut state.outputs;
-                let renderer = &mut state.desktop_client_state.space;
-                handle_output(
-                    config.clone(),
-                    &layer_shell,
-                    env_handle.clone(),
-                    renderer,
-                    logger.clone(),
-                    display_.clone(),
-                    output,
-                    &info,
-                    server_display,
-                    outputs,
-                    focused_surface.clone(),
-                    &clients_left,
-                    &clients_center,
-                    &clients_right,
-                );
-            }),
-        )
-    } else {
-        None
-    };
+    let output_listener = env.listen_for_outputs(move |output, info, mut dispatch_data| {
+        let (state, server_display) = dispatch_data
+            .get::<(GlobalState, wayland_server::Display)>()
+            .unwrap();
+        let outputs = &mut state.outputs;
+        let space_manager = &mut state.desktop_client_state.space_manager;
+        handle_output(
+            config.clone(),
+            &layer_shell,
+            env_handle.clone(),
+            space_manager,
+            logger.clone(),
+            display_.clone(),
+            output,
+            &info,
+            server_display,
+            outputs,
+            focused_surface.clone(),
+            &clients_left,
+            &clients_center,
+            &clients_right,
+        );
+    });
 
     // TODO logging
     // FIXME focus lost after drop from source outside xdg-shell-wrapper
@@ -188,16 +155,14 @@ pub fn new_client(
         let DesktopClientState {
             seats,
             env_handle,
-            space,
+            space_manager,
             ..
         } = &mut state.desktop_client_state;
+        let mut space = space_manager.active_space();
 
         let EmbeddedServerState {
             focused_surface,
             last_button,
-            clients_left,
-            clients_center,
-            clients_right,
             ..
         } = &state.embedded_server_state;
 
@@ -305,7 +270,9 @@ pub fn new_client(
                     y,
                 } => {
                     last_motion.replace(Some(((x, y), time)));
-
+                    if let Some(space) = space.as_mut() {
+                        space.update_pointer((x as i32, y as i32));
+                    }
                     handle_motion(
                         space,
                         focused_surface.borrow().clone(),
@@ -418,7 +385,7 @@ pub fn new_client(
     trace!(log.clone(), "client setup complete");
     Ok((
         DesktopClientState {
-            space,
+            space_manager,
             display,
             _output_listener: output_listener,
             seats: seats,

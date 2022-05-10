@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
+#![warn(missing_debug_implementations, rust_2018_idioms, missing_docs)]
+
+//! Provides the core functionality for cosmic-dock-epoch
 
 use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
@@ -28,7 +31,8 @@ mod shared_state;
 mod space;
 mod util;
 
-pub fn xdg_shell_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
+/// run the cosmic dock xdg wrapper with the provided config
+pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
     let mut event_loop = calloop::EventLoop::<(GlobalState, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display, (_display_sock, client_sock)) =
@@ -99,14 +103,10 @@ pub fn xdg_shell_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
             let display = &mut shared_data.desktop_client_state.display;
             display.flush().unwrap();
 
-            let space = &mut shared_data.desktop_client_state.space.as_mut();
-            if let Some(space) = space {
-                space.apply_display(&server_display);
-                last_dirty = space.handle_events(
-                    shared_data.start_time.elapsed().as_millis() as u32,
-                    &mut children,
-                );
-            }
+            let space_manager = &mut shared_data.desktop_client_state.space_manager;
+
+            space_manager.apply_display(&server_display);
+            last_dirty = space_manager.handle_events(shared_data.start_time, &mut children);
         }
 
         // dispatch server events
@@ -175,7 +175,8 @@ fn exec_child(c: &str, log: Logger, raw_fd: i32) -> Child {
         .env("WAYLAND_SOCKET", raw_fd.to_string())
         .env_remove("WAYLAND_DEBUG")
         // .env("WAYLAND_DEBUG", "1")
-        .stderr(Stdio::null())
+        // .stderr(Stdio::piped())
+        // .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process")
 }

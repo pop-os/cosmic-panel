@@ -2,7 +2,12 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{client::Env, shared_state::OutputGroup, space::Space, CosmicDockConfig};
+use crate::{
+    client::Env,
+    shared_state::OutputGroup,
+    space::{Space, SpaceManager},
+    CosmicDockConfig,
+};
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -27,7 +32,7 @@ pub fn handle_output(
     config: CosmicDockConfig,
     layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     env_handle: Environment<Env>,
-    renderer_handle: &mut Option<Space>,
+    space_manager: &mut SpaceManager,
     logger: Logger,
     display_: Display,
     output: client::protocol::wl_output::WlOutput,
@@ -39,18 +44,18 @@ pub fn handle_output(
     clients_center: &Vec<Client>,
     clients_right: &Vec<Client>,
 ) {
+    // ignore outputs that do not match config
+    if let Some(preferred_output) = config.output.as_ref() {
+        if info.name != *preferred_output {
+            return;
+        }
+    }
     // remove output with id if obsolete
     // add output to list if new output
-    // if no output in handle after removing output, replace with first output from list
-    let preferred_output = config.output.as_ref().unwrap();
 
-    let mut needs_new_output = &info.name == preferred_output;
     if info.obsolete {
         // an output has been removed, release it
-        needs_new_output = renderer_handle
-            .as_ref()
-            .filter(|r| r.output.as_ref().unwrap().1 != info.name)
-            .is_some();
+        space_manager.remove_space_with_output(&info.name);
 
         // TODO replace with drain_filter
         let mut i = 0;
@@ -102,38 +107,25 @@ pub fn handle_output(
             }
         }
         let s_output_global = s_output.create_global(server_display);
-        s_outputs.push((s_output, s_output_global, info.name.clone(), output));
+        s_outputs.push((s_output, s_output_global, info.name.clone(), output.clone()));
     }
-    let new_output = if let Some(preferred_output_index) = s_outputs
-        .iter()
-        .position(|(_, _, name, _)| name == preferred_output)
-    {
-        Some((
-            s_outputs[preferred_output_index].3.clone(),
-            preferred_output.clone(),
-        ))
-    } else {
-        None
-    };
-    if renderer_handle.is_none() {
-        // construct a surface for an output if possible
-        let pool = env_handle
-            .create_auto_pool()
-            .expect("Failed to create a memory pool!");
-        *renderer_handle = Some(Space::new(
-            clients_left,
-            clients_center,
-            clients_right,
-            new_output,
-            pool,
-            config.clone(),
-            display_.clone(),
-            layer_shell.clone(),
-            logger.clone(),
-            env_handle.create_surface(),
-            focused_surface,
-        ));
-    } else if needs_new_output {
-        renderer_handle.as_mut().unwrap().set_output(new_output);
-    }
+
+    // construct a surface for an output if possible
+    let pool = env_handle
+        .create_auto_pool()
+        .expect("Failed to create a memory pool!");
+    space_manager.push_space(Space::new(
+        clients_left,
+        clients_center,
+        clients_right,
+        output,
+        info,
+        pool,
+        config.clone(),
+        display_.clone(),
+        layer_shell.clone(),
+        logger.clone(),
+        env_handle.create_surface(),
+        focused_surface,
+    ));
 }

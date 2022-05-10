@@ -4,17 +4,16 @@ use anyhow::Result;
 use sctk::{
     environment::Environment,
     reexports::{
+        client::protocol::wl_keyboard,
         client::protocol::{
             wl_pointer as c_wl_pointer, wl_seat as c_wl_seat, wl_surface as c_wl_surface,
         },
         client::Attached,
-        client::{self, protocol::wl_keyboard},
     },
     seat::SeatData,
 };
 use slog::{error, trace, Logger};
 use smithay::{
-    backend::input::KeyState,
     desktop::{utils::bbox_from_surface_tree, PopupKind, WindowSurfaceType},
     reexports::wayland_server::{
         protocol::{wl_pointer, wl_surface::WlSurface},
@@ -22,7 +21,7 @@ use smithay::{
     },
     wayland::{
         data_device::{set_data_device_focus, set_data_device_selection},
-        seat::{self, AxisFrame, FilterResult, PointerHandle},
+        seat::{self, AxisFrame, PointerHandle},
         SERIAL_COUNTER,
     },
 };
@@ -37,7 +36,7 @@ use crate::{
 pub fn send_keyboard_event(
     event: wl_keyboard::Event,
     seat_name: &str,
-    mut dispatch_data: DispatchData,
+    mut dispatch_data: DispatchData<'_>,
 ) {
     let (state, _server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
     let DesktopClientState {
@@ -45,14 +44,10 @@ pub fn send_keyboard_event(
         seats,
         kbd_focus,
         last_input_serial,
-        space,
+        space_manager,
         ..
     } = &mut state.desktop_client_state;
-
     let EmbeddedServerState {
-        clients_left,
-        clients_center,
-        clients_right,
         focused_surface,
         selected_data_provider,
         ..
@@ -70,15 +65,13 @@ pub fn send_keyboard_event(
             }
         };
         match event {
-            wl_keyboard::Event::Key {
-                serial, ..
-            } => {
+            wl_keyboard::Event::Key { serial, .. } => {
                 last_input_serial.replace(serial);
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 kbd.change_repeat_info(rate, delay);
             }
-            wl_keyboard::Event::Enter { .. } => {
+            wl_keyboard::Event::Enter { surface, .. } => {
                 let _ = set_server_device_selection(
                     env_handle,
                     &seat.client.seat,
@@ -92,6 +85,7 @@ pub fn send_keyboard_event(
                         let res = focused_surface.as_ref();
                         res.client().clone()
                     });
+                space_manager.update_active(Some(surface.clone()));
                 set_data_device_focus(&seat.server.0, client);
                 *kbd_focus = true;
                 kbd.set_focus(
@@ -101,19 +95,21 @@ pub fn send_keyboard_event(
             }
             wl_keyboard::Event::Leave { .. } => {
                 *kbd_focus = false;
+                space_manager.update_active(None);
                 kbd.set_focus(None, SERIAL_COUNTER.next_serial());
+                if let Some(space) = space_manager.active_space() {
+                    space.close_popups()
+                }
             }
             _ => (),
         };
     }
-    // keep Modifier state in Seat
-    // trace!(logger, "{:?}", event);
 }
 
 pub fn send_pointer_event(
     event: c_wl_pointer::Event,
     seat_name: &str,
-    mut dispatch_data: DispatchData,
+    mut dispatch_data: DispatchData<'_>,
 ) {
     let (state, _server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
     let DesktopClientState {
@@ -121,7 +117,7 @@ pub fn send_pointer_event(
         axis_frame,
         last_input_serial,
         focused_surface: c_focused_surface,
-        space,
+        space_manager,
         ..
     } = &mut state.desktop_client_state;
     let EmbeddedServerState {
@@ -142,8 +138,11 @@ pub fn send_pointer_event(
                 surface_x,
                 surface_y,
             } => {
+                if let Some(space) = space_manager.active_space() {
+                    space.update_pointer((surface_x as i32, surface_y as i32));
+                }
                 handle_motion(
-                    space,
+                    space_manager.active_space(),
                     focused_surface.borrow().clone(),
                     surface_x,
                     surface_y,
@@ -228,11 +227,20 @@ pub fn send_pointer_event(
                 surface_y,
                 ..
             } => {
+                // if not popup, then must be a dock layer shell surface
+                space_manager.update_active(Some(surface.clone()));
                 // TODO better handling of subsurfaces?
-                set_focused_surface(focused_surface, space, &surface, surface_x, surface_y);
+                set_focused_surface(
+                    focused_surface,
+                    space_manager.active_space(),
+                    &surface,
+                    surface_x,
+                    surface_y,
+                );
                 c_focused_surface.replace(surface);
             }
             c_wl_pointer::Event::Leave { surface, .. } => {
+                space_manager.update_active(None);
                 if let Some(s) = c_focused_surface {
                     if s == &surface {
                         focused_surface.take();
@@ -248,7 +256,7 @@ pub fn seat_handle_callback(
     log: Logger,
     seat: Attached<c_wl_seat::WlSeat>,
     seat_data: &SeatData,
-    mut dispatch_data: DispatchData,
+    mut dispatch_data: DispatchData<'_>,
 ) {
     let (state, server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
     let DesktopClientState {
@@ -356,7 +364,7 @@ pub(crate) fn set_server_device_selection(
 
 // TODO revisit motion over popup
 pub(crate) fn handle_motion(
-    renderer: &mut Option<Space>,
+    space: Option<&mut Space>,
     focused_surface: Option<WlSurface>,
     surface_x: f64,
     surface_y: f64,
@@ -367,7 +375,7 @@ pub(crate) fn handle_motion(
         Some(s) => s,
         _ => return,
     };
-    match renderer
+    match space
         .as_ref()
         .map(|r| r.find_server_window(&focused_surface))
     {
@@ -413,7 +421,7 @@ pub(crate) fn handle_motion(
 
 pub(crate) fn set_focused_surface(
     focused_surface: &Rc<RefCell<Option<WlSurface>>>,
-    space: &mut Option<Space>,
+    space: Option<&mut Space>,
     surface: &c_wl_surface::WlSurface,
     x: f64,
     y: f64,
