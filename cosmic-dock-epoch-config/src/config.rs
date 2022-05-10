@@ -198,7 +198,7 @@ impl Default for CosmicDockConfig {
             size: DockSize::M,
             output: None,
             background: None,
-            plugins_left:  Default::default(),
+            plugins_left: Default::default(),
             plugins_center: vec![("flatpak run com.system76.Time.Devel".into(), 1000)],
             plugins_right: Default::default(),
             expand_to_edges: true,

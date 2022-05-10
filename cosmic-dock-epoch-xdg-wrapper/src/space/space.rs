@@ -577,7 +577,8 @@ impl Space {
             self.update_offsets();
             self.egl_surface
                 .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
-            self.layer_surface.set_size(self.dimensions.0, self.dimensions.1);
+            self.layer_surface
+                .set_size(self.dimensions.0, self.dimensions.1);
             self.layer_shell_wl_surface.commit();
         }
         if self.dimensions.1 < h {
@@ -586,7 +587,8 @@ impl Space {
             self.update_offsets();
             self.egl_surface
                 .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
-            self.layer_surface.set_size(self.dimensions.0, self.dimensions.1);
+            self.layer_surface
+                .set_size(self.dimensions.0, self.dimensions.1);
             self.layer_shell_wl_surface.commit();
         }
 
@@ -628,7 +630,8 @@ impl Space {
         let point = (x, y);
         // set new focused
         if let Some(s) = self
-            .client_top_levels().filter(|t| !t.hidden)
+            .client_top_levels()
+            .filter(|t| !t.hidden)
             .find(|t| t.rectangle.contains(point))
             .and_then(|t| {
                 t.s_top_level
@@ -1106,11 +1109,13 @@ impl Space {
                 }
             };
             total_sum -= hidden_l;
-
         }
-        
+
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        let (right_sum, center_padding) = if left_sum  < requested_eq_length && center_sum < requested_eq_length && right_sum < requested_eq_length {
+        let (right_sum, center_padding) = if left_sum < requested_eq_length
+            && center_sum < requested_eq_length
+            && right_sum < requested_eq_length
+        {
             (right_sum, (list_length as i32 - total_sum) / 2)
         } else {
             (right_sum, (requested_eq_length - center_sum) / 2)
