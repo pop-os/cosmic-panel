@@ -426,8 +426,7 @@ pub(crate) fn set_focused_surface(
     x: f64,
     y: f64,
 ) {
-    let mut focused_surface = focused_surface.borrow_mut();
-    *focused_surface = if let Some(space) = space {
+    let new_focused = if let Some(space) = space {
         match space.find_server_surface(surface) {
             Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
                 let toplevel = toplevel.borrow();
@@ -449,4 +448,7 @@ pub(crate) fn set_focused_surface(
     } else {
         None
     };
+    let mut focused_surface = focused_surface.borrow_mut();
+    *focused_surface = new_focused;
+
 }

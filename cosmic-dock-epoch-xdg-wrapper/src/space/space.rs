@@ -365,7 +365,7 @@ impl Space {
                         Ordering::Equal
                     }
                 });
-            } else if let Some(_) = self.clients_left.iter().find(|c| **c == surface_client) {
+            } else if let Some(_) = self.clients_center.iter().find(|c| **c == surface_client) {
                 self.client_top_levels_center.push(top_level);
                 self.client_top_levels_center.sort_by(|a, b| {
                     let a_client = a
@@ -393,7 +393,7 @@ impl Space {
                         Ordering::Equal
                     }
                 });
-            } else if let Some(_) = self.clients_left.iter().find(|c| **c == surface_client) {
+            } else if let Some(_) = self.clients_right.iter().find(|c| **c == surface_client) {
                 self.client_top_levels_right.push(top_level);
                 self.client_top_levels_right.sort_by(|a, b| {
                     let a_client = a
