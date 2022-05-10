@@ -994,7 +994,7 @@ impl Space {
             }
         }
 
-        for top_level in &mut _top_levels.iter_mut().filter(|t| t.dirty) {
+        for top_level in &mut self.client_top_levels_mut().filter(|t| t.dirty) {
             top_level.dirty = false;
 
             let s_top_level = top_level.s_top_level.borrow();
@@ -1110,10 +1110,10 @@ impl Space {
         }
         
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        let (left_sum, center_sum, right_sum, center_padding) = if left_sum  < requested_eq_length && center_sum < requested_eq_length && right_sum < requested_eq_length {
-            (requested_eq_length, requested_eq_length, right_sum, (list_length as i32 - total_sum) / 2)
+        let (right_sum, center_padding) = if left_sum  < requested_eq_length && center_sum < requested_eq_length && right_sum < requested_eq_length {
+            (right_sum, (list_length as i32 - total_sum) / 2)
         } else {
-            (left_sum, center_sum, right_sum, (requested_eq_length - center_sum) / 2)
+            (right_sum, (requested_eq_length - center_sum) / 2)
         };
 
         let mut prev: u32 = padding;
