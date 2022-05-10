@@ -68,7 +68,7 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         .iter()
         .chain(config.plugins_center.iter())
         .chain(config.plugins_right.iter())
-        .map(|c| exec_child(c, log.clone(), raw_fd))
+        .map(|c| exec_child(&c.0, log.clone(), raw_fd))
         .collect_vec();
 
     let mut shared_data = (global_state, display);

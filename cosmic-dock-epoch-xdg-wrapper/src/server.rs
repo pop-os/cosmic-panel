@@ -58,17 +58,17 @@ pub fn new_server(
     let clients_left: Vec<_> = config
         .plugins_left
         .iter()
-        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
         .collect();
     let clients_center: Vec<_> = config
         .plugins_center
         .iter()
-        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
         .collect();
     let clients_right: Vec<_> = config
         .plugins_right
         .iter()
-        .map(|_| unsafe { display.create_client(raw_fd, &mut ()) })
+        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
         .collect();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);

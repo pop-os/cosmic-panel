@@ -82,9 +82,9 @@ pub struct SelectedDataProvider {
 }
 
 pub struct EmbeddedServerState {
-    pub(crate) clients_left: Vec<wayland_server::Client>,
-    pub(crate) clients_center: Vec<wayland_server::Client>,
-    pub(crate) clients_right: Vec<wayland_server::Client>,
+    pub(crate) clients_left: Vec<(u32, wayland_server::Client)>,
+    pub(crate) clients_center: Vec<(u32, wayland_server::Client)>,
+    pub(crate) clients_right: Vec<(u32, wayland_server::Client)>,
     pub(crate) shell_state: Arc<Mutex<ShellState>>,
     pub(crate) root_window: Option<Rc<RefCell<Window>>>,
     pub(crate) focused_surface: Rc<RefCell<Option<WlSurface>>>,

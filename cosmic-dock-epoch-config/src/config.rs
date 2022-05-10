@@ -175,11 +175,11 @@ pub struct CosmicDockConfig {
     /// customized background, or
     pub background: Option<CosmicDockBackground>,
     /// list of plugins on the left or top of the dock
-    pub plugins_left: Vec<String>,
+    pub plugins_left: Vec<(String, u32)>,
     /// list of plugins in the center of the dock
-    pub plugins_center: Vec<String>,
+    pub plugins_center: Vec<(String, u32)>,
     /// list of plugins on the right or bottom of the dock
-    pub plugins_right: Vec<String>,
+    pub plugins_right: Vec<(String, u32)>,
     /// whether the dock should stretch to the edges of output
     pub expand_to_edges: bool,
     /// padding around the dock
@@ -198,12 +198,12 @@ impl Default for CosmicDockConfig {
             size: DockSize::M,
             output: None,
             background: None,
-            plugins_left: Default::default(),
-            plugins_center: vec!["flatpak run com.system76.Time.Devel".into()],
-            plugins_right: Default::default(),   
+            plugins_left:  Default::default(),
+            plugins_center: vec![("flatpak run com.system76.Time.Devel".into(), 1000)],
+            plugins_right: Default::default(),
             expand_to_edges: true,
             padding: 4,
-            spacing: 4
+            spacing: 4,
         }
     }
 }
@@ -241,14 +241,17 @@ impl CosmicDockConfig {
             _ => HashMap::new(),
         }
     }
-    
+
     /// get whether the dock should expand to cover the edges of the output
     pub fn expand_to_edges(&self) -> bool {
         self.expand_to_edges || self.plugins_left.len() > 0 || self.plugins_right.len() > 0
     }
 
     /// get constraints for the thickness of the dock bar
-    pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
+    pub fn get_dimensions(
+        &self,
+        output_dims: (u32, u32),
+    ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
             DockSize::XS => (8..41),
             DockSize::S => (8..61),
@@ -261,8 +264,22 @@ impl CosmicDockConfig {
         bar_thickness.end -= 4 * self.padding;
 
         match self.anchor {
-            Anchor::Left | Anchor::Right => (Some(bar_thickness),  if self.expand_to_edges() {Some(output_dims.1..output_dims.1 + 1)} else {None}),
-            Anchor::Top | Anchor::Bottom => (if self.expand_to_edges() {Some(output_dims.0..output_dims.0 + 1)} else {None}, Some(bar_thickness)),
+            Anchor::Left | Anchor::Right => (
+                Some(bar_thickness),
+                if self.expand_to_edges() {
+                    Some(output_dims.1..output_dims.1 + 1)
+                } else {
+                    None
+                },
+            ),
+            Anchor::Top | Anchor::Bottom => (
+                if self.expand_to_edges() {
+                    Some(output_dims.0..output_dims.0 + 1)
+                } else {
+                    None
+                },
+                Some(bar_thickness),
+            ),
         }
     }
 }

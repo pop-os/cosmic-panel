@@ -12,11 +12,12 @@ use itertools::Itertools;
 use libc::c_int;
 
 use sctk::{
+    output::OutputInfo,
     reexports::{
         client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
         client::{self, Attached, Main},
     },
-    shm::AutoMemPool, output::OutputInfo,
+    shm::AutoMemPool,
 };
 use slog::{info, trace, warn, Logger};
 use smithay::{
@@ -51,20 +52,20 @@ use smithay::{
             protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
         },
     },
-    utils::{Logical, Rectangle, Point},
+    utils::{Logical, Point, Rectangle},
     wayland::shell::xdg::PopupSurface,
 };
 
 use crate::space::RenderEvent;
-use cosmic_dock_epoch_config::config::{CosmicDockConfig, Anchor};
+use cosmic_dock_epoch_config::config::{Anchor, CosmicDockConfig};
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
 
 #[derive(Debug)]
 pub struct Space {
-    pub clients_left: Vec<Client>,
-    pub clients_center: Vec<Client>,
-    pub clients_right: Vec<Client>,
+    pub clients_left: Vec<(u32, Client)>,
+    pub clients_center: Vec<(u32, Client)>,
+    pub clients_right: Vec<(u32, Client)>,
     pub client_top_levels_left: Vec<TopLevelSurface>,
     pub client_top_levels_center: Vec<TopLevelSurface>,
     pub client_top_levels_right: Vec<TopLevelSurface>,
@@ -93,9 +94,9 @@ pub struct Space {
 
 impl Space {
     pub(crate) fn new(
-        clients_left: &Vec<Client>,
-        clients_center: &Vec<Client>,
-        clients_right: &Vec<Client>,
+        clients_left: &Vec<(u32, Client)>,
+        clients_center: &Vec<(u32, Client)>,
+        clients_right: &Vec<(u32, Client)>,
         output: c_wl_output::WlOutput,
         output_info: &OutputInfo,
         pool: AutoMemPool,
@@ -326,7 +327,7 @@ impl Space {
             .get_surface()
             .and_then(|s| s.as_ref().client().clone());
         if let Some(surface_client) = surface_client {
-            let top_level = TopLevelSurface {
+            let mut top_level = TopLevelSurface {
                 s_top_level,
                 popups: Default::default(),
                 log: self.log.clone(),
@@ -335,9 +336,12 @@ impl Space {
                     loc: (0, 0).into(),
                     size: (0, 0).into(),
                 },
+                priority: 0,
+                hidden: false,
             };
             // determine index position of top level in its list
-            if let Some(_) = self.clients_left.iter().find(|c| **c == surface_client) {
+            if let Some((p, _)) = self.clients_left.iter().find(|(_, c)| *c == surface_client) {
+                top_level.set_priority(*p);
                 self.client_top_levels_left.push(top_level);
                 self.client_top_levels_left.sort_by(|a, b| {
                     let a_client = a
@@ -355,8 +359,8 @@ impl Space {
                         .and_then(|s| s.as_ref().client().clone());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
-                            self.clients_left.iter().position(|e| e == &a_client),
-                            self.clients_left.iter().position(|e| e == &b_client),
+                            self.clients_left.iter().position(|(_, e)| e == &a_client),
+                            self.clients_left.iter().position(|(_, e)| e == &b_client),
                         ) {
                             (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
                             _ => Ordering::Equal,
@@ -365,7 +369,12 @@ impl Space {
                         Ordering::Equal
                     }
                 });
-            } else if let Some(_) = self.clients_center.iter().find(|c| **c == surface_client) {
+            } else if let Some((p, _)) = self
+                .clients_center
+                .iter()
+                .find(|(_, c)| *c == surface_client)
+            {
+                top_level.set_priority(*p);
                 self.client_top_levels_center.push(top_level);
                 self.client_top_levels_center.sort_by(|a, b| {
                     let a_client = a
@@ -383,8 +392,8 @@ impl Space {
                         .and_then(|s| s.as_ref().client().clone());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
-                            self.clients_center.iter().position(|e| e == &a_client),
-                            self.clients_center.iter().position(|e| e == &b_client),
+                            self.clients_center.iter().position(|(_, e)| e == &a_client),
+                            self.clients_center.iter().position(|(_, e)| e == &b_client),
                         ) {
                             (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
                             _ => Ordering::Equal,
@@ -393,7 +402,12 @@ impl Space {
                         Ordering::Equal
                     }
                 });
-            } else if let Some(_) = self.clients_right.iter().find(|c| **c == surface_client) {
+            } else if let Some((p, _)) = self
+                .clients_right
+                .iter()
+                .find(|(_, c)| *c == surface_client)
+            {
+                top_level.set_priority(*p);
                 self.client_top_levels_right.push(top_level);
                 self.client_top_levels_right.sort_by(|a, b| {
                     let a_client = a
@@ -411,8 +425,8 @@ impl Space {
                         .and_then(|s| s.as_ref().client().clone());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
-                            self.clients_right.iter().position(|e| e == &a_client),
-                            self.clients_right.iter().position(|e| e == &b_client),
+                            self.clients_right.iter().position(|(_, e)| e == &a_client),
+                            self.clients_right.iter().position(|(_, e)| e == &b_client),
                         ) {
                             (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
                             _ => Ordering::Equal,
@@ -423,11 +437,6 @@ impl Space {
                 });
             } else {
                 return;
-            }
-            // TODO: remove is root
-
-            for top_level in self.client_top_levels_mut() {
-                top_level.dirty = true;
             }
         }
     }
@@ -542,7 +551,8 @@ impl Space {
     }
 
     pub fn dirty(&mut self, dirty_top_level_surface: &s_WlSurface, (w, h): (u32, u32)) {
-        let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
+        // TODO constrain window size based on max dock sizes
+        // let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
         self.last_dirty = Instant::now();
         let mut full_clear = false;
 
@@ -565,16 +575,18 @@ impl Space {
             full_clear = true;
             self.dimensions.0 = w + 2 * self.config.padding;
             self.update_offsets();
-            self.egl_surface.resize(w as i32, self.dimensions.1 as i32, 0, 0);
-            self.layer_surface.set_size(w, self.dimensions.1);
+            self.egl_surface
+                .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
+            self.layer_surface.set_size(self.dimensions.0, self.dimensions.1);
             self.layer_shell_wl_surface.commit();
         }
         if self.dimensions.1 < h {
             full_clear = true;
             self.dimensions.1 = h + 2 * self.config.padding;
             self.update_offsets();
-            self.egl_surface.resize(self.dimensions.0 as i32, h as i32, 0, 0);
-            self.layer_surface.set_size(self.dimensions.0, h);
+            self.egl_surface
+                .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
+            self.layer_surface.set_size(self.dimensions.0, self.dimensions.1);
             self.layer_shell_wl_surface.commit();
         }
 
@@ -582,7 +594,6 @@ impl Space {
             self.full_clear = true;
             self.update_offsets();
         }
-
     }
 
     pub fn dirty_popup(
@@ -617,7 +628,7 @@ impl Space {
         let point = (x, y);
         // set new focused
         if let Some(s) = self
-            .client_top_levels()
+            .client_top_levels().filter(|t| !t.hidden)
             .find(|t| t.rectangle.contains(point))
             .and_then(|t| {
                 t.s_top_level
@@ -690,7 +701,11 @@ impl Space {
         None
     }
 
-    fn constrain_dim(config: &CosmicDockConfig, (mut w, mut h): (u32, u32), (o_w, o_h): (i32, i32)) -> (u32, u32) {
+    fn constrain_dim(
+        config: &CosmicDockConfig,
+        (mut w, mut h): (u32, u32),
+        (o_w, o_h): (i32, i32),
+    ) -> (u32, u32) {
         let (min_w, min_h) = (1, 1);
         w = min_w.max(w);
         h = min_h.max(h);
@@ -779,6 +794,7 @@ impl Space {
         let height = self.dimensions.1 as i32;
 
         let full_clear = self.full_clear;
+        self.full_clear = false;
 
         // reorder top levels so active window is last
         let mut _top_levels: Vec<_> = self.client_top_levels().map(|t| t.clone()).collect_vec();
@@ -789,7 +805,7 @@ impl Space {
         let mut l_damage = Vec::new();
         let mut p_damage = Vec::new();
         let mut p_damage_f64 = Vec::new();
-        let clear_color = [0.0, 0.0, 0.0, 1.0];
+        let clear_color = [0.5, 0.5, 0.5, 0.5];
         let _ = self.renderer.unbind();
         self.renderer
             .bind(self.egl_surface.clone())
@@ -809,7 +825,7 @@ impl Space {
                             (0, 0).into(),
                         )];
                     } else {
-                        for top_level in &mut _top_levels.iter().filter(|t| t.dirty) {
+                        for top_level in &mut _top_levels.iter().filter(|t| t.dirty && !t.hidden) {
                             let s_top_level = top_level.s_top_level.borrow();
                             let server_surface = match s_top_level.toplevel() {
                                 Kind::Xdg(xdg_surface) => match xdg_surface.get_surface() {
@@ -867,7 +883,7 @@ impl Space {
                         .expect("Failed to clear frame.");
 
                     // draw each surface which needs to be drawn
-                    for top_level in &mut _top_levels {
+                    for top_level in &mut _top_levels.iter_mut().filter(|t| !t.hidden) {
                         // render top level surface
                         let s_top_level = top_level.s_top_level.borrow();
                         let server_surface = match s_top_level.toplevel() {
@@ -904,18 +920,19 @@ impl Space {
             )
             .expect("Failed to render to layer shell surface.");
 
-        if _top_levels.iter().find(|t| t.dirty).is_some() {
+        if _top_levels.iter().find(|t| t.dirty && !t.hidden).is_some() {
             self.egl_surface
                 .swap_buffers(Some(&mut p_damage))
                 .expect("Failed to swap buffers.");
         }
 
         // render popups
-        for top_level in &mut _top_levels {
-            for p in &mut top_level.popups {
-                if !p.dirty || !p.s_surface.alive() || p.next_render_event.get() != None {
-                    continue;
-                }
+        for top_level in &mut _top_levels.iter_mut().filter(|t| !t.hidden) {
+            for p in &mut top_level
+                .popups
+                .iter_mut()
+                .filter(|p| p.dirty && p.s_surface.alive() && p.next_render_event.get() != None)
+            {
                 p.dirty = false;
                 let wl_surface = match p.s_surface.get_surface() {
                     Some(s) => s,
@@ -989,13 +1006,11 @@ impl Space {
             };
             send_frames_surface_tree(server_surface, time);
         }
-        self.full_clear = false;
     }
 
     // TODO update top level offsets based on client list and top level list
     // DO THIS NEXT
     fn update_offsets(&mut self) {
-        let mut done = false;
         let CosmicDockConfig {
             padding,
             anchor,
@@ -1003,80 +1018,172 @@ impl Space {
             ..
         } = self.config;
 
-        while !done {
+        // First try partitioning the dock evenly into N spaces.
+        // If all windows fit into each space, then set their offsets and return.
+        let (list_length, list_thickness) = match anchor {
+            Anchor::Left | Anchor::Right => (self.dimensions.1, self.dimensions.0),
+            Anchor::Top | Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
+        };
 
-            // First try partitioning the dock evenly into N spaces.
-            // If all windows fit into each space, then set their offsets and return.
-            let (list_length, list_thickness) = match anchor {
-                    Anchor::Left | Anchor::Right => (self.dimensions.1, self.dimensions.0),
-                    Anchor::Top | Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
+        let mut num_lists = 0;
+        if self.client_top_levels_left.len() > 0 {
+            num_lists += 1;
+        }
+        if self.client_top_levels_center.len() > 0 {
+            num_lists += 1;
+        }
+        if self.client_top_levels_right.len() > 0 {
+            num_lists += 1;
+        }
+
+        for t in self.client_top_levels_mut() {
+            t.hidden = false;
+        }
+
+        let left = self
+            .client_top_levels_left
+            .iter()
+            .enumerate()
+            .map(|(i, t)| match anchor {
+                Anchor::Left | Anchor::Right => {
+                    (Alignment::Left, i, t.priority, t.rectangle.size.h)
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    (Alignment::Left, i, t.priority, t.rectangle.size.w)
+                }
+            });
+        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>();
+
+        let center = self
+            .client_top_levels_center
+            .iter()
+            .enumerate()
+            .map(|(i, t)| match anchor {
+                Anchor::Left | Anchor::Right => {
+                    (Alignment::Center, i, t.priority, t.rectangle.size.h)
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    (Alignment::Center, i, t.priority, t.rectangle.size.w)
+                }
+            });
+        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>();
+
+        let right = self
+            .client_top_levels_right
+            .iter()
+            .enumerate()
+            .map(|(i, t)| match anchor {
+                Anchor::Left | Anchor::Right => {
+                    (Alignment::Right, i, t.priority, t.rectangle.size.h)
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    (Alignment::Right, i, t.priority, t.rectangle.size.w)
+                }
+            });
+        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>();
+
+        let mut all_sorted_priority = left
+            .chain(center)
+            .chain(right)
+            .sorted_by(|(_, _, p_a, _), (_, _, p_b, _)| Ord::cmp(p_a, p_b).reverse())
+            .collect_vec();
+        let mut total_sum = left_sum + center_sum + right_sum;
+        while total_sum as u32 + padding * 2 + spacing * (num_lists - 1) > list_length {
+            // hide lowest priority element from dock
+            let (hidden_a, hidden_i, _, hidden_l) = all_sorted_priority.pop().unwrap();
+            match hidden_a {
+                Alignment::Left => {
+                    self.client_top_levels_left[hidden_i].set_hidden(true);
+                    left_sum -= hidden_l;
+                }
+                Alignment::Center => {
+                    self.client_top_levels_center[hidden_i].set_hidden(true);
+                    center_sum -= hidden_l;
+                }
+                Alignment::Right => {
+                    self.client_top_levels_right[hidden_i].set_hidden(true);
+                    right_sum -= hidden_l;
+                }
             };
+            total_sum -= hidden_l;
 
-            let mut prev = padding;
-            
-            for (i, top_level) in &mut self.client_top_levels_left.iter_mut().enumerate() {
-                let size: Point<_, Logical> = (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-                let cur =  prev + spacing * i as u32;
-                match anchor {
-                    Anchor::Left | Anchor::Right => {
-                        let cur = (padding ,cur);
-                        prev += size.y as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                    Anchor::Top | Anchor::Bottom => {
-                        let cur = (cur, padding);
-                        prev += size.x as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                };
-            }
+        }
+        
+        let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
+        let (left_sum, center_sum, right_sum, center_padding) = if left_sum  < requested_eq_length && center_sum < requested_eq_length && right_sum < requested_eq_length {
+            (requested_eq_length, requested_eq_length, right_sum, (list_length as i32 - total_sum) / 2)
+        } else {
+            (left_sum, center_sum, right_sum, (requested_eq_length - center_sum) / 2)
+        };
 
-            let mut prev = padding + list_length / 3;
-                        
-            for (i, top_level) in &mut self.client_top_levels_center.iter_mut().enumerate() {
-                let size: Point<_, Logical> = (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-                let cur =  prev + spacing * i as u32;
-                match anchor {
-                    Anchor::Left | Anchor::Right => {
-                        let cur = (padding ,cur);
-                        prev += size.y as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                    Anchor::Top | Anchor::Bottom => {
-                        let cur = (cur, padding);
-                        prev += size.x as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                };
-            }
+        let mut prev: u32 = padding;
 
-            let mut prev = padding + 2 * list_length / 3;
+        for (i, top_level) in &mut self
+            .client_top_levels_left
+            .iter_mut()
+            .filter(|t| !t.hidden)
+            .enumerate()
+        {
+            let size: Point<_, Logical> =
+                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
+            let cur = prev + spacing * i as u32;
+            match anchor {
+                Anchor::Left | Anchor::Right => {
+                    let cur = (padding, cur);
+                    prev += size.y as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    let cur = (cur, padding);
+                    prev += size.x as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+            };
+        }
 
-                        
-            for (i, top_level) in &mut self.client_top_levels_right.iter_mut().enumerate() {
-                let size: Point<_, Logical> = (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-                let cur =  prev + spacing * i as u32;
-                match anchor {
-                    Anchor::Left | Anchor::Right => {
-                        let cur = (padding ,cur);
-                        prev += size.y as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                    Anchor::Top | Anchor::Bottom => {
-                        let cur = (cur, padding);
-                        prev += size.x as u32;
-                        top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    },
-                };
-            }
+        let mut prev: u32 = prev + spacing + center_padding as u32;
 
+        for (i, top_level) in &mut self
+            .client_top_levels_center
+            .iter_mut()
+            .filter(|t| !t.hidden)
+            .enumerate()
+        {
+            let size: Point<_, Logical> =
+                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
+            let cur = prev + spacing * i as u32;
+            match anchor {
+                Anchor::Left | Anchor::Right => {
+                    let cur = (padding, cur);
+                    prev += size.y as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    let cur = (cur, padding);
+                    prev += size.x as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+            };
+        }
 
-            // Next try partitioning the dock to what each space needs.
-            // If the needed space is less than or equal to the width of the dock, then set their offsets and return.
+        let mut prev: u32 = list_length - padding - right_sum as u32;
 
-            // Otherwise, remove one and try again.
-            // TODO prioritize keeping certain plugins?
-            done = true;
+        for (i, top_level) in &mut self.client_top_levels_right.iter_mut().enumerate() {
+            let size: Point<_, Logical> =
+                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
+            let cur = prev + spacing * i as u32;
+            match anchor {
+                Anchor::Left | Anchor::Right => {
+                    let cur = (padding, cur);
+                    prev += size.y as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    let cur = (cur, padding);
+                    prev += size.x as u32;
+                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                }
+            };
         }
     }
 }
@@ -1086,4 +1193,10 @@ impl Drop for Space {
         self.layer_surface.destroy();
         self.layer_shell_wl_surface.destroy();
     }
+}
+
+enum Alignment {
+    Left,
+    Center,
+    Right,
 }

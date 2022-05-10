@@ -450,5 +450,4 @@ pub(crate) fn set_focused_surface(
     };
     let mut focused_surface = focused_surface.borrow_mut();
     *focused_surface = new_focused;
-
 }

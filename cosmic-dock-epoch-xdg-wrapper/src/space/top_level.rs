@@ -17,13 +17,15 @@ pub enum RenderEvent {
 
 #[derive(Debug, Clone)]
 pub struct TopLevelSurface {
-    pub s_top_level: Rc<RefCell<smithay::desktop::Window>>,
-    pub dirty: bool,
-    pub popups: Vec<Popup>,
-    pub log: Logger,
+    pub(crate) s_top_level: Rc<RefCell<smithay::desktop::Window>>,
+    pub(crate) dirty: bool,
+    pub(crate) popups: Vec<Popup>,
+    pub(crate) log: Logger,
     /// location offset of the window within the dock
     /// dimensions of the window in the dock
-    pub rectangle: Rectangle<i32, Logical>,
+    pub(crate) rectangle: Rectangle<i32, Logical>,
+    pub(crate) priority: u32,
+    pub(crate) hidden: bool,
 }
 
 impl TopLevelSurface {
@@ -67,6 +69,14 @@ impl TopLevelSurface {
             }
         }
         false
+    }
+
+    pub(crate) fn set_priority(&mut self, priority: u32) {
+        self.priority = priority;
+    }
+
+    pub(crate) fn set_hidden(&mut self, hidden: bool) {
+        self.hidden = hidden;
     }
 }
 

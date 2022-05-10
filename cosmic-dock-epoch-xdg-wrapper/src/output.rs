@@ -40,9 +40,9 @@ pub fn handle_output(
     server_display: &mut s_Display,
     s_outputs: &mut Vec<OutputGroup>,
     focused_surface: Rc<RefCell<Option<WlSurface>>>,
-    clients_left: &Vec<Client>,
-    clients_center: &Vec<Client>,
-    clients_right: &Vec<Client>,
+    clients_left: &Vec<(u32, Client)>,
+    clients_center: &Vec<(u32, Client)>,
+    clients_right: &Vec<(u32, Client)>,
 ) {
     // ignore outputs that do not match config
     if let Some(preferred_output) = config.output.as_ref() {
