@@ -319,6 +319,7 @@ impl Space {
 
     // TODO: adjust offset of top level
     pub fn add_top_level(&mut self, s_top_level: Rc<RefCell<Window>>) {
+        println!("adding top level");
         self.full_clear = true;
 
         let surface_client = s_top_level

@@ -9,7 +9,7 @@ use sctk::reexports::{
     client::{protocol::wl_seat as c_wl_seat, Attached},
 };
 use slog::{error, trace, Logger};
-use smithay::wayland::compositor::SurfaceAttributes;
+use smithay::{wayland::compositor::SurfaceAttributes, reexports::wayland_server::Client};
 use smithay::wayland::compositor::{get_role, with_states};
 use smithay::wayland::data_device::DataDeviceEvent;
 use smithay::{
@@ -34,6 +34,18 @@ use std::{
     rc::Rc,
 };
 
+fn plugin_as_client_sock(p: &(String, u32), display: &mut wayland_server::Display) -> ((u32, Client), (UnixStream, UnixStream)) {
+    let (display_sock, client_sock) = UnixStream::pair().unwrap();
+    let raw_fd = display_sock.as_raw_fd();
+    let fd_flags =
+        fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap()).unwrap();
+    fcntl::fcntl(
+        raw_fd,
+        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
+    ).unwrap();
+   ( (p.1, unsafe { display.create_client(raw_fd, &mut ()) }), ( display_sock, client_sock ))
+}
+
 pub fn new_server(
     loop_handle: calloop::LoopHandle<'static, (GlobalState, wayland_server::Display)>,
     config: CosmicDockConfig,
@@ -41,35 +53,26 @@ pub fn new_server(
 ) -> Result<(
     EmbeddedServerState,
     wayland_server::Display,
-    (UnixStream, UnixStream),
+    (Vec<(UnixStream, UnixStream)>, Vec<(UnixStream, UnixStream)>, Vec<(UnixStream, UnixStream)>)
 )> {
     let mut display = wayland_server::Display::new();
-    let (display_sock, client_sock) = UnixStream::pair().unwrap();
-    let raw_fd = display_sock.as_raw_fd();
-    let fd_flags =
-        fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)?).unwrap();
-    fcntl::fcntl(
-        raw_fd,
-        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-    )?;
 
     // mapping from wl type using wayland_server::resource to client
-    // TODO: create multiple clients, one for each plugin
-    let clients_left: Vec<_> = config
+    let (clients_left, sockets_left): (Vec<_>, Vec<_>) = config
         .plugins_left
         .iter()
-        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
-        .collect();
-    let clients_center: Vec<_> = config
+        .map(|p| plugin_as_client_sock(p, &mut display))
+        .unzip();
+    let (clients_center, sockets_center): (Vec<_>, Vec<_>) = config
         .plugins_center
         .iter()
-        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
-        .collect();
-    let clients_right: Vec<_> = config
+        .map(|p| plugin_as_client_sock(p, &mut display))
+        .unzip();
+    let (clients_right, sockets_right): (Vec<_>, Vec<_>) = config
         .plugins_right
         .iter()
-        .map(|p| (p.1, unsafe { display.create_client(raw_fd, &mut ()) }))
-        .collect();
+        .map(|p| plugin_as_client_sock(p, &mut display))
+        .unzip();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);
     loop_handle.insert_source(display_event_source, move |_e, _metadata, _shared_data| {
@@ -380,6 +383,8 @@ pub fn new_server(
             last_button: None,
         },
         display,
-        (display_sock, client_sock),
+        (sockets_left,
+        sockets_center,
+        sockets_right)
     ))
 }

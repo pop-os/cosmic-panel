@@ -35,7 +35,7 @@ mod util;
 pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
     let mut event_loop = calloop::EventLoop::<(GlobalState, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
-    let (embedded_server_state, mut display, (_display_sock, client_sock)) =
+    let (embedded_server_state, mut display, (sockets_left, sockets_center, sockets_right)) =
         server::new_server(loop_handle.clone(), config.clone(), log.clone())?;
     let (desktop_client_state, outputs) = client::new_client(
         loop_handle.clone(),
@@ -55,20 +55,24 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         cached_buffers: CachedBuffers::new(log.clone()),
     };
 
-    let raw_fd = client_sock.as_raw_fd();
-    let fd_flags =
-        fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)?).unwrap();
-    fcntl::fcntl(
-        raw_fd,
-        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-    )?;
+
 
     let mut children = config
         .plugins_left
-        .iter()
-        .chain(config.plugins_center.iter())
-        .chain(config.plugins_right.iter())
-        .map(|c| exec_child(&c.0, log.clone(), raw_fd))
+        .iter().zip(&sockets_left)
+        .chain(config.plugins_center.iter().zip(&sockets_center))
+        .chain(config.plugins_right.iter().zip(&sockets_right))
+        .map(|(exec, (_, client_socket))| {
+            let raw_fd = client_socket.as_raw_fd();
+            let fd_flags =
+                fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap()).unwrap();
+            fcntl::fcntl(
+                raw_fd,
+                fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
+            ).unwrap();
+            exec_child(&exec.0, log.clone(), raw_fd)
+
+        })
         .collect_vec();
 
     let mut shared_data = (global_state, display);

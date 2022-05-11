@@ -199,7 +199,7 @@ impl Default for CosmicDockConfig {
             output: None,
             background: None,
             plugins_left: Default::default(),
-            plugins_center: vec![("flatpak run com.system76.Time.Devel".into(), 1000)],
+            plugins_center: Default::default(),
             plugins_right: Default::default(),
             expand_to_edges: true,
             padding: 4,
@@ -207,6 +207,8 @@ impl Default for CosmicDockConfig {
         }
     }
 }
+
+static CONFIG_PATH: &'static str = "cosmic-dock-epoch/config.ron";
 
 impl CosmicDockConfig {
     /// load config with the provided name
@@ -223,7 +225,7 @@ impl CosmicDockConfig {
         configs.insert(name.into(), CosmicDockConfig::default());
         let xdg = BaseDirectories::new()?;
         let f = xdg
-            .place_config_file("xdg-shell-wrapper/config.ron")
+            .place_config_file(CONFIG_PATH)
             .unwrap();
         let f = File::create(f)?;
         ron::ser::to_writer_pretty(&f, &configs, ron::ser::PrettyConfig::default())?;
@@ -232,7 +234,7 @@ impl CosmicDockConfig {
 
     fn get_configs() -> HashMap<String, Self> {
         match BaseDirectories::new()
-            .map(|dirs| dirs.find_config_file("xdg-shell-wrapper/config.ron"))
+            .map(|dirs| dirs.find_config_file(CONFIG_PATH))
             .map(|c| c.map(|c| File::open(c)))
             .map(|file| {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))

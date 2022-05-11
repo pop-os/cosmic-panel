@@ -14,7 +14,24 @@ fn main() -> Result<()> {
     let _guard = slog_scope::set_global_logger(log.clone());
     slog_stdlog::init().expect("Could not setup log backend");
 
-    // TODO load config
-    dock_xdg_wrapper(log, CosmicDockConfig::default())?;
+    let arg = std::env::args().nth(1);
+    let usage =
+        "USAGE: cosmic-dock-epoch --profile <profile name>";
+    let config = match arg.as_ref().map(|s| &s[..]) {
+        Some(arg) if arg == "--profile" || arg == "-p" => {
+            if let Some(profile) = std::env::args().nth(2) {
+                CosmicDockConfig::load(profile.as_str())
+            } else {
+                println!("{}", usage);
+                std::process::exit(1);
+            }
+        }
+        _ => {
+            println!("{}", usage);
+            std::process::exit(1);
+        }
+    };
+
+    dock_xdg_wrapper(log, config)?;
     Ok(())
 }
