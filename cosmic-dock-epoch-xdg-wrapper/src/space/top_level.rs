@@ -11,7 +11,7 @@ use super::{Popup, PopupRenderEvent};
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum RenderEvent {
     WaitConfigure,
-    Configure { width: u32, height: u32 },
+    Configure { width: u32, height: u32, serial: u32 },
     Closed,
 }
 

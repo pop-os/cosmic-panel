@@ -88,6 +88,7 @@ pub struct Space {
     pub layer_shell_wl_surface: Attached<c_wl_surface::WlSurface>,
     // adjusts to fit all client surfaces
     pub dimensions: (u32, u32),
+    pub pending_dimensions: Option<(u32, u32)>,
     // focused surface so it can be changed when a window is removed
     focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
 }
@@ -184,7 +185,13 @@ impl Space {
                         height,
                     },
                     next,
-                ) if next != Some(RenderEvent::Closed) => {
+                ) if next != Some(RenderEvent::Closed) && next.map(|e| {
+                    match e {
+                        RenderEvent::WaitConfigure => true,
+                        RenderEvent::Configure { serial: old_serial, .. } => serial > old_serial,
+                        RenderEvent::Closed => false,
+                    }
+                }).unwrap_or(true) => {
                     trace!(
                         logger,
                         "received configure event {:?} {:?} {:?}",
@@ -193,7 +200,7 @@ impl Space {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height }));
+                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height, serial }));
                 }
                 (_, _) => {}
             }
@@ -218,6 +225,7 @@ impl Space {
             full_clear: true,
             last_dirty: Instant::now(),
             dimensions,
+            pending_dimensions: None,
             layer_surface,
             egl_surface,
             next_render_event,
@@ -252,6 +260,17 @@ impl Space {
     }
 
     pub fn handle_events(&mut self, time: u32, children: &mut Vec<Child>) -> Instant {
+        if let Some(pending_dimensions) = self.pending_dimensions.take() {
+            match self.next_render_event.get().clone() {
+                Some(RenderEvent::Closed) => {/* Do nothing and exit in the next check */}
+                _ => {
+                    self.layer_surface.set_size(pending_dimensions.0, pending_dimensions.1);
+                    self.layer_shell_wl_surface.commit();
+                    self.next_render_event.replace(Some(RenderEvent::WaitConfigure));
+                }
+            }
+        }
+
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => {
                 trace!(self.log, "root window removed, exiting...");
@@ -259,12 +278,13 @@ impl Space {
                     let _ = child.kill();
                 }
             }
-            Some(RenderEvent::Configure { width, height }) => {
+            Some(RenderEvent::Configure { width, height, serial: _serial }) => {
                 if self.dimensions != (width, height) {
                     self.dimensions = (width, height);
                     self.egl_surface.resize(width as i32, height as i32, 0, 0);
                     self.needs_update = true;
                     self.full_clear = true;
+                    self.update_offsets();
                 }
             }
             Some(RenderEvent::WaitConfigure) => {
@@ -572,24 +592,22 @@ impl Space {
 
         // TODO improve this for when there are changes to the lists of plugins while running
         if self.dimensions.0 < w {
-            full_clear = true;
-            self.dimensions.0 = w + 2 * self.config.padding;
-            self.update_offsets();
-            self.egl_surface
-                .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
-            self.layer_surface
-                .set_size(self.dimensions.0, self.dimensions.1);
-            self.layer_shell_wl_surface.commit();
+            if let Some(pending_dimensions) = self.pending_dimensions {
+                if pending_dimensions.0 < w {
+                    self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
+                }
+            } else {
+                self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
+            }
         }
         if self.dimensions.1 < h {
-            full_clear = true;
-            self.dimensions.1 = h + 2 * self.config.padding;
-            self.update_offsets();
-            self.egl_surface
-                .resize(self.dimensions.0 as i32, self.dimensions.1 as i32, 0, 0);
-            self.layer_surface
-                .set_size(self.dimensions.0, self.dimensions.1);
-            self.layer_shell_wl_surface.commit();
+            if let Some(pending_dimensions) = self.pending_dimensions {
+                if pending_dimensions.1 < h {
+                    self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
+                }
+            } else {
+                self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
+            }
         }
 
         if full_clear {
@@ -782,7 +800,7 @@ impl Space {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height }));
+                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height, serial }));
                 }
                 (_, _) => {}
             }
@@ -1043,46 +1061,36 @@ impl Space {
             t.hidden = false;
         }
 
+        fn map_fn((i, t): (usize, &TopLevelSurface), anchor: Anchor, alignment: Alignment) -> (Alignment, usize, u32, i32) {
+            match anchor {
+                Anchor::Left | Anchor::Right => {
+                    (alignment, i, t.priority, t.rectangle.size.h)
+                }
+                Anchor::Top | Anchor::Bottom => {
+                    (alignment, i, t.priority, t.rectangle.size.w)
+                }
+            }
+        }
+
         let left = self
             .client_top_levels_left
             .iter()
             .enumerate()
-            .map(|(i, t)| match anchor {
-                Anchor::Left | Anchor::Right => {
-                    (Alignment::Left, i, t.priority, t.rectangle.size.h)
-                }
-                Anchor::Top | Anchor::Bottom => {
-                    (Alignment::Left, i, t.priority, t.rectangle.size.w)
-                }
-            });
+            .map(|e| map_fn(e, anchor, Alignment::Left));
         let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>();
 
         let center = self
             .client_top_levels_center
             .iter()
             .enumerate()
-            .map(|(i, t)| match anchor {
-                Anchor::Left | Anchor::Right => {
-                    (Alignment::Center, i, t.priority, t.rectangle.size.h)
-                }
-                Anchor::Top | Anchor::Bottom => {
-                    (Alignment::Center, i, t.priority, t.rectangle.size.w)
-                }
-            });
+            .map(|e| map_fn(e, anchor, Alignment::Left));
         let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>();
 
         let right = self
             .client_top_levels_right
             .iter()
             .enumerate()
-            .map(|(i, t)| match anchor {
-                Anchor::Left | Anchor::Right => {
-                    (Alignment::Right, i, t.priority, t.rectangle.size.h)
-                }
-                Anchor::Top | Anchor::Bottom => {
-                    (Alignment::Right, i, t.priority, t.rectangle.size.w)
-                }
-            });
+            .map(|e|map_fn(e, anchor, Alignment::Left));
         let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>();
 
         let mut all_sorted_priority = left
@@ -1111,6 +1119,10 @@ impl Space {
             total_sum -= hidden_l;
         }
 
+        fn center_in_bar(thickness: u32, dim: u32) -> i32 {
+            (thickness as i32 - dim as i32) / 2
+        }
+
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
         let (right_sum, center_padding) = if left_sum < requested_eq_length
             && center_sum < requested_eq_length
@@ -1134,12 +1146,12 @@ impl Space {
             let cur = prev + spacing * i as u32;
             match anchor {
                 Anchor::Left | Anchor::Right => {
-                    let cur = (padding, cur);
+                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
                 Anchor::Top | Anchor::Bottom => {
-                    let cur = (cur, padding);
+                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
@@ -1159,12 +1171,12 @@ impl Space {
             let cur = prev + spacing * i as u32;
             match anchor {
                 Anchor::Left | Anchor::Right => {
-                    let cur = (padding, cur);
+                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
                 Anchor::Top | Anchor::Bottom => {
-                    let cur = (cur, padding);
+                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
@@ -1179,12 +1191,12 @@ impl Space {
             let cur = prev + spacing * i as u32;
             match anchor {
                 Anchor::Left | Anchor::Right => {
-                    let cur = (padding, cur);
+                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
                 Anchor::Top | Anchor::Bottom => {
-                    let cur = (cur, padding);
+                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
