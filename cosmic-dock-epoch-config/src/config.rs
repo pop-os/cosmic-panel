@@ -224,9 +224,7 @@ impl CosmicDockConfig {
         let mut configs = Self::get_configs();
         configs.insert(name.into(), CosmicDockConfig::default());
         let xdg = BaseDirectories::new()?;
-        let f = xdg
-            .place_config_file(CONFIG_PATH)
-            .unwrap();
+        let f = xdg.place_config_file(CONFIG_PATH).unwrap();
         let f = File::create(f)?;
         ron::ser::to_writer_pretty(&f, &configs, ron::ser::PrettyConfig::default())?;
         return Ok(());

@@ -55,23 +55,23 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         cached_buffers: CachedBuffers::new(log.clone()),
     };
 
-
-
     let mut children = config
         .plugins_left
-        .iter().zip(&sockets_left)
+        .iter()
+        .zip(&sockets_left)
         .chain(config.plugins_center.iter().zip(&sockets_center))
         .chain(config.plugins_right.iter().zip(&sockets_right))
         .map(|(exec, (_, client_socket))| {
             let raw_fd = client_socket.as_raw_fd();
             let fd_flags =
-                fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap()).unwrap();
+                fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap())
+                    .unwrap();
             fcntl::fcntl(
                 raw_fd,
                 fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-            ).unwrap();
+            )
+            .unwrap();
             exec_child(&exec.0, log.clone(), raw_fd)
-
         })
         .collect_vec();
 

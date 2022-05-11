@@ -9,7 +9,6 @@ use sctk::reexports::{
     client::{protocol::wl_seat as c_wl_seat, Attached},
 };
 use slog::{error, trace, Logger};
-use smithay::{wayland::compositor::SurfaceAttributes, reexports::wayland_server::Client};
 use smithay::wayland::compositor::{get_role, with_states};
 use smithay::wayland::data_device::DataDeviceEvent;
 use smithay::{
@@ -28,13 +27,17 @@ use smithay::{
         SERIAL_COUNTER,
     },
 };
+use smithay::{reexports::wayland_server::Client, wayland::compositor::SurfaceAttributes};
 use std::{
     cell::{RefCell, RefMut},
     os::unix::{io::AsRawFd, net::UnixStream},
     rc::Rc,
 };
 
-fn plugin_as_client_sock(p: &(String, u32), display: &mut wayland_server::Display) -> ((u32, Client), (UnixStream, UnixStream)) {
+fn plugin_as_client_sock(
+    p: &(String, u32),
+    display: &mut wayland_server::Display,
+) -> ((u32, Client), (UnixStream, UnixStream)) {
     let (display_sock, client_sock) = UnixStream::pair().unwrap();
     let raw_fd = display_sock.as_raw_fd();
     let fd_flags =
@@ -42,8 +45,12 @@ fn plugin_as_client_sock(p: &(String, u32), display: &mut wayland_server::Displa
     fcntl::fcntl(
         raw_fd,
         fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-    ).unwrap();
-   ( (p.1, unsafe { display.create_client(raw_fd, &mut ()) }), ( display_sock, client_sock ))
+    )
+    .unwrap();
+    (
+        (p.1, unsafe { display.create_client(raw_fd, &mut ()) }),
+        (display_sock, client_sock),
+    )
 }
 
 pub fn new_server(
@@ -53,7 +60,11 @@ pub fn new_server(
 ) -> Result<(
     EmbeddedServerState,
     wayland_server::Display,
-    (Vec<(UnixStream, UnixStream)>, Vec<(UnixStream, UnixStream)>, Vec<(UnixStream, UnixStream)>)
+    (
+        Vec<(UnixStream, UnixStream)>,
+        Vec<(UnixStream, UnixStream)>,
+        Vec<(UnixStream, UnixStream)>,
+    ),
 )> {
     let mut display = wayland_server::Display::new();
 
@@ -383,8 +394,6 @@ pub fn new_server(
             last_button: None,
         },
         display,
-        (sockets_left,
-        sockets_center,
-        sockets_right)
+        (sockets_left, sockets_center, sockets_right),
     ))
 }

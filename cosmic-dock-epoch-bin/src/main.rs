@@ -15,8 +15,7 @@ fn main() -> Result<()> {
     slog_stdlog::init().expect("Could not setup log backend");
 
     let arg = std::env::args().nth(1);
-    let usage =
-        "USAGE: cosmic-dock-epoch --profile <profile name>";
+    let usage = "USAGE: cosmic-dock-epoch --profile <profile name>";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--profile" || arg == "-p" => {
             if let Some(profile) = std::env::args().nth(2) {

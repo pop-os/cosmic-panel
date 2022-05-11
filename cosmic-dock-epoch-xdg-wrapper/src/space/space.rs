@@ -11,6 +11,8 @@ use std::{
 use itertools::Itertools;
 use libc::c_int;
 
+use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
+use cosmic_dock_epoch_config::config::{Anchor, CosmicDockConfig};
 use sctk::{
     output::OutputInfo,
     reexports::{
@@ -27,7 +29,7 @@ use smithay::{
             display::EGLDisplay,
             ffi::{
                 self,
-                egl::{GetConfigAttrib, SwapInterval},
+                egl::{GetConfigAttrib, SwapInterval, WaitClient},
             },
             surface::EGLSurface,
         },
@@ -56,10 +58,19 @@ use smithay::{
     wayland::shell::xdg::PopupSurface,
 };
 
-use crate::space::RenderEvent;
-use cosmic_dock_epoch_config::config::{Anchor, CosmicDockConfig};
-
-use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub enum RenderEvent {
+    WaitConfigure {
+        width: u32,
+        height: u32,
+    },
+    Configure {
+        width: u32,
+        height: u32,
+        serial: u32,
+    },
+    Closed,
+}
 
 #[derive(Debug)]
 pub struct Space {
@@ -170,6 +181,7 @@ impl Space {
             )
             .expect("Failed to initialize EGL Surface"),
         );
+
         let next_render_event_handle = next_render_event.clone();
         let logger = log.clone();
         layer_surface.quick_assign(move |layer_surface, event, _| {
@@ -185,13 +197,7 @@ impl Space {
                         height,
                     },
                     next,
-                ) if next != Some(RenderEvent::Closed) && next.map(|e| {
-                    match e {
-                        RenderEvent::WaitConfigure => true,
-                        RenderEvent::Configure { serial: old_serial, .. } => serial > old_serial,
-                        RenderEvent::Closed => false,
-                    }
-                }).unwrap_or(true) => {
+                ) if next != Some(RenderEvent::Closed) => {
                     trace!(
                         logger,
                         "received configure event {:?} {:?} {:?}",
@@ -200,7 +206,11 @@ impl Space {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height, serial }));
+                    next_render_event_handle.set(Some(RenderEvent::Configure {
+                        width,
+                        height,
+                        serial,
+                    }));
                 }
                 (_, _) => {}
             }
@@ -260,17 +270,7 @@ impl Space {
     }
 
     pub fn handle_events(&mut self, time: u32, children: &mut Vec<Child>) -> Instant {
-        if let Some(pending_dimensions) = self.pending_dimensions.take() {
-            match self.next_render_event.get().clone() {
-                Some(RenderEvent::Closed) => {/* Do nothing and exit in the next check */}
-                _ => {
-                    self.layer_surface.set_size(pending_dimensions.0, pending_dimensions.1);
-                    self.layer_shell_wl_surface.commit();
-                    self.next_render_event.replace(Some(RenderEvent::WaitConfigure));
-                }
-            }
-        }
-
+        let mut should_render = false;
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => {
                 trace!(self.log, "root window removed, exiting...");
@@ -278,20 +278,34 @@ impl Space {
                     let _ = child.kill();
                 }
             }
-            Some(RenderEvent::Configure { width, height, serial: _serial }) => {
-                if self.dimensions != (width, height) {
+            Some(RenderEvent::Configure {
+                width,
+                height,
+                serial: _serial,
+            }) => {
+                if self.dimensions != (width, height) && self.pending_dimensions.is_none() {
                     self.dimensions = (width, height);
-                    self.egl_surface.resize(width as i32, height as i32, 0, 0);
+                    // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
+                    self.egl_surface.resize(width as i32, height  as i32, 0, 0);
                     self.needs_update = true;
                     self.full_clear = true;
                     self.update_offsets();
                 }
             }
-            Some(RenderEvent::WaitConfigure) => {
+            Some(RenderEvent::WaitConfigure { width, height }) => {
                 self.next_render_event
-                    .replace(Some(RenderEvent::WaitConfigure));
+                    .replace(Some(RenderEvent::WaitConfigure { width, height }));
             }
-            None => (),
+            None => {
+                if let Some((width, height)) = self.pending_dimensions.take() {
+                    self.layer_surface.set_size(width, height);
+                    self.layer_shell_wl_surface.commit();
+                    self.next_render_event
+                        .replace(Some(RenderEvent::WaitConfigure { width, height }));
+                } else {
+                    should_render = true;
+                }
+            }
         }
 
         // collect and remove windows that aren't needed
@@ -316,7 +330,7 @@ impl Space {
             .collect();
         self.client_top_levels_right.append(&mut surfaces);
 
-        if self.next_render_event.get() != Some(RenderEvent::WaitConfigure) {
+        if should_render {
             self.render(time);
         }
 
@@ -591,23 +605,25 @@ impl Space {
         }
 
         // TODO improve this for when there are changes to the lists of plugins while running
-        if self.dimensions.0 < w {
-            if let Some(pending_dimensions) = self.pending_dimensions {
-                if pending_dimensions.0 < w {
-                    self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
-                }
-            } else {
-                self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
-            }
+        let pending_dimensions = self.pending_dimensions.unwrap_or_default();
+        let wait_configure_dim = self
+            .next_render_event
+            .get()
+            .map(|e| match e {
+                RenderEvent::Configure {
+                    width,
+                    height,
+                    serial,
+                } => (width, height),
+                RenderEvent::WaitConfigure { width, height } => (width, height),
+                _ => (0, 0),
+            })
+            .unwrap_or_default();
+        if self.dimensions.0 < w && pending_dimensions.0 < w && wait_configure_dim.0 < w {
+            self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
         }
-        if self.dimensions.1 < h {
-            if let Some(pending_dimensions) = self.pending_dimensions {
-                if pending_dimensions.1 < h {
-                    self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
-                }
-            } else {
-                self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
-            }
+        if self.dimensions.1 < h && pending_dimensions.1 < h && wait_configure_dim.1 < h {
+            self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
         }
 
         if full_clear {
@@ -773,7 +789,10 @@ impl Space {
         // Commit so that the server will send a configure event
         c_surface.commit();
 
-        let next_render_event = Rc::new(Cell::new(Some(RenderEvent::WaitConfigure)));
+        let next_render_event = Rc::new(Cell::new(Some(RenderEvent::WaitConfigure {
+            width: x,
+            height: y,
+        })));
 
         //let egl_surface_clone = egl_surface.clone();
         let next_render_event_handle = next_render_event.clone();
@@ -800,7 +819,11 @@ impl Space {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure { width, height, serial }));
+                    next_render_event_handle.set(Some(RenderEvent::Configure {
+                        width,
+                        height,
+                        serial,
+                    }));
                 }
                 (_, _) => {}
             }
@@ -1038,7 +1061,7 @@ impl Space {
             spacing,
             ..
         } = self.config;
-
+        dbg!(self.dimensions);
         // First try partitioning the dock evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
@@ -1061,14 +1084,14 @@ impl Space {
             t.hidden = false;
         }
 
-        fn map_fn((i, t): (usize, &TopLevelSurface), anchor: Anchor, alignment: Alignment) -> (Alignment, usize, u32, i32) {
+        fn map_fn(
+            (i, t): (usize, &TopLevelSurface),
+            anchor: Anchor,
+            alignment: Alignment,
+        ) -> (Alignment, usize, u32, i32) {
             match anchor {
-                Anchor::Left | Anchor::Right => {
-                    (alignment, i, t.priority, t.rectangle.size.h)
-                }
-                Anchor::Top | Anchor::Bottom => {
-                    (alignment, i, t.priority, t.rectangle.size.w)
-                }
+                Anchor::Left | Anchor::Right => (alignment, i, t.priority, t.rectangle.size.h),
+                Anchor::Top | Anchor::Bottom => (alignment, i, t.priority, t.rectangle.size.w),
             }
         }
 
@@ -1083,14 +1106,14 @@ impl Space {
             .client_top_levels_center
             .iter()
             .enumerate()
-            .map(|e| map_fn(e, anchor, Alignment::Left));
+            .map(|e| map_fn(e, anchor, Alignment::Center));
         let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>();
 
         let right = self
             .client_top_levels_right
             .iter()
             .enumerate()
-            .map(|e|map_fn(e, anchor, Alignment::Left));
+            .map(|e| map_fn(e, anchor, Alignment::Right));
         let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>();
 
         let mut all_sorted_priority = left
@@ -1124,14 +1147,19 @@ impl Space {
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        let (right_sum, center_padding) = if left_sum < requested_eq_length
+        let (right_sum, center_offset,) = if left_sum < requested_eq_length
             && center_sum < requested_eq_length
             && right_sum < requested_eq_length
         {
-            (right_sum, (list_length as i32 - total_sum) / 2)
+            let center_padding = (requested_eq_length - center_sum) / 2;
+            dbg!(center_padding);
+            (right_sum, requested_eq_length + padding as i32 + spacing as i32 + center_padding)
         } else {
-            (right_sum, (requested_eq_length - center_sum) / 2)
+            let center_padding = (list_length as i32 - total_sum) / 2;
+
+            (right_sum, left_sum + padding as i32 + spacing as i32 + center_padding)
         };
+        dbg!(center_offset);
 
         let mut prev: u32 = padding;
 
@@ -1158,7 +1186,7 @@ impl Space {
             };
         }
 
-        let mut prev: u32 = prev + spacing + center_padding as u32;
+        let mut prev: u32 = center_offset as u32;
 
         for (i, top_level) in &mut self
             .client_top_levels_center

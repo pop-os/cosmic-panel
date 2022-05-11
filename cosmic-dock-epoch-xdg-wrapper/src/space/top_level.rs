@@ -7,14 +7,6 @@ use slog::Logger;
 use smithay::utils::{Logical, Rectangle};
 
 use super::{Popup, PopupRenderEvent};
-
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum RenderEvent {
-    WaitConfigure,
-    Configure { width: u32, height: u32, serial: u32 },
-    Closed,
-}
-
 #[derive(Debug, Clone)]
 pub struct TopLevelSurface {
     pub(crate) s_top_level: Rc<RefCell<smithay::desktop::Window>>,
