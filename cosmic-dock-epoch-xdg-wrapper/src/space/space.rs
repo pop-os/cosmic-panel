@@ -286,6 +286,7 @@ impl Space {
                 if self.dimensions != (width, height) && self.pending_dimensions.is_none() {
                     self.dimensions = (width, height);
                     // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
+                    self.layer_shell_wl_surface.commit();
                     self.egl_surface.resize(width as i32, height  as i32, 0, 0);
                     self.needs_update = true;
                     self.full_clear = true;
@@ -333,7 +334,10 @@ impl Space {
         if should_render {
             self.render(time);
         }
-
+        if self.egl_surface.get_size() != Some((self.dimensions.0 as i32, self.dimensions.1 as i32).into()) {
+            self.full_clear = true;
+        }
+        
         self.last_dirty
     }
 
@@ -613,17 +617,19 @@ impl Space {
                 RenderEvent::Configure {
                     width,
                     height,
-                    serial,
+                    serial: _serial,
                 } => (width, height),
                 RenderEvent::WaitConfigure { width, height } => (width, height),
                 _ => (0, 0),
             })
             .unwrap_or_default();
-        if self.dimensions.0 < w && pending_dimensions.0 < w && wait_configure_dim.0 < w {
-            self.pending_dimensions = Some((w + 2 * self.config.padding, self.dimensions.1));
+        let new_w = w + 2 * self.config.padding;
+        if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w {
+            self.pending_dimensions = Some((new_w + 2 * self.config.padding, self.dimensions.1));
         }
-        if self.dimensions.1 < h && pending_dimensions.1 < h && wait_configure_dim.1 < h {
-            self.pending_dimensions = Some((self.dimensions.0, h + 2 * self.config.padding));
+        let new_h = h + 2 * self.config.padding;
+        if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h {
+            self.pending_dimensions = Some((self.dimensions.0, new_h));
         }
 
         if full_clear {
@@ -936,6 +942,7 @@ impl Space {
                                 _ => continue,
                             },
                         };
+
                         if top_level.dirty || l_damage.len() > 0 {
                             let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
                             loc = (-loc.x, -loc.y).into();
@@ -949,10 +956,14 @@ impl Space {
                                 &l_damage
                                     .clone()
                                     .into_iter()
-                                    .map(|(d, o)| {
+                                    .filter_map(|(d, o)| {
                                         let mut d = d.clone();
-                                        d.loc += o - top_level.rectangle.loc;
-                                        d
+                                        d.loc += o;
+                                        let mut intersect = d.intersection(top_level.rectangle);
+                                        if let Some(r) = intersect.as_mut(){
+                                            r.loc = (0,0).into()
+                                        };
+                                        intersect
                                     })
                                     .collect::<Vec<_>>(),
                                 &logger,
@@ -964,7 +975,7 @@ impl Space {
             )
             .expect("Failed to render to layer shell surface.");
 
-        if _top_levels.iter().find(|t| t.dirty && !t.hidden).is_some() {
+        if _top_levels.iter().find(|t| t.dirty && !t.hidden).is_some() || full_clear {
             self.egl_surface
                 .swap_buffers(Some(&mut p_damage))
                 .expect("Failed to swap buffers.");
