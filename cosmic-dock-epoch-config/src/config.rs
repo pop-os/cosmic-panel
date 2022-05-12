@@ -2,7 +2,7 @@
 
 //! Config for cosmic-dock-epoch
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use std::fs::File;
 use std::ops::Range;
 

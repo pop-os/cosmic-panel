@@ -24,3 +24,4 @@ nix = "*"
 itertools = "0.10.3"
 cosmic-dock-epoch-config = { path ="../cosmic-dock-epoch-config"}
 shlex = "1.1.0"
+freedesktop-desktop-entry = "0.5.0"

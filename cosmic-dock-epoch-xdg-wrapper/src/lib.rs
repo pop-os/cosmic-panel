@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
+use freedesktop_desktop_entry::{default_paths, Iter, DesktopEntry};
 use itertools::Itertools;
 use shared_state::GlobalState;
 use shlex::Shlex;
@@ -20,7 +21,7 @@ use std::{
     process::{Child, Command, Stdio},
     rc::Rc,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, fs, ffi::OsString,
 };
 
 mod client;
@@ -55,13 +56,18 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         cached_buffers: CachedBuffers::new(log.clone()),
     };
 
-    let mut children = config
+
+    
+    let mut children = Iter::new(default_paths()).filter_map(|path| {
+        config
         .plugins_left
         .iter()
         .zip(&sockets_left)
         .chain(config.plugins_center.iter().zip(&sockets_center))
         .chain(config.plugins_right.iter().zip(&sockets_right))
-        .map(|(exec, (_, client_socket))| {
+        .find(|((app_file_name, _), _)| {
+            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
+        }).and_then(|(_, (_, client_socket))| {
             let raw_fd = client_socket.as_raw_fd();
             let fd_flags =
                 fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap())
@@ -71,9 +77,25 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
                 fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
             )
             .unwrap();
-            exec_child(&exec.0, log.clone(), raw_fd)
-        })
-        .collect_vec();
+            fs::read_to_string(&path).ok().and_then(|bytes| {
+                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                    if let Some(exec) = entry.exec() {
+                        return Some(exec_child(exec, log.clone(), raw_fd));
+                    }
+                }
+                return None;
+            })
+        })}).collect_vec();
+    // }).collect_vec(); config
+    //     .plugins_left
+    //     .iter()
+    //     .zip(&sockets_left)
+    //     .chain(config.plugins_center.iter().zip(&sockets_center))
+    //     .chain(config.plugins_right.iter().zip(&sockets_right))
+    //     .map(|(exec, (_, client_socket))| {
+
+    //     })
+    //     .collect_vec();
 
     let mut shared_data = (global_state, display);
     let mut last_dirty = Instant::now();
