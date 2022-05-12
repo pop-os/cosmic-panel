@@ -86,16 +86,7 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
                 return None;
             })
         })}).collect_vec();
-    // }).collect_vec(); config
-    //     .plugins_left
-    //     .iter()
-    //     .zip(&sockets_left)
-    //     .chain(config.plugins_center.iter().zip(&sockets_center))
-    //     .chain(config.plugins_right.iter().zip(&sockets_right))
-    //     .map(|(exec, (_, client_socket))| {
 
-    //     })
-    //     .collect_vec();
 
     let mut shared_data = (global_state, display);
     let mut last_dirty = Instant::now();
