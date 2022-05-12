@@ -1061,7 +1061,6 @@ impl Space {
             spacing,
             ..
         } = self.config;
-        dbg!(self.dimensions);
         // First try partitioning the dock evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
@@ -1152,14 +1151,12 @@ impl Space {
             && right_sum < requested_eq_length
         {
             let center_padding = (requested_eq_length - center_sum) / 2;
-            dbg!(center_padding);
             (right_sum, requested_eq_length + padding as i32 + spacing as i32 + center_padding)
         } else {
             let center_padding = (list_length as i32 - total_sum) / 2;
 
             (right_sum, left_sum + padding as i32 + spacing as i32 + center_padding)
         };
-        dbg!(center_offset);
 
         let mut prev: u32 = padding;
 
