@@ -17,7 +17,6 @@ slog-term = "2.8.1"
 slog-async = "2.7.0"
 slog-stdlog = "4.1.0"
 slog-scope = "4.4.0"
-cosmic-dock-epoch-config = { path = "../cosmic-dock-epoch-config" }
 cosmic-dock-epoch-xdg-wrapper = { path = "../cosmic-dock-epoch-xdg-wrapper" }
 
 [profile.release]

@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
-use freedesktop_desktop_entry::{default_paths, Iter, DesktopEntry};
+use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
 use itertools::Itertools;
 use shared_state::GlobalState;
 use shlex::Shlex;
@@ -17,11 +17,13 @@ use smithay::{
 use space::CachedBuffers;
 use std::{
     cell::Cell,
+    ffi::OsString,
+    fs,
     os::unix::io::AsRawFd,
-    process::{Child, Command, Stdio},
+    process::{Child, Command},
     rc::Rc,
     thread,
-    time::{Duration, Instant}, fs, ffi::OsString,
+    time::{Duration, Instant},
 };
 
 mod client;
@@ -33,7 +35,8 @@ mod space;
 mod util;
 
 /// run the cosmic dock xdg wrapper with the provided config
-pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
+pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
+    let config = CosmicDockConfig::load(config_name)?;
     let mut event_loop = calloop::EventLoop::<(GlobalState, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display, (sockets_left, sockets_center, sockets_right)) =
@@ -56,37 +59,39 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
         cached_buffers: CachedBuffers::new(log.clone()),
     };
 
-
-    
-    let mut children = Iter::new(default_paths()).filter_map(|path| {
-        config
-        .plugins_left
-        .iter()
-        .zip(&sockets_left)
-        .chain(config.plugins_center.iter().zip(&sockets_center))
-        .chain(config.plugins_right.iter().zip(&sockets_right))
-        .find(|((app_file_name, _), _)| {
-            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-        }).and_then(|(_, (_, client_socket))| {
-            let raw_fd = client_socket.as_raw_fd();
-            let fd_flags =
-                fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap())
+    let mut children = Iter::new(default_paths())
+        .filter_map(|path| {
+            config
+                .plugins_left
+                .iter()
+                .zip(&sockets_left)
+                .chain(config.plugins_center.iter().zip(&sockets_center))
+                .chain(config.plugins_right.iter().zip(&sockets_right))
+                .find(|((app_file_name, _), _)| {
+                    Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
+                })
+                .and_then(|(_, (_, client_socket))| {
+                    let raw_fd = client_socket.as_raw_fd();
+                    let fd_flags = fcntl::FdFlag::from_bits(
+                        fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap(),
+                    )
                     .unwrap();
-            fcntl::fcntl(
-                raw_fd,
-                fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-            )
-            .unwrap();
-            fs::read_to_string(&path).ok().and_then(|bytes| {
-                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                    if let Some(exec) = entry.exec() {
-                        return Some(exec_child(exec, log.clone(), raw_fd));
-                    }
-                }
-                return None;
-            })
-        })}).collect_vec();
-
+                    fcntl::fcntl(
+                        raw_fd,
+                        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
+                    )
+                    .unwrap();
+                    fs::read_to_string(&path).ok().and_then(|bytes| {
+                        if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                            if let Some(exec) = entry.exec() {
+                                return Some(exec_child(exec, config_name, log.clone(), raw_fd));
+                            }
+                        }
+                        return None;
+                    })
+                })
+        })
+        .collect_vec();
 
     let mut shared_data = (global_state, display);
     let mut last_dirty = Instant::now();
@@ -176,7 +181,7 @@ pub fn dock_xdg_wrapper(log: Logger, config: CosmicDockConfig) -> Result<()> {
     }
 }
 
-fn exec_child(c: &str, log: Logger, raw_fd: i32) -> Child {
+fn exec_child(c: &str, config_name: &str, log: Logger, raw_fd: i32) -> Child {
     let mut exec_iter = Shlex::new(&c);
     let exec = exec_iter
         .next()
@@ -190,6 +195,7 @@ fn exec_child(c: &str, log: Logger, raw_fd: i32) -> Child {
     }
     child
         .env("WAYLAND_SOCKET", raw_fd.to_string())
+        .env("COSMIC_DOCK_CONFIG", config_name)
         .env_remove("WAYLAND_DEBUG")
         // .env("WAYLAND_DEBUG", "1")
         // .stderr(Stdio::piped())

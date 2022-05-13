@@ -29,7 +29,7 @@ use smithay::{
             display::EGLDisplay,
             ffi::{
                 self,
-                egl::{GetConfigAttrib, SwapInterval, WaitClient},
+                egl::{GetConfigAttrib, SwapInterval},
             },
             surface::EGLSurface,
         },
@@ -287,7 +287,7 @@ impl Space {
                     self.dimensions = (width, height);
                     // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
                     self.layer_shell_wl_surface.commit();
-                    self.egl_surface.resize(width as i32, height  as i32, 0, 0);
+                    self.egl_surface.resize(width as i32, height as i32, 0, 0);
                     self.needs_update = true;
                     self.full_clear = true;
                     self.update_offsets();
@@ -334,10 +334,12 @@ impl Space {
         if should_render {
             self.render(time);
         }
-        if self.egl_surface.get_size() != Some((self.dimensions.0 as i32, self.dimensions.1 as i32).into()) {
+        if self.egl_surface.get_size()
+            != Some((self.dimensions.0 as i32, self.dimensions.1 as i32).into())
+        {
             self.full_clear = true;
         }
-        
+
         self.last_dirty
     }
 
@@ -624,11 +626,13 @@ impl Space {
             })
             .unwrap_or_default();
         let new_w = w + 2 * self.config.padding;
-        if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w {
+        if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w
+        {
             self.pending_dimensions = Some((new_w + 2 * self.config.padding, self.dimensions.1));
         }
         let new_h = h + 2 * self.config.padding;
-        if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h {
+        if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h
+        {
             self.pending_dimensions = Some((self.dimensions.0, new_h));
         }
 
@@ -856,7 +860,9 @@ impl Space {
         let mut p_damage = Vec::new();
         let mut p_damage_f64 = Vec::new();
         let clear_color = match self.config.background {
-            cosmic_dock_epoch_config::config::CosmicDockBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.2],
+            cosmic_dock_epoch_config::config::CosmicDockBackground::ThemeDefault => {
+                [0.5, 0.5, 0.5, 0.2]
+            }
             cosmic_dock_epoch_config::config::CosmicDockBackground::Color(c) => c,
         };
         let _ = self.renderer.unbind();
@@ -963,8 +969,8 @@ impl Space {
                                         let mut d = d.clone();
                                         d.loc += o;
                                         let mut intersect = d.intersection(top_level.rectangle);
-                                        if let Some(r) = intersect.as_mut(){
-                                            r.loc = (0,0).into()
+                                        if let Some(r) = intersect.as_mut() {
+                                            r.loc = (0, 0).into()
                                         };
                                         intersect
                                     })
@@ -1160,16 +1166,22 @@ impl Space {
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        let (right_sum, center_offset,) = if left_sum < requested_eq_length
+        let (right_sum, center_offset) = if left_sum < requested_eq_length
             && center_sum < requested_eq_length
             && right_sum < requested_eq_length
         {
             let center_padding = (requested_eq_length - center_sum) / 2;
-            (right_sum, requested_eq_length + padding as i32 + spacing as i32 + center_padding)
+            (
+                right_sum,
+                requested_eq_length + padding as i32 + spacing as i32 + center_padding,
+            )
         } else {
             let center_padding = (list_length as i32 - total_sum) / 2;
 
-            (right_sum, left_sum + padding as i32 + spacing as i32 + center_padding)
+            (
+                right_sum,
+                left_sum + padding as i32 + spacing as i32 + center_padding,
+            )
         };
 
         let mut prev: u32 = padding;

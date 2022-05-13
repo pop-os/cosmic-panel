@@ -2,9 +2,9 @@
 
 //! Config for cosmic-dock-epoch
 
-use std::{collections::HashMap, path::PathBuf};
 use std::fs::File;
 use std::ops::Range;
+use std::{collections::HashMap, path::PathBuf};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -197,7 +197,7 @@ impl Default for CosmicDockConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size: DockSize::M,
             output: None,
-            background:  CosmicDockBackground::Color([0.5, 0.0, 0.5, 0.5]),
+            background: CosmicDockBackground::Color([0.5, 0.0, 0.5, 0.5]),
             plugins_left: Default::default(),
             plugins_center: Default::default(),
             plugins_right: Default::default(),
@@ -213,7 +213,12 @@ static CONFIG_PATH: &'static str = "cosmic-dock-epoch/config.ron";
 impl CosmicDockConfig {
     /// load config with the provided name
     pub fn load(name: &str) -> anyhow::Result<Self> {
-        Self::get_configs().remove(name.into()).ok_or(anyhow::anyhow!(format!("Config profile for {} not found", name)))
+        Self::get_configs()
+            .remove(name.into())
+            .ok_or(anyhow::anyhow!(format!(
+                "Config profile for {} not found",
+                name
+            )))
     }
 
     /// write config to config file
