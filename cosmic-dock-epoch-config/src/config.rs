@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::ops::Range;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
