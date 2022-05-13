@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--profile" || arg == "-p" => {
             if let Some(profile) = std::env::args().nth(2) {
-                CosmicDockConfig::load(profile.as_str())
+                CosmicDockConfig::load(profile.as_str())?
             } else {
                 println!("{}", usage);
                 std::process::exit(1);

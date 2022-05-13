@@ -855,7 +855,10 @@ impl Space {
         let mut l_damage = Vec::new();
         let mut p_damage = Vec::new();
         let mut p_damage_f64 = Vec::new();
-        let clear_color = [0.5, 0.5, 0.5, 0.5];
+        let clear_color = match self.config.background {
+            cosmic_dock_epoch_config::config::CosmicDockBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.2],
+            cosmic_dock_epoch_config::config::CosmicDockBackground::Color(c) => c,
+        };
         let _ = self.renderer.unbind();
         self.renderer
             .bind(self.egl_surface.clone())

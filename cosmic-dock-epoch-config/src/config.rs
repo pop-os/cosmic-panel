@@ -148,13 +148,13 @@ pub enum DockSize {
     Custom(Range<u32>),
 }
 
-/// configurable background color for the cosmic dock
+/// configurable backgrounds for the cosmic dock
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum CosmicDockBackground {
     /// theme default color
     ThemeDefault,
     /// RGBA
-    Color([u8; 4]),
+    Color([f32; 4]),
 }
 
 /// Config structure for the cosmic dock
@@ -173,7 +173,7 @@ pub struct CosmicDockConfig {
     /// configured output, or None to place on all outputs
     pub output: Option<String>,
     /// customized background, or
-    pub background: Option<CosmicDockBackground>,
+    pub background: CosmicDockBackground,
     /// list of plugins on the left or top of the dock
     pub plugins_left: Vec<(String, u32)>,
     /// list of plugins in the center of the dock
@@ -197,7 +197,7 @@ impl Default for CosmicDockConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size: DockSize::M,
             output: None,
-            background: None,
+            background:  CosmicDockBackground::Color([0.5, 0.0, 0.5, 0.5]),
             plugins_left: Default::default(),
             plugins_center: Default::default(),
             plugins_right: Default::default(),
@@ -212,11 +212,8 @@ static CONFIG_PATH: &'static str = "cosmic-dock-epoch/config.ron";
 
 impl CosmicDockConfig {
     /// load config with the provided name
-    pub fn load(name: &str) -> Self {
-        match Self::get_configs().remove(name.into()) {
-            Some(c) => c,
-            _ => Self::default(),
-        }
+    pub fn load(name: &str) -> anyhow::Result<Self> {
+        Self::get_configs().remove(name.into()).ok_or(anyhow::anyhow!(format!("Config profile for {} not found", name)))
     }
 
     /// write config to config file
