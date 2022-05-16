@@ -1074,8 +1074,6 @@ impl Space {
         }
     }
 
-    // TODO update top level offsets based on client list and top level list
-    // DO THIS NEXT
     fn update_offsets(&mut self) {
         let CosmicDockConfig {
             padding,
