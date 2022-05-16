@@ -175,11 +175,11 @@ pub struct CosmicDockConfig {
     /// customized background, or
     pub background: CosmicDockBackground,
     /// list of plugins on the left or top of the dock
-    pub plugins_left: Vec<(String, u32)>,
+    pub plugins_left: Option<Vec<(String, u32)>>,
     /// list of plugins in the center of the dock
-    pub plugins_center: Vec<(String, u32)>,
+    pub plugins_center: Option<Vec<(String, u32)>>,
     /// list of plugins on the right or bottom of the dock
-    pub plugins_right: Vec<(String, u32)>,
+    pub plugins_right: Option<Vec<(String, u32)>>,
     /// whether the dock should stretch to the edges of output
     pub expand_to_edges: bool,
     /// padding around the dock
@@ -246,7 +246,7 @@ impl CosmicDockConfig {
 
     /// get whether the dock should expand to cover the edges of the output
     pub fn expand_to_edges(&self) -> bool {
-        self.expand_to_edges || self.plugins_left.len() > 0 || self.plugins_right.len() > 0
+        self.expand_to_edges || self.plugins_left.is_some() || self.plugins_right.is_some()
     }
 
     /// get constraints for the thickness of the dock bar

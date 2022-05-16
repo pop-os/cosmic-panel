@@ -1089,13 +1089,13 @@ impl Space {
         };
 
         let mut num_lists = 0;
-        if self.client_top_levels_left.len() > 0 {
+        if self.config.plugins_left.is_some() {
             num_lists += 1;
         }
-        if self.client_top_levels_center.len() > 0 {
+        if self.config.plugins_center.is_some() {
             num_lists += 1;
         }
-        if self.client_top_levels_right.len() > 0 {
+        if self.config.plugins_right.is_some() {
             num_lists += 1;
         }
 

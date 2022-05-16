@@ -71,16 +71,19 @@ pub fn new_server(
     // mapping from wl type using wayland_server::resource to client
     let (clients_left, sockets_left): (Vec<_>, Vec<_>) = config
         .plugins_left
+        .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
         .unzip();
     let (clients_center, sockets_center): (Vec<_>, Vec<_>) = config
         .plugins_center
+        .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
         .unzip();
     let (clients_right, sockets_right): (Vec<_>, Vec<_>) = config
         .plugins_right
+        .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
         .unzip();
