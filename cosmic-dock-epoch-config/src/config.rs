@@ -2,9 +2,9 @@
 
 //! Config for cosmic-dock-epoch
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::ops::Range;
-use std::{collections::HashMap};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -23,6 +23,12 @@ pub enum Anchor {
     Top,
     /// anchored to bottom edge
     Bottom,
+}
+
+impl Default for Anchor {
+    fn default() -> Self {
+        Anchor::Top
+    }
 }
 
 impl TryFrom<zwlr_layer_surface_v1::Anchor> for Anchor {
@@ -63,6 +69,19 @@ impl Into<zwlr_layer_surface_v1::Anchor> for Anchor {
     }
 }
 
+#[cfg(feature = "gtk4")]
+use gtk4::Orientation;
+
+#[cfg(feature = "gtk4")]
+
+impl Into<Orientation> for Anchor {
+    fn into(self) -> Orientation {
+        match self {
+            Self::Left | Self::Right => Orientation::Vertical,
+            Self::Top | Self::Bottom => Orientation::Horizontal,
+        }
+    }
+}
 /// Layer which the cosmic dock is on
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
 pub enum Layer {

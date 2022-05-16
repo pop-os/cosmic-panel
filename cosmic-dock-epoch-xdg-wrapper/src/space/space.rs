@@ -611,8 +611,9 @@ impl Space {
         }
 
         // TODO improve this for when there are changes to the lists of plugins while running
-        let pending_dimensions = self.pending_dimensions.unwrap_or_default();
-        let wait_configure_dim = self
+        let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
+        let mut pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
+        let mut wait_configure_dim = self
             .next_render_event
             .get()
             .map(|e| match e {
@@ -622,18 +623,19 @@ impl Space {
                     serial: _serial,
                 } => (width, height),
                 RenderEvent::WaitConfigure { width, height } => (width, height),
-                _ => (0, 0),
+                _ => self.dimensions,
             })
-            .unwrap_or_default();
+            .unwrap_or(pending_dimensions);
         let new_w = w + 2 * self.config.padding;
         if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w
         {
-            self.pending_dimensions = Some((new_w + 2 * self.config.padding, self.dimensions.1));
+            self.pending_dimensions = Some((new_w, wait_configure_dim.1));
+            wait_configure_dim.0 = new_w;
         }
         let new_h = h + 2 * self.config.padding;
         if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h
         {
-            self.pending_dimensions = Some((self.dimensions.0, new_h));
+            self.pending_dimensions = Some((wait_configure_dim.0, new_h));
         }
 
         if full_clear {
@@ -753,7 +755,7 @@ impl Space {
         (mut w, mut h): (u32, u32),
         (o_w, o_h): (i32, i32),
     ) -> (u32, u32) {
-        let (min_w, min_h) = (1, 1);
+        let (min_w, min_h) = (1.max(config.padding * 2), 1.max(config.padding * 2));
         w = min_w.max(w);
         h = min_h.max(h);
         if let (Some(w_range), _) = config.get_dimensions((o_w as u32, o_h as u32)) {
@@ -1092,10 +1094,14 @@ impl Space {
         if self.config.plugins_left.is_some() {
             num_lists += 1;
         }
-        if self.config.plugins_center.is_some() {
+        if self.config.plugins_right.is_some() {
             num_lists += 1;
         }
-        if self.config.plugins_right.is_some() {
+        let mut is_dock = false;
+        if self.config.plugins_center.is_some() {
+            if num_lists == 0 {
+                is_dock = true;
+            }
             num_lists += 1;
         }
 
@@ -1166,22 +1172,26 @@ impl Space {
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        let (right_sum, center_offset) = if left_sum < requested_eq_length
-            && center_sum < requested_eq_length
-            && right_sum < requested_eq_length
-        {
-            let center_padding = (requested_eq_length - center_sum) / 2;
-            (
-                right_sum,
-                requested_eq_length + padding as i32 + spacing as i32 + center_padding,
-            )
+        let (right_sum, center_offset) = if is_dock {
+            (0, padding as i32)
         } else {
-            let center_padding = (list_length as i32 - total_sum) / 2;
+            if left_sum < requested_eq_length
+                && center_sum < requested_eq_length
+                && right_sum < requested_eq_length
+            {
+                let center_padding = (requested_eq_length - center_sum) / 2;
+                (
+                    right_sum,
+                    requested_eq_length + padding as i32 + spacing as i32 + center_padding,
+                )
+            } else {
+                let center_padding = (list_length as i32 - total_sum) / 2;
 
-            (
-                right_sum,
-                left_sum + padding as i32 + spacing as i32 + center_padding,
-            )
+                (
+                    right_sum,
+                    left_sum + padding as i32 + spacing as i32 + center_padding,
+                )
+            }
         };
 
         let mut prev: u32 = padding;
