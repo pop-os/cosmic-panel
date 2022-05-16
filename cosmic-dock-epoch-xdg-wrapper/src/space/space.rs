@@ -612,7 +612,7 @@ impl Space {
 
         // TODO improve this for when there are changes to the lists of plugins while running
         let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
-        let mut pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
+        let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
         let mut wait_configure_dim = self
             .next_render_event
             .get()
