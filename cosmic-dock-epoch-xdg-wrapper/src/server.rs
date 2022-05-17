@@ -16,13 +16,12 @@ use smithay::{
     desktop::{utils, Kind, PopupKind, PopupManager, Window},
     reexports::{
         nix::fcntl,
-        wayland_protocols::xdg_shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{self, protocol::wl_shm::Format},
     },
     wayland::{
         compositor::{compositor_init, BufferAssignment},
         data_device::{default_action_chooser, init_data_device},
-        shell::xdg::{xdg_shell_init, PositionerState, XdgRequest},
+        shell::xdg::{xdg_shell_init, XdgRequest},
         shm::init_shm_global,
         SERIAL_COUNTER,
     },
@@ -290,47 +289,13 @@ pub fn new_server(
                 }
                 XdgRequest::NewPopup {
                     surface: s_popup_surface,
-                    positioner:
-                        PositionerState {
-                            rect_size,
-                            anchor_rect,
-                            anchor_edges,
-                            gravity,
-                            constraint_adjustment,
-                            offset,
-                            reactive,
-                            parent_size,
-                            ..
-                        },
+                    positioner: positioner_state
                 } => {
                     let positioner = xdg_wm_base.create_positioner();
-                    positioner.set_size(rect_size.w, rect_size.h);
-                    positioner.set_anchor_rect(
-                        anchor_rect.loc.x,
-                        anchor_rect.loc.y,
-                        anchor_rect.size.w,
-                        anchor_rect.size.h,
-                    );
-                    positioner.set_anchor(
-                        Anchor::from_raw(anchor_edges.to_raw().into()).unwrap_or(Anchor::None),
-                    );
-                    positioner.set_gravity(
-                        Gravity::from_raw(gravity.to_raw().into()).unwrap_or(Gravity::None),
-                    );
-                    positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
-                    positioner.set_offset(offset.x, offset.y);
-                    if positioner.as_ref().version() >= 3 {
-                        if reactive {
-                            positioner.set_reactive();
-                        }
-                        if let Some(parent_size) = parent_size {
-                            positioner.set_parent_size(parent_size.w, parent_size.h);
-                        }
-                    }
+                   
 
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
-                    let popup = xdg_surface.get_popup(None, &positioner);
 
                     if let (Some(parent), Some(renderer)) =
                         (s_popup_surface.get_parent_surface(), space.as_mut())
@@ -338,11 +303,10 @@ pub fn new_server(
                         renderer.add_popup(
                             wl_surface,
                             xdg_surface,
-                            popup,
                             s_popup_surface.clone(),
                             parent,
-                            rect_size.w,
-                            rect_size.h,
+                            positioner,
+                            positioner_state,
                             popup_manager.clone(),
                         );
                     }
@@ -350,7 +314,7 @@ pub fn new_server(
                 XdgRequest::Grab {
                     surface,
                     seat,
-                    serial,
+                    ..
                 } => {
                     if *kbd_focus {
                         for s in seats {
@@ -358,7 +322,7 @@ pub fn new_server(
                                 if let Err(e) = popup_manager.borrow_mut().grab_popup(
                                     PopupKind::Xdg(surface.clone()),
                                     &s.server.0,
-                                    serial,
+                                    SERIAL_COUNTER.next_serial(),
                                 ) {
                                     error!(log.clone(), "{}", e);
                                 }

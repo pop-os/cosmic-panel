@@ -36,9 +36,14 @@ impl TopLevelSurface {
             let should_keep = {
                 if !p.s_surface.alive() {
                     false
+                } else if !p.c_surface.as_ref().is_alive() {
+                    p.s_surface.send_popup_done();
+                    false
                 } else {
                     match p.next_render_event.take() {
-                        Some(PopupRenderEvent::Closed) => false,
+                        Some(PopupRenderEvent::Closed) => {
+                            false
+                        },
                         Some(PopupRenderEvent::Configure { width, height, .. }) => {
                             p.egl_surface.resize(width, height, 0, 0);
                             p.bbox.size = (width, height).into();
@@ -50,7 +55,9 @@ impl TopLevelSurface {
                                 .replace(Some(PopupRenderEvent::WaitConfigure));
                             true
                         }
-                        None => true,
+                        None => {
+                            true
+                        },
                     }
                 }
             };

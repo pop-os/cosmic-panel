@@ -12,7 +12,7 @@ use itertools::Itertools;
 use libc::c_int;
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
-use cosmic_dock_epoch_config::config::{Anchor, CosmicDockConfig};
+use cosmic_dock_epoch_config::config::{self, CosmicDockConfig};
 use sctk::{
     output::OutputInfo,
     reexports::{
@@ -46,8 +46,8 @@ use smithay::{
         wayland_protocols::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
             xdg_shell::client::{
-                xdg_popup::{self, XdgPopup},
-                xdg_surface::{self, XdgSurface},
+                xdg_popup,
+                xdg_surface::{self, XdgSurface}, xdg_positioner::{XdgPositioner, Gravity, Anchor},
             },
         },
         wayland_server::{
@@ -55,7 +55,7 @@ use smithay::{
         },
     },
     utils::{Logical, Point, Rectangle},
-    wayland::shell::xdg::PopupSurface,
+    wayland::shell::xdg::{PopupSurface, PositionerState},
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -485,16 +485,22 @@ impl Space {
         &mut self,
         c_surface: c_wl_surface::WlSurface,
         c_xdg_surface: Main<XdgSurface>,
-        c_popup: Main<XdgPopup>,
         s_surface: PopupSurface,
         parent: s_WlSurface,
-        w: i32,
-        h: i32,
+        positioner: Main<XdgPositioner>,
+        PositionerState {
+            rect_size,
+            anchor_rect,
+            anchor_edges,
+            gravity,
+            constraint_adjustment,
+            offset,
+            reactive,
+            parent_size,
+            ..
+        }: PositionerState,
         popup_manager: Rc<RefCell<PopupManager>>,
     ) {
-        if !s_surface.alive() {
-            return;
-        }
         let s = if let Some(s) = self.client_top_levels_left.iter_mut().find(|s| {
             let top_level: &Window = &s.s_top_level.borrow();
             match top_level.toplevel() {
@@ -520,9 +526,35 @@ impl Space {
             return;
         };
 
+        positioner.set_size(rect_size.w, rect_size.h);
+        positioner.set_anchor_rect(
+            anchor_rect.loc.x + s.rectangle.loc.x,
+            anchor_rect.loc.y + s.rectangle.loc.y,
+            anchor_rect.size.w,
+            anchor_rect.size.h,
+        );
+        positioner.set_anchor(
+            Anchor::from_raw(anchor_edges.to_raw().into()).unwrap_or(Anchor::None),
+        );
+        positioner.set_gravity(
+            Gravity::from_raw(gravity.to_raw().into()).unwrap_or(Gravity::None),
+        );
+        positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
+        positioner.set_offset(offset.x, offset.y);
+        if positioner.as_ref().version() >= 3 {
+            if reactive {
+                positioner.set_reactive();
+            }
+            if let Some(parent_size) = parent_size {
+                positioner.set_parent_size(parent_size.w, parent_size.h);
+            }
+        }
+        let c_popup = c_xdg_surface.get_popup(None, &positioner);
         self.layer_surface.get_popup(&c_popup);
+        
         //must be done after role is assigned as popup
         c_surface.commit();
+
         let next_render_event = Rc::new(Cell::new(Some(PopupRenderEvent::WaitConfigure)));
         c_xdg_surface.quick_assign(move |c_xdg_surface, e, _| {
             if let xdg_surface::Event::Configure { serial, .. } = e {
@@ -545,10 +577,6 @@ impl Space {
                     height,
                 } => {
                     let kind = PopupKind::Xdg(s_popup_surface.clone());
-                    let _ = s_popup_surface.with_pending_state(|popup_state| {
-                        popup_state.geometry.loc = (x, y).into();
-                        popup_state.geometry.size = (width, height).into();
-                    });
 
                     let _ = s_popup_surface.send_configure();
                     let _ = popup_manager.borrow_mut().track_popup(kind.clone());
@@ -566,7 +594,7 @@ impl Space {
             };
         });
         let client_egl_surface = ClientEglSurface {
-            wl_egl_surface: wayland_egl::WlEglSurface::new(&c_surface, w, h),
+            wl_egl_surface: wayland_egl::WlEglSurface::new(&c_surface, rect_size.w, rect_size.h),
             display: self.c_display.clone(),
         };
 
@@ -1011,14 +1039,13 @@ impl Space {
             for p in &mut top_level
                 .popups
                 .iter_mut()
-                .filter(|p| p.dirty && p.s_surface.alive() && p.next_render_event.get() == None)
+                .filter(|p| p.dirty && p.next_render_event.get() == None)
             {
                 p.dirty = false;
                 let wl_surface = match p.s_surface.get_surface() {
                     Some(s) => s,
-                    _ => return,
+                    _ => continue,
                 };
-
                 let (width, height) = p.bbox.size.into();
                 let loc = p.bbox.loc + top_level.rectangle.loc;
                 let logger = top_level.log.clone();
@@ -1098,8 +1125,8 @@ impl Space {
         // First try partitioning the dock evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
-            Anchor::Left | Anchor::Right => (self.dimensions.1, self.dimensions.0),
-            Anchor::Top | Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
+            config::Anchor::Left | config::Anchor::Right => (self.dimensions.1, self.dimensions.0),
+            config::Anchor::Top | config::Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
         };
 
         let mut num_lists = 0;
@@ -1123,12 +1150,12 @@ impl Space {
 
         fn map_fn(
             (i, t): (usize, &TopLevelSurface),
-            anchor: Anchor,
+            anchor: config::Anchor,
             alignment: Alignment,
         ) -> (Alignment, usize, u32, i32) {
             match anchor {
-                Anchor::Left | Anchor::Right => (alignment, i, t.priority, t.rectangle.size.h),
-                Anchor::Top | Anchor::Bottom => (alignment, i, t.priority, t.rectangle.size.w),
+                config::Anchor::Left | config::Anchor::Right => (alignment, i, t.priority, t.rectangle.size.h),
+                config::Anchor::Top | config::Anchor::Bottom => (alignment, i, t.priority, t.rectangle.size.w),
             }
         }
 
@@ -1218,12 +1245,12 @@ impl Space {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                Anchor::Left | Anchor::Right => {
+                config::Anchor::Left | config::Anchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                Anchor::Top | Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -1243,12 +1270,12 @@ impl Space {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                Anchor::Left | Anchor::Right => {
+                config::Anchor::Left | config::Anchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                Anchor::Top | Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -1263,12 +1290,12 @@ impl Space {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                Anchor::Left | Anchor::Right => {
+                config::Anchor::Left | config::Anchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                Anchor::Top | Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
