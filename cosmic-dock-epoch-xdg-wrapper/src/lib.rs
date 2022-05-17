@@ -67,8 +67,22 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
                 .unwrap_or(&vec![])
                 .iter()
                 .zip(&sockets_left)
-                .chain(config.plugins_center.as_ref().unwrap_or(&vec![]).iter().zip(&sockets_center))
-                .chain(config.plugins_right.as_ref().unwrap_or(&vec![]).iter().zip(&sockets_right))
+                .chain(
+                    config
+                        .plugins_center
+                        .as_ref()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .zip(&sockets_center),
+                )
+                .chain(
+                    config
+                        .plugins_right
+                        .as_ref()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .zip(&sockets_right),
+                )
                 .find(|((app_file_name, _), _)| {
                     Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
                 })

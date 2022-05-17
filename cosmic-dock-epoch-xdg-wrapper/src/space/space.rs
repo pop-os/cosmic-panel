@@ -492,19 +492,33 @@ impl Space {
         h: i32,
         popup_manager: Rc<RefCell<PopupManager>>,
     ) {
-        // XXX: closing all popups when adding a new popup will be an issue for nexted popups
-        self.close_popups();
-        let mut s = match self.client_top_levels_mut().find(|s| {
-            let top_level: &Window = &s.s_top_level.borrow();
-            let wl_s = match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface(),
-            };
-            wl_s == Some(&parent)
-        }) {
-            Some(s) => s,
-            None => return,
+        if !s_surface.alive() {
+            return;
         }
-        .clone();
+        let s = if let Some(s) = self.client_top_levels_left.iter_mut().find(|s| {
+            let top_level: &Window = &s.s_top_level.borrow();
+            match top_level.toplevel() {
+                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
+            }
+        }) {
+            s
+        } else if let Some(s) = self.client_top_levels_center.iter_mut().find(|s| {
+            let top_level: &Window = &s.s_top_level.borrow();
+            match top_level.toplevel() {
+                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
+            }
+        }) {
+            s
+        } else if let Some(s) = self.client_top_levels_right.iter_mut().find(|s| {
+            let top_level: &Window = &s.s_top_level.borrow();
+            match top_level.toplevel() {
+                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
+            }
+        }) {
+            s
+        } else {
+            return;
+        };
 
         self.layer_surface.get_popup(&c_popup);
         //must be done after role is assigned as popup
@@ -997,7 +1011,7 @@ impl Space {
             for p in &mut top_level
                 .popups
                 .iter_mut()
-                .filter(|p| p.dirty && p.s_surface.alive() && p.next_render_event.get() != None)
+                .filter(|p| p.dirty && p.s_surface.alive() && p.next_render_event.get() == None)
             {
                 p.dirty = false;
                 let wl_surface = match p.s_surface.get_surface() {

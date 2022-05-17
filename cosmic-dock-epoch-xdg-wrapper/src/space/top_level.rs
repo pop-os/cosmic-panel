@@ -7,6 +7,7 @@ use slog::Logger;
 use smithay::utils::{Logical, Rectangle};
 
 use super::{Popup, PopupRenderEvent};
+
 #[derive(Debug, Clone)]
 pub struct TopLevelSurface {
     pub(crate) s_top_level: Rc<RefCell<smithay::desktop::Window>>,
