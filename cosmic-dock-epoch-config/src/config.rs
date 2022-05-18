@@ -258,7 +258,18 @@ impl CosmicDockConfig {
             .map(|file| {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))
             }) {
-            Ok(Some(Ok(c))) => c,
+            Ok(Some(Ok(c))) => {
+                // dbg!(&c);
+                c
+            }
+            Err(e) => {
+                // dbg!(&e);/
+                HashMap::new()
+            }
+            Ok(Some(Err(e))) => {
+                // dbg!(&e);
+                HashMap::new()
+            }
             _ => HashMap::new(),
         }
     }

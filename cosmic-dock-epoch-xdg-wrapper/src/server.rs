@@ -215,6 +215,7 @@ pub fn new_server(
                     }
                 }
             } else if role == "xdg_popup".into() {
+                // println!("dirtying popup");
                 let popup = popup_manager.borrow().find_popup(&surface);
                 on_commit_buffer_handler(&surface);
                 popup_manager.borrow_mut().commit(&surface);
@@ -289,10 +290,9 @@ pub fn new_server(
                 }
                 XdgRequest::NewPopup {
                     surface: s_popup_surface,
-                    positioner: positioner_state
+                    positioner: positioner_state,
                 } => {
                     let positioner = xdg_wm_base.create_positioner();
-                   
 
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
@@ -311,11 +311,7 @@ pub fn new_server(
                         );
                     }
                 }
-                XdgRequest::Grab {
-                    surface,
-                    seat,
-                    ..
-                } => {
+                XdgRequest::Grab { surface, seat, .. } => {
                     if *kbd_focus {
                         for s in seats {
                             if s.server.0.owns(&seat) {

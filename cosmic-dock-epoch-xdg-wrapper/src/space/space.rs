@@ -47,7 +47,8 @@ use smithay::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
             xdg_shell::client::{
                 xdg_popup,
-                xdg_surface::{self, XdgSurface}, xdg_positioner::{XdgPositioner, Gravity, Anchor},
+                xdg_positioner::{Anchor, Gravity, XdgPositioner},
+                xdg_surface::{self, XdgSurface},
             },
         },
         wayland_server::{
@@ -501,6 +502,8 @@ impl Space {
         }: PositionerState,
         popup_manager: Rc<RefCell<PopupManager>>,
     ) {
+        self.close_popups();
+
         let s = if let Some(s) = self.client_top_levels_left.iter_mut().find(|s| {
             let top_level: &Window = &s.s_top_level.borrow();
             match top_level.toplevel() {
@@ -533,12 +536,9 @@ impl Space {
             anchor_rect.size.w,
             anchor_rect.size.h,
         );
-        positioner.set_anchor(
-            Anchor::from_raw(anchor_edges.to_raw().into()).unwrap_or(Anchor::None),
-        );
-        positioner.set_gravity(
-            Gravity::from_raw(gravity.to_raw().into()).unwrap_or(Gravity::None),
-        );
+        positioner
+            .set_anchor(Anchor::from_raw(anchor_edges.to_raw().into()).unwrap_or(Anchor::None));
+        positioner.set_gravity(Gravity::from_raw(gravity.to_raw().into()).unwrap_or(Gravity::None));
         positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
         positioner.set_offset(offset.x, offset.y);
         if positioner.as_ref().version() >= 3 {
@@ -551,7 +551,7 @@ impl Space {
         }
         let c_popup = c_xdg_surface.get_popup(None, &positioner);
         self.layer_surface.get_popup(&c_popup);
-        
+
         //must be done after role is assigned as popup
         c_surface.commit();
 
@@ -576,16 +576,18 @@ impl Space {
                     width,
                     height,
                 } => {
-                    let kind = PopupKind::Xdg(s_popup_surface.clone());
+                    if next_render_event_handle.get() != Some(PopupRenderEvent::Closed) {
+                        let kind = PopupKind::Xdg(s_popup_surface.clone());
 
-                    let _ = s_popup_surface.send_configure();
-                    let _ = popup_manager.borrow_mut().track_popup(kind.clone());
-                    next_render_event_handle.set(Some(PopupRenderEvent::Configure {
-                        x,
-                        y,
-                        width,
-                        height,
-                    }));
+                        let _ = s_popup_surface.send_configure();
+                        let _ = popup_manager.borrow_mut().track_popup(kind.clone());
+                        next_render_event_handle.set(Some(PopupRenderEvent::Configure {
+                            x,
+                            y,
+                            width,
+                            height,
+                        }));
+                    }
                 }
                 xdg_popup::Event::PopupDone => {
                     next_render_event_handle.set(Some(PopupRenderEvent::Closed));
@@ -621,14 +623,13 @@ impl Space {
             dirty: false,
             next_render_event,
             bbox: Rectangle::from_loc_and_size((0, 0), (0, 0)),
+            should_render: false,
         });
     }
 
     pub fn close_popups(&mut self) {
         for top_level in self.client_top_levels_mut() {
-            for popup in top_level.popups.drain(..) {
-                popup.s_surface.send_popup_done();
-            }
+            drop(top_level.popups.drain(..));
         }
     }
 
@@ -704,7 +705,6 @@ impl Space {
                 if popup.s_surface.get_surface() == other_popup.get_surface() {
                     if popup.bbox != dim {
                         popup.bbox = dim;
-                        popup.egl_surface.resize(dim.size.w, dim.size.h, 0, 0);
                     }
                     popup.dirty = true;
                     break;
@@ -894,9 +894,6 @@ impl Space {
         let full_clear = self.full_clear;
         self.full_clear = false;
 
-        // reorder top levels so active window is last
-        let mut _top_levels: Vec<_> = self.client_top_levels().map(|t| t.clone()).collect_vec();
-
         // aggregate damage of all top levels
         // clear once with aggregated damage
         // redraw each top level using the aggregated damage
@@ -928,7 +925,14 @@ impl Space {
                             (0, 0).into(),
                         )];
                     } else {
-                        for top_level in &mut _top_levels.iter().filter(|t| t.dirty && !t.hidden) {
+                        for top_level in &mut self
+                            .client_top_levels_left
+                            .iter_mut()
+                            .chain(self.client_top_levels_center.iter_mut())
+                            .chain(self.client_top_levels_right.iter_mut())
+                            .into_iter()
+                            .filter(|t| t.dirty && !t.hidden)
+                        {
                             let s_top_level = top_level.s_top_level.borrow();
                             let server_surface = match s_top_level.toplevel() {
                                 Kind::Xdg(xdg_surface) => match xdg_surface.get_surface() {
@@ -986,7 +990,14 @@ impl Space {
                         .expect("Failed to clear frame.");
 
                     // draw each surface which needs to be drawn
-                    for top_level in &mut _top_levels.iter_mut().filter(|t| !t.hidden) {
+                    for top_level in &mut self
+                        .client_top_levels_left
+                        .iter_mut()
+                        .chain(self.client_top_levels_center.iter_mut())
+                        .chain(self.client_top_levels_right.iter_mut())
+                        .into_iter()
+                        .filter(|t| !t.hidden)
+                    {
                         // render top level surface
                         let s_top_level = top_level.s_top_level.borrow();
                         let server_surface = match s_top_level.toplevel() {
@@ -1028,26 +1039,37 @@ impl Space {
             )
             .expect("Failed to render to layer shell surface.");
 
-        if _top_levels.iter().find(|t| t.dirty && !t.hidden).is_some() || full_clear {
+        if self
+            .client_top_levels()
+            .find(|t| t.dirty && !t.hidden)
+            .is_some()
+            || full_clear
+        {
             self.egl_surface
                 .swap_buffers(Some(&mut p_damage))
                 .expect("Failed to swap buffers.");
         }
-
+        let clear_color = [0.0, 0.0, 0.0, 0.0];
         // render popups
-        for top_level in &mut _top_levels.iter_mut().filter(|t| !t.hidden) {
-            for p in &mut top_level
-                .popups
-                .iter_mut()
-                .filter(|p| p.dirty && p.next_render_event.get() == None)
-            {
+        for top_level in &mut self
+            .client_top_levels_left
+            .iter_mut()
+            .chain(self.client_top_levels_center.iter_mut())
+            .chain(self.client_top_levels_right.iter_mut())
+            .into_iter()
+            .filter(|t| !t.hidden)
+        {
+            for p in &mut top_level.popups.iter_mut().filter(|p| p.should_render) {
                 p.dirty = false;
                 let wl_surface = match p.s_surface.get_surface() {
                     Some(s) => s,
                     _ => continue,
                 };
                 let (width, height) = p.bbox.size.into();
-                let loc = p.bbox.loc + top_level.rectangle.loc;
+                // dbg!(p.bbox.size);
+                let loc = p.bbox.loc;
+                // dbg!(loc);
+
                 let logger = top_level.log.clone();
                 let _ = self.renderer.unbind();
                 self.renderer
@@ -1101,7 +1123,14 @@ impl Space {
             }
         }
 
-        for top_level in &mut self.client_top_levels_mut().filter(|t| t.dirty) {
+        for top_level in &mut self
+            .client_top_levels_left
+            .iter_mut()
+            .chain(self.client_top_levels_center.iter_mut())
+            .chain(self.client_top_levels_right.iter_mut())
+            .into_iter()
+            .filter(|t| t.dirty)
+        {
             top_level.dirty = false;
 
             let s_top_level = top_level.s_top_level.borrow();
@@ -1154,8 +1183,12 @@ impl Space {
             alignment: Alignment,
         ) -> (Alignment, usize, u32, i32) {
             match anchor {
-                config::Anchor::Left | config::Anchor::Right => (alignment, i, t.priority, t.rectangle.size.h),
-                config::Anchor::Top | config::Anchor::Bottom => (alignment, i, t.priority, t.rectangle.size.w),
+                config::Anchor::Left | config::Anchor::Right => {
+                    (alignment, i, t.priority, t.rectangle.size.h)
+                }
+                config::Anchor::Top | config::Anchor::Bottom => {
+                    (alignment, i, t.priority, t.rectangle.size.w)
+                }
             }
         }
 

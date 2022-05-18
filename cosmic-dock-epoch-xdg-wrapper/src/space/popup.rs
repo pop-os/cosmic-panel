@@ -25,7 +25,7 @@ pub enum PopupRenderEvent {
     Closed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Popup {
     pub c_popup: Main<XdgPopup>,
     pub c_xdg_surface: Main<XdgSurface>,
@@ -34,12 +34,14 @@ pub struct Popup {
     pub egl_surface: Rc<EGLSurface>,
     pub next_render_event: Rc<Cell<Option<PopupRenderEvent>>>,
     pub dirty: bool,
+    pub(crate) should_render: bool,
     pub bbox: Rectangle<i32, Logical>,
 }
 
 impl Drop for Popup {
     fn drop(&mut self) {
         drop(&mut self.egl_surface);
+        self.s_surface.send_popup_done();
         self.c_popup.destroy();
         self.c_xdg_surface.destroy();
         self.c_surface.destroy();

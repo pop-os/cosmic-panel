@@ -72,6 +72,8 @@ pub fn send_keyboard_event(
                 kbd.change_repeat_info(rate, delay);
             }
             wl_keyboard::Event::Enter { surface, .. } => {
+                // println!("kbd entered");
+
                 let _ = set_server_device_selection(
                     env_handle,
                     &seat.client.seat,
@@ -94,12 +96,11 @@ pub fn send_keyboard_event(
                 );
             }
             wl_keyboard::Event::Leave { .. } => {
+                // println!("kbd left");
+
                 *kbd_focus = false;
                 space_manager.update_active(None);
                 kbd.set_focus(None, SERIAL_COUNTER.next_serial());
-                if let Some(space) = space_manager.active_space() {
-                    space.close_popups()
-                }
             }
             _ => (),
         };
@@ -227,6 +228,7 @@ pub fn send_pointer_event(
                 surface_y,
                 ..
             } => {
+                // println!("pointer entered");
                 // if not popup, then must be a dock layer shell surface
                 space_manager.update_active(Some(surface.clone()));
                 // TODO better handling of subsurfaces?
@@ -240,6 +242,7 @@ pub fn send_pointer_event(
                 c_focused_surface.replace(surface);
             }
             c_wl_pointer::Event::Leave { surface, .. } => {
+                // println!("pointer left");
                 space_manager.update_active(None);
                 if let Some(s) = c_focused_surface {
                     if s == &surface {

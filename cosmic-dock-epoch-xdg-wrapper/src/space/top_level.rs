@@ -8,7 +8,7 @@ use smithay::utils::{Logical, Rectangle};
 
 use super::{Popup, PopupRenderEvent};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TopLevelSurface {
     pub(crate) s_top_level: Rc<RefCell<smithay::desktop::Window>>,
     pub(crate) dirty: bool,
@@ -29,25 +29,24 @@ impl TopLevelSurface {
             return true;
         }
         // TODO replace with drain_filter when stable
-
         let mut i = 0;
         while i < self.popups.len() {
             let p = &mut self.popups[i];
+            p.should_render = false;
+
             let should_keep = {
                 if !p.s_surface.alive() {
                     false
                 } else if !p.c_surface.as_ref().is_alive() {
-                    p.s_surface.send_popup_done();
                     false
                 } else {
                     match p.next_render_event.take() {
-                        Some(PopupRenderEvent::Closed) => {
-                            false
-                        },
+                        Some(PopupRenderEvent::Closed) => false,
                         Some(PopupRenderEvent::Configure { width, height, .. }) => {
                             p.egl_surface.resize(width, height, 0, 0);
                             p.bbox.size = (width, height).into();
                             p.dirty = true;
+
                             true
                         }
                         Some(PopupRenderEvent::WaitConfigure) => {
@@ -56,8 +55,9 @@ impl TopLevelSurface {
                             true
                         }
                         None => {
+                            p.should_render = p.dirty;
                             true
-                        },
+                        }
                     }
                 }
             };
@@ -77,15 +77,5 @@ impl TopLevelSurface {
 
     pub(crate) fn set_hidden(&mut self, hidden: bool) {
         self.hidden = hidden;
-    }
-}
-
-impl Drop for TopLevelSurface {
-    fn drop(&mut self) {
-        for p in &self.popups {
-            p.c_popup.destroy();
-            p.c_xdg_surface.destroy();
-            p.c_surface.destroy();
-        }
     }
 }
