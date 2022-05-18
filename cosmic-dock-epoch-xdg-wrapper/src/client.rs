@@ -71,7 +71,7 @@ pub fn new_client(
         .selected_data_provider
         .env_handle
         .set(env.clone());
-    let focused_surface = embedded_server_state.focused_surface.clone();
+    let focused_surface = Rc::clone(&embedded_server_state.focused_surface);
     let _attached_display = (*display).clone().attach(queue.token());
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
@@ -109,7 +109,7 @@ pub fn new_client(
                 &info,
                 server_display,
                 &mut s_outputs,
-                focused_surface.clone(),
+                Rc::clone(&focused_surface),
                 &clients_left,
                 &clients_center,
                 &clients_right,
@@ -137,7 +137,7 @@ pub fn new_client(
             &info,
             server_display,
             outputs,
-            focused_surface.clone(),
+            Rc::clone(&focused_surface),
             &clients_left,
             &clients_center,
             &clients_right,
@@ -242,7 +242,7 @@ pub fn new_client(
                             } => {
                                 if mime_types.contains(&mime_type) {
                                     let _ = env_clone.with_data_device(&seat_clone, |device| {
-                                        device.with_dnd(|offer| {
+                                         device.with_dnd(|offer| {
                                             if let Some(offer) = offer {
                                                 unsafe { offer.receive_to_fd(mime_type, fd) };
                                             }

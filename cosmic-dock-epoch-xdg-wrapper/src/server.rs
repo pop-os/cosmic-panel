@@ -307,7 +307,7 @@ pub fn new_server(
                             parent,
                             positioner,
                             positioner_state,
-                            popup_manager.clone(),
+                            Rc::clone(popup_manager),
                         );
                     }
                 }

@@ -56,7 +56,7 @@ use smithay::{
         },
     },
     utils::{Logical, Point, Rectangle},
-    wayland::shell::xdg::{PopupSurface, PositionerState},
+    wayland::{shell::xdg::{PopupSurface, PositionerState}},
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -730,7 +730,9 @@ impl Space {
             })
         {
             self.focused_surface.borrow_mut().replace(s.clone());
+            return;
         }
+        self.focused_surface.borrow_mut().take();
     }
 
     pub fn find_server_surface(

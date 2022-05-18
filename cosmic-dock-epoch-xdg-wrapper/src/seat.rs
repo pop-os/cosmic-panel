@@ -96,9 +96,10 @@ pub fn send_keyboard_event(
                 );
             }
             wl_keyboard::Event::Leave { .. } => {
-                // println!("kbd left");
-
                 *kbd_focus = false;
+                if let Some(space) = space_manager.active_space() {
+                    space.close_popups()
+                }
                 space_manager.update_active(None);
                 kbd.set_focus(None, SERIAL_COUNTER.next_serial());
             }
@@ -241,14 +242,13 @@ pub fn send_pointer_event(
                 );
                 c_focused_surface.replace(surface);
             }
-            c_wl_pointer::Event::Leave { surface, .. } => {
-                // println!("pointer left");
-                space_manager.update_active(None);
+            c_wl_pointer::Event::Leave { surface, .. } => {                
                 if let Some(s) = c_focused_surface {
                     if s == &surface {
+                        c_focused_surface.take();
                         focused_surface.take();
                     }
-                }
+                } 
             }
             _ => (),
         };
@@ -376,13 +376,21 @@ pub(crate) fn handle_motion(
 ) {
     let focused_surface = match focused_surface {
         Some(s) => s,
-        _ => return,
+        _ => {
+            ptr.motion(
+                (surface_x, surface_y).into(),
+                None,
+                SERIAL_COUNTER.next_serial(),
+                time,
+            );
+            return;
+        },
     };
     match space
         .as_ref()
-        .map(|r| r.find_server_window(&focused_surface))
+        .and_then(|r| r.find_server_window(&focused_surface))
     {
-        Some(Some(ServerSurface::TopLevel(loc_offset, toplevel))) => {
+        Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
             let surface_x = surface_x - loc_offset.x as f64;
             let surface_y = surface_y - loc_offset.y as f64;
             let toplevel = &*toplevel.borrow();
@@ -404,7 +412,7 @@ pub(crate) fn handle_motion(
                 );
             }
         }
-        Some(Some(ServerSurface::Popup(_, _toplevel, popup))) => {
+        Some(ServerSurface::Popup(_, _toplevel, popup)) => {
             let popup_surface = match popup.get_surface() {
                 Some(s) => s,
                 _ => return,
@@ -418,7 +426,14 @@ pub(crate) fn handle_motion(
                 time,
             );
         }
-        _ => return,
+        _ => {
+            ptr.motion(
+                (surface_x, surface_y).into(),
+                None,
+                SERIAL_COUNTER.next_serial(),
+                time,
+            );
+        },
     };
 }
 

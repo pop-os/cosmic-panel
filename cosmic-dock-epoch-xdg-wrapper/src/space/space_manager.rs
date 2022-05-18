@@ -36,9 +36,6 @@ impl SpaceManager {
             }
         }
 
-        if let Some(space) = self.active_space() {
-            space.close_popups()
-        }
         if let Some(active_surface) = active_surface {
             // set new active space if possible
             if let Some(active_space_i) = self
