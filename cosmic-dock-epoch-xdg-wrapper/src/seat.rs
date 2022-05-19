@@ -135,7 +135,6 @@ pub fn send_pointer_event(
         .map(|idx| &seats[idx])
         .map(|seat| seat.server.0.get_pointer())
     {
-        // dbg!((&event, &focused_surface.borrow()));
         match event {
             c_wl_pointer::Event::Motion {
                 time: _time,
@@ -144,6 +143,15 @@ pub fn send_pointer_event(
             } => {
                 if let Some(space) = space_manager.active_space() {
                     space.update_pointer((surface_x as i32, surface_y as i32));
+                }
+                if let Some(surface) = c_focused_surface {
+                    set_focused_surface(
+                        focused_surface,
+                        space_manager.active_space(),
+                        &surface,
+                        surface_x,
+                        surface_y,
+                    );       
                 }
                 handle_motion(
                     space_manager.active_space(),
@@ -227,21 +235,11 @@ pub fn send_pointer_event(
             },
             c_wl_pointer::Event::Enter {
                 surface,
-                surface_x,
-                surface_y,
                 ..
             } => {
-                // println!("pointer entered");
                 // if not popup, then must be a dock layer shell surface
                 space_manager.update_active(Some(surface.clone()));
                 // TODO better handling of subsurfaces?
-                set_focused_surface(
-                    focused_surface,
-                    space_manager.active_space(),
-                    &surface,
-                    surface_x,
-                    surface_y,
-                );
                 c_focused_surface.replace(surface);
             }
             c_wl_pointer::Event::Leave { surface, .. } => {     
