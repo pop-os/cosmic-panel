@@ -127,16 +127,18 @@ pub fn send_pointer_event(
         focused_surface,
         ..
     } = &mut state.embedded_server_state;
-
+    let start_time = state.start_time;
+    let time = start_time.elapsed().as_millis();
     if let Some(Some(ptr)) = seats
         .iter()
         .position(|Seat { name, .. }| name == &seat_name)
         .map(|idx| &seats[idx])
         .map(|seat| seat.server.0.get_pointer())
     {
+        // dbg!((&event, &focused_surface.borrow()));
         match event {
             c_wl_pointer::Event::Motion {
-                time,
+                time: _time,
                 surface_x,
                 surface_y,
             } => {
@@ -149,11 +151,11 @@ pub fn send_pointer_event(
                     surface_x,
                     surface_y,
                     ptr,
-                    time,
+                    time as u32,
                 );
             }
             c_wl_pointer::Event::Button {
-                time,
+                time: _time,
                 button,
                 state,
                 serial,
@@ -161,7 +163,7 @@ pub fn send_pointer_event(
             } => {
                 last_input_serial.replace(serial);
                 if let Some(button_state) = wl_pointer::ButtonState::from_raw(state.to_raw()) {
-                    ptr.button(button, button_state, SERIAL_COUNTER.next_serial(), time);
+                    ptr.button(button, button_state, SERIAL_COUNTER.next_serial(), time as u32);
                 }
                 last_button.replace(button);
             }
@@ -242,7 +244,15 @@ pub fn send_pointer_event(
                 );
                 c_focused_surface.replace(surface);
             }
-            c_wl_pointer::Event::Leave { surface, .. } => {                
+            c_wl_pointer::Event::Leave { surface, .. } => {     
+                handle_motion(
+                    space_manager.active_space(),
+                    None,
+                    -1.0,
+                    -1.0,
+                    ptr,
+                    time as u32,
+                );           
                 if let Some(s) = c_focused_surface {
                     if s == &surface {
                         c_focused_surface.take();

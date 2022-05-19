@@ -110,6 +110,7 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
         .collect_vec();
 
     let mut shared_data = (global_state, display);
+    let start_t = Instant::now();
     let mut last_dirty = Instant::now();
     let mut last_cleanup = Instant::now();
     let five_min = Duration::from_secs(300);
