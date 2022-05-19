@@ -300,6 +300,13 @@ impl Space {
             }
             None => {
                 if let Some((width, height)) = self.pending_dimensions.take() {
+                    if self.config.exclusive_zone {
+                        let list_thickness = match self.config.anchor {
+                            config::Anchor::Left | config::Anchor::Right => width,
+                            config::Anchor::Top | config::Anchor::Bottom => height,
+                        };                        
+                        self.layer_surface.set_exclusive_zone(list_thickness as i32);
+                    }
                     self.layer_surface.set_size(width, height);
                     self.layer_shell_wl_surface.commit();
                     self.next_render_event
@@ -653,8 +660,11 @@ impl Space {
             s.dirty = true;
         }
 
+        let new_w = w + 2 * self.config.padding;
+        let new_h = h + 2 * self.config.padding;
+
         // TODO improve this for when there are changes to the lists of plugins while running
-        let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
+        let (new_w, new_h) = Self::constrain_dim(&self.config, (new_w, new_h), self.output.1.modes[0].dimensions);
         let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
         let mut wait_configure_dim = self
             .next_render_event
@@ -669,13 +679,11 @@ impl Space {
                 _ => self.dimensions,
             })
             .unwrap_or(pending_dimensions);
-        let new_w = w + 2 * self.config.padding;
         if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w
         {
             self.pending_dimensions = Some((new_w, wait_configure_dim.1));
             wait_configure_dim.0 = new_w;
         }
-        let new_h = h + 2 * self.config.padding;
         if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h
         {
             self.pending_dimensions = Some((wait_configure_dim.0, new_h));
@@ -1318,6 +1326,7 @@ impl Space {
             };
         }
 
+        // twice padding is subtracted
         let mut prev: u32 = list_length - padding - right_sum as u32;
 
         for (i, top_level) in &mut self.client_top_levels_right.iter_mut().enumerate() {

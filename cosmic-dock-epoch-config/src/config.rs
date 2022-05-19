@@ -205,6 +205,8 @@ pub struct CosmicDockConfig {
     pub padding: u32,
     /// space between dock plugins
     pub spacing: u32,
+    /// exclusive zone
+    pub exclusive_zone: bool,
 }
 
 impl Default for CosmicDockConfig {
@@ -223,6 +225,7 @@ impl Default for CosmicDockConfig {
             expand_to_edges: true,
             padding: 4,
             spacing: 4,
+            exclusive_zone: true,
         }
     }
 }
@@ -293,7 +296,7 @@ impl CosmicDockConfig {
             DockSize::Custom(c) => c.clone(),
         };
         assert!(2 * self.padding < bar_thickness.end);
-        bar_thickness.end -= 4 * self.padding;
+        bar_thickness.end -= 2 * self.padding;
 
         match self.anchor {
             Anchor::Left | Anchor::Right => (
