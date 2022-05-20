@@ -7,7 +7,7 @@ use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
 use itertools::Itertools;
-use shared_state::GlobalState;
+use shared_state::{GlobalState, Focus};
 use shlex::Shlex;
 use slog::{trace, Logger};
 use smithay::{
@@ -189,14 +189,9 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
             return Ok(());
         }
 
-        // sleep if not much is changing...
-        let milli_since_last_dirty = (Instant::now() - last_dirty).as_millis();
-        if milli_since_last_dirty < 120 {
-            thread::sleep(Duration::from_millis(8));
-        } else if milli_since_last_dirty < 600 {
-            thread::sleep(Duration::from_millis(16));
-        } else if milli_since_last_dirty < 3000 {
-            thread::sleep(Duration::from_millis(32));
+        // sleep if not focused...
+        if shared_data.desktop_client_state.space_manager.hidden() {
+            thread::sleep(Duration::from_millis(60));
         }
     }
 }

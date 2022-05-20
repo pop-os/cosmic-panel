@@ -1,6 +1,6 @@
 use crate::shared_state::Focus;
 
-use super::Space;
+use super::{Space, Visibility};
 use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Display;
 use std::{process::Child, time::Instant};
@@ -56,6 +56,10 @@ impl SpaceManager {
         for space in &mut self.spaces {
             space.apply_display(s_display);
         }
+    }
+
+    pub fn hidden(&self) -> bool {
+        self.spaces.iter().fold(true, |acc, s| acc && match s.visibility { Visibility::Hidden => true, _ => false})
     }
 
     pub fn handle_events(

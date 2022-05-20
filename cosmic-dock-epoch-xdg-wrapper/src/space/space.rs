@@ -77,7 +77,7 @@ pub enum RenderEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Visibility {
+pub enum Visibility {
     Hidden,
     Visible,
     TransitionToHidden {
@@ -123,7 +123,7 @@ pub struct Space {
     /// focused surface so it can be changed when a window is removed
     focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     /// visibility state of the dock / panel
-    visibility: Visibility,
+    pub visibility: Visibility,
 }
 
 impl Space {
@@ -365,6 +365,7 @@ impl Space {
                         }
                         self.layer_surface
                             .set_margin(target, target, target, target);
+                        self.layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
@@ -373,6 +374,8 @@ impl Space {
                             }
                             self.layer_surface
                                 .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            self.layer_shell_wl_surface.commit();
+
                         }
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: now,
@@ -417,6 +420,7 @@ impl Space {
                             self.layer_surface.set_exclusive_zone(dock_size);
                         }
                         self.layer_surface.set_margin(0, 0, 0, 0);
+                        self.layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Visible;
                     } else {
                         if prev_margin != cur_pix {
@@ -425,6 +429,8 @@ impl Space {
                             }
                             self.layer_surface
                                 .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            self.layer_shell_wl_surface.commit();
+
                         }
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: now,
@@ -465,6 +471,15 @@ impl Space {
                     self.needs_update = true;
                     self.full_clear = true;
                     self.update_offsets();
+                }
+            }
+            Some(RenderEvent::WaitConfigure { width, height }) => {
+                self.next_render_event
+                    .replace(Some(RenderEvent::WaitConfigure { width, height }));
+            }
+            None => {
+                if let Some((width, height)) = self.pending_dimensions.take() {
+                    self.layer_surface.set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone {
                             self.layer_surface
@@ -489,15 +504,6 @@ impl Space {
                             self.layer_surface.set_exclusive_zone(list_thickness as i32);
                         }
                     }
-                }
-            }
-            Some(RenderEvent::WaitConfigure { width, height }) => {
-                self.next_render_event
-                    .replace(Some(RenderEvent::WaitConfigure { width, height }));
-            }
-            None => {
-                if let Some((width, height)) = self.pending_dimensions.take() {
-                    self.layer_surface.set_size(width, height);
                     self.layer_shell_wl_surface.commit();
                     self.next_render_event
                         .replace(Some(RenderEvent::WaitConfigure { width, height }));
