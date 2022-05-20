@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::ops::Range;
 use std::{collections::HashMap, time::Duration};
+use slog::Logger;
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -248,18 +249,18 @@ static CONFIG_PATH: &'static str = "cosmic-dock-epoch/config.ron";
 
 impl CosmicDockConfig {
     /// load config with the provided name
-    pub fn load(name: &str) -> anyhow::Result<Self> {
-        Self::get_configs()
+    pub fn load(name: &str, log: Option<Logger>) -> anyhow::Result<Self> {
+        Self::get_configs(log)
             .remove(name.into())
             .ok_or(anyhow::anyhow!(format!(
-                "Config profile for {} not found",
+                "Config profile for {} failed to load",
                 name
             )))
     }
 
     /// write config to config file
-    pub fn write(&self, name: &str) -> anyhow::Result<()> {
-        let mut configs = Self::get_configs();
+    pub fn write(&self, name: &str, log: Option<Logger>) -> anyhow::Result<()> {
+        let mut configs = Self::get_configs(log);
         configs.insert(name.into(), CosmicDockConfig::default());
         let xdg = BaseDirectories::new()?;
         let f = xdg.place_config_file(CONFIG_PATH).unwrap();
@@ -268,7 +269,7 @@ impl CosmicDockConfig {
         return Ok(());
     }
 
-    fn get_configs() -> HashMap<String, Self> {
+    fn get_configs(log: Option<Logger>) -> HashMap<String, Self> {
         match BaseDirectories::new()
             .map(|dirs| dirs.find_config_file(CONFIG_PATH))
             .map(|c| c.map(|c| File::open(c)))
@@ -276,16 +277,18 @@ impl CosmicDockConfig {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))
             }) {
             Ok(Some(Ok(c))) => {
-                dbg!(&c);
                 c
             }
             Err(e) => {
-                dbg!(&e);
+                if let Some(log) = log {
+                    slog::error!(log, "{}", e);
+                }
                 HashMap::new()
             }
             Ok(Some(Err(e))) => {
-                dbg!(Self::default());
-                dbg!(ron::ser::to_string(&Self::default()));
+                if let Some(log) = log {
+                    slog::error!(log, "{}", e);
+                }
                 HashMap::new()
             }
             _ => HashMap::new(),

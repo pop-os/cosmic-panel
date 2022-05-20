@@ -36,7 +36,7 @@ mod util;
 
 /// run the cosmic dock xdg wrapper with the provided config
 pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
-    let config = CosmicDockConfig::load(config_name)?;
+    let config = CosmicDockConfig::load(config_name, Some(log.clone()))?;
     let mut event_loop = calloop::EventLoop::<(GlobalState, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display, (sockets_left, sockets_center, sockets_right)) =
