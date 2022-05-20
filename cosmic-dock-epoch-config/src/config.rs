@@ -177,6 +177,7 @@ pub enum CosmicDockBackground {
     Color([f32; 4]),
 }
 
+// TODO configurable interpolation type?
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AutoHide {
     wait_time: u32,
