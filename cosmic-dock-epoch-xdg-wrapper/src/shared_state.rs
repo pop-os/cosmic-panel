@@ -4,6 +4,7 @@ use once_cell::sync::OnceCell;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use sctk::{
     environment::Environment,
@@ -93,6 +94,12 @@ pub struct EmbeddedServerState {
     pub(crate) last_button: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Focus {
+    Current(c_wl_surface::WlSurface),
+    LastFocus(Instant),
+}
+
 pub struct DesktopClientState {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
@@ -105,5 +112,5 @@ pub struct DesktopClientState {
     pub(crate) xdg_wm_base: Attached<XdgWmBase>,
     pub(crate) env_handle: Environment<Env>,
     pub(crate) last_input_serial: Option<u32>,
-    pub(crate) focused_surface: Option<c_wl_surface::WlSurface>,
+    pub(crate) focused_surface: Focus,
 }

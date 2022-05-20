@@ -2,9 +2,9 @@
 
 //! Config for cosmic-dock-epoch
 
-use std::{collections::HashMap, time::Duration};
 use std::fs::File;
 use std::ops::Range;
+use std::{collections::HashMap, time::Duration};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -176,6 +176,13 @@ pub enum CosmicDockBackground {
     Color([f32; 4]),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AutoHide {
+    wait_time: u32,
+    transition_time: u32,
+    handle_size: u32,
+}
+
 /// Config structure for the cosmic dock
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CosmicDockConfig {
@@ -208,7 +215,7 @@ pub struct CosmicDockConfig {
     /// exclusive zone
     pub exclusive_zone: bool,
     /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
-    pub autohide: Option<(u32, u32)>,
+    pub autohide: Option<AutoHide>,
 }
 
 impl Default for CosmicDockConfig {
@@ -228,7 +235,11 @@ impl Default for CosmicDockConfig {
             padding: 4,
             spacing: 4,
             exclusive_zone: true,
-            autohide: Some((1000, 200)),
+            autohide: Some(AutoHide {
+                wait_time: 1000,
+                transition_time: 200,
+                handle_size: 4,
+            }),
         }
     }
 }
@@ -265,15 +276,16 @@ impl CosmicDockConfig {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))
             }) {
             Ok(Some(Ok(c))) => {
-                // dbg!(&c);
+                dbg!(&c);
                 c
             }
             Err(e) => {
-                // dbg!(&e);/
+                dbg!(&e);
                 HashMap::new()
             }
             Ok(Some(Err(e))) => {
-                // dbg!(&e);
+                dbg!(Self::default());
+                dbg!(ron::ser::to_string(&Self::default()));
                 HashMap::new()
             }
             _ => HashMap::new(),
@@ -321,11 +333,26 @@ impl CosmicDockConfig {
         }
     }
 
+    /// if autohide is configured, returns the duration of time which the dock should wait to hide when it has lost focus
     pub fn get_hide_wait(&self) -> Option<Duration> {
-        self.autohide.map(|(wt, _)| Duration::from_millis(wt.into()))
+        self.autohide
+            .as_ref()
+            .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
     }
 
+    /// if autohide is configured, returns the duration of time which the dock hide / show transition should last
     pub fn get_hide_transition(&self) -> Option<Duration> {
-        self.autohide.map(|(_, tt)| Duration::from_millis(tt.into()))
+        self.autohide.as_ref().map(
+            |AutoHide {
+                 transition_time, ..
+             }| Duration::from_millis((*transition_time).into()),
+        )
+    }
+
+    /// if autohide is configured, returns the size of the handle of the dock which should be exposed
+    pub fn get_hide_handle(&self) -> Option<u32> {
+        self.autohide
+            .as_ref()
+            .map(|AutoHide { handle_size, .. }| *handle_size)
     }
 }

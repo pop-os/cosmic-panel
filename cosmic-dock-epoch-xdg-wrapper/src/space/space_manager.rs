@@ -1,3 +1,5 @@
+use crate::shared_state::Focus;
+
 use super::Space;
 use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Display;
@@ -56,10 +58,15 @@ impl SpaceManager {
         }
     }
 
-    pub fn handle_events(&mut self, time: Instant, children: &mut Vec<Child>) -> Instant {
+    pub fn handle_events(
+        &mut self,
+        time: Instant,
+        children: &mut Vec<Child>,
+        focus: &Focus,
+    ) -> Instant {
         self.spaces
             .iter_mut()
-            .map(|space| space.handle_events(time.elapsed().as_millis() as u32, children))
+            .map(|space| space.handle_events(time.elapsed().as_millis() as u32, children, focus))
             .fold(time.clone(), |max_t, t| t.max(max_t))
     }
 }

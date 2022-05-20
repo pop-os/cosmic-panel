@@ -110,7 +110,6 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
         .collect_vec();
 
     let mut shared_data = (global_state, display);
-    let start_t = Instant::now();
     let mut last_dirty = Instant::now();
     let mut last_cleanup = Instant::now();
     let five_min = Duration::from_secs(300);
@@ -145,7 +144,11 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
             let space_manager = &mut shared_data.desktop_client_state.space_manager;
 
             space_manager.apply_display(&server_display);
-            last_dirty = space_manager.handle_events(shared_data.start_time, &mut children);
+            last_dirty = space_manager.handle_events(
+                shared_data.start_time,
+                &mut children,
+                &shared_data.desktop_client_state.focused_surface,
+            );
         }
 
         // dispatch server events

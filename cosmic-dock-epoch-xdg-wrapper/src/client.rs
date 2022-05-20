@@ -25,7 +25,7 @@ use smithay::{
         seat, SERIAL_COUNTER,
     },
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use crate::space::SpaceManager;
 use crate::{
@@ -242,7 +242,7 @@ pub fn new_client(
                             } => {
                                 if mime_types.contains(&mime_type) {
                                     let _ = env_clone.with_data_device(&seat_clone, |device| {
-                                         device.with_dnd(|offer| {
+                                        device.with_dnd(|offer| {
                                             if let Some(offer) = offer {
                                                 unsafe { offer.receive_to_fd(mime_type, fd) };
                                             }
@@ -396,7 +396,7 @@ pub fn new_client(
             xdg_wm_base,
             env_handle: env,
             last_input_serial: None,
-            focused_surface: None,
+            focused_surface: Focus::LastFocus(Instant::now()),
         },
         s_outputs,
     ))

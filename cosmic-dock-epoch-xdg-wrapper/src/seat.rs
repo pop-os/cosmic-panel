@@ -25,11 +25,11 @@ use smithay::{
         SERIAL_COUNTER,
     },
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use crate::{
     client::Env,
-    shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, GlobalState, Seat},
+    shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, Focus, GlobalState, Seat},
     space::{ServerSurface, Space},
 };
 
@@ -144,14 +144,14 @@ pub fn send_pointer_event(
                 if let Some(space) = space_manager.active_space() {
                     space.update_pointer((surface_x as i32, surface_y as i32));
                 }
-                if let Some(surface) = c_focused_surface {
+                if let Focus::Current(surface) = c_focused_surface {
                     set_focused_surface(
                         focused_surface,
                         space_manager.active_space(),
                         &surface,
                         surface_x,
                         surface_y,
-                    );       
+                    );
                 }
                 handle_motion(
                     space_manager.active_space(),
@@ -171,7 +171,12 @@ pub fn send_pointer_event(
             } => {
                 last_input_serial.replace(serial);
                 if let Some(button_state) = wl_pointer::ButtonState::from_raw(state.to_raw()) {
-                    ptr.button(button, button_state, SERIAL_COUNTER.next_serial(), time as u32);
+                    ptr.button(
+                        button,
+                        button_state,
+                        SERIAL_COUNTER.next_serial(),
+                        time as u32,
+                    );
                 }
                 last_button.replace(button);
             }
@@ -233,16 +238,13 @@ pub fn send_pointer_event(
                 }
                 _ => return,
             },
-            c_wl_pointer::Event::Enter {
-                surface,
-                ..
-            } => {
+            c_wl_pointer::Event::Enter { surface, .. } => {
                 // if not popup, then must be a dock layer shell surface
                 space_manager.update_active(Some(surface.clone()));
                 // TODO better handling of subsurfaces?
-                c_focused_surface.replace(surface);
+                *c_focused_surface = Focus::Current(surface);
             }
-            c_wl_pointer::Event::Leave { surface, .. } => {     
+            c_wl_pointer::Event::Leave { surface, .. } => {
                 handle_motion(
                     space_manager.active_space(),
                     None,
@@ -250,13 +252,13 @@ pub fn send_pointer_event(
                     -1.0,
                     ptr,
                     time as u32,
-                );           
-                if let Some(s) = c_focused_surface {
+                );
+                if let Focus::Current(s) = c_focused_surface {
                     if s == &surface {
-                        c_focused_surface.take();
+                        *c_focused_surface = Focus::LastFocus(Instant::now());
                         focused_surface.take();
                     }
-                } 
+                }
             }
             _ => (),
         };
@@ -392,7 +394,7 @@ pub(crate) fn handle_motion(
                 time,
             );
             return;
-        },
+        }
     };
     match space
         .as_ref()
@@ -441,7 +443,7 @@ pub(crate) fn handle_motion(
                 SERIAL_COUNTER.next_serial(),
                 time,
             );
-        },
+        }
     };
 }
 

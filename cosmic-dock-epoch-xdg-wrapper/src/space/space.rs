@@ -3,13 +3,16 @@
 use std::{
     cell::{Cell, RefCell},
     cmp::Ordering,
+    ops::Sub,
     process::Child,
     rc::Rc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use itertools::Itertools;
 use libc::c_int;
+
+use crate::shared_state::Focus;
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
 use cosmic_dock_epoch_config::config::{self, CosmicDockConfig};
@@ -56,7 +59,7 @@ use smithay::{
         },
     },
     utils::{Logical, Point, Rectangle},
-    wayland::{shell::xdg::{PopupSurface, PositionerState}},
+    wayland::shell::xdg::{PopupSurface, PositionerState},
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -71,6 +74,22 @@ pub enum RenderEvent {
         serial: u32,
     },
     Closed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Visibility {
+    Hidden,
+    Visible,
+    TransitionToHidden {
+        last_instant: Instant,
+        progress: Duration,
+        prev_margin: i32,
+    },
+    TransitionToVisible {
+        last_instant: Instant,
+        progress: Duration,
+        prev_margin: i32,
+    },
 }
 
 #[derive(Debug)]
@@ -93,16 +112,18 @@ pub struct Space {
     pub egl_display: EGLDisplay,
     pub renderer: Gles2Renderer,
     pub last_dirty: Instant,
-    // layer surface which all client surfaces are composited onto
+    /// layer surface which all client surfaces are composited onto
     pub layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pub egl_surface: Rc<EGLSurface>,
     pub next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pub layer_shell_wl_surface: Attached<c_wl_surface::WlSurface>,
-    // adjusts to fit all client surfaces
+    /// adjusts to fit all client surfaces
     pub dimensions: (u32, u32),
     pub pending_dimensions: Option<(u32, u32)>,
-    // focused surface so it can be changed when a window is removed
+    /// focused surface so it can be changed when a window is removed
     focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
+    /// visibility state of the dock / panel
+    visibility: Visibility,
 }
 
 impl Space {
@@ -242,6 +263,7 @@ impl Space {
             next_render_event,
             layer_shell_wl_surface: c_surface,
             focused_surface,
+            visibility: Visibility::Visible,
         }
     }
 
@@ -270,7 +292,158 @@ impl Space {
         }
     }
 
-    pub fn handle_events(&mut self, time: u32, children: &mut Vec<Child>) -> Instant {
+    fn handle_focus(&mut self, focus: &Focus) {
+        // always visible if not configured for autohide
+        if self.config.autohide.is_none() {
+            return;
+        }
+
+        match self.visibility {
+            Visibility::Hidden => {
+                if let Focus::Current(_) = focus {
+                    // start transition to visible
+                    let margin = match self.config.anchor {
+                        config::Anchor::Left | config::Anchor::Right => {
+                            -1 * self.dimensions.0 as i32
+                        }
+                        config::Anchor::Top | config::Anchor::Bottom => {
+                            -1 * self.dimensions.1 as i32
+                        }
+                    } + self.config.get_hide_handle().unwrap() as i32;
+                    self.visibility = Visibility::TransitionToVisible {
+                        last_instant: Instant::now(),
+                        progress: Duration::new(0, 0),
+                        prev_margin: margin,
+                    }
+                }
+            }
+            Visibility::Visible => {
+                if let Focus::LastFocus(t) = focus {
+                    // start transition to hidden
+                    if Instant::now().duration_since(*t) > self.config.get_hide_wait().unwrap() {
+                        self.visibility = Visibility::TransitionToHidden {
+                            last_instant: Instant::now(),
+                            progress: Duration::new(0, 0),
+                            prev_margin: 0,
+                        }
+                    }
+                }
+            }
+            Visibility::TransitionToHidden {
+                last_instant,
+                progress,
+                prev_margin,
+            } => {
+                let now = Instant::now();
+                let total_t = self.config.get_hide_transition().unwrap();
+                let delta_t = now.duration_since(last_instant);
+                let prev_progress = progress;
+                let progress = prev_progress + delta_t;
+                let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
+                let handle = self.config.get_hide_handle().unwrap() as i32;
+
+                if let Focus::Current(f) = focus {
+                    // start transition to visible
+                    self.visibility = Visibility::TransitionToVisible {
+                        last_instant: now,
+                        progress: total_t - progress,
+                        prev_margin,
+                    }
+                } else {
+                    let dock_size = match self.config.anchor {
+                        config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
+                        config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                    };
+                    let target = -dock_size + handle;
+
+                    let cur_pix = (progress_norm * target as f32) as i32;
+
+                    if progress > total_t {
+                        // XXX needs thorough testing, but docs say that the margin value is only applied to anchored edge
+                        if self.config.exclusive_zone {
+                            self.layer_surface.set_exclusive_zone(handle);
+                        }
+                        self.layer_surface
+                            .set_margin(target, target, target, target);
+                        self.visibility = Visibility::Hidden;
+                    } else {
+                        if prev_margin != cur_pix {
+                            if self.config.exclusive_zone {
+                                self.layer_surface.set_exclusive_zone(dock_size - cur_pix);
+                            }
+                            self.layer_surface
+                                .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                        }
+                        self.visibility = Visibility::TransitionToHidden {
+                            last_instant: now,
+                            progress: progress,
+                            prev_margin: cur_pix,
+                        };
+                    }
+                }
+            }
+            Visibility::TransitionToVisible {
+                last_instant,
+                progress,
+                prev_margin,
+            } => {
+                let now = Instant::now();
+                let total_t = self.config.get_hide_transition().unwrap();
+                let delta_t = now.duration_since(last_instant);
+                let prev_progress = progress;
+                let progress = prev_progress + delta_t;
+                let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
+                let handle = self.config.get_hide_handle().unwrap() as i32;
+
+                if let Focus::LastFocus(t) = focus {
+                    // start transition to visible
+                    self.visibility = Visibility::TransitionToHidden {
+                        last_instant: now,
+                        progress: total_t - progress,
+                        prev_margin,
+                    }
+                } else {
+                    let dock_size = match self.config.anchor {
+                        config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
+                        config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                    };
+                    let start = -dock_size + handle;
+
+                    let cur_pix = ((1.0 - progress_norm) * start as f32) as i32;
+
+                    if progress > total_t {
+                        // XXX needs thorough testing, but docs say that the margin value is only applied to anchored edge
+                        if self.config.exclusive_zone {
+                            self.layer_surface.set_exclusive_zone(dock_size);
+                        }
+                        self.layer_surface.set_margin(0, 0, 0, 0);
+                        self.visibility = Visibility::Visible;
+                    } else {
+                        if prev_margin != cur_pix {
+                            if self.config.exclusive_zone {
+                                self.layer_surface.set_exclusive_zone(dock_size - cur_pix);
+                            }
+                            self.layer_surface
+                                .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                        }
+                        self.visibility = Visibility::TransitionToVisible {
+                            last_instant: now,
+                            progress: progress,
+                            prev_margin: cur_pix,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn handle_events(
+        &mut self,
+        time: u32,
+        children: &mut Vec<Child>,
+        focus: &Focus,
+    ) -> Instant {
+        self.handle_focus(focus);
         let mut should_render = false;
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => {
@@ -292,6 +465,30 @@ impl Space {
                     self.needs_update = true;
                     self.full_clear = true;
                     self.update_offsets();
+                    if let Visibility::Hidden = self.visibility {
+                        if self.config.exclusive_zone {
+                            self.layer_surface
+                                .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
+                        }
+                        let target = match self.config.anchor {
+                            config::Anchor::Left | config::Anchor::Right => {
+                                -1 * self.dimensions.0 as i32
+                            }
+                            config::Anchor::Top | config::Anchor::Bottom => {
+                                -1 * self.dimensions.1 as i32
+                            }
+                        } + self.config.get_hide_handle().unwrap() as i32;
+                        self.layer_surface
+                            .set_margin(target, target, target, target);
+                    } else {
+                        if self.config.exclusive_zone {
+                            let list_thickness = match self.config.anchor {
+                                config::Anchor::Left | config::Anchor::Right => width,
+                                config::Anchor::Top | config::Anchor::Bottom => height,
+                            };
+                            self.layer_surface.set_exclusive_zone(list_thickness as i32);
+                        }
+                    }
                 }
             }
             Some(RenderEvent::WaitConfigure { width, height }) => {
@@ -300,13 +497,6 @@ impl Space {
             }
             None => {
                 if let Some((width, height)) = self.pending_dimensions.take() {
-                    if self.config.exclusive_zone {
-                        let list_thickness = match self.config.anchor {
-                            config::Anchor::Left | config::Anchor::Right => width,
-                            config::Anchor::Top | config::Anchor::Bottom => height,
-                        };                        
-                        self.layer_surface.set_exclusive_zone(list_thickness as i32);
-                    }
                     self.layer_surface.set_size(width, height);
                     self.layer_shell_wl_surface.commit();
                     self.next_render_event
@@ -664,7 +854,11 @@ impl Space {
         let new_h = h + 2 * self.config.padding;
 
         // TODO improve this for when there are changes to the lists of plugins while running
-        let (new_w, new_h) = Self::constrain_dim(&self.config, (new_w, new_h), self.output.1.modes[0].dimensions);
+        let (new_w, new_h) = Self::constrain_dim(
+            &self.config,
+            (new_w, new_h),
+            self.output.1.modes[0].dimensions,
+        );
         let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
         let mut wait_configure_dim = self
             .next_render_event
