@@ -2,7 +2,7 @@
 
 //! Config for cosmic-dock-epoch
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use std::fs::File;
 use std::ops::Range;
 
@@ -207,6 +207,8 @@ pub struct CosmicDockConfig {
     pub spacing: u32,
     /// exclusive zone
     pub exclusive_zone: bool,
+    /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
+    pub autohide: Option<(u32, u32)>,
 }
 
 impl Default for CosmicDockConfig {
@@ -226,6 +228,7 @@ impl Default for CosmicDockConfig {
             padding: 4,
             spacing: 4,
             exclusive_zone: true,
+            autohide: Some((1000, 200)),
         }
     }
 }
@@ -316,5 +319,13 @@ impl CosmicDockConfig {
                 Some(bar_thickness),
             ),
         }
+    }
+
+    pub fn get_hide_wait(&self) -> Option<Duration> {
+        self.autohide.map(|(wt, _)| Duration::from_millis(wt.into()))
+    }
+
+    pub fn get_hide_transition(&self) -> Option<Duration> {
+        self.autohide.map(|(_, tt)| Duration::from_millis(tt.into()))
     }
 }
