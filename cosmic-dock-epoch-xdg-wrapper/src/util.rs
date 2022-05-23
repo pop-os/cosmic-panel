@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0-only
 
 /// utility function which maps a value [0, 1] -> [0, 1] using the smootherstep function
 pub fn smootherstep(t: f32) -> f32 {
