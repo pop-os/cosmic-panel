@@ -35,9 +35,7 @@ impl TopLevelSurface {
             p.should_render = false;
 
             let should_keep = {
-                if !p.s_surface.alive() {
-                    false
-                } else if !p.c_surface.as_ref().is_alive() {
+                if !p.s_surface.alive() || !p.c_surface.as_ref().is_alive() {
                     false
                 } else {
                     match p.next_render_event.take() {

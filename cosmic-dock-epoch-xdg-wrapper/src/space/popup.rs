@@ -40,7 +40,6 @@ pub struct Popup {
 
 impl Drop for Popup {
     fn drop(&mut self) {
-        drop(&mut self.egl_surface);
         self.s_surface.send_popup_done();
         self.c_popup.destroy();
         self.c_xdg_surface.destroy();
