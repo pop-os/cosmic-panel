@@ -178,11 +178,34 @@ pub enum CosmicDockBackground {
 }
 
 // TODO configurable interpolation type?
+/// configurable autohide behavior
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AutoHide {
+    /// time without pointer focus before hiding
     wait_time: u32,
+    /// time that it should take to transition
     transition_time: u32,
+    /// size of the handle in pixels
+    /// should be > 0
     handle_size: u32,
+}
+
+/// configurable output which the panel appears on
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum CosmicPanelOutput {
+    /// draw the application on all outputs
+    All,
+    /// draw the application on the active output
+    Auto,
+    /// draw the application on the output specified by name
+    /// this name refers to the unique name which is given by the compositor
+    Output(String)
+}
+
+impl Default for CosmicPanelOutput {
+    fn default() -> Self {
+        Self::All
+    }
 }
 
 /// Config structure for the cosmic dock
@@ -199,7 +222,7 @@ pub struct CosmicDockConfig {
     /// configured size for the dock
     pub size: DockSize,
     /// configured output, or None to place on all outputs
-    pub output: Option<String>,
+    pub output: CosmicPanelOutput,
     /// customized background, or
     pub background: CosmicDockBackground,
     /// list of plugins on the left or top of the dock
@@ -228,7 +251,7 @@ impl Default for CosmicDockConfig {
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::None,
             size: DockSize::M,
-            output: None,
+            output: CosmicPanelOutput::default(),
             background: CosmicDockBackground::Color([0.5, 0.0, 0.5, 0.5]),
             plugins_left: Default::default(),
             plugins_center: Default::default(),
@@ -252,8 +275,8 @@ impl CosmicDockConfig {
     /// load config with the provided name
     pub fn load(name: &str, log: Option<Logger>) -> anyhow::Result<Self> {
         Self::get_configs(log)
-            .remove(name.into())
-            .ok_or(anyhow::anyhow!(format!(
+            .remove(name)
+            .ok_or_else(|| anyhow::anyhow!(format!(
                 "Config profile for {} failed to load",
                 name
             )))
@@ -267,13 +290,13 @@ impl CosmicDockConfig {
         let f = xdg.place_config_file(CONFIG_PATH).unwrap();
         let f = File::create(f)?;
         ron::ser::to_writer_pretty(&f, &configs, ron::ser::PrettyConfig::default())?;
-        return Ok(());
+        Ok(())
     }
 
     fn get_configs(log: Option<Logger>) -> HashMap<String, Self> {
         match BaseDirectories::new()
             .map(|dirs| dirs.find_config_file(CONFIG_PATH))
-            .map(|c| c.map(|c| File::open(c)))
+            .map(|c| c.map(File::open))
             .map(|file| {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))
             }) {

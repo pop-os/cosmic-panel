@@ -8,6 +8,7 @@ use crate::{
     space::{Space, SpaceManager},
     CosmicDockConfig,
 };
+use cosmic_dock_epoch_config::config::CosmicPanelOutput;
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -45,7 +46,7 @@ pub fn handle_output(
     clients_right: &Vec<(u32, Client)>,
 ) {
     // ignore outputs that do not match config
-    if let Some(preferred_output) = config.output.as_ref() {
+    if let CosmicPanelOutput::Output(ref preferred_output) = config.output {
         if info.name != *preferred_output {
             return;
         }
