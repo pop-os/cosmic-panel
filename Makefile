@@ -17,7 +17,7 @@ ifneq ($(VENDOR),0)
 	ARGS += --frozen
 endif
 
-BIN = cosmic-dock-epoch
+BIN = cosmic-panel
 
 all: $(BIN) $(PKGCONFIG)
 

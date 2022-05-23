@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "cosmic-dock-epoch-bin",
-    "cosmic-dock-epoch-xdg-wrapper",
-    "cosmic-dock-epoch-config"
+    "cosmic-panel-bin",
+    "cosmic-panel-xdg-wrapper",
+    "cosmic-panel-config"
 ]

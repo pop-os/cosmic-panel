@@ -1,4 +1,4 @@
-Source: cosmic-dock-epoch
+Source: cosmic-panel
 Section: admin
 Priority: optional
 Maintainer: System76 <info@system76.com>
@@ -10,9 +10,9 @@ Build-Depends:
   libxkbcommon-dev,
   pkg-config,
 Standards-Version: 4.3.0
-Homepage: https://github.com/pop-os/cosmic-dock-epoch
+Homepage: https://github.com/pop-os/cosmic-panel
 
-Package: cosmic-dock-epoch
+Package: cosmic-panel
 Architecture: amd64 arm64
 Depends:
   ${misc:Depends},
