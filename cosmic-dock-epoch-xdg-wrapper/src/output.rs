@@ -97,7 +97,7 @@ pub fn handle_output(
         } in &info.modes
         {
             let s_mode = s_Mode {
-                size: dimensions.clone().into(),
+                size: (*dimensions).into(),
                 refresh: *refresh_rate,
             };
             if *is_preferred {
@@ -121,8 +121,8 @@ pub fn handle_output(
         output,
         info,
         pool,
-        config.clone(),
-        display_.clone(),
+        config,
+        display_,
         layer_shell.clone(),
         logger.clone(),
         env_handle.create_surface(),

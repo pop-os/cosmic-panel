@@ -3,7 +3,6 @@
 use std::{
     cell::{Cell, RefCell},
     cmp::Ordering,
-    ops::Sub,
     process::Child,
     rc::Rc,
     time::{Duration, Instant},
@@ -272,7 +271,6 @@ impl Space {
             .iter_mut()
             .chain(self.client_top_levels_center.iter_mut())
             .chain(self.client_top_levels_right.iter_mut())
-            .into_iter()
     }
 
     fn client_top_levels(&self) -> impl Iterator<Item = &TopLevelSurface> + '_ {
@@ -280,7 +278,6 @@ impl Space {
             .iter()
             .chain(self.client_top_levels_center.iter())
             .chain(self.client_top_levels_right.iter())
-            .into_iter()
     }
 
     fn filter_top_levels(mut s: TopLevelSurface) -> Option<TopLevelSurface> {
@@ -303,12 +300,8 @@ impl Space {
                 if let Focus::Current(_) = focus {
                     // start transition to visible
                     let margin = match self.config.anchor {
-                        config::Anchor::Left | config::Anchor::Right => {
-                            -1 * self.dimensions.0 as i32
-                        }
-                        config::Anchor::Top | config::Anchor::Bottom => {
-                            -1 * self.dimensions.1 as i32
-                        }
+                        config::Anchor::Left | config::Anchor::Right => -(self.dimensions.0 as i32),
+                        config::Anchor::Top | config::Anchor::Bottom => -(self.dimensions.1 as i32),
                     } + self.config.get_hide_handle().unwrap() as i32;
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: Instant::now(),
@@ -336,13 +329,19 @@ impl Space {
             } => {
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
-                let delta_t = now.duration_since(last_instant);
+                let delta_t = match now.checked_duration_since(last_instant) {
+                    Some(d) => d,
+                    None => return,
+                };
                 let prev_progress = progress;
-                let progress = prev_progress + delta_t;
+                let progress = match prev_progress.checked_add(delta_t) {
+                    Some(d) => d,
+                    None => return,
+                };
                 let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let Focus::Current(f) = focus {
+                if let Focus::Current(_) = focus {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: now,
@@ -375,11 +374,10 @@ impl Space {
                             self.layer_surface
                                 .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
                             self.layer_shell_wl_surface.commit();
-
                         }
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: now,
-                            progress: progress,
+                            progress,
                             prev_margin: cur_pix,
                         };
                     }
@@ -392,13 +390,19 @@ impl Space {
             } => {
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
-                let delta_t = now.duration_since(last_instant);
+                let delta_t = match now.checked_duration_since(last_instant) {
+                    Some(d) => d,
+                    None => return,
+                };
                 let prev_progress = progress;
-                let progress = prev_progress + delta_t;
+                let progress = match prev_progress.checked_add(delta_t) {
+                    Some(d) => d,
+                    None => return,
+                };
                 let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let Focus::LastFocus(t) = focus {
+                if let Focus::LastFocus(_) = focus {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,
@@ -430,11 +434,10 @@ impl Space {
                             self.layer_surface
                                 .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
                             self.layer_shell_wl_surface.commit();
-
                         }
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: now,
-                            progress: progress,
+                            progress,
                             prev_margin: cur_pix,
                         };
                     }
@@ -487,22 +490,20 @@ impl Space {
                         }
                         let target = match self.config.anchor {
                             config::Anchor::Left | config::Anchor::Right => {
-                                -1 * self.dimensions.0 as i32
+                                -(self.dimensions.0 as i32)
                             }
                             config::Anchor::Top | config::Anchor::Bottom => {
-                                -1 * self.dimensions.1 as i32
+                                -(self.dimensions.1 as i32)
                             }
                         } + self.config.get_hide_handle().unwrap() as i32;
                         self.layer_surface
                             .set_margin(target, target, target, target);
-                    } else {
-                        if self.config.exclusive_zone {
-                            let list_thickness = match self.config.anchor {
-                                config::Anchor::Left | config::Anchor::Right => width,
-                                config::Anchor::Top | config::Anchor::Bottom => height,
-                            };
-                            self.layer_surface.set_exclusive_zone(list_thickness as i32);
-                        }
+                    } else if self.config.exclusive_zone {
+                        let list_thickness = match self.config.anchor {
+                            config::Anchor::Left | config::Anchor::Right => width,
+                            config::Anchor::Top | config::Anchor::Bottom => height,
+                        };
+                        self.layer_surface.set_exclusive_zone(list_thickness as i32);
                     }
                     self.layer_shell_wl_surface.commit();
                     self.next_render_event
@@ -569,7 +570,7 @@ impl Space {
             .borrow()
             .toplevel()
             .get_surface()
-            .and_then(|s| s.as_ref().client().clone());
+            .and_then(|s| s.as_ref().client());
         if let Some(surface_client) = surface_client {
             let mut top_level = TopLevelSurface {
                 s_top_level,
@@ -593,14 +594,14 @@ impl Space {
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
 
                     let b_client = b
                         .s_top_level
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
                             self.clients_left.iter().position(|(_, e)| e == &a_client),
@@ -626,14 +627,14 @@ impl Space {
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
 
                     let b_client = b
                         .s_top_level
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
                             self.clients_center.iter().position(|(_, e)| e == &a_client),
@@ -659,14 +660,14 @@ impl Space {
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
 
                     let b_client = b
                         .s_top_level
                         .borrow()
                         .toplevel()
                         .get_surface()
-                        .and_then(|s| s.as_ref().client().clone());
+                        .and_then(|s| s.as_ref().client());
                     if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
                         match (
                             self.clients_right.iter().position(|(_, e)| e == &a_client),
@@ -739,9 +740,8 @@ impl Space {
             anchor_rect.size.w,
             anchor_rect.size.h,
         );
-        positioner
-            .set_anchor(Anchor::from_raw(anchor_edges.to_raw().into()).unwrap_or(Anchor::None));
-        positioner.set_gravity(Gravity::from_raw(gravity.to_raw().into()).unwrap_or(Gravity::None));
+        positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
+        positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
         positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
         positioner.set_offset(offset.x, offset.y);
         if positioner.as_ref().version() >= 3 {
@@ -783,7 +783,7 @@ impl Space {
                         let kind = PopupKind::Xdg(s_popup_surface.clone());
 
                         let _ = s_popup_surface.send_configure();
-                        let _ = popup_manager.borrow_mut().track_popup(kind.clone());
+                        let _ = popup_manager.borrow_mut().track_popup(kind);
                         next_render_event_handle.set(Some(PopupRenderEvent::Configure {
                             x,
                             y,
@@ -929,15 +929,9 @@ impl Space {
             .client_top_levels()
             .filter(|t| !t.hidden)
             .find(|t| t.rectangle.contains(point))
-            .and_then(|t| {
-                t.s_top_level
-                    .borrow()
-                    .toplevel()
-                    .get_surface()
-                    .map(|s| s.clone())
-            })
+            .and_then(|t| t.s_top_level.borrow().toplevel().get_surface().cloned())
         {
-            self.focused_surface.borrow_mut().replace(s.clone());
+            self.focused_surface.borrow_mut().replace(s);
             return;
         }
         self.focused_surface.borrow_mut().take();
@@ -956,7 +950,7 @@ impl Space {
                     .and_then(|s| {
                         if Some(s.clone()) == *self.focused_surface.borrow() {
                             Some(ServerSurface::TopLevel(
-                                t.rectangle.loc.clone(),
+                                t.rectangle.loc,
                                 t.s_top_level.clone(),
                             ))
                         } else {
@@ -970,7 +964,7 @@ impl Space {
             for popup in &s.popups {
                 if popup.c_surface == active_surface.clone() {
                     return Some(ServerSurface::Popup(
-                        s.rectangle.loc.clone(),
+                        s.rectangle.loc,
                         s.s_top_level.clone(),
                         popup.s_surface.clone(),
                     ));
@@ -984,14 +978,14 @@ impl Space {
         for s in self.client_top_levels() {
             if s.s_top_level.borrow().toplevel().get_surface() == Some(active_surface) {
                 return Some(ServerSurface::TopLevel(
-                    s.rectangle.loc.clone(),
+                    s.rectangle.loc,
                     s.s_top_level.clone(),
                 ));
             } else {
                 for popup in &s.popups {
                     if popup.s_surface.get_surface() == Some(active_surface) {
                         return Some(ServerSurface::Popup(
-                            s.rectangle.loc.clone(),
+                            s.rectangle.loc,
                             s.s_top_level.clone(),
                             popup.s_surface.clone(),
                         ));
@@ -1038,12 +1032,8 @@ impl Space {
         Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
         Rc<Cell<Option<RenderEvent>>>,
     ) {
-        let layer_surface = layer_shell.get_layer_surface(
-            &c_surface.clone(),
-            output,
-            config.layer.into(),
-            "".to_owned(),
-        );
+        let layer_surface =
+            layer_shell.get_layer_surface(&c_surface, output, config.layer.into(), "".to_owned());
 
         layer_surface.set_anchor(config.anchor.into());
         layer_surface.set_keyboard_interactivity(config.keyboard_interactivity.into());
@@ -1158,7 +1148,7 @@ impl Space {
                             let surface_tree_damage =
                                 damage_from_surface_tree(server_surface, (0, 0), None);
                             l_damage.extend(
-                                if surface_tree_damage.len() == 0 || full_clear {
+                                if surface_tree_damage.is_empty() || full_clear {
                                     vec![Rectangle::from_loc_and_size(
                                         loc,
                                         (
@@ -1179,7 +1169,7 @@ impl Space {
                         l_damage
                             .iter()
                             .map(|(d, o)| {
-                                let mut d = d.clone();
+                                let mut d = *d;
                                 d.loc += *o;
                                 d.to_physical(1)
                             })
@@ -1187,7 +1177,7 @@ impl Space {
                         l_damage
                             .iter()
                             .map(|(d, o)| {
-                                let mut d = d.clone();
+                                let mut d = *d;
                                 d.loc += *o;
                                 d.to_physical(1).to_f64()
                             })
@@ -1217,7 +1207,7 @@ impl Space {
                             },
                         };
 
-                        if top_level.dirty || l_damage.len() > 0 {
+                        if top_level.dirty || !l_damage.is_empty() {
                             let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
                             loc = (-loc.x, -loc.y).into();
 
@@ -1231,7 +1221,7 @@ impl Space {
                                     .clone()
                                     .into_iter()
                                     .filter_map(|(d, o)| {
-                                        let mut d = d.clone();
+                                        let mut d = d;
                                         d.loc += o;
                                         let mut intersect = d.intersection(top_level.rectangle);
                                         if let Some(r) = intersect.as_mut() {
@@ -1249,12 +1239,7 @@ impl Space {
             )
             .expect("Failed to render to layer shell surface.");
 
-        if self
-            .client_top_levels()
-            .find(|t| t.dirty && !t.hidden)
-            .is_some()
-            || full_clear
-        {
+        if self.client_top_levels().any(|t| t.dirty && !t.hidden) || full_clear {
             self.egl_surface
                 .swap_buffers(Some(&mut p_damage))
                 .expect("Failed to swap buffers.");
@@ -1291,7 +1276,7 @@ impl Space {
                         smithay::utils::Transform::Flipped180,
                         |self_: &mut Gles2Renderer, frame| {
                             let damage = smithay::utils::Rectangle::<i32, smithay::utils::Logical> {
-                                loc: loc.clone().into(),
+                                loc,
                                 size: (width, height).into(),
                             };
 
@@ -1299,7 +1284,7 @@ impl Space {
                                 .clear(
                                     clear_color,
                                     &[smithay::utils::Rectangle::<f64, smithay::utils::Logical> {
-                                        loc: (loc.x as f64, loc.y as f64).clone().into(),
+                                        loc: (loc.x as f64, loc.y as f64).into(),
                                         size: (width as f64, height as f64).into(),
                                     }
                                     .to_physical(1.0)],
@@ -1456,24 +1441,22 @@ impl Space {
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32)
+        } else if left_sum < requested_eq_length
+            && center_sum < requested_eq_length
+            && right_sum < requested_eq_length
+        {
+            let center_padding = (requested_eq_length - center_sum) / 2;
+            (
+                right_sum,
+                requested_eq_length + padding as i32 + spacing as i32 + center_padding,
+            )
         } else {
-            if left_sum < requested_eq_length
-                && center_sum < requested_eq_length
-                && right_sum < requested_eq_length
-            {
-                let center_padding = (requested_eq_length - center_sum) / 2;
-                (
-                    right_sum,
-                    requested_eq_length + padding as i32 + spacing as i32 + center_padding,
-                )
-            } else {
-                let center_padding = (list_length as i32 - total_sum) / 2;
+            let center_padding = (list_length as i32 - total_sum) / 2;
 
-                (
-                    right_sum,
-                    left_sum + padding as i32 + spacing as i32 + center_padding,
-                )
-            }
+            (
+                right_sum,
+                left_sum + padding as i32 + spacing as i32 + center_padding,
+            )
         };
 
         let mut prev: u32 = padding;

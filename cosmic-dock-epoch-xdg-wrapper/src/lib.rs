@@ -7,7 +7,7 @@ use anyhow::Result;
 use cosmic_dock_epoch_config::config::CosmicDockConfig;
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
 use itertools::Itertools;
-use shared_state::{GlobalState, Focus};
+use shared_state::GlobalState;
 use shlex::Shlex;
 use slog::{trace, Logger};
 use smithay::{
@@ -103,14 +103,13 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
                                 return Some(exec_child(exec, config_name, log.clone(), raw_fd));
                             }
                         }
-                        return None;
+                        None
                     })
                 })
         })
         .collect_vec();
 
     let mut shared_data = (global_state, display);
-    let mut last_dirty = Instant::now();
     let mut last_cleanup = Instant::now();
     let five_min = Duration::from_secs(300);
 
@@ -143,8 +142,8 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
 
             let space_manager = &mut shared_data.desktop_client_state.space_manager;
 
-            space_manager.apply_display(&server_display);
-            last_dirty = space_manager.handle_events(
+            space_manager.apply_display(server_display);
+            let _ = space_manager.handle_events(
                 shared_data.start_time,
                 &mut children,
                 &shared_data.desktop_client_state.focused_surface,
@@ -182,10 +181,11 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
             }
         }
 
-        if children.iter_mut().map(|c| c.try_wait()).all(|r| match r {
-            Ok(Some(_)) => true,
-            _ => false,
-        }) {
+        if children
+            .iter_mut()
+            .map(|c| c.try_wait())
+            .all(|r| matches!(r, Ok(Some(_))))
+        {
             return Ok(());
         }
 
@@ -197,14 +197,14 @@ pub fn dock_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
 }
 
 fn exec_child(c: &str, config_name: &str, log: Logger, raw_fd: i32) -> Child {
-    let mut exec_iter = Shlex::new(&c);
+    let mut exec_iter = Shlex::new(c);
     let exec = exec_iter
         .next()
         .expect("exec parameter must contain at least on word");
     trace!(log, "child: {}", &exec);
 
     let mut child = Command::new(exec);
-    while let Some(arg) = exec_iter.next() {
+    for arg in exec_iter {
         trace!(log, "child argument: {}", &arg);
         child.arg(arg);
     }

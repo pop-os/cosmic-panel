@@ -53,7 +53,7 @@ pub fn send_keyboard_event(
         ..
     } = &mut state.embedded_server_state;
 
-    if let Some(seat) = seats.iter().find(|Seat { name, .. }| name == &seat_name) {
+    if let Some(seat) = seats.iter().find(|Seat { name, .. }| name == seat_name) {
         let kbd = match seat.server.0.get_keyboard() {
             Some(kbd) => kbd,
             None => {
@@ -85,9 +85,9 @@ pub fn send_keyboard_event(
                     .as_ref()
                     .and_then(|focused_surface| {
                         let res = focused_surface.as_ref();
-                        res.client().clone()
+                        res.client()
                     });
-                space_manager.update_active(Some(surface.clone()));
+                space_manager.update_active(Some(surface));
                 set_data_device_focus(&seat.server.0, client);
                 *kbd_focus = true;
                 kbd.set_focus(
@@ -131,7 +131,7 @@ pub fn send_pointer_event(
     let time = start_time.elapsed().as_millis();
     if let Some(Some(ptr)) = seats
         .iter()
-        .position(|Seat { name, .. }| name == &seat_name)
+        .position(|Seat { name, .. }| name == seat_name)
         .map(|idx| &seats[idx])
         .map(|seat| seat.server.0.get_pointer())
     {
@@ -148,7 +148,7 @@ pub fn send_pointer_event(
                     set_focused_surface(
                         focused_surface,
                         space_manager.active_space(),
-                        &surface,
+                        surface,
                         surface_x,
                         surface_y,
                     );
@@ -181,7 +181,10 @@ pub fn send_pointer_event(
                 last_button.replace(button);
             }
             c_wl_pointer::Event::Axis { time, axis, value } => {
-                let mut af = axis_frame.frame.take().unwrap_or(AxisFrame::new(time));
+                let mut af = axis_frame
+                    .frame
+                    .take()
+                    .unwrap_or_else(|| AxisFrame::new(time));
                 if let Some(axis_source) = axis_frame.source.take() {
                     af = af.source(axis_source);
                 }
@@ -223,7 +226,10 @@ pub fn send_pointer_event(
                 }
             }
             c_wl_pointer::Event::AxisStop { time, axis } => {
-                let mut af = axis_frame.frame.take().unwrap_or(AxisFrame::new(time));
+                let mut af = axis_frame
+                    .frame
+                    .take()
+                    .unwrap_or_else(|| AxisFrame::new(time));
                 if let Some(axis) = wl_pointer::Axis::from_raw(axis.to_raw()) {
                     af = af.stop(axis);
                 }
@@ -236,7 +242,7 @@ pub fn send_pointer_event(
                 c_wl_pointer::Axis::VerticalScroll => {
                     axis_frame.v_discrete.replace(discrete);
                 }
-                _ => return,
+                _ => (),
             },
             c_wl_pointer::Event::Enter { surface, .. } => {
                 // if not popup, then must be a dock layer shell surface
@@ -362,7 +368,7 @@ pub(crate) fn set_server_device_selection(
     server_seat: &seat::Seat,
     selected_data_provider: &RefCell<Option<Attached<c_wl_seat::WlSeat>>>,
 ) -> Result<()> {
-    env_handle.with_data_device(&seat, |data_device| {
+    env_handle.with_data_device(seat, |data_device| {
         data_device.with_selection(|offer| {
             if let Some(offer) = offer {
                 offer.with_mime_types(|types| {
@@ -464,13 +470,10 @@ pub(crate) fn set_focused_surface(
                 ) {
                     Some(cur_surface)
                 } else {
-                    toplevel.toplevel().get_surface().map(|s| s.clone())
+                    toplevel.toplevel().get_surface().cloned()
                 }
             }
-            Some(ServerSurface::Popup(_, _toplevel, popup)) => match popup.get_surface() {
-                Some(s) => Some(s.clone()),
-                _ => None,
-            },
+            Some(ServerSurface::Popup(_, _toplevel, popup)) => popup.get_surface().cloned(),
             _ => None,
         }
     } else {

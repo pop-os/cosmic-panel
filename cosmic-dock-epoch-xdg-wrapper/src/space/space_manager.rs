@@ -13,7 +13,7 @@ pub struct SpaceManager {
 
 impl SpaceManager {
     pub fn push_space(&mut self, s: Space) {
-        if self.spaces.len() == 0 {
+        if self.spaces.is_empty() {
             self.active = Some(0);
         }
         self.spaces.push(s);
@@ -59,7 +59,9 @@ impl SpaceManager {
     }
 
     pub fn hidden(&self) -> bool {
-        self.spaces.iter().fold(true, |acc, s| acc && match s.visibility { Visibility::Hidden => true, _ => false})
+        self.spaces
+            .iter()
+            .all(|s| matches!(s.visibility, Visibility::Hidden))
     }
 
     pub fn handle_events(
@@ -71,6 +73,6 @@ impl SpaceManager {
         self.spaces
             .iter_mut()
             .map(|space| space.handle_events(time.elapsed().as_millis() as u32, children, focus))
-            .fold(time.clone(), |max_t, t| t.max(max_t))
+            .fold(time, |max_t, t| t.max(max_t))
     }
 }

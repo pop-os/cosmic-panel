@@ -2,10 +2,10 @@
 
 //! Config for cosmic-dock-epoch
 
+use slog::Logger;
 use std::fs::File;
 use std::ops::Range;
 use std::{collections::HashMap, time::Duration};
-use slog::Logger;
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -277,9 +277,7 @@ impl CosmicDockConfig {
             .map(|file| {
                 file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicDockConfig>>(file?))
             }) {
-            Ok(Some(Ok(c))) => {
-                c
-            }
+            Ok(Some(Ok(c))) => c,
             Err(e) => {
                 if let Some(log) = log {
                     slog::error!(log, "{}", e);

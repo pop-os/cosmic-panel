@@ -109,7 +109,7 @@ pub fn new_server(
                     if let (Some(seat), Some(env_handle)) =
                         (selected_data_provider.borrow().as_ref(), env_handle.get())
                     {
-                        let res = env_handle.with_data_device(&seat, |data_device| {
+                        let res = env_handle.with_data_device(seat, |data_device| {
                             data_device.with_selection(|offer| {
                                 if let Some(offer) = offer {
                                     offer.with_mime_types(|types| {
@@ -195,7 +195,7 @@ pub fn new_server(
                                 if let Some(BufferType::Shm) = buffer_type(buffer) {
                                     trace!(log, "attaching buffer to cursor surface.");
                                     let _ = cached_buffers.write_and_attach_buffer(
-                                        &buf.as_ref().unwrap(),
+                                        buf.as_ref().unwrap(),
                                         cursor_surface,
                                         shm,
                                     );
@@ -265,7 +265,7 @@ pub fn new_server(
                     let window = Window::new(Kind::Xdg(surface.clone()));
                     window.refresh();
                     let mut focused_surface = focused_surface.borrow_mut();
-                    *focused_surface = surface.get_surface().map(|s| s.clone());
+                    *focused_surface = surface.get_surface().cloned();
 
                     surface.send_configure();
                     let wl_surface = surface.get_surface();
@@ -303,7 +303,7 @@ pub fn new_server(
                         renderer.add_popup(
                             wl_surface,
                             xdg_surface,
-                            s_popup_surface.clone(),
+                            s_popup_surface,
                             parent,
                             positioner,
                             positioner_state,
@@ -316,7 +316,7 @@ pub fn new_server(
                         for s in seats {
                             if s.server.0.owns(&seat) {
                                 if let Err(e) = popup_manager.borrow_mut().grab_popup(
-                                    PopupKind::Xdg(surface.clone()),
+                                    PopupKind::Xdg(surface),
                                     &s.server.0,
                                     SERIAL_COUNTER.next_serial(),
                                 ) {

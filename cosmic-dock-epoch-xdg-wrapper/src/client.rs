@@ -134,7 +134,7 @@ pub fn new_client(
             logger.clone(),
             display_.clone(),
             output,
-            &info,
+            info,
             server_display,
             outputs,
             Rc::clone(&focused_surface),
@@ -182,7 +182,7 @@ pub fn new_client(
                         .as_ref()
                         .and_then(|focused_surface| {
                             let res = focused_surface.as_ref();
-                            res.client().clone()
+                            res.client()
                         });
                     set_data_device_focus(&seat.server.0, client);
 
@@ -194,7 +194,7 @@ pub fn new_client(
 
                     let mime_types = offer.with_mime_types(|mime_types| Vec::from(mime_types));
 
-                    offer.accept(mime_types.iter().next().map(|s| s.clone()));
+                    offer.accept(mime_types.get(0).cloned());
                     let seat_clone = seat.client.seat.clone();
                     let env_clone = env_handle.clone();
                     start_dnd(
@@ -388,10 +388,10 @@ pub fn new_client(
             space_manager,
             display,
             _output_listener: output_listener,
-            seats: seats,
+            seats,
             kbd_focus: false,
             axis_frame: Default::default(),
-            cursor_surface: cursor_surface,
+            cursor_surface,
             shm,
             xdg_wm_base,
             env_handle: env,
