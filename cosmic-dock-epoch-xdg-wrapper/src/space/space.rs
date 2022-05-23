@@ -11,7 +11,7 @@ use std::{
 use itertools::Itertools;
 use libc::c_int;
 
-use crate::shared_state::Focus;
+use crate::{shared_state::Focus, util::smootherstep};
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
 use cosmic_dock_epoch_config::config::{self, CosmicDockConfig};
@@ -338,7 +338,7 @@ impl Space {
                     Some(d) => d,
                     None => return,
                 };
-                let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
+                let progress_norm = smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
                 if let Focus::Current(_) = focus {
@@ -399,7 +399,7 @@ impl Space {
                     Some(d) => d,
                     None => return,
                 };
-                let progress_norm = progress.as_millis() as f32 / total_t.as_millis() as f32;
+                let progress_norm = smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
                 if let Focus::LastFocus(_) = focus {
