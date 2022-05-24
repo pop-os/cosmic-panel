@@ -49,7 +49,7 @@ use smithay::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
             xdg_shell::client::{
                 xdg_popup,
-                xdg_positioner::{Anchor, Gravity, XdgPositioner},
+                xdg_positioner::{self, Anchor, Gravity, XdgPositioner},
                 xdg_surface::{self, XdgSurface},
             },
         },
@@ -58,7 +58,7 @@ use smithay::{
         },
     },
     utils::{Logical, Point, Rectangle},
-    wayland::shell::xdg::{PopupSurface, PositionerState},
+    wayland::{shell::xdg::{PopupSurface, PositionerState}, SERIAL_COUNTER},
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -313,7 +313,12 @@ impl Space {
             Visibility::Visible => {
                 if let Focus::LastFocus(t) = focus {
                     // start transition to hidden
-                    if Instant::now().duration_since(*t) > self.config.get_hide_wait().unwrap() {
+                    let duration_since_last_focus = match Instant::now().checked_duration_since(*t)
+                    {
+                        Some(d) => d,
+                        None => return,
+                    };
+                    if duration_since_last_focus > self.config.get_hide_wait().unwrap() {
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
@@ -338,7 +343,8 @@ impl Space {
                     Some(d) => d,
                     None => return,
                 };
-                let progress_norm = smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
+                let progress_norm =
+                    smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
                 if let Focus::Current(_) = focus {
@@ -399,7 +405,8 @@ impl Space {
                     Some(d) => d,
                     None => return,
                 };
-                let progress_norm = smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
+                let progress_norm =
+                    smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
                 if let Focus::LastFocus(_) = focus {
@@ -742,6 +749,21 @@ impl Space {
         );
         positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
         positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
+        // let anchor = match self.config.anchor {
+        //     config::Anchor::Left => xdg_positioner::Anchor::Right,
+        //     config::Anchor::Right => xdg_positioner::Anchor::Left,
+        //     config::Anchor::Top => xdg_positioner::Anchor::Bottom,
+        //     config::Anchor::Bottom => xdg_positioner::Anchor::Top,
+        // };
+
+        // let gravity = match self.config.anchor {
+        //     config::Anchor::Left => xdg_positioner::Gravity::Right,
+        //     config::Anchor::Right => xdg_positioner::Gravity::Left,
+        //     config::Anchor::Top => xdg_positioner::Gravity::Bottom,
+        //     config::Anchor::Bottom => xdg_positioner::Gravity::Top,
+        // };
+        // positioner.set_anchor(anchor);
+        // positioner.set_gravity(gravity);
         positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
         positioner.set_offset(offset.x, offset.y);
         if positioner.as_ref().version() >= 3 {
@@ -794,6 +816,9 @@ impl Space {
                 }
                 xdg_popup::Event::PopupDone => {
                     next_render_event_handle.set(Some(PopupRenderEvent::Closed));
+                }
+                xdg_popup::Event::Repositioned { token } => {
+                    next_render_event_handle.set(Some(PopupRenderEvent::Repositioned(token)));
                 }
                 _ => {}
             };
@@ -972,6 +997,65 @@ impl Space {
             }
         }
         None
+    }
+
+    pub fn reposition_popup(
+        &mut self,
+        popup: PopupSurface,
+        positioner: Main<XdgPositioner>,
+        PositionerState {
+            rect_size,
+            anchor_rect,
+            anchor_edges,
+            gravity,
+            constraint_adjustment,
+            offset,
+            reactive,
+            parent_size,
+            ..
+        }: PositionerState,        token: u32,
+    ) -> anyhow::Result<()> {
+        if let Some((top_level_popup, top_level_rectangle)) = self
+            .client_top_levels_mut()
+            .find_map(|s| s.popups.iter_mut().find_map(|p| if p.s_surface == popup
+            {
+                Some((p, s.rectangle))
+            } else {
+                None
+            }))
+        {
+            if positioner.as_ref().version() >= 3 {
+
+                positioner.set_size(rect_size.w, rect_size.h);
+                positioner.set_anchor_rect(
+                    anchor_rect.loc.x + top_level_rectangle.loc.x,
+                    anchor_rect.loc.y + top_level_rectangle.loc.y,
+                    anchor_rect.size.w,
+                    anchor_rect.size.h,
+                );
+        
+                positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
+                positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
+
+                
+                positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
+                positioner.set_offset(offset.x, offset.y);
+                if reactive {
+                    positioner.set_reactive();
+                }
+                if let Some(parent_size) = parent_size {
+                    positioner.set_parent_size(parent_size.w, parent_size.h);
+                }
+                top_level_popup.c_popup.reposition(&positioner, u32::from(SERIAL_COUNTER.next_serial()));
+                Ok(())
+            } else {
+                top_level_popup.s_surface.send_repositioned(token);
+                top_level_popup.s_surface.send_configure()?;
+                anyhow::bail!("popup doesn't support repositioning");
+            }
+        } else {
+            anyhow::bail!("failed to find repositioned popup")
+        }
     }
 
     pub fn find_server_window(&self, active_surface: &s_WlSurface) -> Option<ServerSurface> {

@@ -297,10 +297,10 @@ pub fn new_server(
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
 
-                    if let (Some(parent), Some(renderer)) =
+                    if let (Some(parent), Some(space)) =
                         (s_popup_surface.get_parent_surface(), space.as_mut())
                     {
-                        renderer.add_popup(
+                        space.add_popup(
                             wl_surface,
                             xdg_surface,
                             s_popup_surface,
@@ -325,6 +325,17 @@ pub fn new_server(
                                 break;
                             }
                         }
+                    }
+                }
+                XdgRequest::RePosition {
+                    surface,
+                    positioner,
+                    token,
+                } => {
+                    let new_positioner = xdg_wm_base.create_positioner();
+
+                    if let Some(space) = space {
+                        let _ = space.reposition_popup(surface, new_positioner, positioner, token);
                     }
                 }
                 e => {

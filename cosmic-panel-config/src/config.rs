@@ -199,7 +199,7 @@ pub enum CosmicPanelOutput {
     Auto,
     /// draw the application on the output specified by name
     /// this name refers to the unique name which is given by the compositor
-    Output(String)
+    Output(String),
 }
 
 impl Default for CosmicPanelOutput {
@@ -276,10 +276,7 @@ impl CosmicPanelConfig {
     pub fn load(name: &str, log: Option<Logger>) -> anyhow::Result<Self> {
         Self::get_configs(log)
             .remove(name)
-            .ok_or_else(|| anyhow::anyhow!(format!(
-                "Config profile for {} failed to load",
-                name
-            )))
+            .ok_or_else(|| anyhow::anyhow!(format!("Config profile for {} failed to load", name)))
     }
 
     /// write config to config file
@@ -298,7 +295,9 @@ impl CosmicPanelConfig {
             .map(|dirs| dirs.find_config_file(CONFIG_PATH))
             .map(|c| c.map(File::open))
             .map(|file| {
-                file.map(|file| ron::de::from_reader::<_, HashMap<String, CosmicPanelConfig>>(file?))
+                file.map(|file| {
+                    ron::de::from_reader::<_, HashMap<String, CosmicPanelConfig>>(file?)
+                })
             }) {
             Ok(Some(Ok(c))) => c,
             Err(e) => {

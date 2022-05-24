@@ -22,6 +22,7 @@ pub enum PopupRenderEvent {
         width: i32,
         height: i32,
     },
+    Repositioned(u32),
     Closed,
 }
 

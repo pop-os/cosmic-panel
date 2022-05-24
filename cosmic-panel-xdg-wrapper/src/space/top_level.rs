@@ -44,7 +44,6 @@ impl TopLevelSurface {
                             p.egl_surface.resize(width, height, 0, 0);
                             p.bbox.size = (width, height).into();
                             p.dirty = true;
-
                             true
                         }
                         Some(PopupRenderEvent::WaitConfigure) => {
@@ -52,6 +51,7 @@ impl TopLevelSurface {
                                 .replace(Some(PopupRenderEvent::WaitConfigure));
                             true
                         }
+                        Some(PopupRenderEvent::Repositioned(_)) => true,
                         None => {
                             p.should_render = p.dirty;
                             true
