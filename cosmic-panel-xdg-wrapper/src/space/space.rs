@@ -749,21 +749,7 @@ impl Space {
         );
         positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
         positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
-        // let anchor = match self.config.anchor {
-        //     config::Anchor::Left => xdg_positioner::Anchor::Right,
-        //     config::Anchor::Right => xdg_positioner::Anchor::Left,
-        //     config::Anchor::Top => xdg_positioner::Anchor::Bottom,
-        //     config::Anchor::Bottom => xdg_positioner::Anchor::Top,
-        // };
 
-        // let gravity = match self.config.anchor {
-        //     config::Anchor::Left => xdg_positioner::Gravity::Right,
-        //     config::Anchor::Right => xdg_positioner::Gravity::Left,
-        //     config::Anchor::Top => xdg_positioner::Gravity::Bottom,
-        //     config::Anchor::Bottom => xdg_positioner::Gravity::Top,
-        // };
-        // positioner.set_anchor(anchor);
-        // positioner.set_gravity(gravity);
         positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
         positioner.set_offset(offset.x, offset.y);
         if positioner.as_ref().version() >= 3 {
