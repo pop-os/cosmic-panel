@@ -357,6 +357,20 @@ impl CosmicPanelConfig {
         }
     }
 
+    /// get applet icon dimensions
+    pub fn get_applet_icon_size(
+        &self,
+    ) -> u32 {
+        match &self.size {
+            PanelSize::XS => 18,
+            PanelSize::S => 24,
+            PanelSize::M => 36,
+            PanelSize::L => 48,
+            PanelSize::XL => 64,
+            PanelSize::Custom(c) => c.end - self.padding,
+        }
+    }
+
     /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
     pub fn get_hide_wait(&self) -> Option<Duration> {
         self.autohide
