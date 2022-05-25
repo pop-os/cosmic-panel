@@ -3,6 +3,7 @@
 //! Config for cosmic-panel
 
 use slog::Logger;
+use std::env;
 use std::fs::File;
 use std::ops::Range;
 use std::{collections::HashMap, time::Duration};
@@ -392,5 +393,10 @@ impl CosmicPanelConfig {
         self.autohide
             .as_ref()
             .map(|AutoHide { handle_size, .. }| *handle_size)
+    }
+
+    /// Utility for loading the Cosmic Panel Config from the ENV variable COSMIC_DOCK_CONFIG
+    pub fn load_from_env() -> anyhow::Result<Self> {
+        env::var("COSMIC_DOCK_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
     }
 }
