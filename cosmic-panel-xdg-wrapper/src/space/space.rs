@@ -351,7 +351,7 @@ impl Space {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: now,
-                        progress: total_t - progress,
+                        progress: total_t.checked_sub(progress).unwrap_or_default(),
                         prev_margin,
                     }
                 } else {
@@ -364,7 +364,7 @@ impl Space {
                     let cur_pix = (progress_norm * target as f32) as i32;
 
                     if progress > total_t {
-                        // XXX needs thorough testing, but docs say that the margin value is only applied to anchored edge
+                        // XXX needs testing, but docs say that the margin value is only applied to anchored edge
                         if self.config.exclusive_zone {
                             self.layer_surface.set_exclusive_zone(handle);
                         }
@@ -415,7 +415,7 @@ impl Space {
                     self.close_popups();
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,
-                        progress: total_t - progress,
+                        progress: total_t.checked_sub(progress).unwrap_or_default(),
                         prev_margin,
                     }
                 } else {
