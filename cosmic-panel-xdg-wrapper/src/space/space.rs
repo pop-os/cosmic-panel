@@ -381,6 +381,7 @@ impl Space {
                                 .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
                             self.layer_shell_wl_surface.commit();
                         }
+                        self.close_popups();
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: now,
                             progress,
@@ -411,6 +412,7 @@ impl Space {
 
                 if let Focus::LastFocus(_) = focus {
                     // start transition to visible
+                    self.close_popups();
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,
                         progress: total_t - progress,
