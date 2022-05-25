@@ -35,8 +35,7 @@ pub struct Popup {
     pub egl_surface: Rc<EGLSurface>,
     pub next_render_event: Rc<Cell<Option<PopupRenderEvent>>>,
     pub dirty: bool,
-    pub(crate) should_render: bool,
-    pub bbox: Rectangle<i32, Logical>,
+    pub should_render: bool,
 }
 
 impl Drop for Popup {

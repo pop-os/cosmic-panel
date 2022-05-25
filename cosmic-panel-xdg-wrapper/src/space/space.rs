@@ -836,7 +836,6 @@ impl Space {
             egl_surface,
             dirty: false,
             next_render_event,
-            bbox: Rectangle::from_loc_and_size((0, 0), (0, 0)),
             should_render: false,
         });
     }
@@ -922,9 +921,6 @@ impl Space {
         }) {
             for popup in &mut s.popups {
                 if popup.s_surface.get_surface() == other_popup.get_surface() {
-                    if popup.bbox != dim {
-                        popup.bbox = dim;
-                    }
                     popup.dirty = true;
                     break;
                 }
@@ -1330,10 +1326,10 @@ impl Space {
                     Some(s) => s,
                     _ => continue,
                 };
-                let (width, height) = p.bbox.size.into();
-                // dbg!(p.bbox.size);
-                let loc = p.bbox.loc;
-                // dbg!(loc);
+                let pgeo = PopupKind::Xdg(p.s_surface.clone()).geometry();
+
+                let (width, height) = pgeo.size.into();
+                let loc = pgeo.loc;
 
                 let logger = top_level.log.clone();
                 let _ = self.renderer.unbind();
@@ -1376,7 +1372,7 @@ impl Space {
                     .expect("Failed to render to layer shell surface.");
 
                 let mut damage = [smithay::utils::Rectangle {
-                    loc: (0, 0).into(),
+                    loc: loc.to_physical(1),
                     size: (width, height).into(),
                 }];
 

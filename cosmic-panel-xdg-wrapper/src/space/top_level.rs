@@ -42,7 +42,6 @@ impl TopLevelSurface {
                         Some(PopupRenderEvent::Closed) => false,
                         Some(PopupRenderEvent::Configure { width, height, .. }) => {
                             p.egl_surface.resize(width, height, 0, 0);
-                            p.bbox.size = (width, height).into();
                             p.dirty = true;
                             true
                         }
