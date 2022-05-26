@@ -1548,6 +1548,8 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    println!("left");
+                    dbg!(top_level.rectangle.loc);
                 }
             };
         }
@@ -1573,14 +1575,17 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    println!("center");
+                    dbg!(top_level.rectangle.loc);
+
                 }
             };
         }
 
         // twice padding is subtracted
-        let mut prev: u32 = list_length - padding - right_sum as u32;
+        let mut prev: u32 = list_length - padding - right_sum as u32 - spacing * self.client_top_levels_right.len() as u32;
 
-        for (i, top_level) in &mut self.client_top_levels_right.iter_mut().enumerate() {
+        for (i, top_level) in &mut self.client_top_levels_right.iter_mut().filter(|t| !t.hidden).enumerate() {
             let size: Point<_, Logical> =
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
@@ -1594,6 +1599,9 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    println!("right");
+                    dbg!(top_level.rectangle.loc);
+
                 }
             };
         }
