@@ -1,0 +1,46 @@
+{
+    "testing-panel": (
+        anchor: Top,
+        anchor_gap: false,
+        layer: Top,
+        keyboard_interactivity: None,
+        size: XS,
+        output: Auto,
+        background: Color((0.2, 0.2, 0.2, 0.8)),
+        plugins_left: Some([("com.system76.CosmicPanelAppButton", 1000)]),
+        plugins_center: None,
+        plugins_right: Some([ ("com.system76.Time.Devel", 1000),  ("com.system76.CosmicAppletGraphics", 1000), ("com.system76.CosmicAppletNetwork", 1000), ("com.system76.CosmicAppletPower", 1000)]),
+        expand_to_edges: false,
+        padding: 4,
+        spacing: 4,
+        exclusive_zone: true,
+        autohide: Some((
+            wait_time: 500,
+            transition_time: 200,
+            handle_size: 2,
+        )),
+    ),
+    "testing-dock": (
+        anchor: Bottom,
+        anchor_gap: false,
+        layer: Top,
+        keyboard_interactivity: None,
+        size: L,
+        output: Auto,
+        background: Color((0.2, 0.2, 0.2, 0.8)),
+        plugins_center: Some([("com.system76.CosmicDockAppList", 1000)]),
+        plugins_left: None,
+        plugins_right: None,
+        expand_to_edges: false,
+        padding: 4,
+        spacing: 4,
+        exclusive_zone: false,
+        autohide: Some((
+            wait_time: 500,
+            transition_time: 200,
+            handle_size: 2,
+        )),
+    ),
+
+
+}
