@@ -1548,8 +1548,6 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    println!("left");
-                    dbg!(top_level.rectangle.loc);
                 }
             };
         }
@@ -1575,9 +1573,6 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    println!("center");
-                    dbg!(top_level.rectangle.loc);
-
                 }
             };
         }
@@ -1599,9 +1594,6 @@ impl Space {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
-                    println!("right");
-                    dbg!(top_level.rectangle.loc);
-
                 }
             };
         }
