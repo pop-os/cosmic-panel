@@ -13,7 +13,7 @@ ron = "0.7.0"
 serde = { version = "1.0.136", features = ["derive"] }
 xdg = "2.4.0"
 notify = "5.0.0-pre.13"
-sctk = { package = "smithay-client-toolkit", git = "https://github.com/smithay/client-toolkit.git", default-features = false, features = ["calloop"] }
+sctk = { package = "smithay-client-toolkit", git = "https://github.com/wash2/client-toolkit.git", default-features = false, features = ["calloop"] }
 gtk4 = { version = "0.4.5", features = ["v4_4"], optional = true }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
 

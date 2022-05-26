@@ -99,16 +99,6 @@ dependencies = [
 
 [[package]]
 name = "calloop"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf2eec61efe56aa1e813f5126959296933cf0700030e4314786c48779a66ab82"
-dependencies = [
- "log",
- "nix 0.22.3",
-]
-
-[[package]]
-name = "calloop"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84221146483fe8a40de9af92111abd5a71ab8cf0e3c673df2b209f891a82e02e"
@@ -175,7 +165,7 @@ dependencies = [
  "ron",
  "serde",
  "slog",
- "smithay-client-toolkit 0.15.4 (git+https://github.com/smithay/client-toolkit.git)",
+ "smithay-client-toolkit",
  "xdg",
 ]
 
@@ -184,7 +174,7 @@ name = "cosmic-panel-xdg-wrapper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "calloop 0.10.0",
+ "calloop",
  "cosmic-panel-config",
  "freedesktop-desktop-entry",
  "itertools",
@@ -196,7 +186,7 @@ dependencies = [
  "shlex",
  "slog",
  "smithay",
- "smithay-client-toolkit 0.15.4 (git+https://github.com/wash2/client-toolkit.git)",
+ "smithay-client-toolkit",
  "tempfile",
  "wayland-egl",
  "xdg",
@@ -1443,7 +1433,7 @@ source = "git+https://github.com/smithay/smithay#62f0cb675a8313cc249d3759548db58
 dependencies = [
  "appendlist",
  "bitflags",
- "calloop 0.10.0",
+ "calloop",
  "cgmath",
  "downcast-rs",
  "drm",
@@ -1472,28 +1462,10 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.15.4"
-source = "git+https://github.com/smithay/client-toolkit.git#e9eeb05e997d80259d085a94acd88d91704050b6"
-dependencies = [
- "bitflags",
- "calloop 0.9.3",
- "dlib",
- "lazy_static",
- "log",
- "memmap2",
- "nix 0.22.3",
- "pkg-config",
- "wayland-client",
- "wayland-cursor",
- "wayland-protocols",
-]
-
-[[package]]
-name = "smithay-client-toolkit"
-version = "0.15.4"
 source = "git+https://github.com/wash2/client-toolkit.git#ebcf9b3ed6454b050621e021f4bf4136fc810965"
 dependencies = [
  "bitflags",
- "calloop 0.10.0",
+ "calloop",
  "dlib",
  "lazy_static",
  "log",
