@@ -557,6 +557,12 @@ impl Space {
         self.last_dirty
     }
 
+    pub fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
+        if *self.layer_shell_wl_surface == *c_focused_surface {
+            self.close_popups()
+        }
+    }
+
     pub fn apply_display(&mut self, s_display: &s_Display) {
         if !self.needs_update {
             return;

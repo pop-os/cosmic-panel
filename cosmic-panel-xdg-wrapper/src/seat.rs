@@ -178,6 +178,9 @@ pub fn send_pointer_event(
                         time as u32,
                     );
                 }
+                if let (Some(space), Focus::Current(c_focused_surface)) = (space_manager.active_space(), c_focused_surface) {
+                    space.handle_button(c_focused_surface);
+                }
                 last_button.replace(button);
             }
             c_wl_pointer::Event::Axis { time, axis, value } => {
