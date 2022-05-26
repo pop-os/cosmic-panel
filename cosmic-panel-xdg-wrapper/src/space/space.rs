@@ -1578,7 +1578,7 @@ impl Space {
         }
 
         // twice padding is subtracted
-        let mut prev: u32 = list_length - padding - right_sum as u32 - spacing * self.client_top_levels_right.len() as u32;
+        let mut prev: u32 = list_length - padding - right_sum as u32 - spacing * (self.client_top_levels_right.len().max(1) as u32 - 1);
 
         for (i, top_level) in &mut self.client_top_levels_right.iter_mut().filter(|t| !t.hidden).enumerate() {
             let size: Point<_, Logical> =
