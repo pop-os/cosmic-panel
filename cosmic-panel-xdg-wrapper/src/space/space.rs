@@ -1460,21 +1460,21 @@ impl Space {
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Left));
-        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>();
+        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>() + spacing as i32 * (self.client_top_levels_left.len().max(1) as i32 - 1);
 
         let center = self
             .client_top_levels_center
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Center));
-        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>();
+        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>() + spacing as i32 * (self.client_top_levels_center.len().max(1) as i32 - 1);
 
         let right = self
             .client_top_levels_right
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Right));
-        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>();
+        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>()  + spacing as i32 * (self.client_top_levels_right.len().max(1) as i32 - 1);
 
         let mut all_sorted_priority = left
             .chain(center)
@@ -1488,19 +1488,24 @@ impl Space {
             match hidden_a {
                 Alignment::Left => {
                     self.client_top_levels_left[hidden_i].set_hidden(true);
-                    left_sum -= hidden_l;
+                    left_sum -= hidden_l + spacing as i32;
                 }
                 Alignment::Center => {
                     self.client_top_levels_center[hidden_i].set_hidden(true);
-                    center_sum -= hidden_l;
+                    center_sum -=  hidden_l + spacing as i32;
                 }
                 Alignment::Right => {
                     self.client_top_levels_right[hidden_i].set_hidden(true);
-                    right_sum -= hidden_l;
+                    right_sum -=  hidden_l + spacing as i32;
                 }
             };
             total_sum -= hidden_l;
         }
+
+        // XXX making sure the sum is > 0 after possibly over-subtracting spacing 
+        left_sum = left_sum.max(0);
+        center_sum = center_sum.max(0);
+        right_sum = right_sum.max(0);
 
         fn center_in_bar(thickness: u32, dim: u32) -> i32 {
             (thickness as i32 - dim as i32) / 2
@@ -1509,21 +1514,21 @@ impl Space {
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32)
-        } else if left_sum < requested_eq_length
-            && center_sum < requested_eq_length
-            && right_sum < requested_eq_length
+        } else if left_sum <= requested_eq_length
+            && center_sum <= requested_eq_length
+            && right_sum <= requested_eq_length
         {
             let center_padding = (requested_eq_length - center_sum) / 2;
             (
                 right_sum,
-                requested_eq_length + padding as i32 + spacing as i32 + center_padding,
+                requested_eq_length + padding as i32 + center_padding,
             )
         } else {
             let center_padding = (list_length as i32 - total_sum) / 2;
 
             (
                 right_sum,
-                left_sum + padding as i32 + spacing as i32 + center_padding,
+                left_sum + padding as i32 + center_padding,
             )
         };
 
@@ -1578,7 +1583,7 @@ impl Space {
         }
 
         // twice padding is subtracted
-        let mut prev: u32 = list_length - padding - right_sum as u32 - spacing * (self.client_top_levels_right.len().max(1) as u32 - 1);
+        let mut prev: u32 = list_length - padding - right_sum as u32;
 
         for (i, top_level) in &mut self.client_top_levels_right.iter_mut().filter(|t| !t.hidden).enumerate() {
             let size: Point<_, Logical> =
