@@ -142,7 +142,8 @@ pub fn panel_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
 
             let space_manager = &mut shared_data.desktop_client_state.space_manager;
 
-            space_manager.apply_display(server_display);
+            // FIXME
+            // space_manager.apply_display(server_display);
             let _ = space_manager.handle_events(
                 shared_data.start_time,
                 &mut children,
