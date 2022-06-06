@@ -2,7 +2,7 @@
 
 use crate::shared_state::*;
 use anyhow::Result;
-use cosmic_panel_config::config::CosmicPanelConfig;
+use cosmic_panel_config::config::XdgWrapperConfig;
 use once_cell::sync::OnceCell;
 use sctk::reexports::{
     calloop::{self, generic::Generic, Interest, Mode},
@@ -52,9 +52,9 @@ fn plugin_as_client_sock(
     )
 }
 
-pub fn new_server(
-    loop_handle: calloop::LoopHandle<'static, (GlobalState, wayland_server::Display)>,
-    config: CosmicPanelConfig,
+pub fn new_server<C: XdgWrapperConfig>(
+    loop_handle: calloop::LoopHandle<'static, (GlobalState<C>, wayland_server::Display)>,
+    config: C,
     log: Logger,
 ) -> Result<(
     EmbeddedServerState,
@@ -69,19 +69,19 @@ pub fn new_server(
 
     // mapping from wl type using wayland_server::resource to client
     let (clients_left, sockets_left): (Vec<_>, Vec<_>) = config
-        .plugins_left
+        .plugins_left()
         .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
         .unzip();
     let (clients_center, sockets_center): (Vec<_>, Vec<_>) = config
-        .plugins_center
+        .plugins_center()
         .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
         .unzip();
     let (clients_right, sockets_right): (Vec<_>, Vec<_>) = config
-        .plugins_right
+        .plugins_right()
         .unwrap_or_default()
         .iter()
         .map(|p| plugin_as_client_sock(p, &mut display))
@@ -150,7 +150,7 @@ pub fn new_server(
     let (_compositor, _subcompositor) = compositor_init(
         &mut display,
         move |surface, mut dispatch_data| {
-            let state = dispatch_data.get::<GlobalState>().unwrap();
+            let state = dispatch_data.get::<GlobalState<C>>().unwrap();
             let DesktopClientState {
                 cursor_surface,
                 space_manager,
@@ -241,7 +241,7 @@ pub fn new_server(
     let (shell_state, _) = xdg_shell_init(
         &mut display,
         move |request: XdgRequest, mut dispatch_data| {
-            let state = dispatch_data.get::<GlobalState>().unwrap();
+            let state = dispatch_data.get::<GlobalState<C>>().unwrap();
             let DesktopClientState {
                 seats,
                 kbd_focus,

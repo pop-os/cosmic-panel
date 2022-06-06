@@ -1,25 +1,26 @@
 use crate::shared_state::Focus;
 
 use super::{Space, Visibility};
+use cosmic_panel_config::config::XdgWrapperConfig;
 use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Display;
 use std::{process::Child, time::Instant};
 
 #[derive(Default, Debug)]
-pub struct SpaceManager {
-    pub(crate) spaces: Vec<Space>,
+pub struct SpaceManager<C: XdgWrapperConfig> {
+    pub(crate) spaces: Vec<Space<C>>,
     active: Option<usize>,
 }
 
-impl SpaceManager {
-    pub fn push_space(&mut self, s: Space) {
+impl<C: XdgWrapperConfig> SpaceManager<C> {
+    pub fn push_space(&mut self, s: Space<C>) {
         if self.spaces.is_empty() {
             self.active = Some(0);
         }
         self.spaces.push(s);
     }
 
-    pub fn active_space(&mut self) -> Option<&mut Space> {
+    pub fn active_space(&mut self) -> Option<&mut Space<C>> {
         self.active
             .and_then(|active_i| self.spaces.get_mut(active_i))
     }

@@ -6,6 +6,9 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::space::SpaceManager;
+use crate::{client::Env, CachedBuffers};
+use cosmic_panel_config::config::XdgWrapperConfig;
 use sctk::{
     environment::Environment,
     output::OutputStatusListener,
@@ -21,7 +24,6 @@ use sctk::{
         protocols::xdg_shell::client::xdg_wm_base::XdgWmBase,
     },
 };
-
 use slog::Logger;
 use smithay::{
     desktop::{PopupManager, Window},
@@ -35,9 +37,6 @@ use smithay::{
     },
     wayland::{output::Output, seat, shell::xdg::ShellState},
 };
-
-use crate::space::SpaceManager;
-use crate::{client::Env, CachedBuffers};
 
 #[derive(Debug)]
 pub struct Seat {
@@ -68,8 +67,8 @@ pub struct AxisFrameData {
     pub(crate) v_discrete: Option<i32>,
 }
 
-pub struct GlobalState {
-    pub(crate) desktop_client_state: DesktopClientState,
+pub struct GlobalState<C: XdgWrapperConfig + 'static> {
+    pub(crate) desktop_client_state: DesktopClientState<C>,
     pub(crate) embedded_server_state: EmbeddedServerState,
     pub(crate) loop_signal: calloop::LoopSignal,
     pub(crate) outputs: Vec<OutputGroup>,
@@ -100,11 +99,11 @@ pub enum Focus {
     LastFocus(Instant),
 }
 
-pub struct DesktopClientState {
+pub struct DesktopClientState<C: XdgWrapperConfig> {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
     pub(crate) _output_listener: OutputStatusListener,
-    pub(crate) space_manager: SpaceManager,
+    pub(crate) space_manager: SpaceManager<C>,
     pub(crate) cursor_surface: c_wl_surface::WlSurface,
     pub(crate) axis_frame: AxisFrameData,
     pub(crate) kbd_focus: bool,

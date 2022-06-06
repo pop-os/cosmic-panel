@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use cosmic_panel_xdg_wrapper::panel_xdg_wrapper;
+use cosmic_panel_xdg_wrapper::xdg_wrapper;
 use slog::{o, Drain};
 
 fn main() -> Result<()> {
@@ -15,18 +15,22 @@ fn main() -> Result<()> {
 
     let arg = std::env::args().nth(1);
     let usage = "USAGE: cosmic-panel <profile name>";
-    let profile = match arg.as_ref().map(|s| &s[..]) {
+    let (profile, config) = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
             println!("{}", usage);
             std::process::exit(1);
         }
-        Some(profile) => profile,
+        Some(profile) => {
+            let config =
+                cosmic_panel_config::config::CosmicPanelConfig::load(profile, Some(log.clone()))?;
+            (profile, config)
+        }
         None => {
             println!("{}", usage);
             std::process::exit(1);
         }
     };
 
-    panel_xdg_wrapper(log, profile)?;
+    xdg_wrapper(log, config, Some(profile))?;
     Ok(())
 }

@@ -3,17 +3,19 @@
 use anyhow::Result;
 use sctk::{
     environment::Environment,
-    reexports::{
-        client::protocol::wl_keyboard,
-        client::protocol::{
-            wl_pointer as c_wl_pointer, wl_seat as c_wl_seat, wl_surface as c_wl_surface,
+    reexports::client::{
+        self,
+        protocol::{
+            wl_keyboard, wl_pointer as c_wl_pointer, wl_seat as c_wl_seat,
+            wl_surface as c_wl_surface,
         },
-        client::Attached,
+        Attached,
     },
     seat::SeatData,
 };
 use slog::{error, trace, Logger};
 use smithay::{
+    backend::input::KeyState,
     desktop::{utils::bbox_from_surface_tree, PopupKind, WindowSurfaceType},
     reexports::wayland_server::{
         protocol::{wl_pointer, wl_surface::WlSurface},
@@ -21,7 +23,7 @@ use smithay::{
     },
     wayland::{
         data_device::{set_data_device_focus, set_data_device_selection},
-        seat::{self, AxisFrame, PointerHandle},
+        seat::{self, AxisFrame, FilterResult, PointerHandle},
         SERIAL_COUNTER,
     },
 };
@@ -32,13 +34,14 @@ use crate::{
     shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, Focus, GlobalState, Seat},
     space::{ServerSurface, Space},
 };
+use cosmic_panel_config::config::XdgWrapperConfig;
 
-pub fn send_keyboard_event(
+pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
     event: wl_keyboard::Event,
     seat_name: &str,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, _server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
+    let (state, _server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
     let DesktopClientState {
         env_handle,
         seats,
@@ -64,9 +67,33 @@ pub fn send_keyboard_event(
                 return;
             }
         };
+
         match event {
-            wl_keyboard::Event::Key { serial, .. } => {
+            wl_keyboard::Event::Key {
+                serial,
+                time,
+                key,
+                state,
+            } => {
                 last_input_serial.replace(serial);
+                let state = match state {
+                    client::protocol::wl_keyboard::KeyState::Pressed => KeyState::Pressed,
+                    client::protocol::wl_keyboard::KeyState::Released => KeyState::Released,
+                    _ => return,
+                };
+                match kbd.input::<(), _>(
+                    key,
+                    state,
+                    SERIAL_COUNTER.next_serial(),
+                    time,
+                    move |_modifiers, _keysym| {
+                        // TODO load shortcuts and intercept them
+                        FilterResult::Forward // TODO intercept some key presses maybe
+                    },
+                ) {
+                    Some(_) => {}
+                    None => {}
+                }
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 kbd.change_repeat_info(rate, delay);
@@ -108,12 +135,12 @@ pub fn send_keyboard_event(
     }
 }
 
-pub fn send_pointer_event(
+pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
     event: c_wl_pointer::Event,
     seat_name: &str,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, _server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
+    let (state, _server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
     let DesktopClientState {
         seats,
         axis_frame,
@@ -170,6 +197,13 @@ pub fn send_pointer_event(
                 ..
             } => {
                 last_input_serial.replace(serial);
+                last_button.replace(button);
+
+                if let (Some(space), Focus::Current(c_focused_surface)) =
+                (space_manager.active_space(), c_focused_surface)
+                {
+                    space.handle_button(c_focused_surface);
+                }
                 if let Some(button_state) = wl_pointer::ButtonState::from_raw(state.to_raw()) {
                     ptr.button(
                         button,
@@ -178,10 +212,6 @@ pub fn send_pointer_event(
                         time as u32,
                     );
                 }
-                if let (Some(space), Focus::Current(c_focused_surface)) = (space_manager.active_space(), c_focused_surface) {
-                    space.handle_button(c_focused_surface);
-                }
-                last_button.replace(button);
             }
             c_wl_pointer::Event::Axis { time, axis, value } => {
                 let mut af = axis_frame
@@ -274,13 +304,13 @@ pub fn send_pointer_event(
     }
 }
 
-pub fn seat_handle_callback(
+pub fn seat_handle_callback<C: XdgWrapperConfig + 'static>(
     log: Logger,
     seat: Attached<c_wl_seat::WlSeat>,
     seat_data: &SeatData,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, server_display) = dispatch_data.get::<(GlobalState, Display)>().unwrap();
+    let (state, server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
     let DesktopClientState {
         seats, env_handle, ..
     } = &mut state.desktop_client_state;
@@ -326,7 +356,7 @@ pub fn seat_handle_callback(
             // we should initalize a keyboard
             let kbd = seat.get_keyboard();
             kbd.quick_assign(move |_, event, dispatch_data| {
-                send_keyboard_event(event, &seat_name, dispatch_data)
+                send_keyboard_event::<C>(event, &seat_name, dispatch_data)
             });
             *opt_kbd = Some(kbd.detach());
             // TODO error handling
@@ -341,7 +371,7 @@ pub fn seat_handle_callback(
             let seat_name = seat_data.name.clone();
             let pointer = seat.get_pointer();
             pointer.quick_assign(move |_, event, dispatch_data| {
-                send_pointer_event(event, &seat_name, dispatch_data)
+                send_pointer_event::<C>(event, &seat_name, dispatch_data)
             });
             server_seat.add_pointer(move |_new_status| {});
             *opt_ptr = Some(pointer.detach());
@@ -385,8 +415,8 @@ pub(crate) fn set_server_device_selection(
 }
 
 // TODO revisit motion over popup
-pub(crate) fn handle_motion(
-    space: Option<&mut Space>,
+pub(crate) fn handle_motion<C: XdgWrapperConfig>(
+    space: Option<&mut Space<C>>,
     focused_surface: Option<WlSurface>,
     surface_x: f64,
     surface_y: f64,
@@ -456,9 +486,9 @@ pub(crate) fn handle_motion(
     };
 }
 
-pub(crate) fn set_focused_surface(
+pub(crate) fn set_focused_surface<C: XdgWrapperConfig>(
     focused_surface: &Rc<RefCell<Option<WlSurface>>>,
-    space: Option<&mut Space>,
+    space: Option<&mut Space<C>>,
     surface: &c_wl_surface::WlSurface,
     x: f64,
     y: f64,

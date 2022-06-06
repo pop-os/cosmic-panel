@@ -6,9 +6,8 @@ use crate::{
     client::Env,
     shared_state::OutputGroup,
     space::{Space, SpaceManager},
-    CosmicPanelConfig,
 };
-use cosmic_panel_config::config::CosmicPanelOutput;
+use cosmic_panel_config::config::{CosmicPanelOutput, XdgWrapperConfig};
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -29,11 +28,11 @@ use smithay::{
     wayland::output::{Mode as s_Mode, Output as s_Output, PhysicalProperties},
 };
 
-pub fn handle_output(
-    config: CosmicPanelConfig,
+pub fn handle_output<C: XdgWrapperConfig>(
+    config: C,
     layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     env_handle: Environment<Env>,
-    space_manager: &mut SpaceManager,
+    space_manager: &mut SpaceManager<C>,
     logger: Logger,
     display_: Display,
     output: client::protocol::wl_output::WlOutput,
@@ -46,7 +45,7 @@ pub fn handle_output(
     clients_right: &Vec<(u32, Client)>,
 ) {
     // ignore outputs that do not match config
-    if let CosmicPanelOutput::Output(ref preferred_output) = config.output {
+    if let CosmicPanelOutput::Output(ref preferred_output) = config.output() {
         if info.name != *preferred_output {
             return;
         }

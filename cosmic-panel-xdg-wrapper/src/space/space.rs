@@ -14,7 +14,7 @@ use libc::c_int;
 use crate::{shared_state::Focus, util::smootherstep};
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
-use cosmic_panel_config::config::{self, CosmicPanelConfig};
+use cosmic_panel_config::config::{self, XdgWrapperConfig};
 use sctk::{
     output::OutputInfo,
     reexports::{
@@ -58,7 +58,10 @@ use smithay::{
         },
     },
     utils::{Logical, Point, Rectangle},
-    wayland::{shell::xdg::{PopupSurface, PositionerState}, SERIAL_COUNTER},
+    wayland::{
+        shell::xdg::{PopupSurface, PositionerState},
+        SERIAL_COUNTER,
+    },
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -92,7 +95,7 @@ pub enum Visibility {
 }
 
 #[derive(Debug)]
-pub struct Space {
+pub struct Space<C: XdgWrapperConfig> {
     pub clients_left: Vec<(u32, Client)>,
     pub clients_center: Vec<(u32, Client)>,
     pub clients_right: Vec<(u32, Client)>,
@@ -103,7 +106,7 @@ pub struct Space {
     pub layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub output: (c_wl_output::WlOutput, OutputInfo),
     pub c_display: client::Display,
-    pub config: CosmicPanelConfig,
+    pub config: C,
     pub log: Logger,
     pub needs_update: bool,
     /// indicates whether the surface should be fully cleared and redrawn on the next render
@@ -125,7 +128,7 @@ pub struct Space {
     pub visibility: Visibility,
 }
 
-impl Space {
+impl<C: XdgWrapperConfig> Space<C> {
     pub(crate) fn new(
         clients_left: &Vec<(u32, Client)>,
         clients_center: &Vec<(u32, Client)>,
@@ -133,7 +136,7 @@ impl Space {
         output: c_wl_output::WlOutput,
         output_info: &OutputInfo,
         pool: AutoMemPool,
-        config: CosmicPanelConfig,
+        config: C,
         c_display: client::Display,
         layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         log: Logger,
@@ -143,14 +146,56 @@ impl Space {
         let dimensions = Self::constrain_dim(&config, (0, 0), output_info.modes[0].dimensions);
 
         let (w, h) = dimensions;
-        let (layer_surface, next_render_event) = Self::get_layer_shell(
-            &layer_shell,
-            &config,
-            c_surface.clone(),
-            dimensions,
-            Some(&output),
-            log.clone(),
-        );
+        let layer_surface =
+            layer_shell.get_layer_surface(&c_surface, Some(&output), config.layer(), "".to_owned());
+
+        layer_surface.set_anchor(config.anchor().into());
+        layer_surface.set_keyboard_interactivity(config.keyboard_interactivity().into());
+        let (x, y) = dimensions;
+        layer_surface.set_size(x, y);
+
+        // Commit so that the server will send a configure event
+        c_surface.commit();
+
+        let next_render_event = Rc::new(Cell::new(Some(RenderEvent::WaitConfigure {
+            width: x,
+            height: y,
+        })));
+
+        //let egl_surface_clone = egl_surface.clone();
+        let next_render_event_handle = next_render_event.clone();
+        let logger = log.clone();
+        layer_surface.quick_assign(move |layer_surface, event, _| {
+            match (event, next_render_event_handle.get()) {
+                (zwlr_layer_surface_v1::Event::Closed, _) => {
+                    info!(logger, "Received close event. closing.");
+                    next_render_event_handle.set(Some(RenderEvent::Closed));
+                }
+                (
+                    zwlr_layer_surface_v1::Event::Configure {
+                        serial,
+                        width,
+                        height,
+                    },
+                    next,
+                ) if next != Some(RenderEvent::Closed) => {
+                    trace!(
+                        logger,
+                        "received configure event {:?} {:?} {:?}",
+                        serial,
+                        width,
+                        height
+                    );
+                    layer_surface.ack_configure(serial);
+                    next_render_event_handle.set(Some(RenderEvent::Configure {
+                        width,
+                        height,
+                        serial,
+                    }));
+                }
+                (_, _) => {}
+            }
+        });
 
         let client_egl_surface = ClientEglSurface {
             wl_egl_surface: wayland_egl::WlEglSurface::new(&c_surface, w as i32, h as i32),
@@ -291,7 +336,7 @@ impl Space {
 
     fn handle_focus(&mut self, focus: &Focus) {
         // always visible if not configured for autohide
-        if self.config.autohide.is_none() {
+        if self.config.autohide().is_none() {
             return;
         }
 
@@ -299,9 +344,10 @@ impl Space {
             Visibility::Hidden => {
                 if let Focus::Current(_) = focus {
                     // start transition to visible
-                    let margin = match self.config.anchor {
+                    let margin = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => -(self.dimensions.0 as i32),
                         config::Anchor::Top | config::Anchor::Bottom => -(self.dimensions.1 as i32),
+                        _ => panic!("Hidden mode is not supported for Center Anchor"),
                     } + self.config.get_hide_handle().unwrap() as i32;
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: Instant::now(),
@@ -355,9 +401,10 @@ impl Space {
                         prev_margin,
                     }
                 } else {
-                    let panel_size = match self.config.anchor {
+                    let panel_size = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
                         config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                        _ => panic!("Hidden dock is not supported for Center Anchor"),
                     };
                     let target = -panel_size + handle;
 
@@ -365,7 +412,7 @@ impl Space {
 
                     if progress > total_t {
                         // XXX needs testing, but docs say that the margin value is only applied to anchored edge
-                        if self.config.exclusive_zone {
+                        if self.config.exclusive_zone() {
                             self.layer_surface.set_exclusive_zone(handle);
                         }
                         self.layer_surface
@@ -374,7 +421,7 @@ impl Space {
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
-                            if self.config.exclusive_zone {
+                            if self.config.exclusive_zone() {
                                 self.layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
                             self.layer_surface
@@ -419,9 +466,10 @@ impl Space {
                         prev_margin,
                     }
                 } else {
-                    let panel_size = match self.config.anchor {
+                    let panel_size = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
                         config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                        _ => panic!("Hidden dock is not supported for Center Anchor"),
                     };
                     let start = -panel_size + handle;
 
@@ -429,7 +477,7 @@ impl Space {
 
                     if progress > total_t {
                         // XXX needs thorough testing, but docs say that the margin value is only applied to anchored edge
-                        if self.config.exclusive_zone {
+                        if self.config.exclusive_zone() {
                             self.layer_surface.set_exclusive_zone(panel_size);
                         }
                         self.layer_surface.set_margin(0, 0, 0, 0);
@@ -437,7 +485,7 @@ impl Space {
                         self.visibility = Visibility::Visible;
                     } else {
                         if prev_margin != cur_pix {
-                            if self.config.exclusive_zone {
+                            if self.config.exclusive_zone() {
                                 self.layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
                             self.layer_surface
@@ -493,24 +541,26 @@ impl Space {
                 if let Some((width, height)) = self.pending_dimensions.take() {
                     self.layer_surface.set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
-                        if self.config.exclusive_zone {
+                        if self.config.exclusive_zone() {
                             self.layer_surface
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         }
-                        let target = match self.config.anchor {
+                        let target = match self.config.anchor() {
                             config::Anchor::Left | config::Anchor::Right => {
                                 -(self.dimensions.0 as i32)
                             }
                             config::Anchor::Top | config::Anchor::Bottom => {
                                 -(self.dimensions.1 as i32)
                             }
+                            _ => panic!("Hidden mode is not supported for center anchor"),
                         } + self.config.get_hide_handle().unwrap() as i32;
                         self.layer_surface
                             .set_margin(target, target, target, target);
-                    } else if self.config.exclusive_zone {
-                        let list_thickness = match self.config.anchor {
+                    } else if self.config.exclusive_zone() {
+                        let list_thickness = match self.config.anchor() {
                             config::Anchor::Left | config::Anchor::Right => width,
                             config::Anchor::Top | config::Anchor::Bottom => height,
+                            _ => panic!("Exclusive zone is not supported for center anchor"),
                         };
                         self.layer_surface.set_exclusive_zone(list_thickness as i32);
                     }
@@ -558,7 +608,7 @@ impl Space {
     }
 
     pub fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
-        if *self.layer_shell_wl_surface == *c_focused_surface {
+        if self.focused_surface.borrow().is_none() && *self.layer_shell_wl_surface == *c_focused_surface {
             self.close_popups()
         }
     }
@@ -874,8 +924,8 @@ impl Space {
             s.dirty = true;
         }
 
-        let new_w = w + 2 * self.config.padding;
-        let new_h = h + 2 * self.config.padding;
+        let new_w = w + 2 * self.config.padding();
+        let new_h = h + 2 * self.config.padding();
 
         // TODO improve this for when there are changes to the lists of plugins while running
         let (new_w, new_h) = Self::constrain_dim(
@@ -1003,19 +1053,21 @@ impl Space {
             reactive,
             parent_size,
             ..
-        }: PositionerState,        token: u32,
+        }: PositionerState,
+        token: u32,
     ) -> anyhow::Result<()> {
-        if let Some((top_level_popup, top_level_rectangle)) = self
-            .client_top_levels_mut()
-            .find_map(|s| s.popups.iter_mut().find_map(|p| if p.s_surface == popup
-            {
-                Some((p, s.rectangle))
-            } else {
-                None
-            }))
+        if let Some((top_level_popup, top_level_rectangle)) =
+            self.client_top_levels_mut().find_map(|s| {
+                s.popups.iter_mut().find_map(|p| {
+                    if p.s_surface == popup {
+                        Some((p, s.rectangle))
+                    } else {
+                        None
+                    }
+                })
+            })
         {
             if positioner.as_ref().version() >= 3 {
-
                 positioner.set_size(rect_size.w, rect_size.h);
                 positioner.set_anchor_rect(
                     anchor_rect.loc.x + top_level_rectangle.loc.x,
@@ -1023,11 +1075,12 @@ impl Space {
                     anchor_rect.size.w,
                     anchor_rect.size.h,
                 );
-        
-                positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
-                positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
 
-                
+                positioner
+                    .set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
+                positioner
+                    .set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
+
                 positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
                 positioner.set_offset(offset.x, offset.y);
                 if reactive {
@@ -1036,7 +1089,9 @@ impl Space {
                 if let Some(parent_size) = parent_size {
                     positioner.set_parent_size(parent_size.w, parent_size.h);
                 }
-                top_level_popup.c_popup.reposition(&positioner, u32::from(SERIAL_COUNTER.next_serial()));
+                top_level_popup
+                    .c_popup
+                    .reposition(&positioner, u32::from(SERIAL_COUNTER.next_serial()));
                 Ok(())
             } else {
                 top_level_popup.s_surface.send_repositioned(token);
@@ -1070,12 +1125,8 @@ impl Space {
         None
     }
 
-    fn constrain_dim(
-        config: &CosmicPanelConfig,
-        (mut w, mut h): (u32, u32),
-        (o_w, o_h): (i32, i32),
-    ) -> (u32, u32) {
-        let (min_w, min_h) = (1.max(config.padding * 2), 1.max(config.padding * 2));
+    fn constrain_dim(config: &C, (mut w, mut h): (u32, u32), (o_w, o_h): (i32, i32)) -> (u32, u32) {
+        let (min_w, min_h) = (1.max(config.padding() * 2), 1.max(config.padding() * 2));
         w = min_w.max(w);
         h = min_h.max(h);
         if let (Some(w_range), _) = config.get_dimensions((o_w as u32, o_h as u32)) {
@@ -1095,70 +1146,6 @@ impl Space {
         (w, h)
     }
 
-    fn get_layer_shell(
-        layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-        config: &CosmicPanelConfig,
-        c_surface: Attached<c_wl_surface::WlSurface>,
-        dimensions: (u32, u32),
-        output: Option<&c_wl_output::WlOutput>,
-        log: Logger,
-    ) -> (
-        Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
-        Rc<Cell<Option<RenderEvent>>>,
-    ) {
-        let layer_surface =
-            layer_shell.get_layer_surface(&c_surface, output, config.layer.into(), "".to_owned());
-
-        layer_surface.set_anchor(config.anchor.into());
-        layer_surface.set_keyboard_interactivity(config.keyboard_interactivity.into());
-        let (x, y) = dimensions;
-        layer_surface.set_size(x, y);
-
-        // Commit so that the server will send a configure event
-        c_surface.commit();
-
-        let next_render_event = Rc::new(Cell::new(Some(RenderEvent::WaitConfigure {
-            width: x,
-            height: y,
-        })));
-
-        //let egl_surface_clone = egl_surface.clone();
-        let next_render_event_handle = next_render_event.clone();
-        let logger = log.clone();
-        layer_surface.quick_assign(move |layer_surface, event, _| {
-            match (event, next_render_event_handle.get()) {
-                (zwlr_layer_surface_v1::Event::Closed, _) => {
-                    info!(logger, "Received close event. closing.");
-                    next_render_event_handle.set(Some(RenderEvent::Closed));
-                }
-                (
-                    zwlr_layer_surface_v1::Event::Configure {
-                        serial,
-                        width,
-                        height,
-                    },
-                    next,
-                ) if next != Some(RenderEvent::Closed) => {
-                    trace!(
-                        logger,
-                        "received configure event {:?} {:?} {:?}",
-                        serial,
-                        width,
-                        height
-                    );
-                    layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure {
-                        width,
-                        height,
-                        serial,
-                    }));
-                }
-                (_, _) => {}
-            }
-        });
-        (layer_surface, next_render_event)
-    }
-
     // TODO cleanup
     fn render(&mut self, time: u32) {
         let logger = self.log.clone();
@@ -1174,7 +1161,7 @@ impl Space {
         let mut l_damage = Vec::new();
         let mut p_damage = Vec::new();
         let mut p_damage_f64 = Vec::new();
-        let clear_color = match self.config.background {
+        let clear_color = match self.config.background() {
             cosmic_panel_config::config::CosmicPanelBackground::ThemeDefault => {
                 [0.5, 0.5, 0.5, 0.2]
             }
@@ -1414,28 +1401,27 @@ impl Space {
     }
 
     fn update_offsets(&mut self) {
-        let CosmicPanelConfig {
-            padding,
-            anchor,
-            spacing,
-            ..
-        } = self.config;
+        let padding = self.config.padding();
+        let anchor = self.config.anchor();
+        let spacing = self.config.spacing();
         // First try partitioning the panel evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
             config::Anchor::Left | config::Anchor::Right => (self.dimensions.1, self.dimensions.0),
-            config::Anchor::Top | config::Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
+            config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
+                (self.dimensions.0, self.dimensions.1)
+            }
         };
 
         let mut num_lists = 0;
-        if self.config.plugins_left.is_some() {
+        if self.config.plugins_left().is_some() {
             num_lists += 1;
         }
-        if self.config.plugins_right.is_some() {
+        if self.config.plugins_right().is_some() {
             num_lists += 1;
         }
         let mut is_dock = false;
-        if self.config.plugins_center.is_some() {
+        if self.config.plugins_center().is_some() {
             if num_lists == 0 {
                 is_dock = true;
             }
@@ -1455,7 +1441,7 @@ impl Space {
                 config::Anchor::Left | config::Anchor::Right => {
                     (alignment, i, t.priority, t.rectangle.size.h)
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
                     (alignment, i, t.priority, t.rectangle.size.w)
                 }
             }
@@ -1466,21 +1452,24 @@ impl Space {
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Left));
-        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>() + spacing as i32 * (self.client_top_levels_left.len().max(1) as i32 - 1);
+        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>()
+            + spacing as i32 * (self.client_top_levels_left.len().max(1) as i32 - 1);
 
         let center = self
             .client_top_levels_center
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Center));
-        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>() + spacing as i32 * (self.client_top_levels_center.len().max(1) as i32 - 1);
+        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>()
+            + spacing as i32 * (self.client_top_levels_center.len().max(1) as i32 - 1);
 
         let right = self
             .client_top_levels_right
             .iter()
             .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Right));
-        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>()  + spacing as i32 * (self.client_top_levels_right.len().max(1) as i32 - 1);
+        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>()
+            + spacing as i32 * (self.client_top_levels_right.len().max(1) as i32 - 1);
 
         let mut all_sorted_priority = left
             .chain(center)
@@ -1498,17 +1487,17 @@ impl Space {
                 }
                 Alignment::Center => {
                     self.client_top_levels_center[hidden_i].set_hidden(true);
-                    center_sum -=  hidden_l + spacing as i32;
+                    center_sum -= hidden_l + spacing as i32;
                 }
                 Alignment::Right => {
                     self.client_top_levels_right[hidden_i].set_hidden(true);
-                    right_sum -=  hidden_l + spacing as i32;
+                    right_sum -= hidden_l + spacing as i32;
                 }
             };
             total_sum -= hidden_l;
         }
 
-        // XXX making sure the sum is > 0 after possibly over-subtracting spacing 
+        // XXX making sure the sum is > 0 after possibly over-subtracting spacing
         left_sum = left_sum.max(0);
         center_sum = center_sum.max(0);
         right_sum = right_sum.max(0);
@@ -1532,10 +1521,7 @@ impl Space {
         } else {
             let center_padding = (list_length as i32 - total_sum) / 2;
 
-            (
-                right_sum,
-                left_sum + padding as i32 + center_padding,
-            )
+            (right_sum, left_sum + padding as i32 + center_padding)
         };
 
         let mut prev: u32 = padding;
@@ -1555,7 +1541,7 @@ impl Space {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -1580,7 +1566,7 @@ impl Space {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -1591,7 +1577,12 @@ impl Space {
         // twice padding is subtracted
         let mut prev: u32 = list_length - padding - right_sum as u32;
 
-        for (i, top_level) in &mut self.client_top_levels_right.iter_mut().filter(|t| !t.hidden).enumerate() {
+        for (i, top_level) in &mut self
+            .client_top_levels_right
+            .iter_mut()
+            .filter(|t| !t.hidden)
+            .enumerate()
+        {
             let size: Point<_, Logical> =
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
@@ -1601,7 +1592,7 @@ impl Space {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -1611,7 +1602,7 @@ impl Space {
     }
 }
 
-impl Drop for Space {
+impl<C: XdgWrapperConfig> Drop for Space<C> {
     fn drop(&mut self) {
         self.layer_surface.destroy();
         self.layer_shell_wl_surface.destroy();

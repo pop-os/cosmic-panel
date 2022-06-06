@@ -4,7 +4,7 @@
 //! Provides the core functionality for cosmic-panel
 
 use anyhow::Result;
-use cosmic_panel_config::config::CosmicPanelConfig;
+use cosmic_panel_config::config::XdgWrapperConfig;
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
 use itertools::Itertools;
 use shared_state::GlobalState;
@@ -35,9 +35,12 @@ mod space;
 mod util;
 
 /// run the cosmic panel xdg wrapper with the provided config
-pub fn panel_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
-    let config = CosmicPanelConfig::load(config_name, Some(log.clone()))?;
-    let mut event_loop = calloop::EventLoop::<(GlobalState, Display)>::try_new().unwrap();
+pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
+    log: Logger,
+    config: C,
+    config_name: Option<&str>,
+) -> Result<()> {
+    let mut event_loop = calloop::EventLoop::<(GlobalState<C>, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display, (sockets_left, sockets_center, sockets_right)) =
         server::new_server(loop_handle.clone(), config.clone(), log.clone())?;
@@ -62,24 +65,21 @@ pub fn panel_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
     let mut children = Iter::new(default_paths())
         .filter_map(|path| {
             config
-                .plugins_left
-                .as_ref()
-                .unwrap_or(&vec![])
+                .plugins_left()
+                .unwrap_or_default()
                 .iter()
                 .zip(&sockets_left)
                 .chain(
                     config
-                        .plugins_center
-                        .as_ref()
-                        .unwrap_or(&vec![])
+                        .plugins_center()
+                        .unwrap_or_default()
                         .iter()
                         .zip(&sockets_center),
                 )
                 .chain(
                     config
-                        .plugins_right
-                        .as_ref()
-                        .unwrap_or(&vec![])
+                        .plugins_right()
+                        .unwrap_or_default()
                         .iter()
                         .zip(&sockets_right),
                 )
@@ -197,7 +197,7 @@ pub fn panel_xdg_wrapper(log: Logger, config_name: &str) -> Result<()> {
     }
 }
 
-fn exec_child(c: &str, config_name: &str, log: Logger, raw_fd: i32) -> Child {
+fn exec_child(c: &str, config_name: Option<&str>, log: Logger, raw_fd: i32) -> Child {
     let mut exec_iter = Shlex::new(c);
     let exec = exec_iter
         .next()
@@ -209,9 +209,11 @@ fn exec_child(c: &str, config_name: &str, log: Logger, raw_fd: i32) -> Child {
         trace!(log, "child argument: {}", &arg);
         child.arg(arg);
     }
+    if let Some(config_name) = config_name {
+        child.env("COSMIC_DOCK_CONFIG", config_name);
+    }
     child
         .env("WAYLAND_SOCKET", raw_fd.to_string())
-        .env("COSMIC_DOCK_CONFIG", config_name)
         .env_remove("WAYLAND_DEBUG")
         // .env("WAYLAND_DEBUG", "1")
         // .stderr(Stdio::piped())

@@ -146,6 +146,7 @@ name = "cosmic-panel-bin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cosmic-panel-config",
  "cosmic-panel-xdg-wrapper",
  "shlex",
  "slog",

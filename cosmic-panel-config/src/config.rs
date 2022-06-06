@@ -3,10 +3,7 @@
 //! Config for cosmic-panel
 
 use slog::Logger;
-use std::env;
-use std::fs::File;
-use std::ops::Range;
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, env, fmt, fs::File, ops::Range, time::Duration};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -25,6 +22,8 @@ pub enum Anchor {
     Top,
     /// anchored to bottom edge
     Bottom,
+    /// anchored to center
+    Center,
 }
 
 impl Default for Anchor {
@@ -44,6 +43,8 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for Anchor {
             Ok(Self::Top)
         } else if align.contains(zwlr_layer_surface_v1::Anchor::Bottom) {
             Ok(Self::Bottom)
+        } else if align.is_empty() {
+            Ok(Self::Center)
         } else {
             anyhow::bail!("Invalid Anchor")
         }
@@ -65,6 +66,9 @@ impl Into<zwlr_layer_surface_v1::Anchor> for Anchor {
             }
             Self::Bottom => {
                 anchor.insert(zwlr_layer_surface_v1::Anchor::Bottom);
+            }
+            Self::Center => {
+                anchor.insert(zwlr_layer_surface_v1::Anchor::empty());
             }
         };
         anchor
@@ -317,16 +321,109 @@ impl CosmicPanelConfig {
         }
     }
 
+    /// Utility for loading the Cosmic Panel Config from the ENV variable COSMIC_DOCK_CONFIG
+    pub fn load_from_env() -> anyhow::Result<Self> {
+        env::var("COSMIC_DOCK_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
+    }
+}
+
+pub trait XdgWrapperConfig: Clone + fmt::Debug + Default {
+    fn output(&self) -> CosmicPanelOutput;
+    fn anchor(&self) -> Anchor;
+    fn padding(&self) -> u32;
+    fn layer(&self) -> zwlr_layer_shell_v1::Layer;
+    fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity;
+    fn background(&self) -> CosmicPanelBackground {
+        CosmicPanelBackground::Color([0.0, 0.0, 0.0, 0.0])
+    }
+
+    fn plugins_left(&self) -> Option<Vec<(String, u32)>> {
+        None
+    }
+
+    fn plugins_center(&self) -> Option<Vec<(String, u32)>> {
+        None
+    }
+
+    fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
+        None
+    }
+
+    fn spacing(&self) -> u32 {
+        0
+    }
+
+    fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>);
+
+    fn autohide(&self) -> Option<AutoHide> {
+        None
+    }
+
+    fn exclusive_zone(&self) -> bool {
+        false
+    }
+
+    fn get_hide_wait(&self) -> Option<Duration> {
+        None
+    }
+
+    fn get_hide_transition(&self) -> Option<Duration> {
+        None
+    }
+
+    fn get_hide_handle(&self) -> Option<u32> {
+        None
+    }
+
+    fn get_applet_icon_size(&self) -> u32 {
+        0
+    }
+
+    fn expand_to_edges(&self) -> bool {
+        false
+    }
+}
+
+impl XdgWrapperConfig for CosmicPanelConfig {
+    fn plugins_left(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_left.clone()
+    }
+
+    fn plugins_center(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_center.clone()
+    }
+
+    fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_right.clone()
+    }
+
+    fn output(&self) -> CosmicPanelOutput {
+        self.output.clone()
+    }
+
+    fn anchor(&self) -> Anchor {
+        self.anchor
+    }
+
+    fn padding(&self) -> u32 {
+        self.padding
+    }
+
+    fn layer(&self) -> zwlr_layer_shell_v1::Layer {
+        self.layer.into()
+    }
+
+    fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
+        self.keyboard_interactivity.into()
+    }
+
     /// get whether the panel should expand to cover the edges of the output
-    pub fn expand_to_edges(&self) -> bool {
+    fn expand_to_edges(&self) -> bool {
         self.expand_to_edges || self.plugins_left.is_some() || self.plugins_right.is_some()
     }
 
     /// get constraints for the thickness of the panel bar
-    pub fn get_dimensions(
-        &self,
-        output_dims: (u32, u32),
-    ) -> (Option<Range<u32>>, Option<Range<u32>>) {
+    fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
             PanelSize::XS => (8..41),
             PanelSize::S => (8..61),
@@ -355,13 +452,12 @@ impl CosmicPanelConfig {
                 },
                 Some(bar_thickness),
             ),
+            _ => (None, None),
         }
     }
 
     /// get applet icon dimensions
-    pub fn get_applet_icon_size(
-        &self,
-    ) -> u32 {
+    fn get_applet_icon_size(&self) -> u32 {
         match &self.size {
             PanelSize::XS => 18,
             PanelSize::S => 24,
@@ -373,14 +469,14 @@ impl CosmicPanelConfig {
     }
 
     /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
-    pub fn get_hide_wait(&self) -> Option<Duration> {
+    fn get_hide_wait(&self) -> Option<Duration> {
         self.autohide
             .as_ref()
             .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
     }
 
     /// if autohide is configured, returns the duration of time which the panel hide / show transition should last
-    pub fn get_hide_transition(&self) -> Option<Duration> {
+    fn get_hide_transition(&self) -> Option<Duration> {
         self.autohide.as_ref().map(
             |AutoHide {
                  transition_time, ..
@@ -389,14 +485,25 @@ impl CosmicPanelConfig {
     }
 
     /// if autohide is configured, returns the size of the handle of the panel which should be exposed
-    pub fn get_hide_handle(&self) -> Option<u32> {
+    fn get_hide_handle(&self) -> Option<u32> {
         self.autohide
             .as_ref()
             .map(|AutoHide { handle_size, .. }| *handle_size)
     }
 
-    /// Utility for loading the Cosmic Panel Config from the ENV variable COSMIC_DOCK_CONFIG
-    pub fn load_from_env() -> anyhow::Result<Self> {
-        env::var("COSMIC_DOCK_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
+    fn exclusive_zone(&self) -> bool {
+        self.exclusive_zone
+    }
+
+    fn background(&self) -> CosmicPanelBackground {
+        self.background.clone()
+    }
+
+    fn spacing(&self) -> u32 {
+        self.spacing
+    }
+
+    fn autohide(&self) -> Option<AutoHide> {
+        self.autohide.clone()
     }
 }

@@ -36,7 +36,7 @@ use crate::{
     },
     shared_state::*,
 };
-use cosmic_panel_config::config::CosmicPanelConfig;
+use cosmic_panel_config::config::XdgWrapperConfig;
 
 default_environment!(Env,
     fields = [
@@ -49,13 +49,13 @@ default_environment!(Env,
     ],
 );
 
-pub fn new_client(
-    loop_handle: calloop::LoopHandle<'static, (GlobalState, wayland_server::Display)>,
-    config: CosmicPanelConfig,
+pub fn new_client<C: XdgWrapperConfig + 'static>(
+    loop_handle: calloop::LoopHandle<'static, (GlobalState<C>, wayland_server::Display)>,
+    config: C,
     log: Logger,
     server_display: &mut wayland_server::Display,
     embedded_server_state: &EmbeddedServerState,
-) -> Result<(DesktopClientState, Vec<OutputGroup>)> {
+) -> Result<(DesktopClientState<C>, Vec<OutputGroup>)> {
     /*
      * Initial setup
      */
@@ -120,14 +120,15 @@ pub fn new_client(
     let env_handle = env.clone();
     let logger = log.clone();
     let display_ = display.clone();
+    let config_ = config.clone();
     let output_listener = env.listen_for_outputs(move |output, info, mut dispatch_data| {
         let (state, server_display) = dispatch_data
-            .get::<(GlobalState, wayland_server::Display)>()
+            .get::<(GlobalState<C>, wayland_server::Display)>()
             .unwrap();
         let outputs = &mut state.outputs;
         let space_manager = &mut state.desktop_client_state.space_manager;
         handle_output(
-            config.clone(),
+            config_.clone(),
             &layer_shell,
             env_handle.clone(),
             space_manager,
@@ -150,7 +151,7 @@ pub fn new_client(
     let last_motion = Rc::new(RefCell::new(None));
     let _ = env.set_data_device_callback(move |seat, dnd_event, mut dispatch_data| {
         let (state, _) = dispatch_data
-            .get::<(GlobalState, wayland_server::Display)>()
+            .get::<(GlobalState<C>, wayland_server::Display)>()
             .unwrap();
         let DesktopClientState {
             seats,
@@ -329,7 +330,7 @@ pub fn new_client(
                     trace!(log, "found seat: {:?}", &new_seat);
                     let kbd = seat.get_keyboard();
                     kbd.quick_assign(move |_, event, dispatch_data| {
-                        send_keyboard_event(event, &seat_name, dispatch_data)
+                        send_keyboard_event::<C>(event, &seat_name, dispatch_data)
                     });
                     new_seat.client.kbd = Some(kbd.detach());
                     new_seat.server.0.add_keyboard(
@@ -343,7 +344,7 @@ pub fn new_client(
                     let seat_name = name.clone();
                     let pointer = seat.get_pointer();
                     pointer.quick_assign(move |_, event, dispatch_data| {
-                        send_pointer_event(event, &seat_name, dispatch_data)
+                        send_pointer_event::<C>(event, &seat_name, dispatch_data)
                     });
                     new_seat.client.ptr = Some(pointer.detach());
                     new_seat.server.0.add_pointer(move |_new_status| {});
@@ -369,7 +370,7 @@ pub fn new_client(
     let logger = log.clone();
     env.with_inner(|env_inner| {
         env_inner.listen(move |seat, seat_data, dispatch_data| {
-            seat_handle_callback(logger.clone(), seat, seat_data, dispatch_data)
+            seat_handle_callback::<C>(logger.clone(), seat, seat_data, dispatch_data)
         })
     });
 
