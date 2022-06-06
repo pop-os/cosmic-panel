@@ -109,15 +109,18 @@ impl CachedBuffers {
                 if buffer.x == x && buffer.y == y && buffer.format == format {
                     return i;
                 }
-                if let Some((_, best_size)) = best_candidate {
-                    if x * y > buffer.pool_size && best_size < buffer.pool_size {
-                        best_candidate = Some((i, buffer.pool_size));
-                    } else if x * y < buffer.pool_size && buffer.pool_size < best_size {
-                        best_candidate = Some((i, buffer.pool_size));
-                    }
-                } else {
-                    best_candidate = Some((i, buffer.pool_size));
-                }
+                // TODO
+                // if let Some((_, best_size)) = best_candidate {
+                //     if x * y > buffer.pool_size && best_size < buffer.pool_size {
+                //         best_candidate = Some((i, buffer.pool_size));
+                //     } else if x * y < buffer.pool_size && buffer.pool_size < best_size {
+                //         best_candidate = Some((i, buffer.pool_size));
+                //     }
+                // } else {
+                //     best_candidate = Some((i, buffer.pool_size));
+                // }
+                best_candidate = Some((i, buffer.pool_size));
+
             }
         }
         trace!(
