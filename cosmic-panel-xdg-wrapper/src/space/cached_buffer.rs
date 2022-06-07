@@ -120,7 +120,6 @@ impl CachedBuffers {
                 //     best_candidate = Some((i, buffer.pool_size));
                 // }
                 best_candidate = Some((i, buffer.pool_size));
-
             }
         }
         trace!(

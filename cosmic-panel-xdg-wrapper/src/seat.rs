@@ -67,7 +67,6 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
                 return;
             }
         };
-
         match event {
             wl_keyboard::Event::Key {
                 serial,
@@ -200,7 +199,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 last_button.replace(button);
 
                 if let (Some(space), Focus::Current(c_focused_surface)) =
-                (space_manager.active_space(), c_focused_surface)
+                    (space_manager.active_space(), c_focused_surface)
                 {
                     space.handle_button(c_focused_surface);
                 }
@@ -452,7 +451,6 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
                 } else {
                     adjusted_loc - location
                 };
-
                 ptr.motion(
                     (surface_x + offset.x as f64, surface_y + offset.y as f64).into(),
                     Some((cur_surface, (0, 0).into())),

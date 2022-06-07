@@ -49,7 +49,7 @@ use smithay::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
             xdg_shell::client::{
                 xdg_popup,
-                xdg_positioner::{self, Anchor, Gravity, XdgPositioner},
+                xdg_positioner::{Anchor, Gravity, XdgPositioner},
                 xdg_surface::{self, XdgSurface},
             },
         },
@@ -150,7 +150,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             layer_shell.get_layer_surface(&c_surface, Some(&output), config.layer(), "".to_owned());
 
         layer_surface.set_anchor(config.anchor().into());
-        layer_surface.set_keyboard_interactivity(config.keyboard_interactivity().into());
+        layer_surface.set_keyboard_interactivity(config.keyboard_interactivity());
         let (x, y) = dimensions;
         layer_surface.set_size(x, y);
 
@@ -608,7 +608,9 @@ impl<C: XdgWrapperConfig> Space<C> {
     }
 
     pub fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
-        if self.focused_surface.borrow().is_none() && *self.layer_shell_wl_surface == *c_focused_surface {
+        if self.focused_surface.borrow().is_none()
+            && *self.layer_shell_wl_surface == *c_focused_surface
+        {
             self.close_popups()
         }
     }
@@ -745,8 +747,6 @@ impl<C: XdgWrapperConfig> Space<C> {
                         Ordering::Equal
                     }
                 });
-            } else {
-                return;
             }
         }
     }
@@ -1160,7 +1160,6 @@ impl<C: XdgWrapperConfig> Space<C> {
         // redraw each top level using the aggregated damage
         let mut l_damage = Vec::new();
         let mut p_damage = Vec::new();
-        let mut p_damage_f64 = Vec::new();
         let clear_color = match self.config.background() {
             cosmic_panel_config::config::CosmicPanelBackground::ThemeDefault => {
                 [0.5, 0.5, 0.5, 0.2]
@@ -1176,7 +1175,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                 (width, height).into(),
                 smithay::utils::Transform::Flipped180,
                 |self_: &mut Gles2Renderer, frame| {
-                    // clear frame with total damage
+                    // draw each surface which needs to be drawn
                     if full_clear {
                         l_damage = vec![(
                             Rectangle::from_loc_and_size(
@@ -1185,72 +1184,22 @@ impl<C: XdgWrapperConfig> Space<C> {
                             ),
                             (0, 0).into(),
                         )];
-                    } else {
-                        for top_level in &mut self
-                            .client_top_levels_left
-                            .iter_mut()
-                            .chain(self.client_top_levels_center.iter_mut())
-                            .chain(self.client_top_levels_right.iter_mut())
-                            .into_iter()
-                            .filter(|t| t.dirty && !t.hidden)
-                        {
-                            let s_top_level = top_level.s_top_level.borrow();
-                            let server_surface = match s_top_level.toplevel() {
-                                Kind::Xdg(xdg_surface) => match xdg_surface.get_surface() {
-                                    Some(s) => s,
-                                    _ => continue,
-                                },
-                            };
-                            let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
-                            loc = (-loc.x, -loc.y).into();
-                            // full clear if size changed or if top level added
-                            let full_clear = self.full_clear;
-
-                            let surface_tree_damage =
-                                damage_from_surface_tree(server_surface, (0, 0), None);
-                            l_damage.extend(
-                                if surface_tree_damage.is_empty() || full_clear {
-                                    vec![Rectangle::from_loc_and_size(
-                                        loc,
-                                        (
-                                            top_level.rectangle.size.w as i32,
-                                            top_level.rectangle.size.h as i32,
-                                        ),
-                                    )]
-                                } else {
-                                    surface_tree_damage
-                                }
-                                .into_iter()
-                                .map(|d| (d, top_level.rectangle.loc)),
-                            );
-                        }
-                    }
-
-                    let (mut cur_p_damage, mut cur_p_damage_f64) = (
-                        l_damage
+                        p_damage = l_damage
                             .iter()
                             .map(|(d, o)| {
                                 let mut d = *d;
                                 d.loc += *o;
                                 d.to_physical(1)
                             })
-                            .collect::<Vec<_>>(),
-                        l_damage
-                            .iter()
-                            .map(|(d, o)| {
-                                let mut d = *d;
-                                d.loc += *o;
-                                d.to_physical(1).to_f64()
-                            })
-                            .collect::<Vec<_>>(),
-                    );
-                    p_damage.append(&mut cur_p_damage);
-                    p_damage_f64.append(&mut cur_p_damage_f64);
-                    frame
-                        .clear(clear_color, &p_damage_f64)
-                        .expect("Failed to clear frame.");
+                            .collect::<Vec<_>>();
 
-                    // draw each surface which needs to be drawn
+                        frame
+                            .clear(
+                                clear_color,
+                                p_damage.iter().map(|d| d.to_f64()).collect_vec().as_slice(),
+                            )
+                            .expect("Failed to clear frame.");
+                    }
                     for top_level in &mut self
                         .client_top_levels_left
                         .iter_mut()
@@ -1267,10 +1216,49 @@ impl<C: XdgWrapperConfig> Space<C> {
                                 _ => continue,
                             },
                         };
+                        let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
+                        loc = (-loc.x, -loc.y).into();
 
-                        if top_level.dirty || !l_damage.is_empty() {
-                            let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
-                            loc = (-loc.x, -loc.y).into();
+                        if top_level.dirty || full_clear {
+                            if !full_clear {
+                                let surface_tree_damage =
+                                    damage_from_surface_tree(server_surface, (0, 0), None);
+
+                                l_damage = if surface_tree_damage.is_empty() {
+                                    dbg!(&top_level.rectangle);
+                                    vec![Rectangle::from_loc_and_size(
+                                        loc,
+                                        (
+                                            top_level.rectangle.size.w as i32,
+                                            top_level.rectangle.size.h as i32,
+                                        ),
+                                    )]
+                                } else {
+                                    surface_tree_damage
+                                }
+                                .into_iter()
+                                .map(|d| (d, top_level.rectangle.loc))
+                                .collect();
+                                let mut cur_p_damage = l_damage
+                                    .iter()
+                                    .map(|(d, o)| {
+                                        let mut d = *d;
+                                        d.loc += *o;
+                                        d.to_physical(1)
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                let p_damage_f64 = cur_p_damage
+                                    .iter()
+                                    .cloned()
+                                    .map(|d| d.to_f64())
+                                    .collect::<Vec<_>>();
+                                frame
+                                    .clear(clear_color, &p_damage_f64)
+                                    .expect("Failed to clear frame.");
+
+                                p_damage.append(&mut cur_p_damage);
+                            };
 
                             draw_surface_tree(
                                 self_,
@@ -1278,19 +1266,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                                 server_surface,
                                 1.0,
                                 loc,
-                                &l_damage
-                                    .clone()
-                                    .into_iter()
-                                    .filter_map(|(d, o)| {
-                                        let mut d = d;
-                                        d.loc += o;
-                                        let mut intersect = d.intersection(top_level.rectangle);
-                                        if let Some(r) = intersect.as_mut() {
-                                            r.loc = (0, 0).into()
-                                        };
-                                        intersect
-                                    })
-                                    .collect::<Vec<_>>(),
+                                l_damage.iter().map(|d| d.0).collect_vec().as_slice(),
                                 &logger,
                             )
                             .expect("Failed to draw surface tree");

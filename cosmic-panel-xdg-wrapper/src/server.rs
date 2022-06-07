@@ -265,6 +265,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     let window = Window::new(Kind::Xdg(surface.clone()));
                     window.refresh();
                     let mut focused_surface = focused_surface.borrow_mut();
+
                     *focused_surface = surface.get_surface().cloned();
 
                     surface.send_configure();
