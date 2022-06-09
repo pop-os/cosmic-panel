@@ -278,28 +278,33 @@ impl CosmicPanelConfig {
     }
 
     fn get_configs(log: Option<Logger>) -> HashMap<String, Self> {
-        match BaseDirectories::new()
-            .map(|dirs| dirs.find_config_file(CONFIG_PATH))
-            .map(|c| c.map(File::open))
-            .map(|file| {
-                file.map(|file| {
-                    ron::de::from_reader::<_, HashMap<String, CosmicPanelConfig>>(file?)
-                })
-            }) {
-            Ok(Some(Ok(c))) => c,
-            Err(e) => {
+        let config_path = match BaseDirectories::new().map(|dirs| dirs.find_config_file(CONFIG_PATH)) {
+            Ok(Some(path)) => path,
+            Ok(None) => { return HashMap::new(); }
+            Err(err) => {
                 if let Some(log) = log {
-                    slog::error!(log, "{}", e);
+                    slog::error!(log, "Failed to get config path: {}", err);
+                }
+                return HashMap::new();
+            }
+        };
+        let file = match File::open(&config_path) {
+            Ok(file) => file,
+            Err(err) => {
+                if let Some(log) = log {
+                    slog::error!(log, "Failed to open '{}': {}", config_path.display(), err);
+                }
+                return HashMap::new();
+            }
+        };
+        match ron::de::from_reader::<_, HashMap<String, CosmicPanelConfig>>(file) {
+            Ok(configs) => configs,
+            Err(err) => {
+                if let Some(log) = log {
+                    slog::error!(log, "Failed to parse '{}': {}", config_path.display(), err);
                 }
                 HashMap::new()
             }
-            Ok(Some(Err(e))) => {
-                if let Some(log) = log {
-                    slog::error!(log, "{}", e);
-                }
-                HashMap::new()
-            }
-            _ => HashMap::new(),
         }
     }
 
