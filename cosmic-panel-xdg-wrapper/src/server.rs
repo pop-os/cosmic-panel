@@ -153,12 +153,11 @@ pub fn new_server<C: XdgWrapperConfig>(
             let state = dispatch_data.get::<GlobalState<C>>().unwrap();
             let DesktopClientState {
                 cursor_surface,
-                space_manager,
+                space,
                 seats,
                 shm,
                 ..
             } = &mut state.desktop_client_state;
-            let mut space = space_manager.active_space();
             let EmbeddedServerState {
                 popup_manager,
                 shell_state,
@@ -170,16 +169,14 @@ pub fn new_server<C: XdgWrapperConfig>(
             let role = get_role(&surface);
             trace!(log, "role: {:?} surface: {:?}", &role, &surface);
             if role == "xdg_toplevel".into() {
-                if let Some(renderer) = space.as_mut() {
-                    if let Some(top_level) = shell_state.lock().unwrap().toplevel_surface(&surface)
-                    {
-                        on_commit_buffer_handler(&surface);
-                        let window = Window::new(Kind::Xdg(top_level.clone()));
-                        window.refresh();
-                        let w = window.bbox().size.w as u32;
-                        let h = window.bbox().size.h as u32;
-                        renderer.dirty(&surface, (w, h));
-                    }
+                if let Some(top_level) = shell_state.lock().unwrap().toplevel_surface(&surface)
+                {
+                    on_commit_buffer_handler(&surface);
+                    let window = Window::new(Kind::Xdg(top_level.clone()));
+                    window.refresh();
+                    let w = window.bbox().size.w as u32;
+                    let h = window.bbox().size.h as u32;
+                    space.dirty(&surface, (w, h));
                 }
             } else if role == "cursor_image".into() {
                 // pass cursor image to parent compositor
@@ -223,8 +220,8 @@ pub fn new_server<C: XdgWrapperConfig>(
                     Some(PopupKind::Xdg(s)) => (s.get_parent_surface(), s),
                     _ => return,
                 };
-                if let (Some(renderer), Some(top_level_surface)) = (space, top_level_surface) {
-                    renderer.dirty_popup(
+                if let (Some(top_level_surface)) = (top_level_surface) {
+                    space.dirty_popup(
                         &top_level_surface,
                         popup_surface,
                         utils::bbox_from_surface_tree(&surface, (0, 0)),
@@ -246,11 +243,10 @@ pub fn new_server<C: XdgWrapperConfig>(
                 seats,
                 kbd_focus,
                 env_handle,
-                space_manager,
+                space,
                 xdg_wm_base,
                 ..
             } = &mut state.desktop_client_state;
-            let mut space = space_manager.active_space();
 
             let EmbeddedServerState {
                 focused_surface,
@@ -282,9 +278,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                         smithay::desktop::Kind::Xdg(surface),
                     )));
 
-                    if let Some(renderer) = space.as_mut() {
-                        renderer.add_top_level(window.clone());
-                    }
+                    space.add_top_level(window.clone());
                     if root_window.is_none() {
                         root_window.replace(window);
                     }
@@ -298,8 +292,8 @@ pub fn new_server<C: XdgWrapperConfig>(
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
 
-                    if let (Some(parent), Some(space)) =
-                        (s_popup_surface.get_parent_surface(), space.as_mut())
+                    if let (Some(parent)) =
+                        s_popup_surface.get_parent_surface()
                     {
                         space.add_popup(
                             wl_surface,
@@ -335,9 +329,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                 } => {
                     let new_positioner = xdg_wm_base.create_positioner();
 
-                    if let Some(space) = space {
-                        let _ = space.reposition_popup(surface, new_positioner, positioner, token);
-                    }
+                    let _ = space.reposition_popup(surface, new_positioner, positioner, token);
                 }
                 e => {
                     trace!(log, "{:?}", e);

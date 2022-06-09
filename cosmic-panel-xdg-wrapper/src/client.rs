@@ -27,7 +27,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::space::{SpaceManager, Space};
+use crate::{space::{Space}, output};
 use crate::{
     output::handle_output,
     seat::{
@@ -90,13 +90,12 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
 
     let outputs = env.get_all_outputs();
 
-    let mut space_manager = SpaceManager::default();
-    match config.output() {
+    let space = match config.output() {
         None => {
             let pool = env
                 .create_auto_pool()
                 .expect("Failed to create a memory pool!");
-            space_manager.push_space(Space::new(
+            Space::new(
                 &clients_left,
                 &clients_center,
                 &clients_right,
@@ -105,27 +104,34 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 pool,
                 config,
                 display.clone(),
-                layer_shell.clone(),
+                layer_shell,
                 log.clone(),
                 env.create_surface(),
                 focused_surface,
-            ));
+            )
         },
-        Some(_) => for output in outputs {
-            if let Some(info) = with_output_info(&output, Clone::clone) {
+        Some(configured_output) => {
+            if let Some((o, info)) = outputs.iter().find_map(|o| {
+                with_output_info(o, Clone::clone).and_then(|info| {
+                    if info.name == *configured_output {
+                        Some((o, info))
+                    } else {
+                        None
+                    }
+                })
+            }) {
                 let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
                 let env_handle = env.clone();
                 let logger = log.clone();
                 let display_ = display.clone();
-                let config = config.clone();
+                let config = config;
                 handle_output(
                     config,
                     &layer_shell,
                     env_handle,
-                    &mut space_manager,
                     logger,
                     display_,
-                    output,
+                    o,
                     &info,
                     server_display,
                     &mut s_outputs,
@@ -133,10 +139,14 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     &clients_left,
                     &clients_center,
                     &clients_right,
-                );
+                )
+            } else {
+                eprintln!("Could not attach to configured output: {}", configured_output);
+                std::process::exit(1);
             }
-        },
-    }
+        }
+    };
+    
     
 
     // TODO logging
@@ -150,10 +160,9 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
         let DesktopClientState {
             seats,
             env_handle,
-            space_manager,
+            space,
             ..
         } = &mut state.desktop_client_state;
-        let mut space = space_manager.active_space();
 
         let EmbeddedServerState {
             focused_surface,
@@ -265,9 +274,8 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     y,
                 } => {
                     last_motion.replace(Some(((x, y), time)));
-                    if let Some(space) = space.as_mut() {
-                        space.update_pointer((x as i32, y as i32));
-                    }
+                    space.update_pointer((x as i32, y as i32));
+                    
                     handle_motion(
                         space,
                         focused_surface.borrow().clone(),
@@ -380,7 +388,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
     trace!(log.clone(), "client setup complete");
     Ok((
         DesktopClientState {
-            space_manager,
+            space,
             display,
             seats,
             kbd_focus: false,

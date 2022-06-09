@@ -55,7 +55,7 @@ use smithay::{
         },
         wayland_server::{
             protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
-        }, wayland_commons::debug,
+        }
     },
     utils::{Logical, Point, Rectangle},
     wayland::{
@@ -133,7 +133,7 @@ impl<C: XdgWrapperConfig> Space<C> {
         clients_left: &Vec<(u32, Client)>,
         clients_center: &Vec<(u32, Client)>,
         clients_right: &Vec<(u32, Client)>,
-        output: Option<c_wl_output::WlOutput>,
+        output: Option<&c_wl_output::WlOutput>,
         output_info: Option<&OutputInfo>,
         pool: AutoMemPool,
         config: C,
@@ -147,7 +147,7 @@ impl<C: XdgWrapperConfig> Space<C> {
 
         let (w, h) = dimensions;
         let layer_surface =
-            layer_shell.get_layer_surface(&c_surface, output.as_ref(), config.layer(), "".to_owned());
+            layer_shell.get_layer_surface(&c_surface, output, config.layer(), "".to_owned());
 
         layer_surface.set_anchor(config.anchor().into());
         layer_surface.set_keyboard_interactivity(config.keyboard_interactivity());
@@ -292,7 +292,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             client_top_levels_center: Default::default(),
             client_top_levels_right: Default::default(),
             layer_shell,
-            output: output.zip(output_info.cloned()),
+            output: output.cloned().zip(output_info.cloned()),
             c_display,
             pool,
             config,

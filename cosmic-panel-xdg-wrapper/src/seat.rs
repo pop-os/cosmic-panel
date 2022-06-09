@@ -47,7 +47,7 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
         seats,
         kbd_focus,
         last_input_serial,
-        space_manager,
+        space,
         ..
     } = &mut state.desktop_client_state;
     let EmbeddedServerState {
@@ -113,8 +113,8 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
                         let res = focused_surface.as_ref();
                         res.client()
                     });
-                space_manager.update_active(Some(surface));
-                set_data_device_focus(&seat.server.0, client);
+
+                    set_data_device_focus(&seat.server.0, client);
                 *kbd_focus = true;
                 kbd.set_focus(
                     focused_surface.borrow().as_ref(),
@@ -123,10 +123,7 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
             }
             wl_keyboard::Event::Leave { .. } => {
                 *kbd_focus = false;
-                if let Some(space) = space_manager.active_space() {
-                    space.close_popups()
-                }
-                space_manager.update_active(None);
+                space.close_popups();
                 kbd.set_focus(None, SERIAL_COUNTER.next_serial());
             }
             _ => (),
@@ -145,7 +142,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
         axis_frame,
         last_input_serial,
         focused_surface: c_focused_surface,
-        space_manager,
+        space,
         ..
     } = &mut state.desktop_client_state;
     let EmbeddedServerState {
@@ -167,20 +164,18 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 surface_x,
                 surface_y,
             } => {
-                if let Some(space) = space_manager.active_space() {
-                    space.update_pointer((surface_x as i32, surface_y as i32));
-                }
+                space.update_pointer((surface_x as i32, surface_y as i32));
                 if let Focus::Current(surface) = c_focused_surface {
                     set_focused_surface(
                         focused_surface,
-                        space_manager.active_space(),
+                        space,
                         surface,
                         surface_x,
                         surface_y,
                     );
                 }
                 handle_motion(
-                    space_manager.active_space(),
+                    space,
                     focused_surface.borrow().clone(),
                     surface_x,
                     surface_y,
@@ -198,8 +193,8 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 last_input_serial.replace(serial);
                 last_button.replace(button);
 
-                if let (Some(space), Focus::Current(c_focused_surface)) =
-                    (space_manager.active_space(), c_focused_surface)
+                if let Focus::Current(c_focused_surface) =
+                    (c_focused_surface)
                 {
                     space.handle_button(c_focused_surface);
                 }
@@ -278,13 +273,12 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
             },
             c_wl_pointer::Event::Enter { surface, .. } => {
                 // if not popup, then must be a panel layer shell surface
-                space_manager.update_active(Some(surface.clone()));
                 // TODO better handling of subsurfaces?
                 *c_focused_surface = Focus::Current(surface);
             }
             c_wl_pointer::Event::Leave { surface, .. } => {
                 handle_motion(
-                    space_manager.active_space(),
+                    space,
                     None,
                     -1.0,
                     -1.0,
@@ -415,7 +409,7 @@ pub(crate) fn set_server_device_selection(
 
 // TODO revisit motion over popup
 pub(crate) fn handle_motion<C: XdgWrapperConfig>(
-    space: Option<&mut Space<C>>,
+    space: &mut Space<C>,
     focused_surface: Option<WlSurface>,
     surface_x: f64,
     surface_y: f64,
@@ -434,9 +428,7 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
             return;
         }
     };
-    match space
-        .as_ref()
-        .and_then(|r| r.find_server_window(&focused_surface))
+    match space.find_server_window(&focused_surface)
     {
         Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
             let surface_x = surface_x - loc_offset.x as f64;
@@ -486,12 +478,12 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
 
 pub(crate) fn set_focused_surface<C: XdgWrapperConfig>(
     focused_surface: &Rc<RefCell<Option<WlSurface>>>,
-    space: Option<&mut Space<C>>,
+    space: &mut Space<C>,
     surface: &c_wl_surface::WlSurface,
     x: f64,
     y: f64,
 ) {
-    let new_focused = if let Some(space) = space {
+    let new_focused = 
         match space.find_server_surface(surface) {
             Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
                 let toplevel = toplevel.borrow();
@@ -506,10 +498,7 @@ pub(crate) fn set_focused_surface<C: XdgWrapperConfig>(
             }
             Some(ServerSurface::Popup(_, _toplevel, popup)) => popup.get_surface().cloned(),
             _ => None,
-        }
-    } else {
-        None
-    };
+        };
     let mut focused_surface = focused_surface.borrow_mut();
     *focused_surface = new_focused;
 }

@@ -6,12 +6,11 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::space::SpaceManager;
+use crate::space::{Space};
 use crate::{client::Env, CachedBuffers};
 use cosmic_panel_config::config::XdgWrapperConfig;
 use sctk::{
     environment::Environment,
-    output::OutputStatusListener,
     reexports::{
         client::{
             self,
@@ -102,7 +101,7 @@ pub enum Focus {
 pub struct DesktopClientState<C: XdgWrapperConfig> {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
-    pub(crate) space_manager: SpaceManager<C>,
+    pub(crate) space: Space<C>,
     pub(crate) cursor_surface: c_wl_surface::WlSurface,
     pub(crate) axis_frame: AxisFrameData,
     pub(crate) kbd_focus: bool,

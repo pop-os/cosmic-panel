@@ -5,7 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     client::Env,
     shared_state::OutputGroup,
-    space::{Space, SpaceManager},
+    space::{Space},
 };
 use cosmic_panel_config::config::{XdgWrapperConfig};
 use sctk::{
@@ -32,10 +32,9 @@ pub fn handle_output<C: XdgWrapperConfig>(
     config: C,
     layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     env_handle: Environment<Env>,
-    space_manager: &mut SpaceManager<C>,
     logger: Logger,
     display_: Display,
-    output: client::protocol::wl_output::WlOutput,
+    output: &client::protocol::wl_output::WlOutput,
     info: &OutputInfo,
     server_display: &mut s_Display,
     s_outputs: &mut Vec<OutputGroup>,
@@ -43,32 +42,13 @@ pub fn handle_output<C: XdgWrapperConfig>(
     clients_left: &Vec<(u32, Client)>,
     clients_center: &Vec<(u32, Client)>,
     clients_right: &Vec<(u32, Client)>,
-) {
-    // ignore outputs that do not match config
-    if let Some(ref preferred_output) = config.output() {
-        if info.name != *preferred_output {
-            return;
-        }
-    }
+) -> Space<C> {
     // remove output with id if obsolete
     // add output to list if new output
 
     if info.obsolete {
         // an output has been removed, release it
-        space_manager.remove_space_with_output(&info.name);
-
-        // TODO replace with drain_filter
-        let mut i = 0;
-        while i < s_outputs.len() {
-            let name = &s_outputs[i].2;
-            if &info.name != name {
-                let removed = s_outputs.remove(i);
-                removed.1.destroy();
-            } else {
-                i += 1;
-            }
-        }
-
+        // TODO exit if configured output is removed 
         output.release();
     } else {
         // Create the Output for the server with given name and physical properties
@@ -114,7 +94,7 @@ pub fn handle_output<C: XdgWrapperConfig>(
     let pool = env_handle
         .create_auto_pool()
         .expect("Failed to create a memory pool!");
-    space_manager.push_space(Space::new(
+    Space::new(
         clients_left,
         clients_center,
         clients_right,
@@ -127,5 +107,5 @@ pub fn handle_output<C: XdgWrapperConfig>(
         logger.clone(),
         env_handle.create_surface(),
         focused_surface,
-    ));
+    )
 }

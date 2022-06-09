@@ -14,7 +14,7 @@ use smithay::{
     reexports::{nix::fcntl, wayland_server::Display},
     wayland::data_device::set_data_device_selection,
 };
-use space::CachedBuffers;
+use space::{CachedBuffers, Visibility};
 use std::{
     cell::Cell,
     ffi::OsString,
@@ -141,12 +141,12 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
             let display = &mut shared_data.desktop_client_state.display;
             display.flush().unwrap();
 
-            let space_manager = &mut shared_data.desktop_client_state.space_manager;
+            let space = &mut shared_data.desktop_client_state.space;
 
             // FIXME
             // space_manager.apply_display(server_display);
-            let _ = space_manager.handle_events(
-                shared_data.start_time,
+            let _ = space.handle_events(
+                shared_data.start_time.elapsed().as_millis().try_into().unwrap(),
                 &mut children,
                 &shared_data.desktop_client_state.focused_surface,
             );
@@ -192,7 +192,7 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
         }
 
         // sleep if not focused...
-        if shared_data.desktop_client_state.space_manager.hidden() {
+        if matches!(shared_data.desktop_client_state.space.visibility, Visibility::Hidden) {
             thread::sleep(Duration::from_millis(60));
         }
     }
