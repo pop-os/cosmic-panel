@@ -85,6 +85,7 @@ impl Into<Orientation> for Anchor {
         match self {
             Self::Left | Self::Right => Orientation::Vertical,
             Self::Top | Self::Bottom => Orientation::Horizontal,
+            Self::Center => Orientation::Horizontal,
         }
     }
 }
