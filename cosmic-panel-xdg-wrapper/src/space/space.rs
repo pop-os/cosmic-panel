@@ -55,7 +55,7 @@ use smithay::{
         },
         wayland_server::{
             protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
-        },
+        }, wayland_commons::debug,
     },
     utils::{Logical, Point, Rectangle},
     wayland::{
@@ -104,7 +104,7 @@ pub struct Space<C: XdgWrapperConfig> {
     pub client_top_levels_right: Vec<TopLevelSurface>,
     pub pool: AutoMemPool,
     pub layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-    pub output: (c_wl_output::WlOutput, OutputInfo),
+    pub output: Option<(c_wl_output::WlOutput, OutputInfo)>,
     pub c_display: client::Display,
     pub config: C,
     pub log: Logger,
@@ -133,8 +133,8 @@ impl<C: XdgWrapperConfig> Space<C> {
         clients_left: &Vec<(u32, Client)>,
         clients_center: &Vec<(u32, Client)>,
         clients_right: &Vec<(u32, Client)>,
-        output: c_wl_output::WlOutput,
-        output_info: &OutputInfo,
+        output: Option<c_wl_output::WlOutput>,
+        output_info: Option<&OutputInfo>,
         pool: AutoMemPool,
         config: C,
         c_display: client::Display,
@@ -143,11 +143,11 @@ impl<C: XdgWrapperConfig> Space<C> {
         c_surface: Attached<c_wl_surface::WlSurface>,
         focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     ) -> Self {
-        let dimensions = Self::constrain_dim(&config, (0, 0), output_info.modes[0].dimensions);
+        let dimensions = Self::constrain_dim(&config, (0, 0), output_info.map(|o| o.modes[0].dimensions));
 
         let (w, h) = dimensions;
         let layer_surface =
-            layer_shell.get_layer_surface(&c_surface, Some(&output), config.layer(), "".to_owned());
+            layer_shell.get_layer_surface(&c_surface, output.as_ref(), config.layer(), "".to_owned());
 
         layer_surface.set_anchor(config.anchor().into());
         layer_surface.set_keyboard_interactivity(config.keyboard_interactivity());
@@ -292,7 +292,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             client_top_levels_center: Default::default(),
             client_top_levels_right: Default::default(),
             layer_shell,
-            output: (output, output_info.clone()),
+            output: output.zip(output_info.cloned()),
             c_display,
             pool,
             config,
@@ -931,7 +931,7 @@ impl<C: XdgWrapperConfig> Space<C> {
         let (new_w, new_h) = Self::constrain_dim(
             &self.config,
             (new_w, new_h),
-            self.output.1.modes[0].dimensions,
+            self.output.as_ref().map(|o| o.1.modes[0].dimensions),
         );
         let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
         let mut wait_configure_dim = self
@@ -1125,22 +1125,24 @@ impl<C: XdgWrapperConfig> Space<C> {
         None
     }
 
-    fn constrain_dim(config: &C, (mut w, mut h): (u32, u32), (o_w, o_h): (i32, i32)) -> (u32, u32) {
+    fn constrain_dim(config: &C, (mut w, mut h): (u32, u32), output_dims: Option<(i32, i32)>) -> (u32, u32) {
         let (min_w, min_h) = (1.max(config.padding() * 2), 1.max(config.padding() * 2));
         w = min_w.max(w);
         h = min_h.max(h);
-        if let (Some(w_range), _) = config.get_dimensions((o_w as u32, o_h as u32)) {
-            if w < w_range.start {
-                w = w_range.start;
-            } else if w > w_range.end {
-                w = w_range.end;
+        if let Some((o_w, o_h)) = output_dims {
+            if let (Some(w_range), _) = config.get_dimensions((o_w as u32, o_h as u32)) {
+                if w < w_range.start {
+                    w = w_range.start;
+                } else if w > w_range.end {
+                    w = w_range.end;
+                }
             }
-        }
-        if let (_, Some(h_range)) = config.get_dimensions((o_w as u32, o_h as u32)) {
-            if h < h_range.start {
-                h = h_range.start;
-            } else if h > h_range.end {
-                h = h_range.end;
+            if let (_, Some(h_range)) = config.get_dimensions((o_w as u32, o_h as u32)) {
+                if h < h_range.start {
+                    h = h_range.start;
+                } else if h > h_range.end {
+                    h = h_range.end;
+                }
             }
         }
         (w, h)
@@ -1225,7 +1227,6 @@ impl<C: XdgWrapperConfig> Space<C> {
                                     damage_from_surface_tree(server_surface, (0, 0), None);
 
                                 l_damage = if surface_tree_damage.is_empty() {
-                                    dbg!(&top_level.rectangle);
                                     vec![Rectangle::from_loc_and_size(
                                         loc,
                                         (
@@ -1377,6 +1378,11 @@ impl<C: XdgWrapperConfig> Space<C> {
     }
 
     fn update_offsets(&mut self) {
+        // TODO better handling of No configured output...
+        // if no output is configured, it should be a single centered application, so this should work
+        if self.output.is_none() {
+            return;
+        }
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -1453,24 +1459,25 @@ impl<C: XdgWrapperConfig> Space<C> {
             .sorted_by(|(_, _, p_a, _), (_, _, p_b, _)| Ord::cmp(p_a, p_b).reverse())
             .collect_vec();
         let mut total_sum = left_sum + center_sum + right_sum;
-        while total_sum as u32 + padding * 2 + spacing * (num_lists - 1) > list_length {
-            // hide lowest priority element from panel
-            let (hidden_a, hidden_i, _, hidden_l) = all_sorted_priority.pop().unwrap();
-            match hidden_a {
-                Alignment::Left => {
-                    self.client_top_levels_left[hidden_i].set_hidden(true);
-                    left_sum -= hidden_l + spacing as i32;
-                }
-                Alignment::Center => {
-                    self.client_top_levels_center[hidden_i].set_hidden(true);
-                    center_sum -= hidden_l + spacing as i32;
-                }
-                Alignment::Right => {
-                    self.client_top_levels_right[hidden_i].set_hidden(true);
-                    right_sum -= hidden_l + spacing as i32;
-                }
-            };
-            total_sum -= hidden_l;
+        while total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1) > list_length as i32 {
+            // hide lowest priority element from panel if they can't all fit
+            if let Some((hidden_a, hidden_i, _, hidden_l)) = all_sorted_priority.pop() {
+                match hidden_a {
+                    Alignment::Left => {
+                        self.client_top_levels_left[hidden_i].set_hidden(true);
+                        left_sum -= hidden_l + spacing as i32;
+                    }
+                    Alignment::Center => {
+                        self.client_top_levels_center[hidden_i].set_hidden(true);
+                        center_sum -= hidden_l + spacing as i32;
+                    }
+                    Alignment::Right => {
+                        self.client_top_levels_right[hidden_i].set_hidden(true);
+                        right_sum -= hidden_l + spacing as i32;
+                    }
+                };
+                total_sum -= hidden_l;
+            }
         }
 
         // XXX making sure the sum is > 0 after possibly over-subtracting spacing
@@ -1585,6 +1592,7 @@ impl<C: XdgWrapperConfig> Drop for Space<C> {
     }
 }
 
+#[derive(Debug)]
 enum Alignment {
     Left,
     Center,

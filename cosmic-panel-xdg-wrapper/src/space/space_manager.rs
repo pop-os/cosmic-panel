@@ -26,7 +26,7 @@ impl<C: XdgWrapperConfig> SpaceManager<C> {
     }
 
     pub fn remove_space_with_output(&mut self, output_name: &str) {
-        self.spaces.retain(|s| s.output.1.name == output_name)
+        self.spaces.retain(|s| s.output.is_none() || s.output.as_ref().unwrap().1.name != output_name)
     }
 
     pub fn update_active(&mut self, active_surface: Option<WlSurface>) {

@@ -27,7 +27,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::space::SpaceManager;
+use crate::space::{SpaceManager, Space};
 use crate::{
     output::handle_output,
     seat::{
@@ -87,63 +87,57 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
         clients_center.clone(),
         clients_right.clone(),
     );
-    // swap preffered output to front of list if it is available
+
     let outputs = env.get_all_outputs();
 
     let mut space_manager = SpaceManager::default();
-    for output in outputs {
-        if let Some(info) = with_output_info(&output, Clone::clone) {
-            let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-            let env_handle = env.clone();
-            let logger = log.clone();
-            let display_ = display.clone();
-            let config = config.clone();
-            handle_output(
-                config,
-                &layer_shell,
-                env_handle,
-                &mut space_manager,
-                logger,
-                display_,
-                output,
-                &info,
-                server_display,
-                &mut s_outputs,
-                Rc::clone(&focused_surface),
+    match config.output() {
+        None => {
+            let pool = env
+                .create_auto_pool()
+                .expect("Failed to create a memory pool!");
+            space_manager.push_space(Space::new(
                 &clients_left,
                 &clients_center,
                 &clients_right,
-            );
-        }
+                None,
+                None,
+                pool,
+                config,
+                display.clone(),
+                layer_shell.clone(),
+                log.clone(),
+                env.create_surface(),
+                focused_surface,
+            ));
+        },
+        Some(_) => for output in outputs {
+            if let Some(info) = with_output_info(&output, Clone::clone) {
+                let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
+                let env_handle = env.clone();
+                let logger = log.clone();
+                let display_ = display.clone();
+                let config = config.clone();
+                handle_output(
+                    config,
+                    &layer_shell,
+                    env_handle,
+                    &mut space_manager,
+                    logger,
+                    display_,
+                    output,
+                    &info,
+                    server_display,
+                    &mut s_outputs,
+                    Rc::clone(&focused_surface),
+                    &clients_left,
+                    &clients_center,
+                    &clients_right,
+                );
+            }
+        },
     }
-
-    let env_handle = env.clone();
-    let logger = log.clone();
-    let display_ = display.clone();
-    let config_ = config.clone();
-    let output_listener = env.listen_for_outputs(move |output, info, mut dispatch_data| {
-        let (state, server_display) = dispatch_data
-            .get::<(GlobalState<C>, wayland_server::Display)>()
-            .unwrap();
-        let outputs = &mut state.outputs;
-        let space_manager = &mut state.desktop_client_state.space_manager;
-        handle_output(
-            config_.clone(),
-            &layer_shell,
-            env_handle.clone(),
-            space_manager,
-            logger.clone(),
-            display_.clone(),
-            output,
-            info,
-            server_display,
-            outputs,
-            Rc::clone(&focused_surface),
-            &clients_left,
-            &clients_center,
-            &clients_right,
-        );
-    });
+    
 
     // TODO logging
     // FIXME focus lost after drop from source outside xdg-shell-wrapper
@@ -388,7 +382,6 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
         DesktopClientState {
             space_manager,
             display,
-            _output_listener: output_listener,
             seats,
             kbd_focus: false,
             axis_frame: Default::default(),

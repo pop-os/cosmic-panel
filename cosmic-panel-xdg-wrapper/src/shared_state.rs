@@ -102,7 +102,6 @@ pub enum Focus {
 pub struct DesktopClientState<C: XdgWrapperConfig> {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
-    pub(crate) _output_listener: OutputStatusListener,
     pub(crate) space_manager: SpaceManager<C>,
     pub(crate) cursor_surface: c_wl_surface::WlSurface,
     pub(crate) axis_frame: AxisFrameData,

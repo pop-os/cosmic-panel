@@ -7,7 +7,7 @@ use crate::{
     shared_state::OutputGroup,
     space::{Space, SpaceManager},
 };
-use cosmic_panel_config::config::{CosmicPanelOutput, XdgWrapperConfig};
+use cosmic_panel_config::config::{XdgWrapperConfig};
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -45,7 +45,7 @@ pub fn handle_output<C: XdgWrapperConfig>(
     clients_right: &Vec<(u32, Client)>,
 ) {
     // ignore outputs that do not match config
-    if let CosmicPanelOutput::Output(ref preferred_output) = config.output() {
+    if let Some(ref preferred_output) = config.output() {
         if info.name != *preferred_output {
             return;
         }
@@ -118,8 +118,8 @@ pub fn handle_output<C: XdgWrapperConfig>(
         clients_left,
         clients_center,
         clients_right,
-        output,
-        info,
+        Some(output),
+        Some(info),
         pool,
         config,
         display_,

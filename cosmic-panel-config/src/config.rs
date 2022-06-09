@@ -195,24 +195,6 @@ pub struct AutoHide {
     handle_size: u32,
 }
 
-/// configurable output which the panel appears on
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub enum CosmicPanelOutput {
-    /// draw the application on all outputs
-    All,
-    /// draw the application on the active output
-    Auto,
-    /// draw the application on the output specified by name
-    /// this name refers to the unique name which is given by the compositor
-    Output(String),
-}
-
-impl Default for CosmicPanelOutput {
-    fn default() -> Self {
-        Self::All
-    }
-}
-
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CosmicPanelConfig {
@@ -226,8 +208,8 @@ pub struct CosmicPanelConfig {
     pub keyboard_interactivity: KeyboardInteractivity,
     /// configured size for the panel
     pub size: PanelSize,
-    /// configured output, or None to place on all outputs
-    pub output: CosmicPanelOutput,
+    /// name of configured output (Intended for dock or panel), or None to place on active output (Intended for wrapping a single application)
+    pub output: Option<String>,
     /// customized background, or
     pub background: CosmicPanelBackground,
     /// list of plugins on the left or top of the panel
@@ -256,7 +238,7 @@ impl Default for CosmicPanelConfig {
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::None,
             size: PanelSize::M,
-            output: CosmicPanelOutput::default(),
+            output: Some("".to_string()),
             background: CosmicPanelBackground::Color([0.5, 0.0, 0.5, 0.5]),
             plugins_left: Default::default(),
             plugins_center: Default::default(),
@@ -328,7 +310,7 @@ impl CosmicPanelConfig {
 }
 
 pub trait XdgWrapperConfig: Clone + fmt::Debug + Default {
-    fn output(&self) -> CosmicPanelOutput;
+    fn output(&self) -> Option<String>;
     fn anchor(&self) -> Anchor;
     fn padding(&self) -> u32;
     fn layer(&self) -> zwlr_layer_shell_v1::Layer;
@@ -397,7 +379,7 @@ impl XdgWrapperConfig for CosmicPanelConfig {
         self.plugins_right.clone()
     }
 
-    fn output(&self) -> CosmicPanelOutput {
+    fn output(&self) -> Option<String> {
         self.output.clone()
     }
 
