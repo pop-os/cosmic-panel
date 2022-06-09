@@ -100,7 +100,8 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
                     fs::read_to_string(&path).ok().and_then(|bytes| {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                             if let Some(exec) = entry.exec() {
-                                return Some(exec_child(exec, config_name, log.clone(), raw_fd));
+                                let requests_host_wayland_display = entry.desktop_entry("HostWaylandDisplay").is_some();
+                                return Some(exec_child(exec, config_name, log.clone(), raw_fd, requests_host_wayland_display));
                             }
                         }
                         None
@@ -197,7 +198,7 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
     }
 }
 
-fn exec_child(c: &str, config_name: Option<&str>, log: Logger, raw_fd: i32) -> Child {
+fn exec_child(c: &str, config_name: Option<&str>, log: Logger, raw_fd: i32, requests_host_wayland_display: bool) -> Child {
     let mut exec_iter = Shlex::new(c);
     let exec = exec_iter
         .next()
@@ -212,12 +213,19 @@ fn exec_child(c: &str, config_name: Option<&str>, log: Logger, raw_fd: i32) -> C
     if let Some(config_name) = config_name {
         child.env("COSMIC_DOCK_CONFIG", config_name);
     }
+
+    if requests_host_wayland_display {
+        if let Ok(display) = std::env::var("WAYLAND_DISPLAY") {
+            child.env("HOST_WAYLAND_DISPLAY", display);
+        }
+    }
+
     child
         .env("WAYLAND_SOCKET", raw_fd.to_string())
         .env_remove("WAYLAND_DEBUG")
         // .env("WAYLAND_DEBUG", "1")
-        // .stderr(Stdio::piped())
-        // .stdout(Stdio::piped())
+        // .stderr(std::process::Stdio::piped())
+        // .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to start child process")
 }
