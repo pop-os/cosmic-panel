@@ -55,7 +55,7 @@ use smithay::{
         },
         wayland_server::{
             protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
-        }
+        },
     },
     utils::{Logical, Point, Rectangle},
     wayland::{
@@ -143,7 +143,8 @@ impl<C: XdgWrapperConfig> Space<C> {
         c_surface: Attached<c_wl_surface::WlSurface>,
         focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     ) -> Self {
-        let dimensions = Self::constrain_dim(&config, (0, 0), output_info.map(|o| o.modes[0].dimensions));
+        let dimensions =
+            Self::constrain_dim(&config, (0, 0), output_info.map(|o| o.modes[0].dimensions));
 
         let (w, h) = dimensions;
         let layer_surface =
@@ -1125,7 +1126,11 @@ impl<C: XdgWrapperConfig> Space<C> {
         None
     }
 
-    fn constrain_dim(config: &C, (mut w, mut h): (u32, u32), output_dims: Option<(i32, i32)>) -> (u32, u32) {
+    fn constrain_dim(
+        config: &C,
+        (mut w, mut h): (u32, u32),
+        output_dims: Option<(i32, i32)>,
+    ) -> (u32, u32) {
         let (min_w, min_h) = (1.max(config.padding() * 2), 1.max(config.padding() * 2));
         w = min_w.max(w);
         h = min_h.max(h);
@@ -1459,7 +1464,9 @@ impl<C: XdgWrapperConfig> Space<C> {
             .sorted_by(|(_, _, p_a, _), (_, _, p_b, _)| Ord::cmp(p_a, p_b).reverse())
             .collect_vec();
         let mut total_sum = left_sum + center_sum + right_sum;
-        while total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1) > list_length as i32 {
+        while total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
+            > list_length as i32
+        {
             // hide lowest priority element from panel if they can't all fit
             if let Some((hidden_a, hidden_i, _, hidden_l)) = all_sorted_priority.pop() {
                 match hidden_a {

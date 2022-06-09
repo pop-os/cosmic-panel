@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::space::{Space};
+use crate::space::Space;
 use crate::{client::Env, CachedBuffers};
 use cosmic_panel_config::config::XdgWrapperConfig;
 use sctk::{

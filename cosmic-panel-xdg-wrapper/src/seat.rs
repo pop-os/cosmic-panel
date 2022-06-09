@@ -114,7 +114,7 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
                         res.client()
                     });
 
-                    set_data_device_focus(&seat.server.0, client);
+                set_data_device_focus(&seat.server.0, client);
                 *kbd_focus = true;
                 kbd.set_focus(
                     focused_surface.borrow().as_ref(),
@@ -166,13 +166,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
             } => {
                 space.update_pointer((surface_x as i32, surface_y as i32));
                 if let Focus::Current(surface) = c_focused_surface {
-                    set_focused_surface(
-                        focused_surface,
-                        space,
-                        surface,
-                        surface_x,
-                        surface_y,
-                    );
+                    set_focused_surface(focused_surface, space, surface, surface_x, surface_y);
                 }
                 handle_motion(
                     space,
@@ -193,9 +187,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 last_input_serial.replace(serial);
                 last_button.replace(button);
 
-                if let Focus::Current(c_focused_surface) =
-                    (c_focused_surface)
-                {
+                if let Focus::Current(c_focused_surface) = (c_focused_surface) {
                     space.handle_button(c_focused_surface);
                 }
                 if let Some(button_state) = wl_pointer::ButtonState::from_raw(state.to_raw()) {
@@ -277,14 +269,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 *c_focused_surface = Focus::Current(surface);
             }
             c_wl_pointer::Event::Leave { surface, .. } => {
-                handle_motion(
-                    space,
-                    None,
-                    -1.0,
-                    -1.0,
-                    ptr,
-                    time as u32,
-                );
+                handle_motion(space, None, -1.0, -1.0, ptr, time as u32);
                 if let Focus::Current(s) = c_focused_surface {
                     if s == &surface {
                         *c_focused_surface = Focus::LastFocus(Instant::now());
@@ -428,8 +413,7 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
             return;
         }
     };
-    match space.find_server_window(&focused_surface)
-    {
+    match space.find_server_window(&focused_surface) {
         Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
             let surface_x = surface_x - loc_offset.x as f64;
             let surface_y = surface_y - loc_offset.y as f64;
@@ -483,22 +467,21 @@ pub(crate) fn set_focused_surface<C: XdgWrapperConfig>(
     x: f64,
     y: f64,
 ) {
-    let new_focused = 
-        match space.find_server_surface(surface) {
-            Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
-                let toplevel = toplevel.borrow();
-                if let Some((cur_surface, _)) = toplevel.surface_under(
-                    (x - loc_offset.x as f64, y - loc_offset.y as f64),
-                    WindowSurfaceType::ALL,
-                ) {
-                    Some(cur_surface)
-                } else {
-                    toplevel.toplevel().get_surface().cloned()
-                }
+    let new_focused = match space.find_server_surface(surface) {
+        Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
+            let toplevel = toplevel.borrow();
+            if let Some((cur_surface, _)) = toplevel.surface_under(
+                (x - loc_offset.x as f64, y - loc_offset.y as f64),
+                WindowSurfaceType::ALL,
+            ) {
+                Some(cur_surface)
+            } else {
+                toplevel.toplevel().get_surface().cloned()
             }
-            Some(ServerSurface::Popup(_, _toplevel, popup)) => popup.get_surface().cloned(),
-            _ => None,
-        };
+        }
+        Some(ServerSurface::Popup(_, _toplevel, popup)) => popup.get_surface().cloned(),
+        _ => None,
+    };
     let mut focused_surface = focused_surface.borrow_mut();
     *focused_surface = new_focused;
 }

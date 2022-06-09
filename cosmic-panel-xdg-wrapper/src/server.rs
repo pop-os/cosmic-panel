@@ -169,8 +169,7 @@ pub fn new_server<C: XdgWrapperConfig>(
             let role = get_role(&surface);
             trace!(log, "role: {:?} surface: {:?}", &role, &surface);
             if role == "xdg_toplevel".into() {
-                if let Some(top_level) = shell_state.lock().unwrap().toplevel_surface(&surface)
-                {
+                if let Some(top_level) = shell_state.lock().unwrap().toplevel_surface(&surface) {
                     on_commit_buffer_handler(&surface);
                     let window = Window::new(Kind::Xdg(top_level.clone()));
                     window.refresh();
@@ -292,9 +291,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
 
-                    if let (Some(parent)) =
-                        s_popup_surface.get_parent_surface()
-                    {
+                    if let (Some(parent)) = s_popup_surface.get_parent_surface() {
                         space.add_popup(
                             wl_surface,
                             xdg_surface,

@@ -27,7 +27,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::{space::{Space}, output};
+use crate::{output, space::Space};
 use crate::{
     output::handle_output,
     seat::{
@@ -109,7 +109,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 env.create_surface(),
                 focused_surface,
             )
-        },
+        }
         Some(configured_output) => {
             if let Some((o, info)) = outputs.iter().find_map(|o| {
                 with_output_info(o, Clone::clone).and_then(|info| {
@@ -141,13 +141,14 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     &clients_right,
                 )
             } else {
-                eprintln!("Could not attach to configured output: {}", configured_output);
+                eprintln!(
+                    "Could not attach to configured output: {}",
+                    configured_output
+                );
                 std::process::exit(1);
             }
         }
     };
-    
-    
 
     // TODO logging
     // FIXME focus lost after drop from source outside xdg-shell-wrapper
@@ -275,7 +276,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 } => {
                     last_motion.replace(Some(((x, y), time)));
                     space.update_pointer((x as i32, y as i32));
-                    
+
                     handle_motion(
                         space,
                         focused_surface.borrow().clone(),

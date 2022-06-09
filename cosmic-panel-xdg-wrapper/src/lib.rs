@@ -100,8 +100,15 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
                     fs::read_to_string(&path).ok().and_then(|bytes| {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                             if let Some(exec) = entry.exec() {
-                                let requests_host_wayland_display = entry.desktop_entry("HostWaylandDisplay").is_some();
-                                return Some(exec_child(exec, config_name, log.clone(), raw_fd, requests_host_wayland_display));
+                                let requests_host_wayland_display =
+                                    entry.desktop_entry("HostWaylandDisplay").is_some();
+                                return Some(exec_child(
+                                    exec,
+                                    config_name,
+                                    log.clone(),
+                                    raw_fd,
+                                    requests_host_wayland_display,
+                                ));
                             }
                         }
                         None
@@ -146,7 +153,12 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
             // FIXME
             // space_manager.apply_display(server_display);
             let _ = space.handle_events(
-                shared_data.start_time.elapsed().as_millis().try_into().unwrap(),
+                shared_data
+                    .start_time
+                    .elapsed()
+                    .as_millis()
+                    .try_into()
+                    .unwrap(),
                 &mut children,
                 &shared_data.desktop_client_state.focused_surface,
             );
@@ -192,13 +204,22 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
         }
 
         // sleep if not focused...
-        if matches!(shared_data.desktop_client_state.space.visibility, Visibility::Hidden) {
+        if matches!(
+            shared_data.desktop_client_state.space.visibility,
+            Visibility::Hidden
+        ) {
             thread::sleep(Duration::from_millis(60));
         }
     }
 }
 
-fn exec_child(c: &str, config_name: Option<&str>, log: Logger, raw_fd: i32, requests_host_wayland_display: bool) -> Child {
+fn exec_child(
+    c: &str,
+    config_name: Option<&str>,
+    log: Logger,
+    raw_fd: i32,
+    requests_host_wayland_display: bool,
+) -> Child {
     let mut exec_iter = Shlex::new(c);
     let exec = exec_iter
         .next()

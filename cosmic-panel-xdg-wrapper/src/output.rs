@@ -2,12 +2,8 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    client::Env,
-    shared_state::OutputGroup,
-    space::{Space},
-};
-use cosmic_panel_config::config::{XdgWrapperConfig};
+use crate::{client::Env, shared_state::OutputGroup, space::Space};
+use cosmic_panel_config::config::XdgWrapperConfig;
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -48,7 +44,7 @@ pub fn handle_output<C: XdgWrapperConfig>(
 
     if info.obsolete {
         // an output has been removed, release it
-        // TODO exit if configured output is removed 
+        // TODO exit if configured output is removed
         output.release();
     } else {
         // Create the Output for the server with given name and physical properties
