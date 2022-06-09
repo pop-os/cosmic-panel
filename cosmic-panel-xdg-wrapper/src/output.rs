@@ -29,10 +29,10 @@ pub fn handle_output<C: XdgWrapperConfig>(
     layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     env_handle: Environment<Env>,
     logger: Logger,
-    display_: Display,
+    c_display: Display,
     output: &client::protocol::wl_output::WlOutput,
     info: &OutputInfo,
-    server_display: &mut s_Display,
+    s_display: &mut s_Display,
     s_outputs: &mut Vec<OutputGroup>,
     focused_surface: Rc<RefCell<Option<WlSurface>>>,
     clients_left: &Vec<(u32, Client)>,
@@ -83,7 +83,7 @@ pub fn handle_output<C: XdgWrapperConfig>(
                 s_output.add_mode(s_mode);
             }
         }
-        let s_output_global = s_output.create_global(server_display);
+        let s_output_global = s_output.create_global(s_display);
         s_outputs.push((s_output, s_output_global, info.name.clone(), output.clone()));
     }
 
@@ -99,7 +99,8 @@ pub fn handle_output<C: XdgWrapperConfig>(
         Some(info),
         pool,
         config,
-        display_,
+        c_display,
+        s_display,
         layer_shell.clone(),
         logger.clone(),
         env_handle.create_surface(),

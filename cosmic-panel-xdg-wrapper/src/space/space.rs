@@ -108,7 +108,6 @@ pub struct Space<C: XdgWrapperConfig> {
     pub c_display: client::Display,
     pub config: C,
     pub log: Logger,
-    pub needs_update: bool,
     /// indicates whether the surface should be fully cleared and redrawn on the next render
     pub full_clear: bool,
     pub egl_display: EGLDisplay,
@@ -138,6 +137,7 @@ impl<C: XdgWrapperConfig> Space<C> {
         pool: AutoMemPool,
         config: C,
         c_display: client::Display,
+        s_display: &s_Display,
         layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
         log: Logger,
         c_surface: Attached<c_wl_surface::WlSurface>,
@@ -228,7 +228,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             );
         }
 
-        let renderer = unsafe {
+        let mut renderer = unsafe {
             Gles2Renderer::new(egl_context, log.clone()).expect("Failed to initialize EGL Surface")
         };
         trace!(log, "{:?}", unsafe {
@@ -282,7 +282,12 @@ impl<C: XdgWrapperConfig> Space<C> {
                 (_, _) => {}
             }
         });
-
+        if let Err(_err) = renderer.bind_wl_display(s_display) {
+            warn!(
+                log.clone(),
+                "Failed to bind display to Egl renderer. Hardware acceleration will not be used."
+            );
+        }
         Self {
             clients_left: clients_left.clone(),
             clients_center: clients_center.clone(),
@@ -298,7 +303,6 @@ impl<C: XdgWrapperConfig> Space<C> {
             pool,
             config,
             log,
-            needs_update: true,
             full_clear: true,
             last_dirty: Instant::now(),
             dimensions,
@@ -529,7 +533,6 @@ impl<C: XdgWrapperConfig> Space<C> {
                     // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
                     self.layer_shell_wl_surface.commit();
                     self.egl_surface.resize(width as i32, height as i32, 0, 0);
-                    self.needs_update = true;
                     self.full_clear = true;
                     self.update_offsets();
                 }
@@ -614,20 +617,6 @@ impl<C: XdgWrapperConfig> Space<C> {
         {
             self.close_popups()
         }
-    }
-
-    pub fn apply_display(&mut self, s_display: &s_Display) {
-        if !self.needs_update {
-            return;
-        };
-
-        if let Err(_err) = self.renderer.bind_wl_display(s_display) {
-            warn!(
-                self.log.clone(),
-                "Failed to bind display to Egl renderer. Hardware acceleration will not be used."
-            );
-        }
-        self.needs_update = false;
     }
 
     // TODO: adjust offset of top level
