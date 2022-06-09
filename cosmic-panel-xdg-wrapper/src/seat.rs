@@ -97,7 +97,7 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 kbd.change_repeat_info(rate, delay);
             }
-            wl_keyboard::Event::Enter { surface, .. } => {
+            wl_keyboard::Event::Enter { surface: _, .. } => {
                 // println!("kbd entered");
 
                 let _ = set_server_device_selection(
@@ -187,7 +187,7 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
                 last_input_serial.replace(serial);
                 last_button.replace(button);
 
-                if let Focus::Current(c_focused_surface) = (c_focused_surface) {
+                if let Focus::Current(c_focused_surface) = c_focused_surface {
                     space.handle_button(c_focused_surface);
                 }
                 if let Some(button_state) = wl_pointer::ButtonState::from_raw(state.to_raw()) {

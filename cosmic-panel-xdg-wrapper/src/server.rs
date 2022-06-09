@@ -219,7 +219,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     Some(PopupKind::Xdg(s)) => (s.get_parent_surface(), s),
                     _ => return,
                 };
-                if let (Some(top_level_surface)) = (top_level_surface) {
+                if let Some(top_level_surface) = top_level_surface {
                     space.dirty_popup(
                         &top_level_surface,
                         popup_surface,
@@ -291,7 +291,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     let wl_surface = env_handle.create_surface().detach();
                     let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface);
 
-                    if let (Some(parent)) = s_popup_surface.get_parent_surface() {
+                    if let Some(parent) = s_popup_surface.get_parent_surface() {
                         space.add_popup(
                             wl_surface,
                             xdg_surface,

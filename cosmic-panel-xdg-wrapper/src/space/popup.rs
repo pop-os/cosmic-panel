@@ -9,7 +9,6 @@ use smithay::{
     reexports::wayland_protocols::xdg_shell::client::{
         xdg_popup::XdgPopup, xdg_surface::XdgSurface,
     },
-    utils::{Logical, Rectangle},
     wayland::shell::xdg::PopupSurface,
 };
 

@@ -27,7 +27,9 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::{output, space::Space};
+use crate::{
+    space::{Space, SpaceEvent},
+};
 use crate::{
     output::handle_output,
     seat::{
@@ -102,12 +104,12 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 None,
                 None,
                 pool,
-                config,
+                config.clone(),
                 display.clone(),
                 layer_shell,
                 log.clone(),
                 env.create_surface(),
-                focused_surface,
+                focused_surface
             )
         }
         Some(configured_output) => {
@@ -124,7 +126,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 let env_handle = env.clone();
                 let logger = log.clone();
                 let display_ = display.clone();
-                let config = config;
+                let config = config.clone();
                 handle_output(
                     config,
                     &layer_shell,
@@ -149,6 +151,22 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
             }
         }
     };
+
+    let output_listener = config.output().map(|configured_output| {
+        env.listen_for_outputs(move |o, info, mut dispatch_data| {
+            let (state, _server_display) = dispatch_data
+                .get::<(GlobalState<C>, wayland_server::Display)>()
+                .unwrap();
+            if info.name == configured_output && info.obsolete {
+                state
+                    .desktop_client_state
+                    .space
+                    .next_render_event
+                    .replace(Some(SpaceEvent::Quit));
+                o.release();
+            }
+        })
+    });
 
     // TODO logging
     // FIXME focus lost after drop from source outside xdg-shell-wrapper
@@ -400,6 +418,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
             env_handle: env,
             last_input_serial: None,
             focused_surface: Focus::LastFocus(Instant::now()),
+            _output_listener: output_listener,
         },
         s_outputs,
     ))

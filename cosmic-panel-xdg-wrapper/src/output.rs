@@ -44,8 +44,9 @@ pub fn handle_output<C: XdgWrapperConfig>(
 
     if info.obsolete {
         // an output has been removed, release it
-        // TODO exit if configured output is removed
+        // this should not be reached
         output.release();
+        std::process::exit(1);
     } else {
         // Create the Output for the server with given name and physical properties
         let s_output = s_Output::new(

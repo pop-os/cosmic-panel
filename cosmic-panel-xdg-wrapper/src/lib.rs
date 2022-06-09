@@ -55,8 +55,7 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
     let global_state = GlobalState {
         desktop_client_state,
         embedded_server_state,
-        loop_signal: event_loop.get_signal(),
-        outputs,
+        _loop_signal: event_loop.get_signal(),
         log: log.clone(),
         start_time: std::time::Instant::now(),
         cached_buffers: CachedBuffers::new(log.clone()),

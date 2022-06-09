@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use once_cell::sync::OnceCell;
+use sctk::output::OutputStatusListener;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -69,8 +70,7 @@ pub struct AxisFrameData {
 pub struct GlobalState<C: XdgWrapperConfig + 'static> {
     pub(crate) desktop_client_state: DesktopClientState<C>,
     pub(crate) embedded_server_state: EmbeddedServerState,
-    pub(crate) loop_signal: calloop::LoopSignal,
-    pub(crate) outputs: Vec<OutputGroup>,
+    pub(crate) _loop_signal: calloop::LoopSignal,
     pub(crate) log: Logger,
     pub(crate) start_time: std::time::Instant,
     pub(crate) cached_buffers: CachedBuffers,
@@ -110,4 +110,5 @@ pub struct DesktopClientState<C: XdgWrapperConfig> {
     pub(crate) env_handle: Environment<Env>,
     pub(crate) last_input_serial: Option<u32>,
     pub(crate) focused_surface: Focus,
+    pub(crate) _output_listener: Option<OutputStatusListener>,
 }

@@ -65,7 +65,7 @@ use smithay::{
 };
 
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum RenderEvent {
+pub enum SpaceEvent {
     WaitConfigure {
         width: u32,
         height: u32,
@@ -75,7 +75,7 @@ pub enum RenderEvent {
         height: u32,
         serial: u32,
     },
-    Closed,
+    Quit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -117,7 +117,7 @@ pub struct Space<C: XdgWrapperConfig> {
     /// layer surface which all client surfaces are composited onto
     pub layer_surface: Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     pub egl_surface: Rc<EGLSurface>,
-    pub next_render_event: Rc<Cell<Option<RenderEvent>>>,
+    pub next_render_event: Rc<Cell<Option<SpaceEvent>>>,
     pub layer_shell_wl_surface: Attached<c_wl_surface::WlSurface>,
     /// adjusts to fit all client surfaces
     pub dimensions: (u32, u32),
@@ -158,7 +158,7 @@ impl<C: XdgWrapperConfig> Space<C> {
         // Commit so that the server will send a configure event
         c_surface.commit();
 
-        let next_render_event = Rc::new(Cell::new(Some(RenderEvent::WaitConfigure {
+        let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             width: x,
             height: y,
         })));
@@ -170,7 +170,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             match (event, next_render_event_handle.get()) {
                 (zwlr_layer_surface_v1::Event::Closed, _) => {
                     info!(logger, "Received close event. closing.");
-                    next_render_event_handle.set(Some(RenderEvent::Closed));
+                    next_render_event_handle.set(Some(SpaceEvent::Quit));
                 }
                 (
                     zwlr_layer_surface_v1::Event::Configure {
@@ -179,7 +179,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                         height,
                     },
                     next,
-                ) if next != Some(RenderEvent::Closed) => {
+                ) if next != Some(SpaceEvent::Quit) => {
                     trace!(
                         logger,
                         "received configure event {:?} {:?} {:?}",
@@ -188,7 +188,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure {
+                    next_render_event_handle.set(Some(SpaceEvent::Configure {
                         width,
                         height,
                         serial,
@@ -255,7 +255,7 @@ impl<C: XdgWrapperConfig> Space<C> {
             match (event, next_render_event_handle.get()) {
                 (zwlr_layer_surface_v1::Event::Closed, _) => {
                     info!(logger, "Received close event. closing.");
-                    next_render_event_handle.set(Some(RenderEvent::Closed));
+                    next_render_event_handle.set(Some(SpaceEvent::Quit));
                 }
                 (
                     zwlr_layer_surface_v1::Event::Configure {
@@ -264,7 +264,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                         height,
                     },
                     next,
-                ) if next != Some(RenderEvent::Closed) => {
+                ) if next != Some(SpaceEvent::Quit) => {
                     trace!(
                         logger,
                         "received configure event {:?} {:?} {:?}",
@@ -273,7 +273,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                         height
                     );
                     layer_surface.ack_configure(serial);
-                    next_render_event_handle.set(Some(RenderEvent::Configure {
+                    next_render_event_handle.set(Some(SpaceEvent::Configure {
                         width,
                         height,
                         serial,
@@ -513,13 +513,13 @@ impl<C: XdgWrapperConfig> Space<C> {
         self.handle_focus(focus);
         let mut should_render = false;
         match self.next_render_event.take() {
-            Some(RenderEvent::Closed) => {
+            Some(SpaceEvent::Quit) => {
                 trace!(self.log, "root window removed, exiting...");
                 for child in children {
                     let _ = child.kill();
                 }
             }
-            Some(RenderEvent::Configure {
+            Some(SpaceEvent::Configure {
                 width,
                 height,
                 serial: _serial,
@@ -534,9 +534,9 @@ impl<C: XdgWrapperConfig> Space<C> {
                     self.update_offsets();
                 }
             }
-            Some(RenderEvent::WaitConfigure { width, height }) => {
+            Some(SpaceEvent::WaitConfigure { width, height }) => {
                 self.next_render_event
-                    .replace(Some(RenderEvent::WaitConfigure { width, height }));
+                    .replace(Some(SpaceEvent::WaitConfigure { width, height }));
             }
             None => {
                 if let Some((width, height)) = self.pending_dimensions.take() {
@@ -567,7 +567,7 @@ impl<C: XdgWrapperConfig> Space<C> {
                     }
                     self.layer_shell_wl_surface.commit();
                     self.next_render_event
-                        .replace(Some(RenderEvent::WaitConfigure { width, height }));
+                        .replace(Some(SpaceEvent::WaitConfigure { width, height }));
                 } else {
                     should_render = true;
                 }
@@ -939,12 +939,12 @@ impl<C: XdgWrapperConfig> Space<C> {
             .next_render_event
             .get()
             .map(|e| match e {
-                RenderEvent::Configure {
+                SpaceEvent::Configure {
                     width,
                     height,
                     serial: _serial,
                 } => (width, height),
-                RenderEvent::WaitConfigure { width, height } => (width, height),
+                SpaceEvent::WaitConfigure { width, height } => (width, height),
                 _ => self.dimensions,
             })
             .unwrap_or(pending_dimensions);

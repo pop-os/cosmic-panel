@@ -186,8 +186,8 @@ impl Buffer {
             pool,
             buffer,
             pool_size: size,
-            x: x,
-            y: y,
+            x,
+            y,
             format,
             log,
         }
