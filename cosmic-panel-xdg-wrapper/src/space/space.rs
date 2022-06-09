@@ -917,14 +917,42 @@ impl<C: XdgWrapperConfig> Space<C> {
         let new_w = w + 2 * self.config.padding();
         let new_h = h + 2 * self.config.padding();
 
-        // TODO improve this for when there are changes to the lists of plugins while running
-        let (new_w, new_h) = Self::constrain_dim(
-            &self.config,
-            (new_w, new_h),
-            self.output.as_ref().map(|o| o.1.modes[0].dimensions),
-        );
-        let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
-        let mut wait_configure_dim = self
+        if let Some((_, info)) = &self.output {
+            // TODO improve this for when there are changes to the lists of plugins while running
+            let (new_w, new_h) = Self::constrain_dim(
+                &self.config,
+                (new_w, new_h),
+                Some(info.modes[0].dimensions),
+            );
+            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
+            let mut wait_configure_dim = self
+                .next_render_event
+                .get()
+                .map(|e| match e {
+                    SpaceEvent::Configure {
+                        width,
+                        height,
+                        serial: _serial,
+                    } => (width, height),
+                    SpaceEvent::WaitConfigure { width, height } => (width, height),
+                    _ => self.dimensions,
+                })
+                .unwrap_or(pending_dimensions);
+            if self.dimensions.0 < new_w
+                && pending_dimensions.0 < new_w
+                && wait_configure_dim.0 < new_w
+            {
+                self.pending_dimensions = Some((new_w, wait_configure_dim.1));
+                wait_configure_dim.0 = new_w;
+            }
+            if self.dimensions.1 < new_h
+                && pending_dimensions.1 < new_h
+                && wait_configure_dim.1 < new_h
+            {
+                self.pending_dimensions = Some((wait_configure_dim.0, new_h));
+            }
+        } else {
+            if self
             .next_render_event
             .get()
             .map(|e| match e {
@@ -936,15 +964,10 @@ impl<C: XdgWrapperConfig> Space<C> {
                 SpaceEvent::WaitConfigure { width, height } => (width, height),
                 _ => self.dimensions,
             })
-            .unwrap_or(pending_dimensions);
-        if self.dimensions.0 < new_w && pending_dimensions.0 < new_w && wait_configure_dim.0 < new_w
-        {
-            self.pending_dimensions = Some((new_w, wait_configure_dim.1));
-            wait_configure_dim.0 = new_w;
-        }
-        if self.dimensions.1 < new_h && pending_dimensions.1 < new_h && wait_configure_dim.1 < new_h
-        {
-            self.pending_dimensions = Some((wait_configure_dim.0, new_h));
+            .unwrap_or(self.pending_dimensions.unwrap_or(self.dimensions)) != (new_w, new_h)  {
+                self.pending_dimensions = Some((new_w, new_h));
+                full_clear = true;
+            }
         }
 
         if full_clear {
