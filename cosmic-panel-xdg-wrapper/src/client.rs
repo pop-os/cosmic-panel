@@ -27,9 +27,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::{
-    space::{Space, SpaceEvent},
-};
+use crate::space::{Space, SpaceEvent};
 use crate::{
     output::handle_output,
     seat::{
@@ -109,7 +107,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 layer_shell,
                 log.clone(),
                 env.create_surface(),
-                focused_surface
+                focused_surface,
             )
         }
         Some(configured_output) => {
