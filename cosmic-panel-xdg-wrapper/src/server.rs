@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use crate::shared_state::*;
+use crate::{shared_state::*, space::WrapperSpace};
 use anyhow::Result;
-use cosmic_panel_config::config::XdgWrapperConfig;
+use cosmic_panel_config::config::WrapperConfig;
 use once_cell::sync::OnceCell;
 use sctk::reexports::{
     calloop::{self, generic::Generic, Interest, Mode},
@@ -52,40 +52,15 @@ fn plugin_as_client_sock(
     )
 }
 
-pub fn new_server<C: XdgWrapperConfig>(
-    loop_handle: calloop::LoopHandle<'static, (GlobalState<C>, wayland_server::Display)>,
-    config: C,
+pub fn new_server<W: WrapperSpace>(
+    loop_handle: calloop::LoopHandle<'static, (GlobalState<W>, wayland_server::Display)>,
+    config: W::Config,
     log: Logger,
 ) -> Result<(
     EmbeddedServerState,
     wayland_server::Display,
-    (
-        Vec<(UnixStream, UnixStream)>,
-        Vec<(UnixStream, UnixStream)>,
-        Vec<(UnixStream, UnixStream)>,
-    ),
 )> {
     let mut display = wayland_server::Display::new();
-
-    // mapping from wl type using wayland_server::resource to client
-    let (clients_left, sockets_left): (Vec<_>, Vec<_>) = config
-        .plugins_left()
-        .unwrap_or_default()
-        .iter()
-        .map(|p| plugin_as_client_sock(p, &mut display))
-        .unzip();
-    let (clients_center, sockets_center): (Vec<_>, Vec<_>) = config
-        .plugins_center()
-        .unwrap_or_default()
-        .iter()
-        .map(|p| plugin_as_client_sock(p, &mut display))
-        .unzip();
-    let (clients_right, sockets_right): (Vec<_>, Vec<_>) = config
-        .plugins_right()
-        .unwrap_or_default()
-        .iter()
-        .map(|p| plugin_as_client_sock(p, &mut display))
-        .unzip();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);
     loop_handle.insert_source(display_event_source, move |_e, _metadata, _shared_data| {
@@ -150,7 +125,7 @@ pub fn new_server<C: XdgWrapperConfig>(
     let (_compositor, _subcompositor) = compositor_init(
         &mut display,
         move |surface, mut dispatch_data| {
-            let state = dispatch_data.get::<GlobalState<C>>().unwrap();
+            let state = dispatch_data.get::<GlobalState<W>>().unwrap();
             let DesktopClientState {
                 cursor_surface,
                 space,
@@ -173,9 +148,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     on_commit_buffer_handler(&surface);
                     let window = Window::new(Kind::Xdg(top_level.clone()));
                     window.refresh();
-                    let w = window.bbox().size.w as u32;
-                    let h = window.bbox().size.h as u32;
-                    space.dirty(&surface, (w, h));
+                    space.dirty_toplevel(&surface, window.bbox().size);
                 }
             } else if role == "cursor_image".into() {
                 // pass cursor image to parent compositor
@@ -220,11 +193,7 @@ pub fn new_server<C: XdgWrapperConfig>(
                     _ => return,
                 };
                 if let Some(top_level_surface) = top_level_surface {
-                    space.dirty_popup(
-                        &top_level_surface,
-                        popup_surface,
-                        utils::bbox_from_surface_tree(&surface, (0, 0)),
-                    );
+                    space.dirty_popup(&top_level_surface, popup_surface);
                 }
             } else {
                 trace!(log, "{:?}", surface);
@@ -237,7 +206,7 @@ pub fn new_server<C: XdgWrapperConfig>(
     let (shell_state, _) = xdg_shell_init(
         &mut display,
         move |request: XdgRequest, mut dispatch_data| {
-            let state = dispatch_data.get::<GlobalState<C>>().unwrap();
+            let state = dispatch_data.get::<GlobalState<W>>().unwrap();
             let DesktopClientState {
                 seats,
                 kbd_focus,
@@ -344,9 +313,6 @@ pub fn new_server<C: XdgWrapperConfig>(
 
     Ok((
         EmbeddedServerState {
-            clients_left,
-            clients_center,
-            clients_right,
             shell_state,
             popup_manager,
             root_window: Default::default(),
@@ -358,6 +324,5 @@ pub fn new_server<C: XdgWrapperConfig>(
             last_button: None,
         },
         display,
-        (sockets_left, sockets_center, sockets_right),
     ))
 }

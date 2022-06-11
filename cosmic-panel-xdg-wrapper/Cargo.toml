@@ -21,7 +21,6 @@ wayland-egl = "0.29.4"
 libc = "0.2.117"
 tempfile = "3.3"
 once_cell = "1.10.0"
-nix = "*"
 itertools = "0.10.3"
 cosmic-panel-config = { path ="../cosmic-panel-config"}
 shlex = "1.1.0"

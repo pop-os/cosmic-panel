@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
+use cosmic_panel_config::config::WrapperConfig;
 use sctk::{
     data_device, default_environment,
     environment::SimpleGlobal,
@@ -27,7 +28,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::space::{Space, SpaceEvent};
+use crate::space::{PanelSpace, SpaceEvent, WrapperSpace};
 use crate::{
     output::handle_output,
     seat::{
@@ -36,7 +37,6 @@ use crate::{
     },
     shared_state::*,
 };
-use cosmic_panel_config::config::XdgWrapperConfig;
 
 default_environment!(Env,
     fields = [
@@ -49,13 +49,14 @@ default_environment!(Env,
     ],
 );
 
-pub fn new_client<C: XdgWrapperConfig + 'static>(
-    loop_handle: calloop::LoopHandle<'static, (GlobalState<C>, wayland_server::Display)>,
-    config: C,
+pub fn new_client<W: WrapperSpace + 'static>(
+    loop_handle: calloop::LoopHandle<'static, (GlobalState<W>, wayland_server::Display)>,
+    mut space: W,
     log: Logger,
     server_display: &mut wayland_server::Display,
     embedded_server_state: &EmbeddedServerState,
-) -> Result<(DesktopClientState<C>, Vec<OutputGroup>)> {
+) -> Result<(DesktopClientState<W>, Vec<OutputGroup>)> {
+    let config = space.config();
     /*
      * Initial setup
      */
@@ -76,40 +77,24 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
 
     let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
     let mut s_outputs = Vec::new();
-    let EmbeddedServerState {
-        clients_left,
-        clients_center,
-        clients_right,
-        ..
-    } = &embedded_server_state;
-    let (clients_left, clients_center, clients_right) = (
-        clients_left.clone(),
-        clients_center.clone(),
-        clients_right.clone(),
-    );
 
     let outputs = env.get_all_outputs();
 
-    let space = match config.output() {
+    match config.output() {
         None => {
             let pool = env
                 .create_auto_pool()
                 .expect("Failed to create a memory pool!");
-            Space::new(
-                &clients_left,
-                &clients_center,
-                &clients_right,
+            space.add_output(
                 None,
                 None,
                 pool,
-                config.clone(),
                 display.clone(),
-                server_display,
                 layer_shell,
                 log.clone(),
                 env.create_surface(),
                 focused_surface,
-            )
+            ).unwrap()
         }
         Some(configured_output) => {
             if let Some((o, info)) = outputs.iter().find_map(|o| {
@@ -127,7 +112,6 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                 let display_ = display.clone();
                 let config = config.clone();
                 handle_output(
-                    config,
                     &layer_shell,
                     env_handle,
                     logger,
@@ -137,9 +121,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     server_display,
                     &mut s_outputs,
                     Rc::clone(&focused_surface),
-                    &clients_left,
-                    &clients_center,
-                    &clients_right,
+                    &mut space,
                 )
             } else {
                 eprintln!(
@@ -154,13 +136,13 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
     let output_listener = config.output().map(|configured_output| {
         env.listen_for_outputs(move |o, info, mut dispatch_data| {
             let (state, _server_display) = dispatch_data
-                .get::<(GlobalState<C>, wayland_server::Display)>()
+                .get::<(GlobalState<W>, wayland_server::Display)>()
                 .unwrap();
             if info.name == configured_output && info.obsolete {
                 state
                     .desktop_client_state
                     .space
-                    .next_render_event
+                    .next_render_event()
                     .replace(Some(SpaceEvent::Quit));
                 o.release();
             }
@@ -173,7 +155,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
     let last_motion = Rc::new(RefCell::new(None));
     let _ = env.set_data_device_callback(move |seat, dnd_event, mut dispatch_data| {
         let (state, _) = dispatch_data
-            .get::<(GlobalState<C>, wayland_server::Display)>()
+            .get::<(GlobalState<W>, wayland_server::Display)>()
             .unwrap();
         let DesktopClientState {
             seats,
@@ -350,7 +332,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     trace!(log, "found seat: {:?}", &new_seat);
                     let kbd = seat.get_keyboard();
                     kbd.quick_assign(move |_, event, dispatch_data| {
-                        send_keyboard_event::<C>(event, &seat_name, dispatch_data)
+                        send_keyboard_event::<W>(event, &seat_name, dispatch_data)
                     });
                     new_seat.client.kbd = Some(kbd.detach());
                     new_seat.server.0.add_keyboard(
@@ -364,7 +346,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
                     let seat_name = name.clone();
                     let pointer = seat.get_pointer();
                     pointer.quick_assign(move |_, event, dispatch_data| {
-                        send_pointer_event::<C>(event, &seat_name, dispatch_data)
+                        send_pointer_event::<W>(event, &seat_name, dispatch_data)
                     });
                     new_seat.client.ptr = Some(pointer.detach());
                     new_seat.server.0.add_pointer(move |_new_status| {});
@@ -390,7 +372,7 @@ pub fn new_client<C: XdgWrapperConfig + 'static>(
     let logger = log.clone();
     env.with_inner(|env_inner| {
         env_inner.listen(move |seat, seat_data, dispatch_data| {
-            seat_handle_callback::<C>(logger.clone(), seat, seat_data, dispatch_data)
+            seat_handle_callback::<W>(logger.clone(), seat, seat_data, dispatch_data)
         })
     });
 

@@ -4,7 +4,6 @@
 //! Provides the core functionality for cosmic-panel
 
 use anyhow::Result;
-use cosmic_panel_config::config::XdgWrapperConfig;
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
 use itertools::Itertools;
 use shared_state::GlobalState;
@@ -14,17 +13,18 @@ use smithay::{
     reexports::{nix::fcntl, wayland_server::Display},
     wayland::data_device::set_data_device_selection,
 };
-use space::{CachedBuffers, Visibility};
+use space::{CachedBuffers, Visibility, WrapperSpace};
 use std::{
     cell::Cell,
     ffi::OsString,
     fs,
-    os::unix::io::AsRawFd,
     process::{Child, Command},
     rc::Rc,
     thread,
     time::{Duration, Instant},
 };
+
+pub use space::PanelSpace;
 
 mod client;
 mod output;
@@ -35,22 +35,23 @@ mod space;
 mod util;
 
 /// run the cosmic panel xdg wrapper with the provided config
-pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
+pub fn xdg_wrapper<W: WrapperSpace + 'static>(
     log: Logger,
-    config: C,
-    config_name: Option<&str>,
+    space: W,
 ) -> Result<()> {
-    let mut event_loop = calloop::EventLoop::<(GlobalState<C>, Display)>::try_new().unwrap();
+    let mut event_loop = calloop::EventLoop::<(GlobalState<W>, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
-    let (embedded_server_state, mut display, (sockets_left, sockets_center, sockets_right)) =
-        server::new_server(loop_handle.clone(), config.clone(), log.clone())?;
-    let (desktop_client_state, outputs) = client::new_client(
+    let (embedded_server_state, mut display) =
+        server::new_server(loop_handle.clone(), space.config().clone(), log.clone())?;
+    let (mut desktop_client_state, _) = client::new_client(
         loop_handle.clone(),
-        config.clone(),
+        space,
         log.clone(),
         &mut display,
         &embedded_server_state,
     )?;
+
+    let _ = desktop_client_state.space.spawn_clients(&mut display).unwrap();
 
     let global_state = GlobalState {
         desktop_client_state,
@@ -60,61 +61,6 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
         start_time: std::time::Instant::now(),
         cached_buffers: CachedBuffers::new(log.clone()),
     };
-
-    let mut children = Iter::new(default_paths())
-        .filter_map(|path| {
-            config
-                .plugins_left()
-                .unwrap_or_default()
-                .iter()
-                .zip(&sockets_left)
-                .chain(
-                    config
-                        .plugins_center()
-                        .unwrap_or_default()
-                        .iter()
-                        .zip(&sockets_center),
-                )
-                .chain(
-                    config
-                        .plugins_right()
-                        .unwrap_or_default()
-                        .iter()
-                        .zip(&sockets_right),
-                )
-                .find(|((app_file_name, _), _)| {
-                    Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-                })
-                .and_then(|(_, (_, client_socket))| {
-                    let raw_fd = client_socket.as_raw_fd();
-                    let fd_flags = fcntl::FdFlag::from_bits(
-                        fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap(),
-                    )
-                    .unwrap();
-                    fcntl::fcntl(
-                        raw_fd,
-                        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-                    )
-                    .unwrap();
-                    fs::read_to_string(&path).ok().and_then(|bytes| {
-                        if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                            if let Some(exec) = entry.exec() {
-                                let requests_host_wayland_display =
-                                    entry.desktop_entry("HostWaylandDisplay").is_some();
-                                return Some(exec_child(
-                                    exec,
-                                    config_name,
-                                    log.clone(),
-                                    raw_fd,
-                                    requests_host_wayland_display,
-                                ));
-                            }
-                        }
-                        None
-                    })
-                })
-        })
-        .collect_vec();
 
     let mut shared_data = (global_state, display);
     let mut last_cleanup = Instant::now();
@@ -158,7 +104,6 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
                     .as_millis()
                     .try_into()
                     .unwrap(),
-                &mut children,
                 &shared_data.desktop_client_state.focused_surface,
             );
         }
@@ -194,58 +139,12 @@ pub fn xdg_wrapper<C: XdgWrapperConfig + 'static>(
             }
         }
 
-        if children
-            .iter_mut()
-            .map(|c| c.try_wait())
-            .all(|r| matches!(r, Ok(Some(_))))
-        {
-            return Ok(());
-        }
-
         // sleep if not focused...
         if matches!(
-            shared_data.desktop_client_state.space.visibility,
+            shared_data.desktop_client_state.space.visibility(),
             Visibility::Hidden
         ) {
-            thread::sleep(Duration::from_millis(60));
+            thread::sleep(Duration::from_millis(100));
         }
     }
-}
-
-fn exec_child(
-    c: &str,
-    config_name: Option<&str>,
-    log: Logger,
-    raw_fd: i32,
-    requests_host_wayland_display: bool,
-) -> Child {
-    let mut exec_iter = Shlex::new(c);
-    let exec = exec_iter
-        .next()
-        .expect("exec parameter must contain at least on word");
-    trace!(log, "child: {}", &exec);
-
-    let mut child = Command::new(exec);
-    for arg in exec_iter {
-        trace!(log, "child argument: {}", &arg);
-        child.arg(arg);
-    }
-    if let Some(config_name) = config_name {
-        child.env("COSMIC_DOCK_CONFIG", config_name);
-    }
-
-    if requests_host_wayland_display {
-        if let Ok(display) = std::env::var("WAYLAND_DISPLAY") {
-            child.env("HOST_WAYLAND_DISPLAY", display);
-        }
-    }
-
-    child
-        .env("WAYLAND_SOCKET", raw_fd.to_string())
-        .env_remove("WAYLAND_DEBUG")
-        // .env("WAYLAND_DEBUG", "1")
-        // .stderr(std::process::Stdio::piped())
-        // .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to start child process")
 }

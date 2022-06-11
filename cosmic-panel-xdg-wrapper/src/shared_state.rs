@@ -7,9 +7,9 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::space::Space;
+use crate::space::{PanelSpace, WrapperSpace};
 use crate::{client::Env, CachedBuffers};
-use cosmic_panel_config::config::XdgWrapperConfig;
+
 use sctk::{
     environment::Environment,
     reexports::{
@@ -67,8 +67,8 @@ pub struct AxisFrameData {
     pub(crate) v_discrete: Option<i32>,
 }
 
-pub struct GlobalState<C: XdgWrapperConfig + 'static> {
-    pub(crate) desktop_client_state: DesktopClientState<C>,
+pub struct GlobalState<W: WrapperSpace + 'static> {
+    pub(crate) desktop_client_state: DesktopClientState<W>,
     pub(crate) embedded_server_state: EmbeddedServerState,
     pub(crate) _loop_signal: calloop::LoopSignal,
     pub(crate) log: Logger,
@@ -81,9 +81,6 @@ pub struct SelectedDataProvider {
 }
 
 pub struct EmbeddedServerState {
-    pub(crate) clients_left: Vec<(u32, wayland_server::Client)>,
-    pub(crate) clients_center: Vec<(u32, wayland_server::Client)>,
-    pub(crate) clients_right: Vec<(u32, wayland_server::Client)>,
     pub(crate) shell_state: Arc<Mutex<ShellState>>,
     pub(crate) root_window: Option<Rc<RefCell<Window>>>,
     pub(crate) focused_surface: Rc<RefCell<Option<WlSurface>>>,
@@ -98,10 +95,10 @@ pub enum Focus {
     LastFocus(Instant),
 }
 
-pub struct DesktopClientState<C: XdgWrapperConfig> {
+pub struct DesktopClientState<W: WrapperSpace> {
     pub(crate) display: client::Display,
     pub(crate) seats: Vec<Seat>,
-    pub(crate) space: Space<C>,
+    pub(crate) space: W,
     pub(crate) cursor_surface: c_wl_surface::WlSurface,
     pub(crate) axis_frame: AxisFrameData,
     pub(crate) kbd_focus: bool,

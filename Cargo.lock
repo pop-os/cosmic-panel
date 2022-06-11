@@ -180,7 +180,6 @@ dependencies = [
  "freedesktop-desktop-entry",
  "itertools",
  "libc",
- "nix 0.24.1",
  "once_cell",
  "ron",
  "serde",

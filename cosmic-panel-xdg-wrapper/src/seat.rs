@@ -32,16 +32,16 @@ use std::{cell::RefCell, rc::Rc, time::Instant};
 use crate::{
     client::Env,
     shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, Focus, GlobalState, Seat},
-    space::{ServerSurface, Space},
+    space::{ServerSurface, PanelSpace, WrapperSpace},
 };
-use cosmic_panel_config::config::XdgWrapperConfig;
+use cosmic_panel_config::config::WrapperConfig;
 
-pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
+pub fn send_keyboard_event<W: WrapperSpace + 'static>(
     event: wl_keyboard::Event,
     seat_name: &str,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, _server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
+    let (state, _server_display) = dispatch_data.get::<(GlobalState<W>, Display)>().unwrap();
     let DesktopClientState {
         env_handle,
         seats,
@@ -131,12 +131,12 @@ pub fn send_keyboard_event<C: XdgWrapperConfig + 'static>(
     }
 }
 
-pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
+pub fn send_pointer_event<W: WrapperSpace + 'static>(
     event: c_wl_pointer::Event,
     seat_name: &str,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, _server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
+    let (state, _server_display) = dispatch_data.get::<(GlobalState<W>, Display)>().unwrap();
     let DesktopClientState {
         seats,
         axis_frame,
@@ -282,13 +282,13 @@ pub fn send_pointer_event<C: XdgWrapperConfig + 'static>(
     }
 }
 
-pub fn seat_handle_callback<C: XdgWrapperConfig + 'static>(
+pub fn seat_handle_callback<W: WrapperSpace + 'static>(
     log: Logger,
     seat: Attached<c_wl_seat::WlSeat>,
     seat_data: &SeatData,
     mut dispatch_data: DispatchData<'_>,
 ) {
-    let (state, server_display) = dispatch_data.get::<(GlobalState<C>, Display)>().unwrap();
+    let (state, server_display) = dispatch_data.get::<(GlobalState<W>, Display)>().unwrap();
     let DesktopClientState {
         seats, env_handle, ..
     } = &mut state.desktop_client_state;
@@ -334,7 +334,7 @@ pub fn seat_handle_callback<C: XdgWrapperConfig + 'static>(
             // we should initalize a keyboard
             let kbd = seat.get_keyboard();
             kbd.quick_assign(move |_, event, dispatch_data| {
-                send_keyboard_event::<C>(event, &seat_name, dispatch_data)
+                send_keyboard_event::<W>(event, &seat_name, dispatch_data)
             });
             *opt_kbd = Some(kbd.detach());
             // TODO error handling
@@ -349,7 +349,7 @@ pub fn seat_handle_callback<C: XdgWrapperConfig + 'static>(
             let seat_name = seat_data.name.clone();
             let pointer = seat.get_pointer();
             pointer.quick_assign(move |_, event, dispatch_data| {
-                send_pointer_event::<C>(event, &seat_name, dispatch_data)
+                send_pointer_event::<W>(event, &seat_name, dispatch_data)
             });
             server_seat.add_pointer(move |_new_status| {});
             *opt_ptr = Some(pointer.detach());
@@ -393,8 +393,8 @@ pub(crate) fn set_server_device_selection(
 }
 
 // TODO revisit motion over popup
-pub(crate) fn handle_motion<C: XdgWrapperConfig>(
-    space: &mut Space<C>,
+pub(crate) fn handle_motion<W: WrapperSpace>(
+    space: &mut W,
     focused_surface: Option<WlSurface>,
     surface_x: f64,
     surface_y: f64,
@@ -413,7 +413,7 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
             return;
         }
     };
-    match space.find_server_window(&focused_surface) {
+    match space.server_surface_from_server_wl_surface(&focused_surface) {
         Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
             let surface_x = surface_x - loc_offset.x as f64;
             let surface_y = surface_y - loc_offset.y as f64;
@@ -460,14 +460,14 @@ pub(crate) fn handle_motion<C: XdgWrapperConfig>(
     };
 }
 
-pub(crate) fn set_focused_surface<C: XdgWrapperConfig>(
+pub(crate) fn set_focused_surface<W: WrapperSpace>(
     focused_surface: &Rc<RefCell<Option<WlSurface>>>,
-    space: &mut Space<C>,
+    space: &mut W,
     surface: &c_wl_surface::WlSurface,
     x: f64,
     y: f64,
 ) {
-    let new_focused = match space.find_server_surface(surface) {
+    let new_focused = match space.server_surface_from_client_wl_surface(surface) {
         Some(ServerSurface::TopLevel(loc_offset, toplevel)) => {
             let toplevel = toplevel.borrow();
             if let Some((cur_surface, _)) = toplevel.surface_under(

@@ -199,6 +199,8 @@ pub struct AutoHide {
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CosmicPanelConfig {
+    /// profile name for this config
+    name: String,
     /// edge which the panel is locked to
     pub anchor: Anchor,
     /// gap between the panel and the edge of the ouput
@@ -234,6 +236,7 @@ pub struct CosmicPanelConfig {
 impl Default for CosmicPanelConfig {
     fn default() -> Self {
         Self {
+            name: String::new(),
             anchor: Anchor::Top,
             anchor_gap: false,
             layer: Layer::Top,
@@ -268,9 +271,9 @@ impl CosmicPanelConfig {
     }
 
     /// write config to config file
-    pub fn write(&self, name: &str, log: Option<Logger>) -> anyhow::Result<()> {
+    pub fn write(&self, log: Option<Logger>) -> anyhow::Result<()> {
         let mut configs = Self::get_configs(log);
-        configs.insert(name.into(), CosmicPanelConfig::default());
+        configs.insert(self.name.clone(), CosmicPanelConfig::default());
         let xdg = BaseDirectories::new()?;
         let f = xdg.place_config_file(CONFIG_PATH).unwrap();
         let f = File::create(f)?;
@@ -279,16 +282,19 @@ impl CosmicPanelConfig {
     }
 
     fn get_configs(log: Option<Logger>) -> HashMap<String, Self> {
-        let config_path = match BaseDirectories::new().map(|dirs| dirs.find_config_file(CONFIG_PATH)) {
-            Ok(Some(path)) => path,
-            Ok(None) => { return HashMap::new(); }
-            Err(err) => {
-                if let Some(log) = log {
-                    slog::error!(log, "Failed to get config path: {}", err);
+        let config_path =
+            match BaseDirectories::new().map(|dirs| dirs.find_config_file(CONFIG_PATH)) {
+                Ok(Some(path)) => path,
+                Ok(None) => {
+                    return HashMap::new();
                 }
-                return HashMap::new();
-            }
-        };
+                Err(err) => {
+                    if let Some(log) = log {
+                        slog::error!(log, "Failed to get config path: {}", err);
+                    }
+                    return HashMap::new();
+                }
+            };
         let file = match File::open(&config_path) {
             Ok(file) => file,
             Err(err) => {
@@ -313,78 +319,93 @@ impl CosmicPanelConfig {
     pub fn load_from_env() -> anyhow::Result<Self> {
         env::var("COSMIC_DOCK_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
     }
+
+    /// get applet icon dimensions
+    pub fn get_applet_icon_size(&self) -> u32 {
+        match &self.size {
+            PanelSize::XS => 18,
+            PanelSize::S => 24,
+            PanelSize::M => 36,
+            PanelSize::L => 48,
+            PanelSize::XL => 64,
+            PanelSize::Custom(c) => c.end - self.padding,
+        }
+    }
+
+    /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
+    pub fn get_hide_wait(&self) -> Option<Duration> {
+        self.autohide
+            .as_ref()
+            .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
+    }
+
+    /// if autohide is configured, returns the duration of time which the panel hide / show transition should last
+    pub fn get_hide_transition(&self) -> Option<Duration> {
+        self.autohide.as_ref().map(
+            |AutoHide {
+                 transition_time, ..
+             }| Duration::from_millis((*transition_time).into()),
+        )
+    }
+
+    /// if autohide is configured, returns the size of the handle of the panel which should be exposed
+    pub fn get_hide_handle(&self) -> Option<u32> {
+        self.autohide
+            .as_ref()
+            .map(|AutoHide { handle_size, .. }| *handle_size)
+    }
+
+    pub fn background(&self) -> CosmicPanelBackground {
+        self.background.clone()
+    }
+
+    pub fn spacing(&self) -> u32 {
+        self.spacing
+    }
+
+    pub fn exclusive_zone(&self) -> bool {
+        self.exclusive_zone
+    }
+
+    pub fn autohide(&self) -> Option<AutoHide> {
+        self.autohide.clone()
+    }
+
+    /// get whether the panel should expand to cover the edges of the output
+    pub fn expand_to_edges(&self) -> bool {
+        self.expand_to_edges || self.plugins_left.is_some() || self.plugins_right.is_some()
+    }
+
+    pub fn plugins_left(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_left.clone()
+    }
+
+    pub fn plugins_center(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_center.clone()
+    }
+
+    pub fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
+        self.plugins_right.clone()
+    }
+
 }
 
-pub trait XdgWrapperConfig: Clone + fmt::Debug + Default {
+pub trait WrapperConfig: Clone + fmt::Debug + Default {
     fn output(&self) -> Option<String>;
     fn anchor(&self) -> Anchor;
     fn padding(&self) -> u32;
     fn layer(&self) -> zwlr_layer_shell_v1::Layer;
     fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity;
-    fn background(&self) -> CosmicPanelBackground {
-        CosmicPanelBackground::Color([0.0, 0.0, 0.0, 0.0])
-    }
-
-    fn plugins_left(&self) -> Option<Vec<(String, u32)>> {
-        None
-    }
-
-    fn plugins_center(&self) -> Option<Vec<(String, u32)>> {
-        None
-    }
-
-    fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
-        None
-    }
-
-    fn spacing(&self) -> u32 {
-        0
-    }
 
     fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>);
-
-    fn autohide(&self) -> Option<AutoHide> {
-        None
-    }
 
     fn exclusive_zone(&self) -> bool {
         false
     }
-
-    fn get_hide_wait(&self) -> Option<Duration> {
-        None
-    }
-
-    fn get_hide_transition(&self) -> Option<Duration> {
-        None
-    }
-
-    fn get_hide_handle(&self) -> Option<u32> {
-        None
-    }
-
-    fn get_applet_icon_size(&self) -> u32 {
-        0
-    }
-
-    fn expand_to_edges(&self) -> bool {
-        false
-    }
+    fn name(&self) -> &str;
 }
 
-impl XdgWrapperConfig for CosmicPanelConfig {
-    fn plugins_left(&self) -> Option<Vec<(String, u32)>> {
-        self.plugins_left.clone()
-    }
-
-    fn plugins_center(&self) -> Option<Vec<(String, u32)>> {
-        self.plugins_center.clone()
-    }
-
-    fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
-        self.plugins_right.clone()
-    }
-
+impl WrapperConfig for CosmicPanelConfig {
     fn output(&self) -> Option<String> {
         self.output.clone()
     }
@@ -405,19 +426,14 @@ impl XdgWrapperConfig for CosmicPanelConfig {
         self.keyboard_interactivity.into()
     }
 
-    /// get whether the panel should expand to cover the edges of the output
-    fn expand_to_edges(&self) -> bool {
-        self.expand_to_edges || self.plugins_left.is_some() || self.plugins_right.is_some()
-    }
-
     /// get constraints for the thickness of the panel bar
     fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
-            PanelSize::XS => (8..41),
-            PanelSize::S => (8..61),
-            PanelSize::M => (8..81),
-            PanelSize::L => (8..101),
-            PanelSize::XL => (8..121),
+            PanelSize::XS => (8..61),
+            PanelSize::S => (8..81),
+            PanelSize::M => (8..101),
+            PanelSize::L => (8..121),
+            PanelSize::XL => (8..141),
             PanelSize::Custom(c) => c.clone(),
         };
         assert!(2 * self.padding < bar_thickness.end);
@@ -444,54 +460,7 @@ impl XdgWrapperConfig for CosmicPanelConfig {
         }
     }
 
-    /// get applet icon dimensions
-    fn get_applet_icon_size(&self) -> u32 {
-        match &self.size {
-            PanelSize::XS => 18,
-            PanelSize::S => 24,
-            PanelSize::M => 36,
-            PanelSize::L => 48,
-            PanelSize::XL => 64,
-            PanelSize::Custom(c) => c.end - self.padding,
-        }
-    }
-
-    /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
-    fn get_hide_wait(&self) -> Option<Duration> {
-        self.autohide
-            .as_ref()
-            .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
-    }
-
-    /// if autohide is configured, returns the duration of time which the panel hide / show transition should last
-    fn get_hide_transition(&self) -> Option<Duration> {
-        self.autohide.as_ref().map(
-            |AutoHide {
-                 transition_time, ..
-             }| Duration::from_millis((*transition_time).into()),
-        )
-    }
-
-    /// if autohide is configured, returns the size of the handle of the panel which should be exposed
-    fn get_hide_handle(&self) -> Option<u32> {
-        self.autohide
-            .as_ref()
-            .map(|AutoHide { handle_size, .. }| *handle_size)
-    }
-
-    fn exclusive_zone(&self) -> bool {
-        self.exclusive_zone
-    }
-
-    fn background(&self) -> CosmicPanelBackground {
-        self.background.clone()
-    }
-
-    fn spacing(&self) -> u32 {
-        self.spacing
-    }
-
-    fn autohide(&self) -> Option<AutoHide> {
-        self.autohide.clone()
+    fn name(&self) -> &str {
+        &self.name
     }
 }

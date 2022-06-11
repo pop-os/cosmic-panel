@@ -2,8 +2,8 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{client::Env, shared_state::OutputGroup, space::Space};
-use cosmic_panel_config::config::XdgWrapperConfig;
+use crate::{client::Env, shared_state::OutputGroup, space::{PanelSpace, WrapperSpace}};
+use cosmic_panel_config::config::WrapperConfig;
 use sctk::{
     environment::Environment,
     output::{Mode as c_Mode, OutputInfo},
@@ -24,8 +24,7 @@ use smithay::{
     wayland::output::{Mode as s_Mode, Output as s_Output, PhysicalProperties},
 };
 
-pub fn handle_output<C: XdgWrapperConfig>(
-    config: C,
+pub fn handle_output<W: WrapperSpace>(
     layer_shell: &Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     env_handle: Environment<Env>,
     logger: Logger,
@@ -35,10 +34,8 @@ pub fn handle_output<C: XdgWrapperConfig>(
     s_display: &mut s_Display,
     s_outputs: &mut Vec<OutputGroup>,
     focused_surface: Rc<RefCell<Option<WlSurface>>>,
-    clients_left: &Vec<(u32, Client)>,
-    clients_center: &Vec<(u32, Client)>,
-    clients_right: &Vec<(u32, Client)>,
-) -> Space<C> {
+    space: &mut W
+) {
     // remove output with id if obsolete
     // add output to list if new output
 
@@ -91,19 +88,16 @@ pub fn handle_output<C: XdgWrapperConfig>(
     let pool = env_handle
         .create_auto_pool()
         .expect("Failed to create a memory pool!");
-    Space::new(
-        clients_left,
-        clients_center,
-        clients_right,
+    space.add_output(
         Some(output),
         Some(info),
         pool,
-        config,
         c_display,
-        s_display,
         layer_shell.clone(),
         logger.clone(),
         env_handle.create_surface(),
         focused_surface,
-    )
+    ).unwrap()
+    // FIXME causes crash
+    // space.bind_wl_display(s_display);
 }

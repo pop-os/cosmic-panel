@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use cosmic_panel_xdg_wrapper::xdg_wrapper;
+use cosmic_panel_xdg_wrapper::{xdg_wrapper, PanelSpace};
 use slog::{o, Drain};
 
 fn main() -> Result<()> {
+    dbg!(std::time::Instant::now());
     let log = slog::Logger::root(
         slog_async::Async::default(slog_term::term_full().fuse()).fuse(),
         o!(),
@@ -15,15 +16,13 @@ fn main() -> Result<()> {
 
     let arg = std::env::args().nth(1);
     let usage = "USAGE: cosmic-panel <profile name>";
-    let (profile, config) = match arg.as_ref().map(|s| &s[..]) {
+    let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
             println!("{}", usage);
             std::process::exit(1);
         }
         Some(profile) => {
-            let config =
-                cosmic_panel_config::config::CosmicPanelConfig::load(profile, Some(log.clone()))?;
-            (profile, config)
+            cosmic_panel_config::config::CosmicPanelConfig::load(profile, Some(log.clone()))?
         }
         None => {
             println!("{}", usage);
@@ -31,6 +30,6 @@ fn main() -> Result<()> {
         }
     };
 
-    xdg_wrapper(log, config, Some(profile))?;
+    xdg_wrapper(log.clone(), PanelSpace::new(config, log))?;
     Ok(())
 }
