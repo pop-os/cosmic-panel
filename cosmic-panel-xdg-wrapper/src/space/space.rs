@@ -2,25 +2,16 @@
 
 use std::{
     cell::{Cell, RefCell},
-    cmp::Ordering,
-    ffi::OsString,
-    fs,
-    os::unix::{net::UnixStream, prelude::AsRawFd},
-    process::Child,
+    os::unix::{net::UnixStream},
     rc::Rc,
     time::{Duration, Instant},
 };
 
-use anyhow::bail;
-use itertools::{izip, Itertools};
-use libc::c_int;
-
-use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
+use super::{ServerSurface};
 use crate::{
     shared_state::Focus,
-    util::{exec_child, plugin_as_client_sock, smootherstep},
 };
-use cosmic_panel_config::config::{self, CosmicPanelConfig, WrapperConfig};
+use cosmic_panel_config::config::{WrapperConfig};
 use sctk::{
     output::OutputInfo,
     reexports::{
@@ -29,45 +20,26 @@ use sctk::{
     },
     shm::AutoMemPool,
 };
-use slog::{info, trace, Logger};
+use slog::{Logger};
 use smithay::{
-    backend::{
-        egl::{
-            context::{EGLContext, GlAttributes},
-            display::EGLDisplay,
-            ffi::{
-                self,
-                egl::{GetConfigAttrib, SwapInterval},
-            },
-            surface::EGLSurface,
-        },
-        renderer::{
-            gles2::Gles2Renderer, utils::draw_surface_tree, Bind, Frame, ImportEgl, Renderer,
-            Unbind,
-        },
-    },
     desktop::{
-        utils::{damage_from_surface_tree, send_frames_surface_tree},
-        Kind, PopupKind, PopupManager, Window,
+        PopupManager, Window,
     },
-    nix::fcntl,
     reexports::{
         wayland_protocols::{
-            wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
+            wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, },
             xdg_shell::client::{
-                xdg_popup,
-                xdg_positioner::{Anchor, Gravity, XdgPositioner},
-                xdg_surface::{self, XdgSurface},
+                xdg_positioner::{XdgPositioner},
+                xdg_surface::{XdgSurface},
             },
         },
         wayland_server::{
-            self, protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
+            self, protocol::wl_surface::WlSurface as s_WlSurface, Display as s_Display,
         },
     },
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{Logical, Size},
     wayland::{
         shell::xdg::{PopupSurface, PositionerState},
-        SERIAL_COUNTER,
     },
 };
 
