@@ -41,7 +41,10 @@ pub fn xdg_wrapper<W: WrapperSpace + 'static>(log: Logger, mut space: W) -> Resu
         &mut display,
         &embedded_server_state,
     )?;
-    let _sockets = desktop_client_state.space.spawn_clients(&mut display).unwrap();
+    let _sockets = desktop_client_state
+        .space
+        .spawn_clients(&mut display)
+        .unwrap();
 
     let global_state = GlobalState {
         desktop_client_state,

@@ -246,7 +246,6 @@ impl PanelSpace {
                     let margin = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => -(self.dimensions.0 as i32),
                         config::Anchor::Top | config::Anchor::Bottom => -(self.dimensions.1 as i32),
-                        _ => panic!("Hidden mode is not supported for Center Anchor"),
                     } + self.config.get_hide_handle().unwrap() as i32;
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: Instant::now(),
@@ -303,7 +302,6 @@ impl PanelSpace {
                     let panel_size = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
                         config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
-                        _ => panic!("Hidden dock is not supported for Center Anchor"),
                     };
                     let target = -panel_size + handle;
 
@@ -366,7 +364,6 @@ impl PanelSpace {
                     let panel_size = match self.config.anchor() {
                         config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
                         config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
-                        _ => panic!("Hidden dock is not supported for Center Anchor"),
                     };
                     let start = -panel_size + handle;
 
@@ -400,7 +397,10 @@ impl PanelSpace {
     }
 
     fn constrain_dim(&self, (mut w, mut h): (u32, u32)) -> (u32, u32) {
-        let output_dims = self.output.as_ref().map(|(_, info)| info.modes[0].dimensions);
+        let output_dims = self
+            .output
+            .as_ref()
+            .map(|(_, info)| info.modes[0].dimensions);
         let (min_w, min_h) = (
             1.max(self.config.padding() * 2),
             1.max(self.config.padding() * 2),
@@ -671,9 +671,6 @@ impl PanelSpace {
     fn update_offsets(&mut self) {
         // TODO better handling of No configured output...
         // if no output is configured, it should be a single centered application, so this should work
-        if self.output.is_none() {
-            return;
-        }
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -681,9 +678,7 @@ impl PanelSpace {
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
             config::Anchor::Left | config::Anchor::Right => (self.dimensions.1, self.dimensions.0),
-            config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
-                (self.dimensions.0, self.dimensions.1)
-            }
+            config::Anchor::Top | config::Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
         };
 
         let mut num_lists = 0;
@@ -714,7 +709,7 @@ impl PanelSpace {
                 config::Anchor::Left | config::Anchor::Right => {
                     (alignment, i, t.priority, t.rectangle.size.h)
                 }
-                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     (alignment, i, t.priority, t.rectangle.size.w)
                 }
             }
@@ -817,7 +812,7 @@ impl PanelSpace {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -842,7 +837,7 @@ impl PanelSpace {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -868,7 +863,7 @@ impl PanelSpace {
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom | config::Anchor::Center => {
+                config::Anchor::Top | config::Anchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -944,7 +939,6 @@ impl WrapperSpace for PanelSpace {
                             config::Anchor::Top | config::Anchor::Bottom => {
                                 -(self.dimensions.1 as i32)
                             }
-                            _ => panic!("Hidden mode is not supported for center anchor"),
                         } + self.config.get_hide_handle().unwrap() as i32;
                         self.layer_surface
                             .as_ref()
@@ -954,7 +948,6 @@ impl WrapperSpace for PanelSpace {
                         let list_thickness = match self.config.anchor() {
                             config::Anchor::Left | config::Anchor::Right => width,
                             config::Anchor::Top | config::Anchor::Bottom => height,
-                            _ => panic!("Exclusive zone is not supported for center anchor"),
                         };
                         self.layer_surface
                             .as_ref()
@@ -1818,6 +1811,7 @@ impl WrapperSpace for PanelSpace {
     }
 }
 
+// TODO
 // impl Drop for Space {
 //     fn drop(&mut self) {
 //         self.layer_surface.as_mut().map(|ls| ls.destroy());

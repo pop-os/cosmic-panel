@@ -22,8 +22,6 @@ pub enum Anchor {
     Top,
     /// anchored to bottom edge
     Bottom,
-    /// anchored to center
-    Center,
 }
 
 impl Default for Anchor {
@@ -43,8 +41,6 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for Anchor {
             Ok(Self::Top)
         } else if align.contains(zwlr_layer_surface_v1::Anchor::Bottom) {
             Ok(Self::Bottom)
-        } else if align.is_empty() {
-            Ok(Self::Center)
         } else {
             anyhow::bail!("Invalid Anchor")
         }
@@ -67,9 +63,6 @@ impl Into<zwlr_layer_surface_v1::Anchor> for Anchor {
             Self::Bottom => {
                 anchor.insert(zwlr_layer_surface_v1::Anchor::Bottom);
             }
-            Self::Center => {
-                anchor.insert(zwlr_layer_surface_v1::Anchor::empty());
-            }
         };
         anchor
     }
@@ -85,7 +78,6 @@ impl Into<Orientation> for Anchor {
         match self {
             Self::Left | Self::Right => Orientation::Vertical,
             Self::Top | Self::Bottom => Orientation::Horizontal,
-            Self::Center => Orientation::Horizontal,
         }
     }
 }
@@ -212,7 +204,7 @@ pub struct CosmicPanelConfig {
     /// configured size for the panel
     pub size: PanelSize,
     /// name of configured output (Intended for dock or panel), or None to place on active output (Intended for wrapping a single application)
-    pub output: Option<String>,
+    pub output: String,
     /// customized background, or
     pub background: CosmicPanelBackground,
     /// list of plugins on the left or top of the panel
@@ -242,7 +234,7 @@ impl Default for CosmicPanelConfig {
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::None,
             size: PanelSize::M,
-            output: Some("".to_string()),
+            output: "".to_string(),
             background: CosmicPanelBackground::Color([0.5, 0.0, 0.5, 0.5]),
             plugins_left: Default::default(),
             plugins_center: Default::default(),
@@ -406,7 +398,7 @@ pub trait WrapperConfig: Clone + fmt::Debug + Default {
 
 impl WrapperConfig for CosmicPanelConfig {
     fn output(&self) -> Option<String> {
-        self.output.clone()
+        Some(self.output.clone())
     }
 
     fn anchor(&self) -> Anchor {
