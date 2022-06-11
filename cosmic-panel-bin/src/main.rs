@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use cosmic_panel_xdg_wrapper::{xdg_wrapper};
+use xdg_shell_wrapper::{xdg_wrapper};
 use slog::{o, Drain};
 
 mod space;

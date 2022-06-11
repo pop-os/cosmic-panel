@@ -147,7 +147,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cosmic-panel-config",
- "cosmic-panel-xdg-wrapper",
  "freedesktop-desktop-entry",
  "itertools",
  "libc",
@@ -161,6 +160,7 @@ dependencies = [
  "smithay-client-toolkit",
  "wayland-egl",
  "xdg",
+ "xdg-shell-wrapper",
 ]
 
 [[package]]
@@ -175,26 +175,6 @@ dependencies = [
  "slog",
  "smithay-client-toolkit",
  "xdg",
-]
-
-[[package]]
-name = "cosmic-panel-xdg-wrapper"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "calloop",
- "cosmic-panel-config",
- "itertools",
- "libc",
- "once_cell",
- "ron",
- "serde",
- "shlex",
- "slog",
- "smithay",
- "smithay-client-toolkit",
- "tempfile",
- "wayland-egl",
 ]
 
 [[package]]
@@ -1845,6 +1825,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4583db5cbd4c4c0303df2d15af80f0539db703fa1c68802d4cbbd2dd0f88f6"
 dependencies = [
  "dirs 4.0.0",
+]
+
+[[package]]
+name = "xdg-shell-wrapper"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "calloop",
+ "cosmic-panel-config",
+ "itertools",
+ "libc",
+ "once_cell",
+ "ron",
+ "serde",
+ "shlex",
+ "slog",
+ "smithay",
+ "smithay-client-toolkit",
+ "tempfile",
+ "wayland-egl",
 ]
 
 [[package]]

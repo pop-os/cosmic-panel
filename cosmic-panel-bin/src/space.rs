@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::bail;
-use cosmic_panel_xdg_wrapper::{Focus, ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface, SpaceEvent, Visibility, smootherstep, plugin_as_client_sock, exec_child, Alignment, WrapperSpace};
+use xdg_shell_wrapper::{Focus, ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface, SpaceEvent, Visibility, smootherstep, plugin_as_client_sock, exec_child, Alignment, WrapperSpace};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use libc::c_int;

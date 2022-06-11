@@ -1,5 +1,5 @@
 [package]
-name = "cosmic-panel-xdg-wrapper"
+name = "xdg-shell-wrapper"
 version = "0.1.0"
 edition = "2021"
 license = "MPL-2.0"

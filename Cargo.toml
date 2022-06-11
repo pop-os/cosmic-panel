@@ -2,6 +2,6 @@
 
 members = [
     "cosmic-panel-bin",
-    "cosmic-panel-xdg-wrapper",
+    "xdg-shell-wrapper",
     "cosmic-panel-config"
 ]
