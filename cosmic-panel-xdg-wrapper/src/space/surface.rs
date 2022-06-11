@@ -21,8 +21,8 @@ use smithay::{
 
 #[derive(Debug)]
 pub struct ClientEglSurface {
-    pub(crate) wl_egl_surface: wayland_egl::WlEglSurface,
-    pub(crate) display: client::Display,
+    pub wl_egl_surface: wayland_egl::WlEglSurface,
+    pub display: client::Display,
 }
 
 static SURFACE_ATTRIBUTES: [c_int; 3] = [

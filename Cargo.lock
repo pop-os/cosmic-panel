@@ -148,12 +148,19 @@ dependencies = [
  "anyhow",
  "cosmic-panel-config",
  "cosmic-panel-xdg-wrapper",
+ "freedesktop-desktop-entry",
+ "itertools",
+ "libc",
  "shlex",
  "slog",
  "slog-async",
  "slog-scope",
  "slog-stdlog",
  "slog-term",
+ "smithay",
+ "smithay-client-toolkit",
+ "wayland-egl",
+ "xdg",
 ]
 
 [[package]]
@@ -177,7 +184,6 @@ dependencies = [
  "anyhow",
  "calloop",
  "cosmic-panel-config",
- "freedesktop-desktop-entry",
  "itertools",
  "libc",
  "once_cell",
@@ -189,7 +195,6 @@ dependencies = [
  "smithay-client-toolkit",
  "tempfile",
  "wayland-egl",
- "xdg",
 ]
 
 [[package]]

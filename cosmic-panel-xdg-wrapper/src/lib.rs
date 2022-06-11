@@ -9,7 +9,6 @@ use slog::Logger;
 use smithay::{
     reexports::wayland_server::Display, wayland::data_device::set_data_device_selection,
 };
-use space::{CachedBuffers, Visibility, WrapperSpace};
 use std::{
     cell::Cell,
     rc::Rc,
@@ -17,7 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub use space::PanelSpace;
+pub use space::*;
+pub use util::*;
+pub use shared_state::*;
 
 mod client;
 mod output;

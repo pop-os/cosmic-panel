@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use cosmic_panel_xdg_wrapper::{xdg_wrapper, PanelSpace};
+use cosmic_panel_xdg_wrapper::{xdg_wrapper};
 use slog::{o, Drain};
 
+mod space;
 fn main() -> Result<()> {
     dbg!(std::time::Instant::now());
     let log = slog::Logger::root(
@@ -30,6 +31,6 @@ fn main() -> Result<()> {
         }
     };
 
-    xdg_wrapper(log.clone(), PanelSpace::new(config, log))?;
+    xdg_wrapper(log.clone(), space::PanelSpace::new(config, log))?;
     Ok(())
 }

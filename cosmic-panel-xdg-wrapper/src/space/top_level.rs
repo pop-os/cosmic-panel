@@ -10,15 +10,15 @@ use super::{Popup, PopupRenderEvent};
 
 #[derive(Debug)]
 pub struct TopLevelSurface {
-    pub(crate) s_top_level: Rc<RefCell<smithay::desktop::Window>>,
-    pub(crate) dirty: bool,
-    pub(crate) popups: Vec<Popup>,
-    pub(crate) log: Logger,
+    pub s_top_level: Rc<RefCell<smithay::desktop::Window>>,
+    pub dirty: bool,
+    pub popups: Vec<Popup>,
+    pub log: Logger,
     /// location offset of the window within the panel
     /// dimensions of the window in the panel
-    pub(crate) rectangle: Rectangle<i32, Logical>,
-    pub(crate) priority: u32,
-    pub(crate) hidden: bool,
+    pub rectangle: Rectangle<i32, Logical>,
+    pub priority: u32,
+    pub hidden: bool,
 }
 
 impl TopLevelSurface {
@@ -68,11 +68,11 @@ impl TopLevelSurface {
         false
     }
 
-    pub(crate) fn set_priority(&mut self, priority: u32) {
+    pub fn set_priority(&mut self, priority: u32) {
         self.priority = priority;
     }
 
-    pub(crate) fn set_hidden(&mut self, hidden: bool) {
+    pub fn set_hidden(&mut self, hidden: bool) {
         self.hidden = hidden;
     }
 }
