@@ -32,15 +32,16 @@ pub fn xdg_wrapper<W: WrapperSpace + 'static>(log: Logger, mut space: W) -> Resu
     let mut event_loop = calloop::EventLoop::<(GlobalState<W>, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display) =
-        server::new_server(loop_handle.clone(), log.clone(), &mut space)?;
+        server::new_server(loop_handle.clone(), log.clone())?;
 
-    let (desktop_client_state, _) = client::new_client(
+    let (mut desktop_client_state, _) = client::new_client(
         loop_handle.clone(),
         space,
         log.clone(),
         &mut display,
         &embedded_server_state,
     )?;
+    let _sockets = desktop_client_state.space.spawn_clients(&mut display).unwrap();
 
     let global_state = GlobalState {
         desktop_client_state,

@@ -400,7 +400,7 @@ impl PanelSpace {
     }
 
     fn constrain_dim(&self, (mut w, mut h): (u32, u32)) -> (u32, u32) {
-        let output_dims = self.output.as_ref().map(|(_, info)| info.physical_size);
+        let output_dims = self.output.as_ref().map(|(_, info)| info.modes[0].dimensions);
         let (min_w, min_h) = (
             1.max(self.config.padding() * 2),
             1.max(self.config.padding() * 2),

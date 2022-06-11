@@ -31,10 +31,8 @@ use std::{
 pub fn new_server<W: WrapperSpace>(
     loop_handle: calloop::LoopHandle<'static, (GlobalState<W>, wayland_server::Display)>,
     log: Logger,
-    space: &mut W,
 ) -> Result<(EmbeddedServerState, wayland_server::Display)> {
     let mut display = wayland_server::Display::new();
-    let _ = space.spawn_clients(&mut display).unwrap();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);
     loop_handle.insert_source(display_event_source, move |_e, _metadata, _shared_data| {
