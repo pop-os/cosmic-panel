@@ -2,22 +2,19 @@
 
 use crate::{shared_state::*, space::WrapperSpace};
 use anyhow::Result;
-use cosmic_panel_config::config::WrapperConfig;
 use once_cell::sync::OnceCell;
 use sctk::reexports::{
     calloop::{self, generic::Generic, Interest, Mode},
     client::{protocol::wl_seat as c_wl_seat, Attached},
 };
 use slog::{error, trace, Logger};
+use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::compositor::{get_role, with_states};
 use smithay::wayland::data_device::DataDeviceEvent;
 use smithay::{
     backend::renderer::{buffer_type, utils::on_commit_buffer_handler, BufferType},
-    desktop::{utils, Kind, PopupKind, PopupManager, Window},
-    reexports::{
-        nix::fcntl,
-        wayland_server::{self, protocol::wl_shm::Format},
-    },
+    desktop::{Kind, PopupKind, PopupManager, Window},
+    reexports::wayland_server::{self, protocol::wl_shm::Format},
     wayland::{
         compositor::{compositor_init, BufferAssignment},
         data_device::{default_action_chooser, init_data_device},
@@ -26,41 +23,18 @@ use smithay::{
         SERIAL_COUNTER,
     },
 };
-use smithay::{reexports::wayland_server::Client, wayland::compositor::SurfaceAttributes};
 use std::{
     cell::{RefCell, RefMut},
-    os::unix::{io::AsRawFd, net::UnixStream},
     rc::Rc,
 };
 
-fn plugin_as_client_sock(
-    p: &(String, u32),
-    display: &mut wayland_server::Display,
-) -> ((u32, Client), (UnixStream, UnixStream)) {
-    let (display_sock, client_sock) = UnixStream::pair().unwrap();
-    let raw_fd = display_sock.as_raw_fd();
-    let fd_flags =
-        fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap()).unwrap();
-    fcntl::fcntl(
-        raw_fd,
-        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-    )
-    .unwrap();
-    (
-        (p.1, unsafe { display.create_client(raw_fd, &mut ()) }),
-        (display_sock, client_sock),
-    )
-}
-
 pub fn new_server<W: WrapperSpace>(
     loop_handle: calloop::LoopHandle<'static, (GlobalState<W>, wayland_server::Display)>,
-    config: W::Config,
     log: Logger,
-) -> Result<(
-    EmbeddedServerState,
-    wayland_server::Display,
-)> {
+    space: &mut W,
+) -> Result<(EmbeddedServerState, wayland_server::Display)> {
     let mut display = wayland_server::Display::new();
+    let _ = space.spawn_clients(&mut display).unwrap();
 
     let display_event_source = Generic::new(display.get_poll_fd(), Interest::READ, Mode::Edge);
     loop_handle.insert_source(display_event_source, move |_e, _metadata, _shared_data| {

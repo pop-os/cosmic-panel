@@ -4,21 +4,14 @@
 //! Provides the core functionality for cosmic-panel
 
 use anyhow::Result;
-use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
-use itertools::Itertools;
 use shared_state::GlobalState;
-use shlex::Shlex;
-use slog::{trace, Logger};
+use slog::Logger;
 use smithay::{
-    reexports::{nix::fcntl, wayland_server::Display},
-    wayland::data_device::set_data_device_selection,
+    reexports::wayland_server::Display, wayland::data_device::set_data_device_selection,
 };
 use space::{CachedBuffers, Visibility, WrapperSpace};
 use std::{
     cell::Cell,
-    ffi::OsString,
-    fs,
-    process::{Child, Command},
     rc::Rc,
     thread,
     time::{Duration, Instant},
@@ -35,23 +28,19 @@ mod space;
 mod util;
 
 /// run the cosmic panel xdg wrapper with the provided config
-pub fn xdg_wrapper<W: WrapperSpace + 'static>(
-    log: Logger,
-    space: W,
-) -> Result<()> {
+pub fn xdg_wrapper<W: WrapperSpace + 'static>(log: Logger, mut space: W) -> Result<()> {
     let mut event_loop = calloop::EventLoop::<(GlobalState<W>, Display)>::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let (embedded_server_state, mut display) =
-        server::new_server(loop_handle.clone(), space.config().clone(), log.clone())?;
-    let (mut desktop_client_state, _) = client::new_client(
+        server::new_server(loop_handle.clone(), log.clone(), &mut space)?;
+
+    let (desktop_client_state, _) = client::new_client(
         loop_handle.clone(),
         space,
         log.clone(),
         &mut display,
         &embedded_server_state,
     )?;
-
-    let _ = desktop_client_state.space.spawn_clients(&mut display).unwrap();
 
     let global_state = GlobalState {
         desktop_client_state,

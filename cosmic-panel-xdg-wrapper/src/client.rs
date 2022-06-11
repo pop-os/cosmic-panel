@@ -28,7 +28,7 @@ use smithay::{
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::space::{PanelSpace, SpaceEvent, WrapperSpace};
+use crate::space::{SpaceEvent, WrapperSpace};
 use crate::{
     output::handle_output,
     seat::{
@@ -85,16 +85,20 @@ pub fn new_client<W: WrapperSpace + 'static>(
             let pool = env
                 .create_auto_pool()
                 .expect("Failed to create a memory pool!");
-            space.add_output(
-                None,
-                None,
-                pool,
-                display.clone(),
-                layer_shell,
-                log.clone(),
-                env.create_surface(),
-                focused_surface,
-            ).unwrap()
+            space
+                .add_output(
+                    None,
+                    None,
+                    pool,
+                    display.clone(),
+                    layer_shell,
+                    log.clone(),
+                    env.create_surface(),
+                    focused_surface,
+                )
+                .unwrap()
+            // FIXME causes crash
+            // space.bind_wl_display(s_display);
         }
         Some(configured_output) => {
             if let Some((o, info)) = outputs.iter().find_map(|o| {
@@ -110,7 +114,6 @@ pub fn new_client<W: WrapperSpace + 'static>(
                 let env_handle = env.clone();
                 let logger = log.clone();
                 let display_ = display.clone();
-                let config = config.clone();
                 handle_output(
                     &layer_shell,
                     env_handle,

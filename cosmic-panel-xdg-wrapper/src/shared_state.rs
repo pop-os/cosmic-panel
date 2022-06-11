@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::space::{PanelSpace, WrapperSpace};
+use crate::space::WrapperSpace;
 use crate::{client::Env, CachedBuffers};
 
 use sctk::{
@@ -30,7 +30,6 @@ use smithay::{
     reexports::{
         calloop,
         wayland_server::{
-            self,
             protocol::{wl_output, wl_pointer::AxisSource, wl_seat::WlSeat, wl_surface::WlSurface},
             Global,
         },

@@ -387,7 +387,6 @@ impl CosmicPanelConfig {
     pub fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
         self.plugins_right.clone()
     }
-
 }
 
 pub trait WrapperConfig: Clone + fmt::Debug + Default {

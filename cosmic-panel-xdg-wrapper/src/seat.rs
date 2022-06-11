@@ -32,9 +32,8 @@ use std::{cell::RefCell, rc::Rc, time::Instant};
 use crate::{
     client::Env,
     shared_state::{ClientSeat, DesktopClientState, EmbeddedServerState, Focus, GlobalState, Seat},
-    space::{ServerSurface, PanelSpace, WrapperSpace},
+    space::{ServerSurface, WrapperSpace},
 };
-use cosmic_panel_config::config::WrapperConfig;
 
 pub fn send_keyboard_event<W: WrapperSpace + 'static>(
     event: wl_keyboard::Event,

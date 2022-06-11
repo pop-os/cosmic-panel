@@ -5,14 +5,15 @@ use std::{
     cmp::Ordering,
     ffi::OsString,
     fs,
-    os::unix::{prelude::AsRawFd, net::UnixStream},
+    os::unix::{net::UnixStream, prelude::AsRawFd},
+    process::Child,
     rc::Rc,
-    time::{Duration, Instant}, process::Child,
+    time::{Duration, Instant},
 };
 
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::{Itertools, izip};
+use itertools::{izip, Itertools};
 use libc::c_int;
 
 use super::{ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface};
@@ -109,7 +110,7 @@ impl Default for Visibility {
 
 pub trait WrapperSpace {
     type Config: WrapperConfig;
-    fn add_output (
+    fn add_output(
         &mut self,
         output: Option<&c_wl_output::WlOutput>,
         output_info: Option<&OutputInfo>,
@@ -137,7 +138,7 @@ pub trait WrapperSpace {
     fn close_popups(&mut self);
     fn dirty_toplevel(&mut self, dirty_top_level_surface: &s_WlSurface, dim: Size<i32, Logical>);
     fn dirty_popup(&mut self, dirty_top_level_surface: &s_WlSurface, dirty_popup: PopupSurface);
-    fn next_render_event(&self) -> Rc<Cell<Option<SpaceEvent>>> ;
+    fn next_render_event(&self) -> Rc<Cell<Option<SpaceEvent>>>;
     fn reposition_popup(
         &mut self,
         popup: PopupSurface,
@@ -155,48 +156,51 @@ pub trait WrapperSpace {
     ) -> Option<ServerSurface>;
     fn handle_events(&mut self, time: u32, focus: &Focus) -> Instant;
     fn config(&self) -> Self::Config;
-    fn spawn_clients(&mut self, display: &mut wayland_server::Display) -> anyhow::Result<Vec<(UnixStream, UnixStream)>>;
+    fn spawn_clients(
+        &mut self,
+        display: &mut wayland_server::Display,
+    ) -> anyhow::Result<Vec<(UnixStream, UnixStream)>>;
     fn visibility(&self) -> Visibility;
 }
 
+/// space for the cosmic panel
 #[derive(Debug, Default)]
 pub struct PanelSpace {
+    /// config for the panel space
     pub config: CosmicPanelConfig,
+    /// logger for the panel space
     pub log: Option<Logger>,
-    pub clients_left: Vec<(u32, Client)>,
-    pub clients_center: Vec<(u32, Client)>,
-    pub clients_right: Vec<(u32, Client)>,
-    pub client_top_levels_left: Vec<TopLevelSurface>,
-    pub client_top_levels_center: Vec<TopLevelSurface>,
-    pub client_top_levels_right: Vec<TopLevelSurface>,
-    pub children: Vec<Child>,
-    pub last_dirty: Option<Instant>,
-    pub pending_dimensions: Option<(u32, u32)>,
-    pub full_clear: bool,
-    pub next_render_event: Rc<Cell<Option<SpaceEvent>>>,
-    pub dimensions: (u32, u32),
+    pub(crate) clients_left: Vec<(u32, Client)>,
+    pub(crate) clients_center: Vec<(u32, Client)>,
+    pub(crate) clients_right: Vec<(u32, Client)>,
+    pub(crate) client_top_levels_left: Vec<TopLevelSurface>,
+    pub(crate) client_top_levels_center: Vec<TopLevelSurface>,
+    pub(crate) client_top_levels_right: Vec<TopLevelSurface>,
+    pub(crate) children: Vec<Child>,
+    pub(crate) last_dirty: Option<Instant>,
+    pub(crate) pending_dimensions: Option<(u32, u32)>,
+    pub(crate) full_clear: bool,
+    pub(crate) next_render_event: Rc<Cell<Option<SpaceEvent>>>,
+    pub(crate) dimensions: (u32, u32),
     /// focused surface so it can be changed when a window is removed
     focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     /// visibility state of the panel / panel
-    pub visibility: Visibility,
+    pub(crate) visibility: Visibility,
 
-    pub pool: Option<AutoMemPool>,
-    pub layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
-    pub output: Option<(c_wl_output::WlOutput, OutputInfo)>,
-    pub c_display: Option<client::Display>,
-    pub egl_display: Option<EGLDisplay>,
-    pub renderer: Option<Gles2Renderer>,
-    pub layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
-    pub egl_surface: Option<Rc<EGLSurface>>,
-    pub layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
+    pub(crate) pool: Option<AutoMemPool>,
+    pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
+    pub(crate) output: Option<(c_wl_output::WlOutput, OutputInfo)>,
+    pub(crate) c_display: Option<client::Display>,
+    pub(crate) egl_display: Option<EGLDisplay>,
+    pub(crate) renderer: Option<Gles2Renderer>,
+    pub(crate) layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
+    pub(crate) egl_surface: Option<Rc<EGLSurface>>,
+    pub(crate) layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
 }
 
 impl PanelSpace {
     /// create a new space for the cosmic panel
-    pub fn new(
-        config: CosmicPanelConfig,
-        log: Logger
-    ) -> Self {
+    pub fn new(config: CosmicPanelConfig, log: Logger) -> Self {
         Self {
             config,
             log: Some(log),
@@ -310,8 +314,7 @@ impl PanelSpace {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(handle);
                         }
-                        layer_surface
-                            .set_margin(target, target, target, target);
+                        layer_surface.set_margin(target, target, target, target);
                         layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Hidden;
                     } else {
@@ -319,8 +322,7 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            layer_surface
-                                .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            layer_surface.set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
                             layer_shell_wl_surface.commit();
                         }
                         self.close_popups();
@@ -383,8 +385,7 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            layer_surface
-                                .set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            layer_surface.set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
                             layer_shell_wl_surface.commit();
                         }
                         self.visibility = Visibility::TransitionToVisible {
@@ -398,12 +399,12 @@ impl PanelSpace {
         }
     }
 
-    fn constrain_dim(
-        &self,
-        (mut w, mut h): (u32, u32),
-    ) -> (u32, u32) {
+    fn constrain_dim(&self, (mut w, mut h): (u32, u32)) -> (u32, u32) {
         let output_dims = self.output.as_ref().map(|(_, info)| info.physical_size);
-        let (min_w, min_h) = (1.max(self.config.padding() * 2), 1.max(self.config.padding() * 2));
+        let (min_w, min_h) = (
+            1.max(self.config.padding() * 2),
+            1.max(self.config.padding() * 2),
+        );
         w = min_w.max(w);
         h = min_h.max(h);
         if let Some((o_w, o_h)) = output_dims {
@@ -555,8 +556,17 @@ impl PanelSpace {
             )
             .expect("Failed to render to layer shell surface.");
 
-        if self.client_top_levels_left.iter().chain(self.client_top_levels_center.iter()).chain(self.client_top_levels_right.iter()).any(|t| t.dirty && !t.hidden) || full_clear {
-            self.egl_surface.as_ref().unwrap()
+        if self
+            .client_top_levels_left
+            .iter()
+            .chain(self.client_top_levels_center.iter())
+            .chain(self.client_top_levels_right.iter())
+            .any(|t| t.dirty && !t.hidden)
+            || full_clear
+        {
+            self.egl_surface
+                .as_ref()
+                .unwrap()
                 .swap_buffers(Some(&mut p_damage))
                 .expect("Failed to swap buffers.");
         }
@@ -878,14 +888,20 @@ impl WrapperSpace for PanelSpace {
             .map(|c| c.try_wait())
             .all(|r| matches!(r, Ok(Some(_))))
         {
-            info!(self.log.as_ref().unwrap().clone(), "Child processes exited. Now exiting...");
+            info!(
+                self.log.as_ref().unwrap().clone(),
+                "Child processes exited. Now exiting..."
+            );
             std::process::exit(0);
         }
         self.handle_focus(focus);
         let mut should_render = false;
         match self.next_render_event.take() {
             Some(SpaceEvent::Quit) => {
-                trace!(self.log.as_ref().unwrap(), "root window removed, exiting...");
+                trace!(
+                    self.log.as_ref().unwrap(),
+                    "root window removed, exiting..."
+                );
                 for child in &mut self.children {
                     let _ = child.kill();
                 }
@@ -899,7 +915,10 @@ impl WrapperSpace for PanelSpace {
                     self.dimensions = (width, height);
                     // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
-                    self.egl_surface.as_ref().unwrap().resize(width as i32, height as i32, 0, 0);
+                    self.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .resize(width as i32, height as i32, 0, 0);
                     self.full_clear = true;
                     self.update_offsets();
                 }
@@ -913,7 +932,9 @@ impl WrapperSpace for PanelSpace {
                     self.layer_surface.as_ref().unwrap().set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone() {
-                            self.layer_surface.as_ref().unwrap()
+                            self.layer_surface
+                                .as_ref()
+                                .unwrap()
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         }
                         let target = match self.config.anchor() {
@@ -925,7 +946,9 @@ impl WrapperSpace for PanelSpace {
                             }
                             _ => panic!("Hidden mode is not supported for center anchor"),
                         } + self.config.get_hide_handle().unwrap() as i32;
-                        self.layer_surface.as_ref().unwrap()
+                        self.layer_surface
+                            .as_ref()
+                            .unwrap()
                             .set_margin(target, target, target, target);
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
@@ -933,7 +956,10 @@ impl WrapperSpace for PanelSpace {
                             config::Anchor::Top | config::Anchor::Bottom => height,
                             _ => panic!("Exclusive zone is not supported for center anchor"),
                         };
-                        self.layer_surface.as_ref().unwrap().set_exclusive_zone(list_thickness as i32);
+                        self.layer_surface
+                            .as_ref()
+                            .unwrap()
+                            .set_exclusive_zone(list_thickness as i32);
                     }
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
                     self.next_render_event
@@ -1286,10 +1312,9 @@ impl WrapperSpace for PanelSpace {
         let new_w = w + 2 * self.config.padding();
         let new_h = h + 2 * self.config.padding();
 
-        if let Some((_, info)) = &self.output {
+        if let Some((_, _)) = &self.output {
             // TODO improve this for when there are changes to the lists of plugins while running
-            let (new_w, new_h) =
-                self.constrain_dim((new_w, new_h));
+            let (new_w, new_h) = self.constrain_dim((new_w, new_h));
             let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
             let mut wait_configure_dim = self
                 .next_render_event
@@ -1344,11 +1369,7 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn dirty_popup(
-        &mut self,
-        other_top_level_surface: &s_WlSurface,
-        other_popup: PopupSurface,
-    ) {
+    fn dirty_popup(&mut self, other_top_level_surface: &s_WlSurface, other_popup: PopupSurface) {
         self.last_dirty = Some(Instant::now());
         if let Some(s) = self.client_top_levels_mut().find(|s| {
             let top_level = s.s_top_level.borrow();
@@ -1509,7 +1530,9 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn bind_wl_display(&mut self, s_display: &s_Display) -> anyhow::Result<()> {
-        self.renderer.as_mut().unwrap()
+        self.renderer
+            .as_mut()
+            .unwrap()
             .bind_wl_display(s_display)
             .map_err(|e| e.into())
     }
@@ -1526,65 +1549,101 @@ impl WrapperSpace for PanelSpace {
         self.visibility
     }
 
-    fn spawn_clients(&mut self, display: &mut wayland_server::Display) -> anyhow::Result<Vec<(UnixStream, UnixStream)>> {
+    fn spawn_clients(
+        &mut self,
+        display: &mut wayland_server::Display,
+    ) -> anyhow::Result<Vec<(UnixStream, UnixStream)>> {
         if self.children.is_empty() {
-            // pub clients_left: Vec<(u32, Client)>,
-            let (clients_left, sockets_left): (Vec<_>, Vec<_>) = self.config.plugins_left().unwrap_or_default().iter().map(|p| plugin_as_client_sock(p, display)).unzip();
+            let (clients_left, sockets_left): (Vec<_>, Vec<_>) = self
+                .config
+                .plugins_left()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| plugin_as_client_sock(p, display))
+                .unzip();
             self.clients_left = clients_left;
-            let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self.config.plugins_center().unwrap_or_default().iter().map(|p| plugin_as_client_sock(p, display)).unzip();
+            let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self
+                .config
+                .plugins_center()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| plugin_as_client_sock(p, display))
+                .unzip();
             self.clients_center = clients_center;
-            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self.config.plugins_right().unwrap_or_default().iter().map(|p| plugin_as_client_sock(p, display)).unzip();
+            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self
+                .config
+                .plugins_right()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| plugin_as_client_sock(p, display))
+                .unzip();
             self.clients_right = clients_right;
-            // pub clients_center: Vec<(u32, Client)>,
-            // pub clients_right: Vec<(u32, Client)>,
+
             // TODO how slow is this? Would it be worth using a faster method of comparing strings?
             self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
-                    izip!(self.config.plugins_left().unwrap_or_default().iter(), &self.clients_left, &sockets_left)
-                        .chain(izip!(self.config.plugins_center().unwrap_or_default().iter(), &self.clients_center, &sockets_center))
-                        .chain(izip!(self.config.plugins_right().unwrap_or_default().iter(), &self.clients_right, &sockets_right))
-                        .find(|((app_file_name, _), (_, c), (server_socket, client_socket))| {
-                            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-                        })
-                        .and_then(|((app_file_name, _), (_, c), (server_socket, client_socket))| {
-                            let raw_fd = client_socket.as_raw_fd();
-                            let fd_flags = fcntl::FdFlag::from_bits(
-                                fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap(),
-                            )
-                            .unwrap();
-                            fcntl::fcntl(
-                                raw_fd,
-                                fcntl::FcntlArg::F_SETFD(
-                                    fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC),
-                                ),
-                            )
-                            .unwrap();
-                            fs::read_to_string(&path).ok().and_then(|bytes| {
-                                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                    if let Some(exec) = entry.exec() {
-                                        let requests_host_wayland_display =
-                                            entry.desktop_entry("HostWaylandDisplay").is_some();
-                                        return Some(exec_child(
-                                            exec,
-                                            Some(self.config.name()),
-                                            self.log.as_ref().unwrap().clone(),
-                                            raw_fd,
-                                            requests_host_wayland_display,
-                                        ));
-                                    }
+                    izip!(
+                        self.config.plugins_left().unwrap_or_default().iter(),
+                        &self.clients_left,
+                        &sockets_left
+                    )
+                    .chain(izip!(
+                        self.config.plugins_center().unwrap_or_default().iter(),
+                        &self.clients_center,
+                        &sockets_center
+                    ))
+                    .chain(izip!(
+                        self.config.plugins_right().unwrap_or_default().iter(),
+                        &self.clients_right,
+                        &sockets_right
+                    ))
+                    .find(|((app_file_name, _), _, _)| {
+                        Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
+                    })
+                    .and_then(|(_, _, (_, client_socket))| {
+                        let raw_fd = client_socket.as_raw_fd();
+                        let fd_flags = fcntl::FdFlag::from_bits(
+                            fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap(),
+                        )
+                        .unwrap();
+                        fcntl::fcntl(
+                            raw_fd,
+                            fcntl::FcntlArg::F_SETFD(
+                                fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC),
+                            ),
+                        )
+                        .unwrap();
+                        fs::read_to_string(&path).ok().and_then(|bytes| {
+                            if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                                if let Some(exec) = entry.exec() {
+                                    let requests_host_wayland_display =
+                                        entry.desktop_entry("HostWaylandDisplay").is_some();
+                                    return Some(exec_child(
+                                        exec,
+                                        Some(self.config.name()),
+                                        self.log.as_ref().unwrap().clone(),
+                                        raw_fd,
+                                        requests_host_wayland_display,
+                                    ));
                                 }
-                                None
-                            })
+                            }
+                            None
                         })
+                    })
                 })
                 .collect_vec();
-            Ok(sockets_left.into_iter().chain(sockets_center.into_iter()).chain(sockets_right.into_iter()).collect())
+
+            Ok(sockets_left
+                .into_iter()
+                .chain(sockets_center.into_iter())
+                .chain(sockets_right.into_iter())
+                .collect())
         } else {
             bail!("Clients have already been spawned!");
         }
     }
 
-    fn add_output (
+    fn add_output(
         &mut self,
         output: Option<&c_wl_output::WlOutput>,
         output_info: Option<&OutputInfo>,
@@ -1595,12 +1654,14 @@ impl WrapperSpace for PanelSpace {
         c_surface: Attached<c_wl_surface::WlSurface>,
         focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     ) -> anyhow::Result<()> {
-        if self.layer_shell_wl_surface.is_some() || self.output.is_some() || self.layer_shell.is_some() {
+        if self.layer_shell_wl_surface.is_some()
+            || self.output.is_some()
+            || self.layer_shell.is_some()
+        {
             bail!("output already added!")
         }
-        
-        let dimensions =
-            self.constrain_dim((0, 0));
+
+        let dimensions = self.constrain_dim((0, 0));
 
         let (w, h) = dimensions;
         let layer_surface =
@@ -1684,7 +1745,7 @@ impl WrapperSpace for PanelSpace {
             );
         }
 
-        let mut renderer = unsafe {
+        let renderer = unsafe {
             Gles2Renderer::new(egl_context, log.clone()).expect("Failed to initialize EGL Surface")
         };
         trace!(log, "{:?}", unsafe {
