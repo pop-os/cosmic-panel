@@ -5,19 +5,21 @@ use std::{
     cmp::Ordering,
     ffi::OsString,
     fs,
-    os::unix::{net::UnixStream, prelude::AsRawFd},
+    os::unix::{net::UnixStream, io::AsRawFd},
     process::Child,
     rc::Rc,
     time::{Duration, Instant},
 };
 
 use anyhow::bail;
-use xdg_shell_wrapper::{Focus, ClientEglSurface, Popup, PopupRenderEvent, ServerSurface, TopLevelSurface, SpaceEvent, Visibility, smootherstep, plugin_as_client_sock, exec_child, Alignment, WrapperSpace};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use libc::c_int;
-
-use cosmic_panel_config::config::{self, CosmicPanelConfig, WrapperConfig};
+use xdg_shell_wrapper::{
+    util::{exec_child, get_client_sock, smootherstep}, space::{Alignment, ClientEglSurface, Popup,
+    PopupRenderEvent, ServerSurface, SpaceEvent, TopLevelSurface, Visibility, WrapperSpace}, shared_state::Focus, config::WrapperConfig,
+};
+use cosmic_panel_config::config::{self, CosmicPanelConfig};
 use sctk::{
     output::OutputInfo,
     reexports::{
@@ -150,8 +152,12 @@ impl PanelSpace {
                 if let Focus::Current(_) = focus {
                     // start transition to visible
                     let margin = match self.config.anchor() {
-                        config::Anchor::Left | config::Anchor::Right => -(self.dimensions.0 as i32),
-                        config::Anchor::Top | config::Anchor::Bottom => -(self.dimensions.1 as i32),
+                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
+                            -(self.dimensions.0 as i32)
+                        }
+                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
+                            -(self.dimensions.1 as i32)
+                        }
                     } + self.config.get_hide_handle().unwrap() as i32;
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: Instant::now(),
@@ -206,8 +212,12 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
-                        config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
+                            self.dimensions.0 as i32
+                        }
+                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
+                            self.dimensions.1 as i32
+                        }
                     };
                     let target = -panel_size + handle;
 
@@ -268,8 +278,12 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        config::Anchor::Left | config::Anchor::Right => self.dimensions.0 as i32,
-                        config::Anchor::Top | config::Anchor::Bottom => self.dimensions.1 as i32,
+                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
+                            self.dimensions.0 as i32
+                        }
+                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
+                            self.dimensions.1 as i32
+                        }
                     };
                     let start = -panel_size + handle;
 
@@ -583,8 +597,12 @@ impl PanelSpace {
         // First try partitioning the panel evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
-            config::Anchor::Left | config::Anchor::Right => (self.dimensions.1, self.dimensions.0),
-            config::Anchor::Top | config::Anchor::Bottom => (self.dimensions.0, self.dimensions.1),
+            config::PanelAnchor::Left | config::PanelAnchor::Right => {
+                (self.dimensions.1, self.dimensions.0)
+            }
+            config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
+                (self.dimensions.0, self.dimensions.1)
+            }
         };
 
         let mut num_lists = 0;
@@ -608,14 +626,14 @@ impl PanelSpace {
 
         fn map_fn(
             (i, t): (usize, &TopLevelSurface),
-            anchor: config::Anchor,
+            anchor: config::PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, u32, i32) {
             match anchor {
-                config::Anchor::Left | config::Anchor::Right => {
+                config::PanelAnchor::Left | config::PanelAnchor::Right => {
                     (alignment, i, t.priority, t.rectangle.size.h)
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
                     (alignment, i, t.priority, t.rectangle.size.w)
                 }
             }
@@ -713,12 +731,12 @@ impl PanelSpace {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                config::Anchor::Left | config::Anchor::Right => {
+                config::PanelAnchor::Left | config::PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -738,12 +756,12 @@ impl PanelSpace {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                config::Anchor::Left | config::Anchor::Right => {
+                config::PanelAnchor::Left | config::PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -764,12 +782,12 @@ impl PanelSpace {
                 (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
             let cur = prev + spacing * i as u32;
             match anchor {
-                config::Anchor::Left | config::Anchor::Right => {
+                config::PanelAnchor::Left | config::PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness, size.x as u32), cur);
                     prev += size.y as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
                 }
-                config::Anchor::Top | config::Anchor::Bottom => {
+                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness, size.y as u32));
                     prev += size.x as u32;
                     top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
@@ -839,10 +857,10 @@ impl WrapperSpace for PanelSpace {
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         }
                         let target = match self.config.anchor() {
-                            config::Anchor::Left | config::Anchor::Right => {
+                            config::PanelAnchor::Left | config::PanelAnchor::Right => {
                                 -(self.dimensions.0 as i32)
                             }
-                            config::Anchor::Top | config::Anchor::Bottom => {
+                            config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
                                 -(self.dimensions.1 as i32)
                             }
                         } + self.config.get_hide_handle().unwrap() as i32;
@@ -852,8 +870,8 @@ impl WrapperSpace for PanelSpace {
                             .set_margin(target, target, target, target);
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
-                            config::Anchor::Left | config::Anchor::Right => width,
-                            config::Anchor::Top | config::Anchor::Bottom => height,
+                            config::PanelAnchor::Left | config::PanelAnchor::Right => width,
+                            config::PanelAnchor::Top | config::PanelAnchor::Bottom => height,
                         };
                         self.layer_surface
                             .as_ref()
@@ -1458,7 +1476,10 @@ impl WrapperSpace for PanelSpace {
                 .plugins_left()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| plugin_as_client_sock(p, display))
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    ((p.1, c), s)
+                })
                 .unzip();
             self.clients_left = clients_left;
             let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self
@@ -1466,7 +1487,10 @@ impl WrapperSpace for PanelSpace {
                 .plugins_center()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| plugin_as_client_sock(p, display))
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    ((p.1, c), s)
+                })
                 .unzip();
             self.clients_center = clients_center;
             let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self
@@ -1474,7 +1498,10 @@ impl WrapperSpace for PanelSpace {
                 .plugins_right()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| plugin_as_client_sock(p, display))
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    ((p.1, c), s)
+                })
                 .unzip();
             self.clients_right = clients_right;
 
@@ -1714,5 +1741,9 @@ impl WrapperSpace for PanelSpace {
         self.layer_shell_wl_surface = Some(c_surface);
 
         Ok(())
+    }
+
+    fn log(&self) -> Option<Logger> {
+        self.log.clone()
     }
 }

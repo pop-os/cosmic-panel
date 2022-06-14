@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use xdg_shell_wrapper::{xdg_wrapper};
 use slog::{o, Drain};
+use xdg_shell_wrapper::xdg_wrapper;
 
 mod space;
 fn main() -> Result<()> {
@@ -31,6 +31,6 @@ fn main() -> Result<()> {
         }
     };
 
-    xdg_wrapper(log.clone(), space::PanelSpace::new(config, log))?;
+    xdg_wrapper(space::PanelSpace::new(config, log))?;
     Ok(())
 }

@@ -3,7 +3,8 @@
 //! Config for cosmic-panel
 
 use slog::Logger;
-use std::{collections::HashMap, env, fmt, fs::File, ops::Range, time::Duration};
+use xdg_shell_wrapper::config::{WrapperConfig, KeyboardInteractivity, Layer};
+use std::{collections::HashMap, env, fs::File, ops::Range, time::Duration};
 
 use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -13,7 +14,7 @@ use xdg::BaseDirectories;
 
 /// Edge to which the panel is anchored
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
-pub enum Anchor {
+pub enum PanelAnchor {
     /// anchored to left edge
     Left,
     /// anchored to right edge
@@ -24,13 +25,13 @@ pub enum Anchor {
     Bottom,
 }
 
-impl Default for Anchor {
+impl Default for PanelAnchor {
     fn default() -> Self {
-        Anchor::Top
+        PanelAnchor::Top
     }
 }
 
-impl TryFrom<zwlr_layer_surface_v1::Anchor> for Anchor {
+impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     type Error = anyhow::Error;
     fn try_from(align: zwlr_layer_surface_v1::Anchor) -> Result<Self, Self::Error> {
         if align.contains(zwlr_layer_surface_v1::Anchor::Left) {
@@ -47,7 +48,7 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for Anchor {
     }
 }
 
-impl Into<zwlr_layer_surface_v1::Anchor> for Anchor {
+impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     fn into(self) -> zwlr_layer_surface_v1::Anchor {
         let mut anchor = zwlr_layer_surface_v1::Anchor::empty();
         match self {
@@ -73,78 +74,11 @@ use gtk4::Orientation;
 
 #[cfg(feature = "gtk4")]
 
-impl Into<Orientation> for Anchor {
+impl Into<Orientation> for PanelAnchor {
     fn into(self) -> Orientation {
         match self {
             Self::Left | Self::Right => Orientation::Vertical,
             Self::Top | Self::Bottom => Orientation::Horizontal,
-        }
-    }
-}
-/// Layer which the cosmic panel is on
-#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
-pub enum Layer {
-    /// background layer
-    Background,
-    /// Bottom layer
-    Bottom,
-    /// Top layer
-    Top,
-    /// Overlay layer
-    Overlay,
-}
-
-impl From<zwlr_layer_shell_v1::Layer> for Layer {
-    fn from(layer: zwlr_layer_shell_v1::Layer) -> Self {
-        match layer {
-            zwlr_layer_shell_v1::Layer::Background => Self::Background,
-            zwlr_layer_shell_v1::Layer::Bottom => Self::Bottom,
-            zwlr_layer_shell_v1::Layer::Top => Self::Top,
-            zwlr_layer_shell_v1::Layer::Overlay => Self::Overlay,
-            _ => Self::Top,
-        }
-    }
-}
-
-impl Into<zwlr_layer_shell_v1::Layer> for Layer {
-    fn into(self) -> zwlr_layer_shell_v1::Layer {
-        match self {
-            Self::Background => zwlr_layer_shell_v1::Layer::Background,
-            Self::Bottom => zwlr_layer_shell_v1::Layer::Bottom,
-            Self::Top => zwlr_layer_shell_v1::Layer::Top,
-            Self::Overlay => zwlr_layer_shell_v1::Layer::Overlay,
-        }
-    }
-}
-
-/// Interactivity level of the cosmic panel
-#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
-pub enum KeyboardInteractivity {
-    /// Not interactible
-    None,
-    /// Only surface which is interactible
-    Exclusive,
-    /// Interactible when given keyboard focus
-    OnDemand,
-}
-
-impl From<zwlr_layer_surface_v1::KeyboardInteractivity> for KeyboardInteractivity {
-    fn from(kb: zwlr_layer_surface_v1::KeyboardInteractivity) -> Self {
-        match kb {
-            zwlr_layer_surface_v1::KeyboardInteractivity::None => Self::None,
-            zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive => Self::Exclusive,
-            zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand => Self::OnDemand,
-            _ => Self::None,
-        }
-    }
-}
-
-impl Into<zwlr_layer_surface_v1::KeyboardInteractivity> for KeyboardInteractivity {
-    fn into(self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
-        match self {
-            Self::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
-            Self::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
-            Self::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
         }
     }
 }
@@ -194,7 +128,7 @@ pub struct CosmicPanelConfig {
     /// profile name for this config
     name: String,
     /// edge which the panel is locked to
-    pub anchor: Anchor,
+    pub anchor: PanelAnchor,
     /// gap between the panel and the edge of the ouput
     pub anchor_gap: bool,
     /// configured layer which the panel is on
@@ -229,7 +163,7 @@ impl Default for CosmicPanelConfig {
     fn default() -> Self {
         Self {
             name: String::new(),
-            anchor: Anchor::Top,
+            anchor: PanelAnchor::Top,
             anchor_gap: false,
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::None,
@@ -379,34 +313,54 @@ impl CosmicPanelConfig {
     pub fn plugins_right(&self) -> Option<Vec<(String, u32)>> {
         self.plugins_right.clone()
     }
-}
 
-pub trait WrapperConfig: Clone + fmt::Debug + Default {
-    fn output(&self) -> Option<String>;
-    fn anchor(&self) -> Anchor;
-    fn padding(&self) -> u32;
-    fn layer(&self) -> zwlr_layer_shell_v1::Layer;
-    fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity;
-
-    fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>);
-
-    fn exclusive_zone(&self) -> bool {
-        false
+    pub fn anchor(&self) -> PanelAnchor {
+        self.anchor.clone()
     }
-    fn name(&self) -> &str;
+
+    pub fn padding(&self) -> u32 {
+        self.padding
+    }
+
+    /// get constraints for the thickness of the panel bar
+    pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
+            let mut bar_thickness = match &self.size {
+                PanelSize::XS => (8..61),
+                PanelSize::S => (8..81),
+                PanelSize::M => (8..101),
+                PanelSize::L => (8..121),
+                PanelSize::XL => (8..141),
+                PanelSize::Custom(c) => c.clone(),
+            };
+            assert!(2 * self.padding < bar_thickness.end);
+            bar_thickness.end -= 2 * self.padding;
+    
+            match self.anchor {
+                PanelAnchor::Left | PanelAnchor::Right => (
+                    Some(bar_thickness),
+                    if self.expand_to_edges() {
+                        Some(output_dims.1..output_dims.1 + 1)
+                    } else {
+                        None
+                    },
+                ),
+                PanelAnchor::Top | PanelAnchor::Bottom => (
+                    if self.expand_to_edges() {
+                        Some(output_dims.0..output_dims.0 + 1)
+                    } else {
+                        None
+                    },
+                    Some(bar_thickness),
+                ),
+                _ => (None, None),
+            }
+        }
+    
 }
 
 impl WrapperConfig for CosmicPanelConfig {
     fn output(&self) -> Option<String> {
         Some(self.output.clone())
-    }
-
-    fn anchor(&self) -> Anchor {
-        self.anchor
-    }
-
-    fn padding(&self) -> u32 {
-        self.padding
     }
 
     fn layer(&self) -> zwlr_layer_shell_v1::Layer {
@@ -415,40 +369,6 @@ impl WrapperConfig for CosmicPanelConfig {
 
     fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
         self.keyboard_interactivity.into()
-    }
-
-    /// get constraints for the thickness of the panel bar
-    fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
-        let mut bar_thickness = match &self.size {
-            PanelSize::XS => (8..61),
-            PanelSize::S => (8..81),
-            PanelSize::M => (8..101),
-            PanelSize::L => (8..121),
-            PanelSize::XL => (8..141),
-            PanelSize::Custom(c) => c.clone(),
-        };
-        assert!(2 * self.padding < bar_thickness.end);
-        bar_thickness.end -= 2 * self.padding;
-
-        match self.anchor {
-            Anchor::Left | Anchor::Right => (
-                Some(bar_thickness),
-                if self.expand_to_edges() {
-                    Some(output_dims.1..output_dims.1 + 1)
-                } else {
-                    None
-                },
-            ),
-            Anchor::Top | Anchor::Bottom => (
-                if self.expand_to_edges() {
-                    Some(output_dims.0..output_dims.0 + 1)
-                } else {
-                    None
-                },
-                Some(bar_thickness),
-            ),
-            _ => (None, None),
-        }
     }
 
     fn name(&self) -> &str {
