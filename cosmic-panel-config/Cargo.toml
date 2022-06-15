@@ -15,5 +15,6 @@ xdg = "2.4.0"
 sctk = { package = "smithay-client-toolkit", git = "https://github.com/wash2/client-toolkit.git", default-features = false, features = ["calloop"] }
 gtk4 = { version = "0.4.5", features = ["v4_4"], optional = true }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
-xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy"}
 
