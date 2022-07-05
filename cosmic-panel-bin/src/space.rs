@@ -66,6 +66,7 @@ use smithay::{
         shell::xdg::{PopupSurface, PositionerState},
     },
 };
+use smithay::desktop::Kind::Xdg;
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{Env, Focus},
@@ -74,7 +75,7 @@ use xdg_shell_wrapper::{
     util::{exec_child, get_client_sock, smootherstep},
 };
 
-use cosmic_panel_config::{CosmicPanelConfig, PanelAnchor};
+use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
 impl Default for PanelSpace {
     fn default() -> Self {
@@ -372,7 +373,10 @@ impl PanelSpace {
         if self.next_render_event.get() != None {
             return Ok(());
         }
-        let clear_color = [0.0, 0.0, 0.0, 0.0];
+        let clear_color = match self.config.background {
+            CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
+            CosmicPanelBackground::Color(c) => c
+        };
         let renderer = self.renderer.as_mut().unwrap();
         renderer
             .bind(self.egl_surface.as_ref().unwrap().clone())
@@ -394,9 +398,13 @@ impl PanelSpace {
                 vec![(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)))]
             } else {
                 let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
+                    let w_loc = self.space.window_location(w).unwrap_or_else(|| (0, 0).into());
+                    let mut bbox = w.bbox();
+                    bbox.loc += w_loc;
+
                     acc.into_iter()
                         .chain(w.accumulated_damage(
-                            w.geometry().loc.to_f64().to_physical(1.0),
+                            w_loc.to_f64().to_physical(1.0),
                             1.0,
                             Some((&self.space, &o)),
                         ))
@@ -436,7 +444,10 @@ impl PanelSpace {
                         .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
                         .expect("Failed to clear frame.");
                     for w in self.space.windows() {
-                        let mut w_damage = damage.iter().filter_map(|r| r.intersection(w.bbox().to_physical(1))).collect_vec();
+                        let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
+                        let mut bbox = w.bbox();
+                        bbox.loc += w_loc;
+                        let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
                         w_damage.dedup();
                         if damage.len() == 0 {
                             continue;
@@ -447,7 +458,7 @@ impl PanelSpace {
                             frame,
                             w,
                             1.0,
-                            w.geometry().loc.to_f64().to_physical(1.0),
+                            w_loc.to_physical(1).to_f64(),
                             &w_damage,
                             &log_clone,
                         );
@@ -461,6 +472,7 @@ impl PanelSpace {
                 .expect("Failed to swap buffers.");
 
             // Popup rendering
+            let clear_color = [0.0, 0.0, 0.0, 0.0];
             for p in self.popups.iter_mut().filter(|p|
                 p.dirty && match p.popup_state.get() {
                     None => true,
@@ -539,6 +551,7 @@ impl PanelSpace {
 
 
     fn update_window_locations(&mut self) {
+        println!("updating locations");
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -608,12 +621,12 @@ impl PanelSpace {
             a_i.cmp(b_i)
         });
 
-
         fn map_fn(
             (i, w): &(usize, Window),
             anchor: PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, i32) {
+            dbg!(w.bbox());
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     (alignment, *i, w.bbox().size.h)
@@ -639,6 +652,7 @@ impl PanelSpace {
         let right = windows_right
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Right));
+
         let mut right_sum = right.clone().map(|(_, _, d)| d).sum::<i32>()
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
 
@@ -651,18 +665,14 @@ impl PanelSpace {
             panic!("List expanded past max size!");
         }
 
-        // XXX making sure the sum is > 0 after possibly over-subtracting spacing
-        left_sum = left_sum.max(0);
-        center_sum = center_sum.max(0);
-        right_sum = right_sum.max(0);
-
         fn center_in_bar(thickness: u32, dim: u32) -> i32 {
             (thickness as i32 - dim as i32) / 2
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
+        dbg!(requested_eq_length);
         let (right_sum, center_offset) = if is_dock {
-            (0, padding as i32)
+            (0, padding as i32 + (list_length - center_sum) / 2)
         } else if left_sum <= requested_eq_length
             && center_sum <= requested_eq_length
             && right_sum <= requested_eq_length
@@ -690,34 +700,39 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
             };
+            self.space.commit(w.toplevel().wl_surface());
         }
 
         let mut prev: u32 = center_offset as u32;
-
+        dbg!(center_offset);
         for (i, w) in &mut windows_center
             .iter_mut()
         {
             let size: Point<_, Logical> =
                 (w.bbox().size.w, w.bbox().size.h).into();
+            dbg!(size);
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
+                    dbg!(cur);
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    let Xdg(wl_s) = w.toplevel();
+                    self.space.commit(&wl_s.wl_surface());
                 }
             };
         }
@@ -735,14 +750,15 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
             };
+            self.space.commit(w.toplevel().wl_surface());
         }
     }
 }
@@ -836,6 +852,10 @@ impl WrapperSpace for PanelSpace {
                     self.next_render_event
                         .replace(Some(SpaceEvent::WaitConfigure { width: size.w, height: size.h }));
                 } else {
+                    if self.full_clear {
+                        self.update_window_locations();
+                        self.space.refresh(&dh);
+                    }
                     should_render = true;
                 }
             }
@@ -867,9 +887,10 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn add_top_level(&mut self, w: Window) {
+    fn add_window(&mut self, w: Window) {
         self.full_clear = true;
-        self.space.map_window(&w, (0, 0), false);
+        self.space.commit(&w.toplevel().wl_surface());
+        self.space.map_window(&w, (0, 0), true);
         for w in self.space.windows() {
             w.configure();
         }
@@ -885,7 +906,7 @@ impl WrapperSpace for PanelSpace {
     ) {
         self.close_popups();
 
-        let s = if let Some(s) = self.space.windows().find(|w| {
+        let parent_window = if let Some(s) = self.space.windows().find(|w| {
             match w.toplevel() {
                 Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
                 _ => false,
@@ -904,11 +925,12 @@ impl WrapperSpace for PanelSpace {
         self.popup_manager.track_popup(PopupKind::Xdg(s_surface.clone())).unwrap();
         self.popup_manager.commit(&wl_surface);
 
+        let p_offset = self.space.window_location(parent_window).unwrap_or_else(|| (0, 0).into());
         // dbg!(s.bbox().loc);
         positioner.set_size(rect_size.w, rect_size.h);
         positioner.set_anchor_rect(
-            anchor_rect.loc.x + s.bbox().loc.x,
-            anchor_rect.loc.y + s.bbox().loc.y,
+            anchor_rect.loc.x + p_offset.x,
+            anchor_rect.loc.y + p_offset.y,
             anchor_rect.size.w,
             anchor_rect.size.h,
         );
@@ -1156,9 +1178,9 @@ impl WrapperSpace for PanelSpace {
         {
             bail!("output already added!")
         }
+        self.output = output.cloned().zip(output_info.cloned());
 
         let dimensions = self.constrain_dim((1, 1).into());
-
         let layer_surface =
             layer_shell.get_layer_surface(&c_surface, output, self.config.layer(), "".to_owned());
 
@@ -1297,7 +1319,6 @@ impl WrapperSpace for PanelSpace {
             }
         });
 
-        self.output = output.cloned().zip(output_info.cloned());
         self.egl_display.replace(egl_display);
         self.renderer.replace(renderer);
         self.layer_shell.replace(layer_shell);
@@ -1341,11 +1362,21 @@ impl WrapperSpace for PanelSpace {
         self.space.raise_window(w, activate);
     }
 
-    fn dirty_window(&mut self, s: &s_WlSurface) {
+    fn dirty_window(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
         self.last_dirty = Some(Instant::now());
         let mut full_clear = false;
 
+        println!("dirty window");
+        let mut recalculate_locations = false;
         if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
+            let old_bbox = w.bbox();
+            self.space.commit(&s);
+            w.refresh();
+            let new_bbox = w.bbox();
+            if old_bbox.size != new_bbox.size {
+                self.full_clear = true;
+            }
+
             // TODO improve this for when there are changes to the lists of plugins while running
             let padding: Size<i32, Logical> = ((2 * self.config.padding()).try_into().unwrap(), (2 * self.config.padding()).try_into().unwrap()).into();
             let size = self.constrain_dim(padding + w.bbox().size);
@@ -1367,6 +1398,7 @@ impl WrapperSpace for PanelSpace {
                 && pending_dimensions.w < size.w
                 && wait_configure_dim.0 < size.w
             {
+                self.full_clear = true;
                 self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
                 wait_configure_dim.0 = size.w;
             }
@@ -1374,17 +1406,15 @@ impl WrapperSpace for PanelSpace {
                 && pending_dimensions.h < size.h
                 && wait_configure_dim.1 < size.h
             {
-                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
-            }
-
-            if full_clear {
                 self.full_clear = true;
-                self.update_window_locations();
+                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
             }
         }
     }
 
-    fn dirty_popup(&mut self, s: &s_WlSurface) {
+    fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
+        self.space.commit(&s);
+        self.space.refresh(&dh);
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
             p.dirty = true;
             self.popup_manager.commit(s);

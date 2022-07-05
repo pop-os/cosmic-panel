@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use slog::{o, Drain};
 use xdg_shell_wrapper::run;
+use slog::{Drain, o};
 
 mod space;
+
 fn main() -> Result<()> {
     dbg!(std::time::Instant::now());
     let log = slog::Logger::root(

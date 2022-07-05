@@ -2,15 +2,17 @@
 
 //! Config for cosmic-panel
 
-use slog::Logger;
-use xdg_shell_wrapper::config::{WrapperConfig, KeyboardInteractivity, Layer};
 use std::{collections::HashMap, env, fs::File, ops::Range, time::Duration};
 
-use sctk::reexports::protocols::wlr::unstable::layer_shell::v1::client::{
+#[cfg(feature = "gtk4")]
+use gtk4::Orientation;
+use serde::{Deserialize, Serialize};
+use slog::Logger;
+use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
-use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
+use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig};
 
 /// Edge to which the panel is anchored
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
@@ -70,10 +72,6 @@ impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 }
 
 #[cfg(feature = "gtk4")]
-use gtk4::Orientation;
-
-#[cfg(feature = "gtk4")]
-
 impl Into<Orientation> for PanelAnchor {
     fn into(self) -> Orientation {
         match self {
@@ -324,38 +322,37 @@ impl CosmicPanelConfig {
 
     /// get constraints for the thickness of the panel bar
     pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
-            let mut bar_thickness = match &self.size {
-                PanelSize::XS => (8..61),
-                PanelSize::S => (8..81),
-                PanelSize::M => (8..101),
-                PanelSize::L => (8..121),
-                PanelSize::XL => (8..141),
-                PanelSize::Custom(c) => c.clone(),
-            };
-            assert!(2 * self.padding < bar_thickness.end);
-            bar_thickness.end -= 2 * self.padding;
-    
-            match self.anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (
-                    Some(bar_thickness),
-                    if self.expand_to_edges() {
-                        Some(output_dims.1..output_dims.1 + 1)
-                    } else {
-                        None
-                    },
-                ),
-                PanelAnchor::Top | PanelAnchor::Bottom => (
-                    if self.expand_to_edges() {
-                        Some(output_dims.0..output_dims.0 + 1)
-                    } else {
-                        None
-                    },
-                    Some(bar_thickness),
-                ),
-                _ => (None, None),
-            }
+        let mut bar_thickness = match &self.size {
+            PanelSize::XS => (8..61),
+            PanelSize::S => (8..81),
+            PanelSize::M => (8..101),
+            PanelSize::L => (8..121),
+            PanelSize::XL => (8..141),
+            PanelSize::Custom(c) => c.clone(),
+        };
+        assert!(2 * self.padding < bar_thickness.end);
+        bar_thickness.end -= 2 * self.padding;
+
+        match self.anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (
+                Some(bar_thickness),
+                if self.expand_to_edges() {
+                    Some(output_dims.1..output_dims.1 + 1)
+                } else {
+                    None
+                },
+            ),
+            PanelAnchor::Top | PanelAnchor::Bottom => (
+                if self.expand_to_edges() {
+                    Some(output_dims.0..output_dims.0 + 1)
+                } else {
+                    None
+                },
+                Some(bar_thickness),
+            ),
+            _ => (None, None),
         }
-    
+    }
 }
 
 impl WrapperConfig for CosmicPanelConfig {
