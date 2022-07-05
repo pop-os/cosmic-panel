@@ -4,7 +4,7 @@ use anyhow::Result;
 use slog::{o, Drain};
 use xdg_shell_wrapper::run;
 
-mod space_new;
+mod space;
 fn main() -> Result<()> {
     dbg!(std::time::Instant::now());
     let log = slog::Logger::root(
@@ -31,6 +31,6 @@ fn main() -> Result<()> {
         }
     };
 
-    run(space_new::PanelSpace::new(config, log))?;
+    run(space::PanelSpace::new(config, log))?;
     Ok(())
 }

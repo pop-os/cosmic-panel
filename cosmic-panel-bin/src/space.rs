@@ -2,12 +2,12 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::VecDeque,
     ffi::OsString,
     fs,
     os::unix::{net::UnixStream, prelude::AsRawFd},
     process::Child,
-    rc::Rc,
-    time::{Instant, Duration}, collections::VecDeque,
+    rc::Rc, time::{Duration, Instant},
 };
 
 use anyhow::bail;
@@ -26,7 +26,7 @@ use sctk::{
                 xdg_popup,
                 xdg_positioner::{Anchor, Gravity, XdgPositioner},
                 xdg_surface::{self, XdgSurface},
-                xdg_wm_base::{XdgWmBase, self},
+                xdg_wm_base::{self, XdgWmBase},
             },
         },
     },
@@ -36,31 +36,31 @@ use slog::{info, Logger, trace};
 use smithay::{
     backend::{
         egl::{
+            self,
             context::{EGLContext, GlAttributes},
             display::EGLDisplay,
             ffi::{
                 self,
                 egl::{GetConfigAttrib, SwapInterval},
-            },
-            surface::EGLSurface, self,
+            }, surface::EGLSurface,
         },
         renderer::{
-            Bind, Frame, gles2::Gles2Renderer, ImportEgl, Renderer, Unbind,
-            utils::draw_surface_tree, ImportDma,
+            Bind, Frame, gles2::Gles2Renderer, ImportDma, ImportEgl, Renderer,
+            Unbind, utils::draw_surface_tree,
         },
     },
     desktop::{
+        draw_popups,
         draw_window,
         Kind,
-        PopupKind,
-        PopupManager, space::{RenderError, SurfaceTree}, Space, utils::{damage_from_surface_tree, send_frames_surface_tree, bbox_from_surface_tree}, Window, WindowSurfaceType, draw_popups,
+        PopupKind, PopupManager, space::{RenderError, SurfaceTree}, Space, utils::{bbox_from_surface_tree, damage_from_surface_tree, send_frames_surface_tree}, Window, WindowSurfaceType,
     },
     nix::{fcntl, libc},
     reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::{
         self, Client, Display as s_Display, DisplayHandle,
         protocol::wl_surface::WlSurface as s_WlSurface, Resource,
     }},
-    utils::{Logical, Rectangle, Size, Point, Physical},
+    utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::{
         SERIAL_COUNTER,
         shell::xdg::{PopupSurface, PositionerState},
@@ -70,7 +70,7 @@ use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{Env, Focus},
     config::WrapperConfig,
-    space::{ClientEglSurface, SpaceEvent, Visibility, WrapperSpace, Popup, PopupState},
+    space::{ClientEglSurface, Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
     util::{exec_child, get_client_sock, smootherstep},
 };
 
@@ -120,7 +120,7 @@ pub struct PanelSpace {
     pub(crate) popup_manager: PopupManager,
     pub(crate) clients_left: Vec<Client>,
     pub(crate) clients_center: Vec<Client>,
-    pub(crate) clients_right: Vec<Client>,    
+    pub(crate) clients_right: Vec<Client>,
     pub(crate) children: Vec<Child>,
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
@@ -455,13 +455,13 @@ impl PanelSpace {
                 },
             );
             self.egl_surface
-            .as_ref()
-            .unwrap()
-            .swap_buffers(Some(&mut damage))
-            .expect("Failed to swap buffers.");
+                .as_ref()
+                .unwrap()
+                .swap_buffers(Some(&mut damage))
+                .expect("Failed to swap buffers.");
 
             // Popup rendering
-            for p in self.popups.iter_mut().filter(|p| 
+            for p in self.popups.iter_mut().filter(|p|
                 p.dirty && match p.popup_state.get() {
                     None => true,
                     _ => false,
@@ -469,9 +469,9 @@ impl PanelSpace {
             ) {
                 let _ = renderer.unbind();
                 renderer
-                .bind(p.egl_surface.clone())
-                .expect("Failed to bind surface to GL");
-                let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0,0));
+                    .bind(p.egl_surface.clone())
+                    .expect("Failed to bind surface to GL");
+                let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
                 let cur_damage = if self.full_clear {
                     vec![p_bbox.to_physical(1)]
                 } else {
@@ -506,8 +506,8 @@ impl PanelSpace {
                     },
                 );
                 p.egl_surface
-                .swap_buffers(Some(&mut damage))
-                .expect("Failed to swap buffers.");
+                    .swap_buffers(Some(&mut damage))
+                    .expect("Failed to swap buffers.");
                 p.dirty = false;
             }
         }
@@ -527,7 +527,7 @@ impl PanelSpace {
         let ret = if age == 0 || age > dmg_counts {
             Vec::new()
         } else {
-             acc_damage.range(0..age).cloned().flatten().collect_vec()
+            acc_damage.range(0..age).cloned().flatten().collect_vec()
         };
 
         if acc_damage.len() > 4 {
@@ -648,7 +648,7 @@ impl PanelSpace {
         if total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
             > list_length as i32
         {
-           panic!("List expanded past max size!");
+            panic!("List expanded past max size!");
         }
 
         // XXX making sure the sum is > 0 after possibly over-subtracting spacing
@@ -679,7 +679,6 @@ impl PanelSpace {
         };
 
         let mut prev: u32 = padding;
-        // TODO remap windows with new locations instead of setting bbox loc
 
         for (i, w) in &mut windows_left
             .iter_mut()
@@ -691,18 +690,17 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
             };
         }
 
         let mut prev: u32 = center_offset as u32;
-        // TODO remap windows with new locations instead of setting bbox loc
 
         for (i, w) in &mut windows_center
             .iter_mut()
@@ -714,19 +712,18 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
             };
         }
 
         // twice padding is subtracted
         let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
-        // TODO remap windows with new locations instead of setting bbox loc
 
         for (i, w) in &mut windows_right
             .iter_mut()
@@ -738,18 +735,16 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    w.bbox().loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), false);
                 }
             };
         }
-
     }
-
 }
 
 impl WrapperSpace for PanelSpace {
@@ -806,7 +801,7 @@ impl WrapperSpace for PanelSpace {
                 if let Some(size) = self.pending_dimensions.take() {
                     let width = size.w.try_into().unwrap();
                     let height = size.h.try_into().unwrap();
-                    
+
                     self.layer_surface.as_ref().unwrap().set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone() {
@@ -893,6 +888,7 @@ impl WrapperSpace for PanelSpace {
         let s = if let Some(s) = self.space.windows().find(|w| {
             match w.toplevel() {
                 Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
+                _ => false,
             }
         }) {
             s
@@ -991,7 +987,7 @@ impl WrapperSpace for PanelSpace {
                 client_egl_surface,
                 self.log.clone(),
             )
-            .expect("Failed to initialize EGL Surface"),
+                .expect("Failed to initialize EGL Surface"),
         );
 
         self.popups.push(Popup {
@@ -1002,7 +998,7 @@ impl WrapperSpace for PanelSpace {
             egl_surface,
             dirty: false,
             popup_state: cur_popup_state,
-            position: (0,0).into(),
+            position: (0, 0).into(),
             accumulated_damage: Default::default(),
         });
     }
@@ -1059,85 +1055,85 @@ impl WrapperSpace for PanelSpace {
     ) -> Result<Vec<UnixStream>, anyhow::Error> {
         if self.children.is_empty() {
             let (clients_left, sockets_left): (Vec<_>, Vec<_>) = self
-            .config
-            .plugins_left()
-            .unwrap_or_default()
-            .iter()
-            .map(|p| {
-                let (c, s) = get_client_sock(display);
-                (c, s)
-            })
-            .unzip();
-        self.clients_left = clients_left;
-        let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self
-            .config
-            .plugins_center()
-            .unwrap_or_default()
-            .iter()
-            .map(|p| {
-                let (c, s) = get_client_sock(display);
-                (c, s)
-            })
-            .unzip();
-        self.clients_center = clients_center;
-        let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self
-            .config
-            .plugins_right()
-            .unwrap_or_default()
-            .iter()
-            .map(|p| {
-                let (c, s) = get_client_sock(display);
-                (c, s)
-            })
-            .unzip();
-        self.clients_right = clients_right;  
-                  // TODO how slow is this? Would it be worth using a faster method of comparing strings?
-                  self.children = Iter::new(freedesktop_desktop_entry::default_paths())
-                  .filter_map(|path| {
-                      izip!(
+                .config
+                .plugins_left()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    (c, s)
+                })
+                .unzip();
+            self.clients_left = clients_left;
+            let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self
+                .config
+                .plugins_center()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    (c, s)
+                })
+                .unzip();
+            self.clients_center = clients_center;
+            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self
+                .config
+                .plugins_right()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| {
+                    let (c, s) = get_client_sock(display);
+                    (c, s)
+                })
+                .unzip();
+            self.clients_right = clients_right;
+            // TODO how slow is this? Would it be worth using a faster method of comparing strings?
+            self.children = Iter::new(freedesktop_desktop_entry::default_paths())
+                .filter_map(|path| {
+                    izip!(
                           self.config.plugins_left().unwrap_or_default().iter(),
                           &self.clients_left,
                           &sockets_left
                       )
-                      .chain(izip!(
+                        .chain(izip!(
                           self.config.plugins_center().unwrap_or_default().iter(),
                           &self.clients_center,
                           &sockets_center
                       ))
-                      .chain(izip!(
+                        .chain(izip!(
                           self.config.plugins_right().unwrap_or_default().iter(),
                           &self.clients_right,
                           &sockets_right
                       ))
-                      .find(|(app_file_name, _, _)| {
-                          Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-                      })
-                      .and_then(|(_, _, client_socket)| {
-                          fs::read_to_string(&path).ok().and_then(|bytes| {
-                              if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                  if let Some(exec) = entry.exec() {
-                                      let requests_host_wayland_display =
-                                          entry.desktop_entry("HostWaylandDisplay").is_some();
-                                      return Some(exec_child(
-                                          exec,
-                                          Some(self.config.name()),
-                                          self.log.as_ref().unwrap().clone(),
-                                          client_socket.as_raw_fd(),
-                                          requests_host_wayland_display,
-                                      ));
-                                  }
-                              }
-                              None
-                          })
-                      })
-                  })
-                  .collect_vec();
-  
-              Ok(sockets_left
-                  .into_iter()
-                  .chain(sockets_center.into_iter())
-                  .chain(sockets_right.into_iter())
-                  .collect())
+                        .find(|(app_file_name, _, _)| {
+                            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
+                        })
+                        .and_then(|(_, _, client_socket)| {
+                            fs::read_to_string(&path).ok().and_then(|bytes| {
+                                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                                    if let Some(exec) = entry.exec() {
+                                        let requests_host_wayland_display =
+                                            entry.desktop_entry("HostWaylandDisplay").is_some();
+                                        return Some(exec_child(
+                                            exec,
+                                            Some(self.config.name()),
+                                            self.log.as_ref().unwrap().clone(),
+                                            client_socket.as_raw_fd(),
+                                            requests_host_wayland_display,
+                                        ));
+                                    }
+                                }
+                                None
+                            })
+                        })
+                })
+                .collect_vec();
+
+            Ok(sockets_left
+                .into_iter()
+                .chain(sockets_center.into_iter())
+                .chain(sockets_right.into_iter())
+                .collect())
         } else {
             bail!("Clients have already been spawned!");
         }
@@ -1348,7 +1344,7 @@ impl WrapperSpace for PanelSpace {
     fn dirty_window(&mut self, s: &s_WlSurface) {
         self.last_dirty = Some(Instant::now());
         let mut full_clear = false;
-        
+
         if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
             // TODO improve this for when there are changes to the lists of plugins while running
             let padding: Size<i32, Logical> = ((2 * self.config.padding()).try_into().unwrap(), (2 * self.config.padding()).try_into().unwrap()).into();
