@@ -625,7 +625,7 @@ impl PanelSpace {
             anchor: PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, i32) {
-            dbg!(w.bbox());
+            // dbg!(w.bbox());
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     (alignment, *i, w.bbox().size.h)
@@ -669,7 +669,7 @@ impl PanelSpace {
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
-        dbg!(requested_eq_length);
+        // dbg!(requested_eq_length);
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32 + (list_length - center_sum) / 2)
         } else if left_sum <= requested_eq_length
