@@ -551,7 +551,6 @@ impl PanelSpace {
 
 
     fn update_window_locations(&mut self) {
-        println!("updating locations");
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -708,17 +707,18 @@ impl PanelSpace {
                     self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
             };
+            let Xdg(wl_s) = w.toplevel();
             self.space.commit(w.toplevel().wl_surface());
         }
 
         let mut prev: u32 = center_offset as u32;
-        dbg!(center_offset);
+        // dbg!(center_offset);
         for (i, w) in &mut windows_center
             .iter_mut()
         {
             let size: Point<_, Logical> =
                 (w.bbox().size.w, w.bbox().size.h).into();
-            dbg!(size);
+            // dbg!(size);
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -728,13 +728,13 @@ impl PanelSpace {
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
-                    dbg!(cur);
+                    // dbg!(cur);
                     prev += size.x as u32;
                     self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
-                    let Xdg(wl_s) = w.toplevel();
-                    self.space.commit(&wl_s.wl_surface());
                 }
             };
+            let Xdg(wl_s) = w.toplevel();
+            self.space.commit(&wl_s.wl_surface());
         }
 
         // twice padding is subtracted
@@ -758,6 +758,7 @@ impl PanelSpace {
                     self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
                 }
             };
+            let Xdg(wl_s) = w.toplevel();
             self.space.commit(w.toplevel().wl_surface());
         }
     }
@@ -1366,7 +1367,6 @@ impl WrapperSpace for PanelSpace {
         self.last_dirty = Some(Instant::now());
         let mut full_clear = false;
 
-        println!("dirty window");
         let mut recalculate_locations = false;
         if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
             let old_bbox = w.bbox();
