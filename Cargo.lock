@@ -1674,6 +1674,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=rework-0.30#9b26291502c5e6d3b969e22f4b80fc57c0e3a6f4"
 dependencies = [
  "anyhow",
  "calloop",
