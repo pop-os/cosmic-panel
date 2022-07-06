@@ -1267,7 +1267,7 @@ checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay#e206012bf994a7787d8ece8037ec75bca34512ab"
+source = "git+https://github.com/smithay/smithay#704d8551eab3f586298331ee6348d4459bfeb2f6"
 dependencies = [
  "appendlist",
  "bitflags",
@@ -1674,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#e523530fd900ae1985e664cce84c4066b23afea1"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f93027e8e52106852bff5b38e8676b9ca465b725"
 dependencies = [
  "anyhow",
  "calloop",
@@ -1695,7 +1695,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#e523530fd900ae1985e664cce84c4066b23afea1"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f93027e8e52106852bff5b38e8676b9ca465b725"
 dependencies = [
  "serde",
  "wayland-protocols 0.29.4",
