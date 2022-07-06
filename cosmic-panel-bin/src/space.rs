@@ -373,6 +373,9 @@ impl PanelSpace {
         if self.next_render_event.get() != None {
             return Ok(());
         }
+        let full_clear = self.full_clear;
+        self.full_clear = false;
+
         let clear_color = match self.config.background {
             CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
             CosmicPanelBackground::Color(c) => c
@@ -394,7 +397,7 @@ impl PanelSpace {
             // frame size could be bigger than the maximum the output_geo would define.
             let output_geo = Rectangle::from_loc_and_size(o.current_location(), output_size.to_logical(1));
 
-            let cur_damage = if self.full_clear {
+            let cur_damage = if full_clear {
                 vec![(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)))]
             } else {
                 let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
@@ -431,45 +434,49 @@ impl PanelSpace {
                 acc_damage
             };
 
-            let mut damage = Self::damage_for_buffer(cur_damage, &mut self.w_accumulated_damage, self.egl_surface.as_ref().unwrap());
-            if damage.is_empty() {
-                damage.push(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)));
-            }
+            // empty means no damage in this case
+            if !cur_damage.is_empty() {
+                // empty means do full damage in this case
+                let mut damage = Self::damage_for_buffer(cur_damage, &mut self.w_accumulated_damage, self.egl_surface.as_ref().unwrap());
+                if damage.is_empty() {
+                    damage.push(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)));
+                }
 
-            let _ = renderer.render(
-                self.dimensions.to_physical(1),
-                smithay::utils::Transform::Flipped180,
-                |renderer: &mut Gles2Renderer, frame| {
-                    frame
-                        .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
-                        .expect("Failed to clear frame.");
-                    for w in self.space.windows() {
-                        let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
-                        let mut bbox = w.bbox();
-                        bbox.loc += w_loc;
-                        let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
-                        w_damage.dedup();
-                        if damage.len() == 0 {
-                            continue;
+                let _ = renderer.render(
+                    self.dimensions.to_physical(1),
+                    smithay::utils::Transform::Flipped180,
+                    |renderer: &mut Gles2Renderer, frame| {
+                        frame
+                            .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                            .expect("Failed to clear frame.");
+                        for w in self.space.windows() {
+                            let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
+                            let mut bbox = w.bbox();
+                            bbox.loc += w_loc;
+                            let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
+                            w_damage.dedup();
+                            if damage.len() == 0 {
+                                continue;
+                            }
+
+                            let _ = draw_window(
+                                renderer,
+                                frame,
+                                w,
+                                1.0,
+                                w_loc.to_physical(1).to_f64(),
+                                &w_damage,
+                                &log_clone,
+                            );
                         }
-
-                        let _ = draw_window(
-                            renderer,
-                            frame,
-                            w,
-                            1.0,
-                            w_loc.to_physical(1).to_f64(),
-                            &w_damage,
-                            &log_clone,
-                        );
-                    }
-                },
-            );
-            self.egl_surface
-                .as_ref()
-                .unwrap()
-                .swap_buffers(Some(&mut damage))
-                .expect("Failed to swap buffers.");
+                    },
+                );
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .swap_buffers(Some(&mut damage))
+                    .expect("Failed to swap buffers.");
+            }
 
             // Popup rendering
             let clear_color = [0.0, 0.0, 0.0, 0.0];
@@ -484,7 +491,7 @@ impl PanelSpace {
                     .bind(p.egl_surface.clone())
                     .expect("Failed to bind surface to GL");
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-                let cur_damage = if self.full_clear {
+                let cur_damage = if full_clear {
                     vec![p_bbox.to_physical(1)]
                 } else {
                     damage_from_surface_tree(p.s_surface.wl_surface(), p_bbox.loc.to_f64().to_physical(1.0), 1.0, Some((&self.space, &o)))
@@ -526,7 +533,6 @@ impl PanelSpace {
 
         self.space.send_frames(time);
         let _ = renderer.unbind();
-        self.full_clear = false;
         Ok(())
     }
 
