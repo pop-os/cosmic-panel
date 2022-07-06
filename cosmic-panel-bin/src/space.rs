@@ -67,6 +67,7 @@ use smithay::{
     },
 };
 use smithay::desktop::Kind::Xdg;
+use smithay::desktop::space::RenderZindex;
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{Env, Focus},
@@ -156,7 +157,6 @@ impl PanelSpace {
             ..Default::default()
         }
     }
-
 
     fn handle_focus(&mut self, focus: &Focus) {
         // always visible if not configured for autohide
@@ -639,25 +639,25 @@ impl PanelSpace {
         let left = windows_left
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Left));
-        let mut left_sum = left.clone().map(|(_, _, d)| d).sum::<i32>()
+        let left_sum = left.clone().map(|(_, _, d)| d).sum::<i32>()
             + spacing as i32 * (windows_left.len().max(1) as i32 - 1);
 
         let center = windows_center
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Center));
-        let mut center_sum = center.clone().map(|(_, _, d)| d).sum::<i32>()
+        let center_sum = center.clone().map(|(_, _, d)| d).sum::<i32>()
             + spacing as i32 * (windows_center.len().max(1) as i32 - 1);
 
         let right = windows_right
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Right));
 
-        let mut right_sum = right.clone().map(|(_, _, d)| d).sum::<i32>()
+        let right_sum = right.clone().map(|(_, _, d)| d).sum::<i32>()
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
 
         // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
         // FIXME panics if the list is larger than the output can hold
-        let mut total_sum = left_sum + center_sum + right_sum;
+        let total_sum = left_sum + center_sum + right_sum;
         if total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
             > list_length as i32
         {
@@ -689,6 +689,7 @@ impl PanelSpace {
 
         let mut prev: u32 = padding;
 
+        let z = self.z_index().map(|z| z as u8);
         for (i, w) in &mut windows_left
             .iter_mut()
         {
@@ -699,15 +700,14 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
-            let Xdg(wl_s) = w.toplevel();
             self.space.commit(w.toplevel().wl_surface());
         }
 
@@ -724,17 +724,16 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     // dbg!(cur);
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
-            let Xdg(wl_s) = w.toplevel();
-            self.space.commit(&wl_s.wl_surface());
+            self.space.commit(w.toplevel().wl_surface());
         }
 
         // twice padding is subtracted
@@ -750,15 +749,14 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
-            let Xdg(wl_s) = w.toplevel();
             self.space.commit(w.toplevel().wl_surface());
         }
     }
@@ -767,7 +765,7 @@ impl PanelSpace {
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
-    fn handle_events(&mut self, dh: &DisplayHandle, time: u32, _: &Focus) -> Instant {
+    fn handle_events(&mut self, dh: &DisplayHandle, time: u32, f: &Focus) -> Instant {
         if self
             .children
             .iter_mut()
@@ -780,7 +778,7 @@ impl WrapperSpace for PanelSpace {
             );
             std::process::exit(0);
         }
-
+        self.handle_focus(f);
         let mut should_render = false;
         match self.next_render_event.take() {
             Some(SpaceEvent::Quit) => {
@@ -891,7 +889,7 @@ impl WrapperSpace for PanelSpace {
     fn add_window(&mut self, w: Window) {
         self.full_clear = true;
         self.space.commit(&w.toplevel().wl_surface());
-        self.space.map_window(&w, (0, 0), true);
+        self.space.map_window(&w, (0, 0), self.z_index().map(|z| z as u8), true);
         for w in self.space.windows() {
             w.configure();
         }
@@ -903,14 +901,13 @@ impl WrapperSpace for PanelSpace {
         xdg_wm_base: &Attached<XdgWmBase>,
         s_surface: PopupSurface,
         positioner: Main<XdgPositioner>,
-        PositionerState { rect_size, anchor_rect, anchor_edges, gravity, constraint_adjustment, offset, reactive, parent_size, parent_configure }: PositionerState,
+        PositionerState { rect_size, anchor_rect, anchor_edges, gravity, constraint_adjustment, offset, reactive, parent_size, parent_configure: _ }: PositionerState,
     ) {
         self.close_popups();
 
         let parent_window = if let Some(s) = self.space.windows().find(|w| {
             match w.toplevel() {
                 Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
-                _ => false,
             }
         }) {
             s
@@ -1082,7 +1079,7 @@ impl WrapperSpace for PanelSpace {
                 .plugins_left()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
@@ -1093,7 +1090,7 @@ impl WrapperSpace for PanelSpace {
                 .plugins_center()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
@@ -1104,7 +1101,7 @@ impl WrapperSpace for PanelSpace {
                 .plugins_right()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
@@ -1363,11 +1360,9 @@ impl WrapperSpace for PanelSpace {
         self.space.raise_window(w, activate);
     }
 
-    fn dirty_window(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
+    fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
         self.last_dirty = Some(Instant::now());
-        let mut full_clear = false;
 
-        let mut recalculate_locations = false;
         if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
             let old_bbox = w.bbox();
             self.space.commit(&s);
