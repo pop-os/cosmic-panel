@@ -2,99 +2,137 @@
 
 use std::{
     cell::{Cell, RefCell},
-    cmp::Ordering,
+    collections::VecDeque,
     ffi::OsString,
     fs,
-    os::unix::{net::UnixStream, io::AsRawFd},
+    os::unix::{net::UnixStream, prelude::AsRawFd},
     process::Child,
-    rc::Rc,
-    time::{Duration, Instant},
+    rc::Rc, time::{Duration, Instant},
 };
 
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use libc::c_int;
-use xdg_shell_wrapper::{
-    util::{exec_child, get_client_sock, smootherstep}, space::{Alignment, ClientEglSurface, Popup,
-    PopupRenderEvent, ServerSurface, SpaceEvent, TopLevelSurface, Visibility, WrapperSpace}, shared_state::Focus, config::WrapperConfig,
-};
-use cosmic_panel_config::config::{self, CosmicPanelConfig};
 use sctk::{
+    environment::Environment,
     output::OutputInfo,
     reexports::{
-        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
         client::{self, Attached, Main},
-    },
-    shm::AutoMemPool,
-};
-use slog::{info, trace, Logger};
-use smithay::{
-    backend::{
-        egl::{
-            context::{EGLContext, GlAttributes},
-            display::EGLDisplay,
-            ffi::{
-                self,
-                egl::{GetConfigAttrib, SwapInterval},
-            },
-            surface::EGLSurface,
-        },
-        renderer::{
-            gles2::Gles2Renderer, utils::draw_surface_tree, Bind, Frame, ImportEgl, Renderer,
-            Unbind,
-        },
-    },
-    desktop::{
-        utils::{damage_from_surface_tree, send_frames_surface_tree},
-        Kind, PopupKind, PopupManager, Window,
-    },
-    nix::{fcntl, libc},
-    reexports::{
-        wayland_protocols::{
+        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
+        protocols::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
             xdg_shell::client::{
                 xdg_popup,
                 xdg_positioner::{Anchor, Gravity, XdgPositioner},
                 xdg_surface::{self, XdgSurface},
+                xdg_wm_base::{self, XdgWmBase},
             },
         },
-        wayland_server::{
-            self, protocol::wl_surface::WlSurface as s_WlSurface, Client, Display as s_Display,
+    },
+    shm::AutoMemPool, window,
+};
+use slog::{info, Logger, trace};
+use smithay::{
+    backend::{
+        egl::{
+            self,
+            context::{EGLContext, GlAttributes},
+            display::EGLDisplay,
+            ffi::{
+                self,
+                egl::{GetConfigAttrib, SwapInterval},
+            }, surface::EGLSurface,
+        },
+        renderer::{
+            Bind, Frame, gles2::Gles2Renderer, ImportDma, ImportEgl, Renderer,
+            Unbind, utils::draw_surface_tree,
         },
     },
-    utils::{Logical, Point, Rectangle, Size},
+    desktop::{
+        draw_popups,
+        draw_window,
+        Kind,
+        PopupKind, PopupManager, space::{RenderError, SurfaceTree}, Space, utils::{bbox_from_surface_tree, damage_from_surface_tree, send_frames_surface_tree}, Window, WindowSurfaceType,
+    },
+    nix::{fcntl, libc},
+    reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::{
+        self, Client, Display as s_Display, DisplayHandle,
+        protocol::wl_surface::WlSurface as s_WlSurface, Resource,
+    }},
+    utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::{
-        shell::xdg::{PopupSurface, PositionerState},
         SERIAL_COUNTER,
+        shell::xdg::{PopupSurface, PositionerState},
     },
 };
+use smithay::desktop::Kind::Xdg;
+use smithay::desktop::space::RenderZindex;
 use wayland_egl::WlEglSurface;
+use xdg_shell_wrapper::{
+    client_state::{Env, Focus},
+    config::WrapperConfig,
+    space::{ClientEglSurface, Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
+    util::{exec_child, get_client_sock, smootherstep},
+};
+
+use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+
+impl Default for PanelSpace {
+    fn default() -> Self {
+        Self {
+            popup_manager: PopupManager::new(None),
+            full_clear: false,
+            config: Default::default(),
+            log: Default::default(),
+            space: Space::new(None),
+            clients_left: Default::default(),
+            clients_center: Default::default(),
+            clients_right: Default::default(),
+            children: Default::default(),
+            last_dirty: Default::default(),
+            pending_dimensions: Default::default(),
+            next_render_event: Default::default(),
+            dimensions: Default::default(),
+            focused_surface: Default::default(),
+            pool: Default::default(),
+            layer_shell: Default::default(),
+            output: Default::default(),
+            c_display: Default::default(),
+            egl_display: Default::default(),
+            renderer: Default::default(),
+            layer_surface: Default::default(),
+            egl_surface: Default::default(),
+            layer_shell_wl_surface: Default::default(),
+            popups: Default::default(),
+            w_accumulated_damage: Default::default(),
+            visibility: Visibility::Visible,
+        }
+    }
+}
 
 /// space for the cosmic panel
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PanelSpace {
     /// config for the panel space
     pub config: CosmicPanelConfig,
     /// logger for the panel space
     pub log: Option<Logger>,
-    pub(crate) clients_left: Vec<(u32, Client)>,
-    pub(crate) clients_center: Vec<(u32, Client)>,
-    pub(crate) clients_right: Vec<(u32, Client)>,
-    pub(crate) client_top_levels_left: Vec<TopLevelSurface>,
-    pub(crate) client_top_levels_center: Vec<TopLevelSurface>,
-    pub(crate) client_top_levels_right: Vec<TopLevelSurface>,
+    pub(crate) space: Space,
+    pub(crate) popup_manager: PopupManager,
+    pub(crate) clients_left: Vec<Client>,
+    pub(crate) clients_center: Vec<Client>,
+    pub(crate) clients_right: Vec<Client>,
     pub(crate) children: Vec<Child>,
     pub(crate) last_dirty: Option<Instant>,
-    pub(crate) pending_dimensions: Option<(u32, u32)>,
+    pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) full_clear: bool,
     pub(crate) next_render_event: Rc<Cell<Option<SpaceEvent>>>,
-    pub(crate) dimensions: (u32, u32),
+    pub(crate) dimensions: Size<i32, Logical>,
     /// focused surface so it can be changed when a window is removed
     focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     /// visibility state of the panel / panel
     pub(crate) visibility: Visibility,
-
     pub(crate) pool: Option<AutoMemPool>,
     pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
     pub(crate) output: Option<(c_wl_output::WlOutput, OutputInfo)>,
@@ -104,6 +142,8 @@ pub struct PanelSpace {
     pub(crate) layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
+    pub(crate) popups: Vec<Popup>,
+    pub(crate) w_accumulated_damage: VecDeque<Vec<Rectangle<i32, Physical>>>,
 }
 
 impl PanelSpace {
@@ -111,31 +151,10 @@ impl PanelSpace {
     pub fn new(config: CosmicPanelConfig, log: Logger) -> Self {
         Self {
             config,
+            space: Space::new(log.clone()),
+            popup_manager: PopupManager::new(log.clone()),
             log: Some(log),
             ..Default::default()
-        }
-    }
-
-    fn client_top_levels_mut(&mut self) -> impl Iterator<Item = &mut TopLevelSurface> + '_ {
-        self.client_top_levels_left
-            .iter_mut()
-            .chain(self.client_top_levels_center.iter_mut())
-            .chain(self.client_top_levels_right.iter_mut())
-    }
-
-    fn client_top_levels(&self) -> impl Iterator<Item = &TopLevelSurface> + '_ {
-        self.client_top_levels_left
-            .iter()
-            .chain(self.client_top_levels_center.iter())
-            .chain(self.client_top_levels_right.iter())
-    }
-
-    fn filter_top_levels(mut s: TopLevelSurface) -> Option<TopLevelSurface> {
-        let remove = s.handle_events();
-        if remove {
-            None
-        } else {
-            Some(s)
         }
     }
 
@@ -152,11 +171,11 @@ impl PanelSpace {
                 if let Focus::Current(_) = focus {
                     // start transition to visible
                     let margin = match self.config.anchor() {
-                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                            -(self.dimensions.0 as i32)
+                        PanelAnchor::Left | PanelAnchor::Right => {
+                            -(self.dimensions.w)
                         }
-                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                            -(self.dimensions.1 as i32)
+                        PanelAnchor::Top | PanelAnchor::Bottom => {
+                            -(self.dimensions.h)
                         }
                     } + self.config.get_hide_handle().unwrap() as i32;
                     self.visibility = Visibility::TransitionToVisible {
@@ -212,11 +231,11 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                            self.dimensions.0 as i32
+                        PanelAnchor::Left | PanelAnchor::Right => {
+                            self.dimensions.w
                         }
-                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                            self.dimensions.1 as i32
+                        PanelAnchor::Top | PanelAnchor::Bottom => {
+                            self.dimensions.h
                         }
                     };
                     let target = -panel_size + handle;
@@ -278,11 +297,11 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                            self.dimensions.0 as i32
+                        PanelAnchor::Left | PanelAnchor::Right => {
+                            self.dimensions.w
                         }
-                        config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                            self.dimensions.1 as i32
+                        PanelAnchor::Top | PanelAnchor::Bottom => {
+                            self.dimensions.h
                         }
                     };
                     let start = -panel_size + handle;
@@ -316,7 +335,11 @@ impl PanelSpace {
         }
     }
 
-    fn constrain_dim(&self, (mut w, mut h): (u32, u32)) -> (u32, u32) {
+
+    fn constrain_dim(&self, size: Size<i32, Logical>) -> Size<i32, Logical> {
+        let mut w = size.w.try_into().unwrap();
+        let mut h = size.h.try_into().unwrap();
+
         let output_dims = self
             .output
             .as_ref()
@@ -343,265 +366,202 @@ impl PanelSpace {
                 }
             }
         }
-        (w, h)
+        (w.try_into().unwrap(), h.try_into().unwrap()).into()
     }
 
-    // TODO cleanup
-    fn render(&mut self, time: u32) {
-        let log_clone = self.log.clone().unwrap();
-        let width = self.dimensions.0 as i32;
-        let height = self.dimensions.1 as i32;
-
-        let full_clear = self.full_clear;
-        self.full_clear = false;
-
-        // aggregate damage of all top levels
-        // clear once with aggregated damage
-        // redraw each top level using the aggregated damage
-        let mut l_damage = Vec::new();
-        let mut p_damage = Vec::new();
-        let clear_color = match self.config.background() {
-            cosmic_panel_config::config::CosmicPanelBackground::ThemeDefault => {
-                [0.5, 0.5, 0.5, 0.2]
-            }
-            cosmic_panel_config::config::CosmicPanelBackground::Color(c) => c,
+    fn render(&mut self, time: u32) -> Result<(), RenderError<Gles2Renderer>> {
+        if self.next_render_event.get() != None {
+            return Ok(());
+        }
+        let clear_color = match self.config.background {
+            CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
+            CosmicPanelBackground::Color(c) => c
         };
         let renderer = self.renderer.as_mut().unwrap();
-        let _ = renderer.unbind();
         renderer
             .bind(self.egl_surface.as_ref().unwrap().clone())
             .expect("Failed to bind surface to GL");
-        renderer
-            .render(
-                (width, height).into(),
-                smithay::utils::Transform::Flipped180,
-                |self_: &mut Gles2Renderer, frame| {
-                    // draw each surface which needs to be drawn
-                    if full_clear {
-                        l_damage = vec![(
-                            Rectangle::from_loc_and_size(
-                                (0, 0),
-                                (self.dimensions.0 as i32, self.dimensions.1 as i32),
-                            ),
-                            (0, 0).into(),
-                        )];
-                        p_damage = l_damage
-                            .iter()
-                            .map(|(d, o)| {
-                                let mut d = *d;
-                                d.loc += *o;
-                                d.to_physical(1)
-                            })
-                            .collect::<Vec<_>>();
 
-                        frame
-                            .clear(
-                                clear_color,
-                                p_damage.iter().map(|d| d.to_f64()).collect_vec().as_slice(),
-                            )
-                            .expect("Failed to clear frame.");
-                    }
-                    for top_level in &mut self
-                        .client_top_levels_left
-                        .iter_mut()
-                        .chain(self.client_top_levels_center.iter_mut())
-                        .chain(self.client_top_levels_right.iter_mut())
-                        .into_iter()
-                        .filter(|t| !t.hidden)
-                    {
-                        // render top level surface
-                        let s_top_level = top_level.s_top_level.borrow();
-                        let server_surface = match s_top_level.toplevel() {
-                            Kind::Xdg(xdg_surface) => match xdg_surface.get_surface() {
-                                Some(s) => s,
-                                _ => continue,
-                            },
-                        };
-                        let mut loc = s_top_level.bbox().loc - top_level.rectangle.loc;
-                        loc = (-loc.x, -loc.y).into();
+        let log_clone = self.log.clone().unwrap();
+        if let Some(o) = self.space
+            .windows()
+            .find_map(|w| self.space.outputs_for_window(w).pop()) {
+            let output_size = o.current_mode().ok_or(RenderError::OutputNoMode)?.size;
+            // TODO handle fractional scaling?
+            // let output_scale = o.current_scale().fractional_scale();
+            // We explicitly use ceil for the output geometry size to make sure the damage
+            // spans at least the output size. Round and floor would result in parts not drawn as the
+            // frame size could be bigger than the maximum the output_geo would define.
+            let output_geo = Rectangle::from_loc_and_size(o.current_location(), output_size.to_logical(1));
 
-                        if top_level.dirty || full_clear {
-                            if !full_clear {
-                                let surface_tree_damage =
-                                    damage_from_surface_tree(server_surface, (0, 0), None);
+            let cur_damage = if self.full_clear {
+                vec![(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)))]
+            } else {
+                let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
+                    let w_loc = self.space.window_location(w).unwrap_or_else(|| (0, 0).into());
+                    let mut bbox = w.bbox();
+                    bbox.loc += w_loc;
 
-                                l_damage = if surface_tree_damage.is_empty() {
-                                    vec![Rectangle::from_loc_and_size(
-                                        loc,
-                                        (
-                                            top_level.rectangle.size.w as i32,
-                                            top_level.rectangle.size.h as i32,
-                                        ),
-                                    )]
-                                } else {
-                                    surface_tree_damage
-                                }
-                                .into_iter()
-                                .map(|d| (d, top_level.rectangle.loc))
-                                .collect();
-                                let mut cur_p_damage = l_damage
-                                    .iter()
-                                    .map(|(d, o)| {
-                                        let mut d = *d;
-                                        d.loc += *o;
-                                        d.to_physical(1)
-                                    })
-                                    .collect::<Vec<_>>();
+                    acc.into_iter()
+                        .chain(w.accumulated_damage(
+                            w_loc.to_f64().to_physical(1.0),
+                            1.0,
+                            Some((&self.space, &o)),
+                        ))
+                        .collect_vec()
+                });
+                acc_damage.dedup();
+                acc_damage.retain(|rect| rect.overlaps(output_geo.to_physical(1)));
+                acc_damage.retain(|rect| rect.size.h > 0 && rect.size.w > 0);
+                // merge overlapping rectangles
+                acc_damage = acc_damage
+                    .into_iter()
+                    .fold(Vec::new(), |new_damage, mut rect| {
+                        // replace with drain_filter, when that becomes stable to reuse the original Vec's memory
+                        let (overlapping, mut new_damage): (Vec<_>, Vec<_>) = new_damage
+                            .into_iter()
+                            .partition(|other| other.overlaps(rect));
 
-                                let p_damage_f64 = cur_p_damage
-                                    .iter()
-                                    .cloned()
-                                    .map(|d| d.to_f64())
-                                    .collect::<Vec<_>>();
-                                frame
-                                    .clear(clear_color, &p_damage_f64)
-                                    .expect("Failed to clear frame.");
-
-                                p_damage.append(&mut cur_p_damage);
-                            };
-
-                            draw_surface_tree(
-                                self_,
-                                frame,
-                                server_surface,
-                                1.0,
-                                loc,
-                                l_damage.iter().map(|d| d.0).collect_vec().as_slice(),
-                                &log_clone,
-                            )
-                            .expect("Failed to draw surface tree");
+                        for overlap in overlapping {
+                            rect = rect.merge(overlap);
                         }
+                        new_damage.push(rect);
+                        new_damage
+                    });
+                acc_damage
+            };
+
+            let mut damage = Self::damage_for_buffer(cur_damage, &mut self.w_accumulated_damage, self.egl_surface.as_ref().unwrap());
+            if damage.is_empty() {
+                damage.push(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)));
+            }
+
+            let _ = renderer.render(
+                self.dimensions.to_physical(1),
+                smithay::utils::Transform::Flipped180,
+                |renderer: &mut Gles2Renderer, frame| {
+                    frame
+                        .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                        .expect("Failed to clear frame.");
+                    for w in self.space.windows() {
+                        let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
+                        let mut bbox = w.bbox();
+                        bbox.loc += w_loc;
+                        let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
+                        w_damage.dedup();
+                        if damage.len() == 0 {
+                            continue;
+                        }
+
+                        let _ = draw_window(
+                            renderer,
+                            frame,
+                            w,
+                            1.0,
+                            w_loc.to_physical(1).to_f64(),
+                            &w_damage,
+                            &log_clone,
+                        );
                     }
                 },
-            )
-            .expect("Failed to render to layer shell surface.");
-
-        if self
-            .client_top_levels_left
-            .iter()
-            .chain(self.client_top_levels_center.iter())
-            .chain(self.client_top_levels_right.iter())
-            .any(|t| t.dirty && !t.hidden)
-            || full_clear
-        {
+            );
             self.egl_surface
                 .as_ref()
                 .unwrap()
-                .swap_buffers(Some(&mut p_damage))
+                .swap_buffers(Some(&mut damage))
                 .expect("Failed to swap buffers.");
-        }
-        let clear_color = [0.0, 0.0, 0.0, 0.0];
-        // render popups
-        for top_level in &mut self
-            .client_top_levels_left
-            .iter_mut()
-            .chain(self.client_top_levels_center.iter_mut())
-            .chain(self.client_top_levels_right.iter_mut())
-            .into_iter()
-            .filter(|t| !t.hidden)
-        {
-            for p in &mut top_level.popups.iter_mut().filter(|p| p.should_render) {
-                p.dirty = false;
-                let wl_surface = match p.s_surface.get_surface() {
-                    Some(s) => s,
-                    _ => continue,
-                };
-                let pgeo = PopupKind::Xdg(p.s_surface.clone()).geometry();
 
-                let (width, height) = pgeo.size.into();
-                let loc = pgeo.loc;
-
-                let logger = top_level.log.clone();
+            // Popup rendering
+            let clear_color = [0.0, 0.0, 0.0, 0.0];
+            for p in self.popups.iter_mut().filter(|p|
+                p.dirty && match p.popup_state.get() {
+                    None => true,
+                    _ => false,
+                }
+            ) {
                 let _ = renderer.unbind();
                 renderer
                     .bind(p.egl_surface.clone())
                     .expect("Failed to bind surface to GL");
-                renderer
-                    .render(
-                        (width, height).into(),
-                        smithay::utils::Transform::Flipped180,
-                        |self_: &mut Gles2Renderer, frame| {
-                            let damage = smithay::utils::Rectangle::<i32, smithay::utils::Logical> {
-                                loc,
-                                size: (width, height).into(),
-                            };
+                let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+                let cur_damage = if self.full_clear {
+                    vec![p_bbox.to_physical(1)]
+                } else {
+                    damage_from_surface_tree(p.s_surface.wl_surface(), p_bbox.loc.to_f64().to_physical(1.0), 1.0, Some((&self.space, &o)))
+                };
+                if cur_damage.len() == 0 {
+                    continue;
+                }
 
-                            frame
-                                .clear(
-                                    clear_color,
-                                    &[smithay::utils::Rectangle::<f64, smithay::utils::Logical> {
-                                        loc: (loc.x as f64, loc.y as f64).into(),
-                                        size: (width as f64, height as f64).into(),
-                                    }
-                                    .to_physical(1.0)],
-                                )
-                                .expect("Failed to clear frame.");
-                            let loc = (-loc.x, -loc.y);
-                            draw_surface_tree(
-                                self_,
-                                frame,
-                                wl_surface,
-                                1.0,
-                                loc.into(),
-                                &[damage],
-                                &logger,
-                            )
-                            .expect("Failed to draw surface tree");
-                        },
-                    )
-                    .expect("Failed to render to layer shell surface.");
+                let mut damage = Self::damage_for_buffer(cur_damage, &mut p.accumulated_damage, &p.egl_surface);
+                if damage.is_empty() {
+                    damage.push(p_bbox.to_physical(1));
+                }
 
-                let mut damage = [smithay::utils::Rectangle {
-                    loc: loc.to_physical(1),
-                    size: (width, height).into(),
-                }];
+                let _ = renderer.render(
+                    p_bbox.size.to_physical(1),
+                    smithay::utils::Transform::Flipped180,
+                    |renderer: &mut Gles2Renderer, frame| {
+                        frame
+                            .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                            .expect("Failed to clear frame.");
 
+                        let _ = draw_surface_tree(
+                            renderer,
+                            frame,
+                            p.s_surface.wl_surface(),
+                            1.0,
+                            p_bbox.loc.to_f64().to_physical(1.0),
+                            &damage,
+                            &log_clone,
+                        );
+                    },
+                );
                 p.egl_surface
                     .swap_buffers(Some(&mut damage))
                     .expect("Failed to swap buffers.");
-
-                send_frames_surface_tree(wl_surface, time);
+                p.dirty = false;
             }
         }
 
-        for top_level in &mut self
-            .client_top_levels_left
-            .iter_mut()
-            .chain(self.client_top_levels_center.iter_mut())
-            .chain(self.client_top_levels_right.iter_mut())
-            .into_iter()
-            .filter(|t| t.dirty)
-        {
-            top_level.dirty = false;
-
-            let s_top_level = top_level.s_top_level.borrow();
-            let server_surface = match s_top_level.toplevel() {
-                Kind::Xdg(xdg_surface) => match xdg_surface.get_surface() {
-                    Some(s) => s,
-                    _ => continue,
-                },
-            };
-            send_frames_surface_tree(server_surface, time);
-        }
-        if full_clear {
-            dbg!(std::time::Instant::now());
-        }
+        self.space.send_frames(time);
+        let _ = renderer.unbind();
+        self.full_clear = false;
+        Ok(())
     }
 
-    fn update_offsets(&mut self) {
-        // TODO better handling of No configured output...
-        // if no output is configured, it should be a single centered application, so this should work
+    fn damage_for_buffer(cur_damage: Vec<Rectangle<i32, Physical>>, acc_damage: &mut VecDeque<Vec<Rectangle<i32, Physical>>>, egl_surface: &Rc<EGLSurface>) -> Vec<Rectangle<i32, Physical>> {
+        let age: usize = egl_surface.buffer_age().unwrap_or_default().try_into().unwrap_or_default();
+        let dmg_counts = acc_damage.len();
+        acc_damage.push_front(cur_damage);
+        // dbg!(age, dmg_counts);
+
+        let ret = if age == 0 || age > dmg_counts {
+            Vec::new()
+        } else {
+            acc_damage.range(0..age).cloned().flatten().collect_vec()
+        };
+
+        if acc_damage.len() > 4 {
+            acc_damage.drain(4..);
+        }
+
+        ret
+    }
+
+
+    fn update_window_locations(&mut self) {
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
         // First try partitioning the panel evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness) = match anchor {
-            config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                (self.dimensions.1, self.dimensions.0)
+            PanelAnchor::Left | PanelAnchor::Right => {
+                (self.dimensions.h, self.dimensions.w)
             }
-            config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                (self.dimensions.0, self.dimensions.1)
+            PanelAnchor::Top | PanelAnchor::Bottom => {
+                (self.dimensions.w, self.dimensions.h)
             }
         };
 
@@ -620,90 +580,98 @@ impl PanelSpace {
             num_lists += 1;
         }
 
-        for t in self.client_top_levels_mut() {
-            t.hidden = false;
-        }
+        let mut windows_right = self.space.windows().cloned().filter_map(|w| {
+            self.clients_right.iter().enumerate().find_map(|(i, c)| {
+                if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                    Some((i, w.clone()))
+                } else {
+                    None
+                }
+            })
+        }).collect_vec();
+        windows_right.sort_by(|(a_i, _), (b_i, _)| {
+            a_i.cmp(b_i)
+        });
+
+        let mut windows_center = self.space.windows().cloned().filter_map(|w| {
+            self.clients_center.iter().enumerate().find_map(|(i, c)| {
+                if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                    Some((i, w.clone()))
+                } else {
+                    None
+                }
+            })
+        }).collect_vec();
+        windows_center.sort_by(|(a_i, _), (b_i, _)| {
+            a_i.cmp(b_i)
+        });
+
+
+        let mut windows_left = self.space.windows().cloned().filter_map(|w| {
+            self.clients_left.iter().enumerate().find_map(|(i, c)| {
+                if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                    Some((i, w.clone()))
+                } else {
+                    None
+                }
+            })
+        }).collect_vec();
+        windows_left.sort_by(|(a_i, _), (b_i, _)| {
+            a_i.cmp(b_i)
+        });
 
         fn map_fn(
-            (i, t): (usize, &TopLevelSurface),
-            anchor: config::PanelAnchor,
+            (i, w): &(usize, Window),
+            anchor: PanelAnchor,
             alignment: Alignment,
-        ) -> (Alignment, usize, u32, i32) {
+        ) -> (Alignment, usize, i32) {
+            // dbg!(w.bbox());
             match anchor {
-                config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                    (alignment, i, t.priority, t.rectangle.size.h)
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    (alignment, *i, w.bbox().size.h)
                 }
-                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                    (alignment, i, t.priority, t.rectangle.size.w)
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    (alignment, *i, w.bbox().size.w)
                 }
             }
         }
 
-        let left = self
-            .client_top_levels_left
+        let left = windows_left
             .iter()
-            .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Left));
-        let mut left_sum = left.clone().map(|(_, _, _, d)| d).sum::<i32>()
-            + spacing as i32 * (self.client_top_levels_left.len().max(1) as i32 - 1);
+        let left_sum = left.clone().map(|(_, _, d)| d).sum::<i32>()
+            + spacing as i32 * (windows_left.len().max(1) as i32 - 1);
 
-        let center = self
-            .client_top_levels_center
+        let center = windows_center
             .iter()
-            .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Center));
-        let mut center_sum = center.clone().map(|(_, _, _, d)| d).sum::<i32>()
-            + spacing as i32 * (self.client_top_levels_center.len().max(1) as i32 - 1);
+        let center_sum = center.clone().map(|(_, _, d)| d).sum::<i32>()
+            + spacing as i32 * (windows_center.len().max(1) as i32 - 1);
 
-        let right = self
-            .client_top_levels_right
+        let right = windows_right
             .iter()
-            .enumerate()
             .map(|e| map_fn(e, anchor, Alignment::Right));
-        let mut right_sum = right.clone().map(|(_, _, _, d)| d).sum::<i32>()
-            + spacing as i32 * (self.client_top_levels_right.len().max(1) as i32 - 1);
 
-        let mut all_sorted_priority = left
-            .chain(center)
-            .chain(right)
-            .sorted_by(|(_, _, p_a, _), (_, _, p_b, _)| Ord::cmp(p_a, p_b).reverse())
-            .collect_vec();
-        let mut total_sum = left_sum + center_sum + right_sum;
-        while total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
+        let right_sum = right.clone().map(|(_, _, d)| d).sum::<i32>()
+            + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
+
+        // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
+        // FIXME panics if the list is larger than the output can hold
+        let total_sum = left_sum + center_sum + right_sum;
+        if total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
             > list_length as i32
         {
-            // hide lowest priority element from panel if they can't all fit
-            if let Some((hidden_a, hidden_i, _, hidden_l)) = all_sorted_priority.pop() {
-                match hidden_a {
-                    Alignment::Left => {
-                        self.client_top_levels_left[hidden_i].set_hidden(true);
-                        left_sum -= hidden_l + spacing as i32;
-                    }
-                    Alignment::Center => {
-                        self.client_top_levels_center[hidden_i].set_hidden(true);
-                        center_sum -= hidden_l + spacing as i32;
-                    }
-                    Alignment::Right => {
-                        self.client_top_levels_right[hidden_i].set_hidden(true);
-                        right_sum -= hidden_l + spacing as i32;
-                    }
-                };
-                total_sum -= hidden_l;
-            }
+            panic!("List expanded past max size!");
         }
-
-        // XXX making sure the sum is > 0 after possibly over-subtracting spacing
-        left_sum = left_sum.max(0);
-        center_sum = center_sum.max(0);
-        right_sum = right_sum.max(0);
 
         fn center_in_bar(thickness: u32, dim: u32) -> i32 {
             (thickness as i32 - dim as i32) / 2
         }
 
         let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
+        // dbg!(requested_eq_length);
         let (right_sum, center_offset) = if is_dock {
-            (0, padding as i32)
+            (0, padding as i32 + (list_length - center_sum) / 2)
         } else if left_sum <= requested_eq_length
             && center_sum <= requested_eq_length
             && right_sum <= requested_eq_length
@@ -721,78 +689,75 @@ impl PanelSpace {
 
         let mut prev: u32 = padding;
 
-        for (i, top_level) in &mut self
-            .client_top_levels_left
+        let z = self.z_index().map(|z| z as u8);
+        for (i, w) in &mut windows_left
             .iter_mut()
-            .filter(|t| !t.hidden)
-            .enumerate()
         {
             let size: Point<_, Logical> =
-                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-            let cur = prev + spacing * i as u32;
+                (w.bbox().size.w, w.bbox().size.h).into();
+            let cur: u32 = prev + spacing * *i as u32;
             match anchor {
-                config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
-                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
+            self.space.commit(w.toplevel().wl_surface());
         }
 
         let mut prev: u32 = center_offset as u32;
-
-        for (i, top_level) in &mut self
-            .client_top_levels_center
+        // dbg!(center_offset);
+        for (i, w) in &mut windows_center
             .iter_mut()
-            .filter(|t| !t.hidden)
-            .enumerate()
         {
             let size: Point<_, Logical> =
-                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-            let cur = prev + spacing * i as u32;
+                (w.bbox().size.w, w.bbox().size.h).into();
+            // dbg!(size);
+            let cur = prev + spacing * *i as u32;
             match anchor {
-                config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
-                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
+                    // dbg!(cur);
                     prev += size.x as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
+            self.space.commit(w.toplevel().wl_surface());
         }
 
         // twice padding is subtracted
-        let mut prev: u32 = list_length - padding - right_sum as u32;
+        let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
 
-        for (i, top_level) in &mut self
-            .client_top_levels_right
+        for (i, w) in &mut windows_right
             .iter_mut()
-            .filter(|t| !t.hidden)
-            .enumerate()
         {
             let size: Point<_, Logical> =
-                (top_level.rectangle.size.w, top_level.rectangle.size.h).into();
-            let cur = prev + spacing * i as u32;
+                (w.bbox().size.w, w.bbox().size.h).into();
+            let cur = prev + spacing * *i as u32;
             match anchor {
-                config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                    let cur = (center_in_bar(list_thickness, size.x as u32), cur);
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
-                config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                    let cur = (cur, center_in_bar(list_thickness, size.y as u32));
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    top_level.rectangle.loc = (cur.0 as i32, cur.1 as i32).into();
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
                 }
             };
+            self.space.commit(w.toplevel().wl_surface());
         }
     }
 }
@@ -800,7 +765,7 @@ impl PanelSpace {
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
-    fn handle_events(&mut self, time: u32, focus: &Focus) -> Instant {
+    fn handle_events(&mut self, dh: &DisplayHandle, time: u32, f: &Focus) -> Instant {
         if self
             .children
             .iter_mut()
@@ -813,33 +778,34 @@ impl WrapperSpace for PanelSpace {
             );
             std::process::exit(0);
         }
-        self.handle_focus(focus);
+        self.handle_focus(f);
         let mut should_render = false;
         match self.next_render_event.take() {
             Some(SpaceEvent::Quit) => {
                 trace!(
                     self.log.as_ref().unwrap(),
-                    "root window removed, exiting..."
+                    "root layer shell surface removed, exiting..."
                 );
                 for child in &mut self.children {
                     let _ = child.kill();
                 }
+                std::process::exit(0);
             }
             Some(SpaceEvent::Configure {
-                width,
-                height,
-                serial: _serial,
-            }) => {
-                if self.dimensions != (width, height) && self.pending_dimensions.is_none() {
-                    self.dimensions = (width, height);
-                    // FIXME sometimes it seems that the egl_surface resize is successful but does not take effect right away
+                     width,
+                     height,
+                     serial: _serial,
+                 }) => {
+                if self.dimensions != (width as i32, height as i32).into()
+                    && self.pending_dimensions.is_none()
+                {
+                    self.dimensions = (width as i32, height as i32).into();
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
                     self.egl_surface
                         .as_ref()
                         .unwrap()
                         .resize(width as i32, height as i32, 0, 0);
                     self.full_clear = true;
-                    self.update_offsets();
                 }
             }
             Some(SpaceEvent::WaitConfigure { width, height }) => {
@@ -847,7 +813,10 @@ impl WrapperSpace for PanelSpace {
                     .replace(Some(SpaceEvent::WaitConfigure { width, height }));
             }
             None => {
-                if let Some((width, height)) = self.pending_dimensions.take() {
+                if let Some(size) = self.pending_dimensions.take() {
+                    let width = size.w.try_into().unwrap();
+                    let height = size.h.try_into().unwrap();
+
                     self.layer_surface.as_ref().unwrap().set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone() {
@@ -857,11 +826,11 @@ impl WrapperSpace for PanelSpace {
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         }
                         let target = match self.config.anchor() {
-                            config::PanelAnchor::Left | config::PanelAnchor::Right => {
-                                -(self.dimensions.0 as i32)
+                            PanelAnchor::Left | PanelAnchor::Right => {
+                                -(self.dimensions.w)
                             }
-                            config::PanelAnchor::Top | config::PanelAnchor::Bottom => {
-                                -(self.dimensions.1 as i32)
+                            PanelAnchor::Top | PanelAnchor::Bottom => {
+                                -(self.dimensions.h)
                             }
                         } + self.config.get_hide_handle().unwrap() as i32;
                         self.layer_surface
@@ -870,8 +839,8 @@ impl WrapperSpace for PanelSpace {
                             .set_margin(target, target, target, target);
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
-                            config::PanelAnchor::Left | config::PanelAnchor::Right => width,
-                            config::PanelAnchor::Top | config::PanelAnchor::Bottom => height,
+                            PanelAnchor::Left | PanelAnchor::Right => width,
+                            PanelAnchor::Top | PanelAnchor::Bottom => height,
                         };
                         self.layer_surface
                             .as_ref()
@@ -880,45 +849,33 @@ impl WrapperSpace for PanelSpace {
                     }
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
                     self.next_render_event
-                        .replace(Some(SpaceEvent::WaitConfigure { width, height }));
+                        .replace(Some(SpaceEvent::WaitConfigure { width: size.w, height: size.h }));
                 } else {
+                    if self.full_clear {
+                        self.update_window_locations();
+                        self.space.refresh(&dh);
+                    }
                     should_render = true;
                 }
             }
         }
 
-        // collect and remove windows that aren't needed
-        let mut surfaces = self
-            .client_top_levels_left
-            .drain(..)
-            .filter_map(Self::filter_top_levels)
-            .collect();
-        self.client_top_levels_left.append(&mut surfaces);
-
-        let mut surfaces = self
-            .client_top_levels_center
-            .drain(..)
-            .filter_map(Self::filter_top_levels)
-            .collect();
-        self.client_top_levels_center.append(&mut surfaces);
-
-        let mut surfaces = self
-            .client_top_levels_right
-            .drain(..)
-            .filter_map(Self::filter_top_levels)
-            .collect();
-        self.client_top_levels_right.append(&mut surfaces);
+        self.popups.retain_mut(|p: &mut Popup| {
+            p.handle_events(&mut self.popup_manager)
+        });
 
         if should_render {
-            self.render(time);
+            let _ = self.render(time);
         }
-        if self.egl_surface.as_ref().unwrap().get_size()
-            != Some((self.dimensions.0 as i32, self.dimensions.1 as i32).into())
-        {
+        if self.egl_surface.as_ref().unwrap().get_size() != Some(self.dimensions.to_physical(1)) {
             self.full_clear = true;
         }
 
         self.last_dirty.unwrap_or_else(|| Instant::now())
+    }
+
+    fn popups(&self) -> &[Popup] {
+        &self.popups
     }
 
     fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
@@ -929,168 +886,28 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    // TODO: adjust offset of top level
-    fn add_top_level(&mut self, s_top_level: Rc<RefCell<Window>>) {
+    fn add_window(&mut self, w: Window) {
         self.full_clear = true;
-
-        let surface_client = s_top_level
-            .borrow()
-            .toplevel()
-            .get_surface()
-            .and_then(|s| s.as_ref().client());
-        if let Some(surface_client) = surface_client {
-            let mut top_level = TopLevelSurface {
-                s_top_level,
-                popups: Default::default(),
-                log: self.log.as_ref().unwrap().clone(),
-                dirty: true,
-                rectangle: Rectangle {
-                    loc: (0, 0).into(),
-                    size: (0, 0).into(),
-                },
-                priority: 0,
-                hidden: false,
-            };
-            // determine index position of top level in its list
-            if let Some((p, _)) = self.clients_left.iter().find(|(_, c)| *c == surface_client) {
-                top_level.set_priority(*p);
-                self.client_top_levels_left.push(top_level);
-                self.client_top_levels_left.sort_by(|a, b| {
-                    let a_client = a
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-
-                    let b_client = b
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-                    if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
-                        match (
-                            self.clients_left.iter().position(|(_, e)| e == &a_client),
-                            self.clients_left.iter().position(|(_, e)| e == &b_client),
-                        ) {
-                            (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
-                            _ => Ordering::Equal,
-                        }
-                    } else {
-                        Ordering::Equal
-                    }
-                });
-            } else if let Some((p, _)) = self
-                .clients_center
-                .iter()
-                .find(|(_, c)| *c == surface_client)
-            {
-                top_level.set_priority(*p);
-                self.client_top_levels_center.push(top_level);
-                self.client_top_levels_center.sort_by(|a, b| {
-                    let a_client = a
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-
-                    let b_client = b
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-                    if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
-                        match (
-                            self.clients_center.iter().position(|(_, e)| e == &a_client),
-                            self.clients_center.iter().position(|(_, e)| e == &b_client),
-                        ) {
-                            (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
-                            _ => Ordering::Equal,
-                        }
-                    } else {
-                        Ordering::Equal
-                    }
-                });
-            } else if let Some((p, _)) = self
-                .clients_right
-                .iter()
-                .find(|(_, c)| *c == surface_client)
-            {
-                top_level.set_priority(*p);
-                self.client_top_levels_right.push(top_level);
-                self.client_top_levels_right.sort_by(|a, b| {
-                    let a_client = a
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-
-                    let b_client = b
-                        .s_top_level
-                        .borrow()
-                        .toplevel()
-                        .get_surface()
-                        .and_then(|s| s.as_ref().client());
-                    if let (Some(a_client), Some(b_client)) = (a_client, b_client) {
-                        match (
-                            self.clients_right.iter().position(|(_, e)| e == &a_client),
-                            self.clients_right.iter().position(|(_, e)| e == &b_client),
-                        ) {
-                            (Some(s_client), Some(t_client)) => s_client.cmp(&t_client),
-                            _ => Ordering::Equal,
-                        }
-                    } else {
-                        Ordering::Equal
-                    }
-                });
-            }
+        self.space.commit(&w.toplevel().wl_surface());
+        self.space.map_window(&w, (0, 0), self.z_index().map(|z| z as u8), true);
+        for w in self.space.windows() {
+            w.configure();
         }
     }
 
     fn add_popup(
         &mut self,
-        c_surface: c_wl_surface::WlSurface,
-        c_xdg_surface: Main<XdgSurface>,
+        env: &Environment<Env>,
+        xdg_wm_base: &Attached<XdgWmBase>,
         s_surface: PopupSurface,
-        parent: s_WlSurface,
         positioner: Main<XdgPositioner>,
-        PositionerState {
-            rect_size,
-            anchor_rect,
-            anchor_edges,
-            gravity,
-            constraint_adjustment,
-            offset,
-            reactive,
-            parent_size,
-            ..
-        }: PositionerState,
-        popup_manager: Rc<RefCell<PopupManager>>,
+        PositionerState { rect_size, anchor_rect, anchor_edges, gravity, constraint_adjustment, offset, reactive, parent_size, parent_configure: _ }: PositionerState,
     ) {
         self.close_popups();
 
-        let s = if let Some(s) = self.client_top_levels_left.iter_mut().find(|s| {
-            let top_level: &Window = &s.s_top_level.borrow();
-            match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
-            }
-        }) {
-            s
-        } else if let Some(s) = self.client_top_levels_center.iter_mut().find(|s| {
-            let top_level: &Window = &s.s_top_level.borrow();
-            match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
-            }
-        }) {
-            s
-        } else if let Some(s) = self.client_top_levels_right.iter_mut().find(|s| {
-            let top_level: &Window = &s.s_top_level.borrow();
-            match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface() == Some(&parent),
+        let parent_window = if let Some(s) = self.space.windows().find(|w| {
+            match w.toplevel() {
+                Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
             }
         }) {
             s
@@ -1098,17 +915,27 @@ impl WrapperSpace for PanelSpace {
             return;
         };
 
+        let c_wl_surface = env.create_surface().detach();
+        let c_xdg_surface = xdg_wm_base.get_xdg_surface(&c_wl_surface);
+
+        let wl_surface = s_surface.wl_surface().clone();
+        let s_popup_surface = s_surface.clone();
+        self.popup_manager.track_popup(PopupKind::Xdg(s_surface.clone())).unwrap();
+        self.popup_manager.commit(&wl_surface);
+
+        let p_offset = self.space.window_location(parent_window).unwrap_or_else(|| (0, 0).into());
+        // dbg!(s.bbox().loc);
         positioner.set_size(rect_size.w, rect_size.h);
         positioner.set_anchor_rect(
-            anchor_rect.loc.x + s.rectangle.loc.x,
-            anchor_rect.loc.y + s.rectangle.loc.y,
+            anchor_rect.loc.x + p_offset.x,
+            anchor_rect.loc.y + p_offset.y,
             anchor_rect.size.w,
             anchor_rect.size.h,
         );
-        positioner.set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
-        positioner.set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
+        positioner.set_anchor(Anchor::from_raw(anchor_edges as u32).unwrap_or(Anchor::None));
+        positioner.set_gravity(Gravity::from_raw(gravity as u32).unwrap_or(Gravity::None));
 
-        positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
+        positioner.set_constraint_adjustment(u32::from(constraint_adjustment));
         positioner.set_offset(offset.x, offset.y);
         if positioner.as_ref().version() >= 3 {
             if reactive {
@@ -1122,19 +949,19 @@ impl WrapperSpace for PanelSpace {
         self.layer_surface.as_ref().unwrap().get_popup(&c_popup);
 
         //must be done after role is assigned as popup
-        c_surface.commit();
+        c_wl_surface.commit();
 
-        let next_render_event = Rc::new(Cell::new(Some(PopupRenderEvent::WaitConfigure)));
+        let cur_popup_state = Rc::new(Cell::new(Some(PopupState::WaitConfigure)));
         c_xdg_surface.quick_assign(move |c_xdg_surface, e, _| {
             if let xdg_surface::Event::Configure { serial, .. } = e {
                 c_xdg_surface.ack_configure(serial);
             }
         });
 
-        let next_render_event_handle = next_render_event.clone();
-        let s_popup_surface = s_surface.clone();
+        let popup_state = cur_popup_state.clone();
+
         c_popup.quick_assign(move |_c_popup, e, _| {
-            if let Some(PopupRenderEvent::Closed) = next_render_event_handle.get().as_ref() {
+            if let Some(PopupState::Closed) = popup_state.get().as_ref() {
                 return;
             }
 
@@ -1145,12 +972,9 @@ impl WrapperSpace for PanelSpace {
                     width,
                     height,
                 } => {
-                    if next_render_event_handle.get() != Some(PopupRenderEvent::Closed) {
-                        let kind = PopupKind::Xdg(s_popup_surface.clone());
-
+                    if popup_state.get() != Some(PopupState::Closed) {
                         let _ = s_popup_surface.send_configure();
-                        let _ = popup_manager.borrow_mut().track_popup(kind);
-                        next_render_event_handle.set(Some(PopupRenderEvent::Configure {
+                        popup_state.set(Some(PopupState::Configure {
                             x,
                             y,
                             width,
@@ -1159,16 +983,16 @@ impl WrapperSpace for PanelSpace {
                     }
                 }
                 xdg_popup::Event::PopupDone => {
-                    next_render_event_handle.set(Some(PopupRenderEvent::Closed));
+                    popup_state.set(Some(PopupState::Closed));
                 }
                 xdg_popup::Event::Repositioned { token } => {
-                    next_render_event_handle.set(Some(PopupRenderEvent::Repositioned(token)));
+                    popup_state.set(Some(PopupState::Repositioned(token)));
                 }
                 _ => {}
             };
         });
         let client_egl_surface = ClientEglSurface {
-            wl_egl_surface: WlEglSurface::new(&c_surface, rect_size.w, rect_size.h),
+            wl_egl_surface: WlEglSurface::new(&c_wl_surface, rect_size.w, rect_size.h),
             display: self.c_display.as_ref().unwrap().clone(),
         };
 
@@ -1183,136 +1007,39 @@ impl WrapperSpace for PanelSpace {
                 client_egl_surface,
                 self.log.clone(),
             )
-            .expect("Failed to initialize EGL Surface"),
+                .expect("Failed to initialize EGL Surface"),
         );
 
-        s.popups.push(Popup {
+        self.popups.push(Popup {
             c_popup,
             c_xdg_surface,
-            c_surface,
+            c_wl_surface: c_wl_surface,
             s_surface,
             egl_surface,
             dirty: false,
-            next_render_event,
-            should_render: false,
+            popup_state: cur_popup_state,
+            position: (0, 0).into(),
+            accumulated_damage: Default::default(),
         });
     }
 
     fn close_popups(&mut self) {
-        for top_level in self.client_top_levels_mut() {
-            drop(top_level.popups.drain(..));
-        }
-    }
-
-    fn dirty_toplevel(&mut self, dirty_top_level_surface: &s_WlSurface, size: Size<i32, Logical>) {
-        let w = size.w as u32;
-        let h = size.h as u32;
-        // TODO constrain window size based on max panel sizes
-        // let (w, h) = Self::constrain_dim(&self.config, (w, h), self.output.1.modes[0].dimensions);
-        self.last_dirty = Some(Instant::now());
-        let mut full_clear = false;
-
-        if let Some(s) = self.client_top_levels_mut().find(|s| {
-            let top_level = s.s_top_level.borrow();
-            let wl_s = match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface(),
-            };
-            wl_s == Some(dirty_top_level_surface)
-        }) {
-            if s.rectangle.size != (w as i32, h as i32).into() {
-                s.rectangle.size = (w as i32, h as i32).into();
-                full_clear = true;
-            }
-            s.dirty = true;
-        }
-
-        let new_w = w + 2 * self.config.padding();
-        let new_h = h + 2 * self.config.padding();
-
-        if let Some((_, _)) = &self.output {
-            // TODO improve this for when there are changes to the lists of plugins while running
-            let (new_w, new_h) = self.constrain_dim((new_w, new_h));
-            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
-            let mut wait_configure_dim = self
-                .next_render_event
-                .get()
-                .map(|e| match e {
-                    SpaceEvent::Configure {
-                        width,
-                        height,
-                        serial: _serial,
-                    } => (width, height),
-                    SpaceEvent::WaitConfigure { width, height } => (width, height),
-                    _ => self.dimensions,
-                })
-                .unwrap_or(pending_dimensions);
-            if self.dimensions.0 < new_w
-                && pending_dimensions.0 < new_w
-                && wait_configure_dim.0 < new_w
+        for w in &mut self.space.windows() {
+            for (PopupKind::Xdg(p), _) in
+            PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
-                self.pending_dimensions = Some((new_w, wait_configure_dim.1));
-                wait_configure_dim.0 = new_w;
-            }
-            if self.dimensions.1 < new_h
-                && pending_dimensions.1 < new_h
-                && wait_configure_dim.1 < new_h
-            {
-                self.pending_dimensions = Some((wait_configure_dim.0, new_h));
-            }
-        } else {
-            if self
-                .next_render_event
-                .get()
-                .map(|e| match e {
-                    SpaceEvent::Configure {
-                        width,
-                        height,
-                        serial: _serial,
-                    } => (width, height),
-                    SpaceEvent::WaitConfigure { width, height } => (width, height),
-                    _ => self.dimensions,
-                })
-                .unwrap_or(self.pending_dimensions.unwrap_or(self.dimensions))
-                != (new_w, new_h)
-            {
-                self.pending_dimensions = Some((new_w, new_h));
-                full_clear = true;
-            }
-        }
-
-        if full_clear {
-            self.full_clear = true;
-            self.update_offsets();
-        }
-    }
-
-    fn dirty_popup(&mut self, other_top_level_surface: &s_WlSurface, other_popup: PopupSurface) {
-        self.last_dirty = Some(Instant::now());
-        if let Some(s) = self.client_top_levels_mut().find(|s| {
-            let top_level = s.s_top_level.borrow();
-            let wl_s = match top_level.toplevel() {
-                Kind::Xdg(wl_s) => wl_s.get_surface(),
-            };
-            wl_s == Some(other_top_level_surface)
-        }) {
-            for popup in &mut s.popups {
-                if popup.s_surface.get_surface() == other_popup.get_surface() {
-                    popup.dirty = true;
-                    break;
-                }
+                p.send_popup_done();
+                self.popup_manager.commit(p.wl_surface());
             }
         }
     }
 
     ///  update active window based on pointer location
     fn update_pointer(&mut self, (x, y): (i32, i32)) {
-        let point = (x, y);
         // set new focused
-        if let Some(s) = self
-            .client_top_levels()
-            .filter(|t| !t.hidden)
-            .find(|t| t.rectangle.contains(point))
-            .and_then(|t| t.s_top_level.borrow().toplevel().get_surface().cloned())
+        if let Some((_, s, _)) = self
+            .space
+            .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
         {
             self.focused_surface.borrow_mut().replace(s);
             return;
@@ -1320,141 +1047,21 @@ impl WrapperSpace for PanelSpace {
         self.focused_surface.borrow_mut().take();
     }
 
-    fn server_surface_from_client_wl_surface(
-        &self,
-        active_surface: &c_wl_surface::WlSurface,
-    ) -> Option<ServerSurface> {
-        if active_surface == &**self.layer_shell_wl_surface.as_ref().unwrap() {
-            return self.client_top_levels().find_map(|t| {
-                t.s_top_level
-                    .borrow()
-                    .toplevel()
-                    .get_surface()
-                    .and_then(|s| {
-                        if Some(s.clone()) == *self.focused_surface.borrow() {
-                            Some(ServerSurface::TopLevel(
-                                t.rectangle.loc,
-                                t.s_top_level.clone(),
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-            });
-        }
-
-        for s in self.client_top_levels() {
-            for popup in &s.popups {
-                if popup.c_surface == active_surface.clone() {
-                    return Some(ServerSurface::Popup(
-                        s.rectangle.loc,
-                        s.s_top_level.clone(),
-                        popup.s_surface.clone(),
-                    ));
-                }
-            }
-        }
-        None
-    }
-
     fn reposition_popup(
         &mut self,
-        popup: PopupSurface,
-        positioner: Main<XdgPositioner>,
-        PositionerState {
-            rect_size,
-            anchor_rect,
-            anchor_edges,
-            gravity,
-            constraint_adjustment,
-            offset,
-            reactive,
-            parent_size,
-            ..
-        }: PositionerState,
+        s_popup: PopupSurface,
+        _: Main<XdgPositioner>,
+        _: PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
-        if let Some((top_level_popup, top_level_rectangle)) =
-            self.client_top_levels_mut().find_map(|s| {
-                s.popups.iter_mut().find_map(|p| {
-                    if p.s_surface == popup {
-                        Some((p, s.rectangle))
-                    } else {
-                        None
-                    }
-                })
-            })
-        {
-            if positioner.as_ref().version() >= 3 {
-                positioner.set_size(rect_size.w, rect_size.h);
-                positioner.set_anchor_rect(
-                    anchor_rect.loc.x + top_level_rectangle.loc.x,
-                    anchor_rect.loc.y + top_level_rectangle.loc.y,
-                    anchor_rect.size.w,
-                    anchor_rect.size.h,
-                );
+        s_popup.send_repositioned(token);
+        s_popup.send_configure()?;
+        self.popup_manager.commit(s_popup.wl_surface());
 
-                positioner
-                    .set_anchor(Anchor::from_raw(anchor_edges.to_raw()).unwrap_or(Anchor::None));
-                positioner
-                    .set_gravity(Gravity::from_raw(gravity.to_raw()).unwrap_or(Gravity::None));
-
-                positioner.set_constraint_adjustment(constraint_adjustment.to_raw());
-                positioner.set_offset(offset.x, offset.y);
-                if reactive {
-                    positioner.set_reactive();
-                }
-                if let Some(parent_size) = parent_size {
-                    positioner.set_parent_size(parent_size.w, parent_size.h);
-                }
-                top_level_popup
-                    .c_popup
-                    .reposition(&positioner, u32::from(SERIAL_COUNTER.next_serial()));
-                Ok(())
-            } else {
-                top_level_popup.s_surface.send_repositioned(token);
-                top_level_popup.s_surface.send_configure()?;
-                anyhow::bail!("popup doesn't support repositioning");
-            }
-        } else {
-            anyhow::bail!("failed to find repositioned popup")
-        }
+        Ok(())
     }
 
-    fn server_surface_from_server_wl_surface(
-        &self,
-        active_surface: &s_WlSurface,
-    ) -> Option<ServerSurface> {
-        for s in self.client_top_levels() {
-            if s.s_top_level.borrow().toplevel().get_surface() == Some(active_surface) {
-                return Some(ServerSurface::TopLevel(
-                    s.rectangle.loc,
-                    s.s_top_level.clone(),
-                ));
-            } else {
-                for popup in &s.popups {
-                    if popup.s_surface.get_surface() == Some(active_surface) {
-                        return Some(ServerSurface::Popup(
-                            s.rectangle.loc,
-                            s.s_top_level.clone(),
-                            popup.s_surface.clone(),
-                        ));
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    fn bind_wl_display(&mut self, s_display: &s_Display) -> anyhow::Result<()> {
-        self.renderer
-            .as_mut()
-            .unwrap()
-            .bind_wl_display(s_display)
-            .map_err(|e| e.into())
-    }
-
-    fn next_render_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
+    fn next_space_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
         Rc::clone(&self.next_render_event)
     }
 
@@ -1462,23 +1069,19 @@ impl WrapperSpace for PanelSpace {
         self.config.clone()
     }
 
-    fn visibility(&self) -> Visibility {
-        self.visibility
-    }
-
     fn spawn_clients(
         &mut self,
-        display: &mut wayland_server::Display,
-    ) -> anyhow::Result<Vec<(UnixStream, UnixStream)>> {
+        display: &mut DisplayHandle,
+    ) -> Result<Vec<UnixStream>, anyhow::Error> {
         if self.children.is_empty() {
             let (clients_left, sockets_left): (Vec<_>, Vec<_>) = self
                 .config
                 .plugins_left()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
-                    ((p.1, c), s)
+                    (c, s)
                 })
                 .unzip();
             self.clients_left = clients_left;
@@ -1487,9 +1090,9 @@ impl WrapperSpace for PanelSpace {
                 .plugins_center()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
-                    ((p.1, c), s)
+                    (c, s)
                 })
                 .unzip();
             self.clients_center = clients_center;
@@ -1498,64 +1101,51 @@ impl WrapperSpace for PanelSpace {
                 .plugins_right()
                 .unwrap_or_default()
                 .iter()
-                .map(|p| {
+                .map(|_p| {
                     let (c, s) = get_client_sock(display);
-                    ((p.1, c), s)
+                    (c, s)
                 })
                 .unzip();
             self.clients_right = clients_right;
-
             // TODO how slow is this? Would it be worth using a faster method of comparing strings?
             self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
                     izip!(
-                        self.config.plugins_left().unwrap_or_default().iter(),
-                        &self.clients_left,
-                        &sockets_left
-                    )
-                    .chain(izip!(
-                        self.config.plugins_center().unwrap_or_default().iter(),
-                        &self.clients_center,
-                        &sockets_center
-                    ))
-                    .chain(izip!(
-                        self.config.plugins_right().unwrap_or_default().iter(),
-                        &self.clients_right,
-                        &sockets_right
-                    ))
-                    .find(|((app_file_name, _), _, _)| {
-                        Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-                    })
-                    .and_then(|(_, _, (_, client_socket))| {
-                        let raw_fd = client_socket.as_raw_fd();
-                        let fd_flags = fcntl::FdFlag::from_bits(
-                            fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD).unwrap(),
-                        )
-                        .unwrap();
-                        fcntl::fcntl(
-                            raw_fd,
-                            fcntl::FcntlArg::F_SETFD(
-                                fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC),
-                            ),
-                        )
-                        .unwrap();
-                        fs::read_to_string(&path).ok().and_then(|bytes| {
-                            if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                if let Some(exec) = entry.exec() {
-                                    let requests_host_wayland_display =
-                                        entry.desktop_entry("HostWaylandDisplay").is_some();
-                                    return Some(exec_child(
-                                        exec,
-                                        Some(self.config.name()),
-                                        self.log.as_ref().unwrap().clone(),
-                                        raw_fd,
-                                        requests_host_wayland_display,
-                                    ));
-                                }
-                            }
-                            None
+                          self.config.plugins_left().unwrap_or_default().iter(),
+                          &self.clients_left,
+                          &sockets_left
+                      )
+                        .chain(izip!(
+                          self.config.plugins_center().unwrap_or_default().iter(),
+                          &self.clients_center,
+                          &sockets_center
+                      ))
+                        .chain(izip!(
+                          self.config.plugins_right().unwrap_or_default().iter(),
+                          &self.clients_right,
+                          &sockets_right
+                      ))
+                        .find(|(app_file_name, _, _)| {
+                            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
                         })
-                    })
+                        .and_then(|(_, _, client_socket)| {
+                            fs::read_to_string(&path).ok().and_then(|bytes| {
+                                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                                    if let Some(exec) = entry.exec() {
+                                        let requests_host_wayland_display =
+                                            entry.desktop_entry("HostWaylandDisplay").is_some();
+                                        return Some(exec_child(
+                                            exec,
+                                            Some(self.config.name()),
+                                            self.log.as_ref().unwrap().clone(),
+                                            client_socket.as_raw_fd(),
+                                            requests_host_wayland_display,
+                                        ));
+                                    }
+                                }
+                                None
+                            })
+                        })
                 })
                 .collect_vec();
 
@@ -1586,24 +1176,25 @@ impl WrapperSpace for PanelSpace {
         {
             bail!("output already added!")
         }
+        self.output = output.cloned().zip(output_info.cloned());
 
-        let dimensions = self.constrain_dim((0, 0));
-
-        let (w, h) = dimensions;
+        let dimensions = self.constrain_dim((1, 1).into());
         let layer_surface =
             layer_shell.get_layer_surface(&c_surface, output, self.config.layer(), "".to_owned());
 
-        layer_surface.set_anchor(self.config.anchor().into());
+        layer_surface.set_anchor(self.config.anchor.into());
         layer_surface.set_keyboard_interactivity(self.config.keyboard_interactivity());
-        let (x, y) = dimensions;
-        layer_surface.set_size(x, y);
+        layer_surface.set_size(
+            dimensions.w.try_into().unwrap(),
+            dimensions.h.try_into().unwrap(),
+        );
 
         // Commit so that the server will send a configure event
         c_surface.commit();
 
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
-            width: x,
-            height: y,
+            width: dimensions.w,
+            height: dimensions.h,
         })));
 
         //let egl_surface_clone = egl_surface.clone();
@@ -1632,9 +1223,9 @@ impl WrapperSpace for PanelSpace {
                     );
                     layer_surface.ack_configure(serial);
                     next_render_event_handle.set(Some(SpaceEvent::Configure {
-                        width,
-                        height,
-                        serial,
+                        width: width.try_into().unwrap(),
+                        height: height.try_into().unwrap(),
+                        serial: serial.try_into().unwrap(),
                     }));
                 }
                 (_, _) => {}
@@ -1642,7 +1233,7 @@ impl WrapperSpace for PanelSpace {
         });
 
         let client_egl_surface = ClientEglSurface {
-            wl_egl_surface: WlEglSurface::new(&c_surface, w as i32, h as i32),
+            wl_egl_surface: WlEglSurface::new(&c_surface, dimensions.w, dimensions.h),
             display: c_display.clone(),
         };
         let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
@@ -1659,7 +1250,7 @@ impl WrapperSpace for PanelSpace {
             Default::default(),
             log.clone(),
         )
-        .expect("Failed to initialize EGL context");
+            .expect("Failed to initialize EGL context");
 
         let mut min_interval_attr = 23239;
         unsafe {
@@ -1689,7 +1280,7 @@ impl WrapperSpace for PanelSpace {
                 client_egl_surface,
                 log.clone(),
             )
-            .expect("Failed to initialize EGL Surface"),
+                .expect("Failed to initialize EGL Surface"),
         );
 
         let next_render_event_handle = next_render_event.clone();
@@ -1717,16 +1308,15 @@ impl WrapperSpace for PanelSpace {
                     );
                     layer_surface.ack_configure(serial);
                     next_render_event_handle.set(Some(SpaceEvent::Configure {
-                        width,
-                        height,
-                        serial,
+                        width: width.try_into().unwrap(),
+                        height: height.try_into().unwrap(),
+                        serial: serial.try_into().unwrap(),
                     }));
                 }
                 (_, _) => {}
             }
         });
 
-        self.output = output.cloned().zip(output_info.cloned());
         self.egl_display.replace(egl_display);
         self.renderer.replace(renderer);
         self.layer_shell.replace(layer_shell);
@@ -1746,4 +1336,94 @@ impl WrapperSpace for PanelSpace {
     fn log(&self) -> Option<Logger> {
         self.log.clone()
     }
+
+    fn destroy(&mut self) {
+        self.layer_surface.as_mut().map(|ls| ls.destroy());
+        self.layer_shell_wl_surface
+            .as_mut()
+            .map(|wls| wls.destroy());
+    }
+
+    fn space(&mut self) -> &mut Space {
+        &mut self.space
+    }
+
+    fn popup_manager(&mut self) -> &mut PopupManager {
+        &mut self.popup_manager
+    }
+
+    fn visibility(&self) -> Visibility {
+        Visibility::Visible
+    }
+
+    fn raise_window(&mut self, w: &Window, activate: bool) {
+        self.space.raise_window(w, activate);
+    }
+
+    fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
+        self.last_dirty = Some(Instant::now());
+
+        if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
+            let old_bbox = w.bbox();
+            self.space.commit(&s);
+            w.refresh();
+            let new_bbox = w.bbox();
+            if old_bbox.size != new_bbox.size {
+                self.full_clear = true;
+            }
+
+            // TODO improve this for when there are changes to the lists of plugins while running
+            let padding: Size<i32, Logical> = ((2 * self.config.padding()).try_into().unwrap(), (2 * self.config.padding()).try_into().unwrap()).into();
+            let size = self.constrain_dim(padding + w.bbox().size);
+            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
+            let mut wait_configure_dim = self
+                .next_render_event
+                .get()
+                .map(|e| match e {
+                    SpaceEvent::Configure {
+                        width,
+                        height,
+                        serial: _serial,
+                    } => (width, height),
+                    SpaceEvent::WaitConfigure { width, height } => (width, height),
+                    _ => self.dimensions.into(),
+                })
+                .unwrap_or(pending_dimensions.into());
+            if self.dimensions.w < size.w
+                && pending_dimensions.w < size.w
+                && wait_configure_dim.0 < size.w
+            {
+                self.full_clear = true;
+                self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
+                wait_configure_dim.0 = size.w;
+            }
+            if self.dimensions.h < size.h
+                && pending_dimensions.h < size.h
+                && wait_configure_dim.1 < size.h
+            {
+                self.full_clear = true;
+                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
+            }
+        }
+    }
+
+    fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
+        self.space.commit(&s);
+        self.space.refresh(&dh);
+        if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
+            p.dirty = true;
+            self.popup_manager.commit(s);
+        }
+    }
+
+    fn renderer(&mut self) -> Option<&mut Gles2Renderer> {
+        self.renderer.as_mut()
+    }
+}
+
+#[derive(Debug)]
+pub enum Alignment {
+    Left,
+    Center,
+    Right,
 }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use slog::{o, Drain};
-use xdg_shell_wrapper::xdg_wrapper;
+use xdg_shell_wrapper::run;
+use slog::{Drain, o};
 
 mod space;
+
 fn main() -> Result<()> {
     dbg!(std::time::Instant::now());
     let log = slog::Logger::root(
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
         Some(profile) => {
-            cosmic_panel_config::config::CosmicPanelConfig::load(profile, Some(log.clone()))?
+            cosmic_panel_config::CosmicPanelConfig::load(profile, Some(log.clone()))?
         }
         None => {
             println!("{}", usage);
@@ -31,6 +32,6 @@ fn main() -> Result<()> {
         }
     };
 
-    xdg_wrapper(space::PanelSpace::new(config, log))?;
+    run(space::PanelSpace::new(config, log))?;
     Ok(())
 }
