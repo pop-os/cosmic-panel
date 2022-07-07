@@ -2,7 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::VecDeque,
     ffi::OsString,
     fs,
     os::unix::{net::UnixStream, prelude::AsRawFd},
@@ -32,7 +31,6 @@ use sctk::{
     },
     shm::AutoMemPool, window,
 };
-use slog::{info, Logger, trace};
 use smithay::{
     backend::{
         egl::{
@@ -77,6 +75,7 @@ use xdg_shell_wrapper::{
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+use slog::{info, Logger, trace};
 
 impl Default for PanelSpace {
     fn default() -> Self {
@@ -143,7 +142,7 @@ pub struct PanelSpace {
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
     pub(crate) popups: Vec<Popup>,
-    pub(crate) w_accumulated_damage: VecDeque<Vec<Rectangle<i32, Physical>>>,
+    pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
 }
 
 impl PanelSpace {
@@ -532,19 +531,22 @@ impl PanelSpace {
         Ok(())
     }
 
-    fn damage_for_buffer(cur_damage: Vec<Rectangle<i32, Physical>>, acc_damage: &mut VecDeque<Vec<Rectangle<i32, Physical>>>, egl_surface: &Rc<EGLSurface>) -> Option<Vec<Rectangle<i32, Physical>>> {
-        let age: usize = egl_surface.buffer_age().unwrap_or_default().try_into().unwrap_or_default();
+    fn damage_for_buffer(cur_damage: Vec<Rectangle<i32, Physical>>, acc_damage: &mut Vec<Vec<Rectangle<i32, Physical>>>, egl_surface: &Rc<EGLSurface>) -> Option<Vec<Rectangle<i32, Physical>>> {
+        let mut age: usize = egl_surface.buffer_age().unwrap_or_default().try_into().unwrap_or_default();
         let dmg_counts = acc_damage.len();
-        acc_damage.push_front(cur_damage);
-        // dbg!(age, dmg_counts);
 
         let ret = if age == 0 || age > dmg_counts {
             Some(Vec::new())
         } else {
-            let d = acc_damage.range(0..age + 1).cloned().flatten().collect_vec();
+            if !cur_damage.is_empty() {
+                acc_damage.push(cur_damage);
+                age += 1;
+            }
+            let mut d = acc_damage.clone();
+            d.reverse();
+            let d = d[..age + 1].into_iter().map(|v| v.into_iter().cloned()).flatten().collect_vec();
             if d.is_empty() {
                 // pop front because it won't actually be used
-                acc_damage.pop_front();
                 None
             } else {
                 Some(d)
@@ -552,9 +554,10 @@ impl PanelSpace {
         };
 
         if acc_damage.len() > 4 {
-            acc_damage.drain(4..);
+            acc_damage.drain(..acc_damage.len() - 4);
         }
 
+        // dbg!(age, dmg_counts, &acc_damage, &ret);
         ret
     }
 
