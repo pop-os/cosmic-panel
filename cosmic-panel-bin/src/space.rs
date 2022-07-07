@@ -430,46 +430,47 @@ impl PanelSpace {
                     });
                 acc_damage
             };
+            // dbg!(&cur_damage);
+            if let Some(mut damage) = Self::damage_for_buffer(cur_damage, &mut self.w_accumulated_damage, self.egl_surface.as_ref().unwrap()) {
+                if damage.is_empty() {
+                    damage.push(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)));
+                }
+                // dbg!(&damage);
+                let _ = renderer.render(
+                    self.dimensions.to_physical(1),
+                    smithay::utils::Transform::Flipped180,
+                    |renderer: &mut Gles2Renderer, frame| {
+                        frame
+                            .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                            .expect("Failed to clear frame.");
+                        for w in self.space.windows() {
+                            let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
+                            let mut bbox = w.bbox();
+                            bbox.loc += w_loc;
+                            let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
+                            w_damage.dedup();
+                            if damage.len() == 0 {
+                                continue;
+                            }
 
-            let mut damage = Self::damage_for_buffer(cur_damage, &mut self.w_accumulated_damage, self.egl_surface.as_ref().unwrap());
-            if damage.is_empty() {
-                damage.push(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)));
-            }
-
-            let _ = renderer.render(
-                self.dimensions.to_physical(1),
-                smithay::utils::Transform::Flipped180,
-                |renderer: &mut Gles2Renderer, frame| {
-                    frame
-                        .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
-                        .expect("Failed to clear frame.");
-                    for w in self.space.windows() {
-                        let w_loc = self.space.window_location(&w).unwrap_or_else(|| (0, 0).into());
-                        let mut bbox = w.bbox();
-                        bbox.loc += w_loc;
-                        let mut w_damage = damage.iter().filter_map(|r| r.intersection(bbox.to_physical(1))).collect_vec();
-                        w_damage.dedup();
-                        if damage.len() == 0 {
-                            continue;
+                            let _ = draw_window(
+                                renderer,
+                                frame,
+                                w,
+                                1.0,
+                                w_loc.to_physical(1).to_f64(),
+                                &w_damage,
+                                &log_clone,
+                            );
                         }
-
-                        let _ = draw_window(
-                            renderer,
-                            frame,
-                            w,
-                            1.0,
-                            w_loc.to_physical(1).to_f64(),
-                            &w_damage,
-                            &log_clone,
-                        );
-                    }
-                },
-            );
-            self.egl_surface
-                .as_ref()
-                .unwrap()
-                .swap_buffers(Some(&mut damage))
-                .expect("Failed to swap buffers.");
+                    },
+                );
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .swap_buffers(Some(&mut damage))
+                    .expect("Failed to swap buffers.");
+            }
 
             // Popup rendering
             let clear_color = [0.0, 0.0, 0.0, 0.0];
@@ -493,10 +494,11 @@ impl PanelSpace {
                     continue;
                 }
 
-                let mut damage = Self::damage_for_buffer(cur_damage, &mut p.accumulated_damage, &p.egl_surface);
-                if damage.is_empty() {
-                    damage.push(p_bbox.to_physical(1));
-                }
+                let mut damage = match Self::damage_for_buffer(cur_damage, &mut p.accumulated_damage, &p.egl_surface) {
+                    None => continue,
+                    Some(d) if d.is_empty() => vec![p_bbox.to_physical(1)],
+                    Some(d) => d,
+                };
 
                 let _ = renderer.render(
                     p_bbox.size.to_physical(1),
@@ -530,16 +532,23 @@ impl PanelSpace {
         Ok(())
     }
 
-    fn damage_for_buffer(cur_damage: Vec<Rectangle<i32, Physical>>, acc_damage: &mut VecDeque<Vec<Rectangle<i32, Physical>>>, egl_surface: &Rc<EGLSurface>) -> Vec<Rectangle<i32, Physical>> {
+    fn damage_for_buffer(cur_damage: Vec<Rectangle<i32, Physical>>, acc_damage: &mut VecDeque<Vec<Rectangle<i32, Physical>>>, egl_surface: &Rc<EGLSurface>) -> Option<Vec<Rectangle<i32, Physical>>> {
         let age: usize = egl_surface.buffer_age().unwrap_or_default().try_into().unwrap_or_default();
         let dmg_counts = acc_damage.len();
         acc_damage.push_front(cur_damage);
         // dbg!(age, dmg_counts);
 
         let ret = if age == 0 || age > dmg_counts {
-            Vec::new()
+            Some(Vec::new())
         } else {
-            acc_damage.range(0..age).cloned().flatten().collect_vec()
+            let d = acc_damage.range(0..age + 1).cloned().flatten().collect_vec();
+            if d.is_empty() {
+                // pop front because it won't actually be used
+                acc_damage.pop_front();
+                None
+            } else {
+                Some(d)
+            }
         };
 
         if acc_damage.len() > 4 {
@@ -700,12 +709,12 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
@@ -724,13 +733,13 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     // dbg!(cur);
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
@@ -749,12 +758,12 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (center_in_bar(list_thickness.try_into().unwrap(), size.x as u32), cur);
                     prev += size.y as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (cur, center_in_bar(list_thickness.try_into().unwrap(), size.y as u32));
                     prev += size.x as u32;
-                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, true);
+                    self.space.map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
