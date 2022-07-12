@@ -20,7 +20,7 @@ use sctk::{
         client::{self, Attached, Main},
         client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
         protocols::{
-            wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
+            wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1::{self, Layer}, zwlr_layer_surface_v1},
             xdg_shell::client::{
                 xdg_popup,
                 xdg_positioner::{Anchor, Gravity, XdgPositioner},
@@ -31,6 +31,7 @@ use sctk::{
     },
     shm::AutoMemPool, window,
 };
+use slog::{info, Logger, trace};
 use smithay::{
     backend::{
         egl::{
@@ -75,40 +76,6 @@ use xdg_shell_wrapper::{
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
-use slog::{info, Logger, trace};
-
-impl Default for PanelSpace {
-    fn default() -> Self {
-        Self {
-            popup_manager: PopupManager::new(None),
-            full_clear: false,
-            config: Default::default(),
-            log: Default::default(),
-            space: Space::new(None),
-            clients_left: Default::default(),
-            clients_center: Default::default(),
-            clients_right: Default::default(),
-            children: Default::default(),
-            last_dirty: Default::default(),
-            pending_dimensions: Default::default(),
-            next_render_event: Default::default(),
-            dimensions: Default::default(),
-            focused_surface: Default::default(),
-            pool: Default::default(),
-            layer_shell: Default::default(),
-            output: Default::default(),
-            c_display: Default::default(),
-            egl_display: Default::default(),
-            renderer: Default::default(),
-            layer_surface: Default::default(),
-            egl_surface: Default::default(),
-            layer_shell_wl_surface: Default::default(),
-            popups: Default::default(),
-            w_accumulated_damage: Default::default(),
-            visibility: Visibility::Visible,
-        }
-    }
-}
 
 /// space for the cosmic panel
 #[derive(Debug)]
@@ -153,7 +120,49 @@ impl PanelSpace {
             space: Space::new(log.clone()),
             popup_manager: PopupManager::new(log.clone()),
             log: Some(log),
-            ..Default::default()
+            full_clear: false,
+            clients_left: Default::default(),
+            clients_center: Default::default(),
+            clients_right: Default::default(),
+            children: Default::default(),
+            last_dirty: Default::default(),
+            pending_dimensions: Default::default(),
+            next_render_event: Default::default(),
+            dimensions: Default::default(),
+            focused_surface: Default::default(),
+            pool: Default::default(),
+            layer_shell: Default::default(),
+            output: Default::default(),
+            c_display: Default::default(),
+            egl_display: Default::default(),
+            renderer: Default::default(),
+            layer_surface: Default::default(),
+            egl_surface: Default::default(),
+            layer_shell_wl_surface: Default::default(),
+            popups: Default::default(),
+            w_accumulated_damage: Default::default(),
+            visibility: Visibility::Visible,
+        }
+    }
+
+    fn z_index(&self) -> Option<RenderZindex> {
+        match self.config.layer() {
+            Layer::Background => Some(RenderZindex::Background),
+            Layer::Bottom => Some(RenderZindex::Bottom),
+            Layer::Top => Some(RenderZindex::Top),
+            Layer::Overlay => Some(RenderZindex::Overlay),
+            _ => None,
+        }
+    }
+
+    fn close_popups(&mut self) {
+        for w in &mut self.space.windows() {
+            for (PopupKind::Xdg(p), _) in
+            PopupManager::popups_for_surface(w.toplevel().wl_surface())
+            {
+                p.send_popup_done();
+                self.popup_manager.commit(p.wl_surface());
+            }
         }
     }
 
@@ -804,6 +813,7 @@ impl WrapperSpace for PanelSpace {
                 std::process::exit(0);
             }
             Some(SpaceEvent::Configure {
+                     first,
                      width,
                      height,
                      serial: _serial,
@@ -820,9 +830,9 @@ impl WrapperSpace for PanelSpace {
                     self.full_clear = true;
                 }
             }
-            Some(SpaceEvent::WaitConfigure { width, height }) => {
+            Some(SpaceEvent::WaitConfigure { first, width, height }) => {
                 self.next_render_event
-                    .replace(Some(SpaceEvent::WaitConfigure { width, height }));
+                    .replace(Some(SpaceEvent::WaitConfigure { first, width, height }));
             }
             None => {
                 if let Some(size) = self.pending_dimensions.take() {
@@ -861,7 +871,7 @@ impl WrapperSpace for PanelSpace {
                     }
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
                     self.next_render_event
-                        .replace(Some(SpaceEvent::WaitConfigure { width: size.w, height: size.h }));
+                        .replace(Some(SpaceEvent::WaitConfigure { first: false, width: size.w, height: size.h }));
                 } else {
                     if self.full_clear {
                         self.update_window_locations();
@@ -886,8 +896,8 @@ impl WrapperSpace for PanelSpace {
         self.last_dirty.unwrap_or_else(|| Instant::now())
     }
 
-    fn popups(&self) -> &[Popup] {
-        &self.popups
+    fn popups(&self) -> Vec<&Popup> {
+        self.popups.iter().collect_vec()
     }
 
     fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
@@ -1033,17 +1043,6 @@ impl WrapperSpace for PanelSpace {
             position: (0, 0).into(),
             accumulated_damage: Default::default(),
         });
-    }
-
-    fn close_popups(&mut self) {
-        for w in &mut self.space.windows() {
-            for (PopupKind::Xdg(p), _) in
-            PopupManager::popups_for_surface(w.toplevel().wl_surface())
-            {
-                p.send_popup_done();
-                self.popup_manager.commit(p.wl_surface());
-            }
-        }
     }
 
     ///  update active window based on pointer location
@@ -1205,6 +1204,7 @@ impl WrapperSpace for PanelSpace {
         c_surface.commit();
 
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
+            first: true,
             width: dimensions.w,
             height: dimensions.h,
         })));
@@ -1235,6 +1235,7 @@ impl WrapperSpace for PanelSpace {
                     );
                     layer_surface.ack_configure(serial);
                     next_render_event_handle.set(Some(SpaceEvent::Configure {
+                        first: true,
                         width: width.try_into().unwrap(),
                         height: height.try_into().unwrap(),
                         serial: serial.try_into().unwrap(),
@@ -1319,7 +1320,14 @@ impl WrapperSpace for PanelSpace {
                         height
                     );
                     layer_surface.ack_configure(serial);
+
+                    let first = match next {
+                        Some(SpaceEvent::Configure { first, .. }) => first,
+                        Some(SpaceEvent::WaitConfigure { first, .. }) => first,
+                        _ => false,
+                    };
                     next_render_event_handle.set(Some(SpaceEvent::Configure {
+                        first,
                         width: width.try_into().unwrap(),
                         height: height.try_into().unwrap(),
                         serial: serial.try_into().unwrap(),
@@ -1393,11 +1401,12 @@ impl WrapperSpace for PanelSpace {
                 .get()
                 .map(|e| match e {
                     SpaceEvent::Configure {
+                        first,
                         width,
                         height,
                         serial: _serial,
                     } => (width, height),
-                    SpaceEvent::WaitConfigure { width, height } => (width, height),
+                    SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
                     _ => self.dimensions.into(),
                 })
                 .unwrap_or(pending_dimensions.into());
@@ -1430,6 +1439,10 @@ impl WrapperSpace for PanelSpace {
 
     fn renderer(&mut self) -> Option<&mut Gles2Renderer> {
         self.renderer.as_mut()
+    }
+
+    fn keyboard_focus_lost(&mut self) {
+        self.close_popups();
     }
 }
 

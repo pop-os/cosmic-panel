@@ -320,6 +320,14 @@ impl CosmicPanelConfig {
         self.padding
     }
 
+    pub fn layer(&self) -> zwlr_layer_shell_v1::Layer {
+        self.layer.into()
+    }
+
+    pub fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
+        self.keyboard_interactivity.into()
+    }
+
     /// get constraints for the thickness of the panel bar
     pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
@@ -358,14 +366,6 @@ impl CosmicPanelConfig {
 impl WrapperConfig for CosmicPanelConfig {
     fn output(&self) -> Option<String> {
         Some(self.output.clone())
-    }
-
-    fn layer(&self) -> zwlr_layer_shell_v1::Layer {
-        self.layer.into()
-    }
-
-    fn keyboard_interactivity(&self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
-        self.keyboard_interactivity.into()
     }
 
     fn name(&self) -> &str {

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use xdg_shell_wrapper::run;
 use slog::{Drain, o};
+use smithay::reexports::calloop;
+use xdg_shell_wrapper::run;
 
 mod space;
 
@@ -32,6 +33,7 @@ fn main() -> Result<()> {
         }
     };
 
-    run(space::PanelSpace::new(config, log))?;
+    let event_loop = calloop::EventLoop::try_new()?;
+    run(space::PanelSpace::new(config, log), event_loop)?;
     Ok(())
 }
