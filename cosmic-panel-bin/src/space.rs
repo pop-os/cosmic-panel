@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::{Itertools, izip};
+use itertools::Itertools;
 use libc::c_int;
 use sctk::{
     environment::Environment,
@@ -1085,85 +1085,86 @@ impl WrapperSpace for PanelSpace {
         display: &mut DisplayHandle,
     ) -> Result<Vec<UnixStream>, anyhow::Error> {
         if self.children.is_empty() {
-            let (clients_left, sockets_left): (Vec<_>, Vec<_>) = self
-                .config
-                .plugins_left()
-                .unwrap_or_default()
-                .iter()
+            let (clients_left, sockets_left): (Vec<_>, Vec<_>) = 
+                (0..self
+                        .config
+                        .plugins_left
+                        .as_ref().map(|v| v.len()).unwrap_or(0)
+                )
                 .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
                 .unzip();
             self.clients_left = clients_left;
-            let (clients_center, sockets_center): (Vec<_>, Vec<_>) = self
-                .config
-                .plugins_center()
-                .unwrap_or_default()
-                .iter()
+            let (clients_center, sockets_center): (Vec<_>, Vec<_>) =
+                (0..self
+                        .config
+                        .plugins_center
+                        .as_ref().map(|v| v.len()).unwrap_or(0)
+                )
                 .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
                 .unzip();
             self.clients_center = clients_center;
-            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = self
-                .config
-                .plugins_right()
-                .unwrap_or_default()
-                .iter()
+            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = 
+                (0..self
+                        .config
+                        .plugins_right
+                        .as_ref().map(|v| v.len()).unwrap_or(0)
+                )
                 .map(|_p| {
                     let (c, s) = get_client_sock(display);
                     (c, s)
                 })
                 .unzip();
             self.clients_right = clients_right;
+
+            let mut desktop_ids = self.config.plugins_left.iter()
+                .chain(self.config.plugins_center.iter())
+                .chain(self.config.plugins_right.iter())
+                .flatten()
+                .zip(sockets_left.into_iter()
+                    .chain(sockets_center.into_iter())
+                    .chain(sockets_right.into_iter())
+                ).collect_vec();
+
             // TODO how slow is this? Would it be worth using a faster method of comparing strings?
             self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
-                    izip!(
-                          self.config.plugins_left().unwrap_or_default().iter(),
-                          &self.clients_left,
-                          &sockets_left
-                      )
-                        .chain(izip!(
-                          self.config.plugins_center().unwrap_or_default().iter(),
-                          &self.clients_center,
-                          &sockets_center
-                      ))
-                        .chain(izip!(
-                          self.config.plugins_right().unwrap_or_default().iter(),
-                          &self.clients_right,
-                          &sockets_right
-                      ))
-                        .find(|(app_file_name, _, _)| {
-                            Some(OsString::from(&app_file_name).as_os_str()) == path.file_stem()
-                        })
-                        .and_then(|(_, _, client_socket)| {
-                            fs::read_to_string(&path).ok().and_then(|bytes| {
-                                if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                    if let Some(exec) = entry.exec() {
-                                        let requests_host_wayland_display =
-                                            entry.desktop_entry("HostWaylandDisplay").is_some();
-                                        return Some(exec_child(
-                                            exec,
-                                            Some(self.config.name()),
-                                            self.log.as_ref().unwrap().clone(),
-                                            client_socket.as_raw_fd(),
-                                            requests_host_wayland_display,
-                                        ));
-                                    }
+                    if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
+                        Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
+                    }) {
+                        // This way each applet is at most started once,
+                        // even if multiple desktop files in different directories match
+                        let (_, client_socket) = desktop_ids.remove(position); 
+                        fs::read_to_string(&path).ok().and_then(|bytes| {
+                            if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                                if let Some(exec) = entry.exec() {
+                                    let requests_host_wayland_display =
+                                        entry.desktop_entry("HostWaylandDisplay").is_some();
+                                    return Some(exec_child(
+                                        exec,
+                                        Some(self.config.name()),
+                                        self.log.as_ref().unwrap().clone(),
+                                        client_socket.as_raw_fd(),
+                                        requests_host_wayland_display,
+                                    ));
                                 }
-                                None
-                            })
+                            }
+                            None
                         })
+                    } else {
+                        None
+                    }
                 })
                 .collect_vec();
 
-            Ok(sockets_left
+            Ok(desktop_ids
                 .into_iter()
-                .chain(sockets_center.into_iter())
-                .chain(sockets_right.into_iter())
+                .map(|(_, socket)| socket)
                 .collect())
         } else {
             bail!("Clients have already been spawned!");
