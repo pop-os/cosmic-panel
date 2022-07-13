@@ -1674,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=applet-host-dev#15b06fe404ae8a6812828d43cebc92a1b72e4925"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=applet-host-dev#b127ae90330a1180a02ac621024fb8344d3cf36d"
 dependencies = [
  "anyhow",
  "itertools",
@@ -1694,7 +1694,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=applet-host-dev#15b06fe404ae8a6812828d43cebc92a1b72e4925"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=applet-host-dev#b127ae90330a1180a02ac621024fb8344d3cf36d"
 dependencies = [
  "serde",
  "wayland-protocols 0.29.4",
