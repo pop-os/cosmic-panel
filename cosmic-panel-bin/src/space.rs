@@ -573,7 +573,7 @@ impl PanelSpace {
     ) -> Option<Vec<Rectangle<i32, Physical>>> {
         let mut age: usize = egl_surface
             .buffer_age()
-            .unwrap_or_default()
+            .unwrap()
             .try_into()
             .unwrap_or_default();
         let dmg_counts = acc_damage.len();
@@ -1006,8 +1006,10 @@ impl WrapperSpace for PanelSpace {
         if should_render {
             let _ = self.render(time);
         }
-        if self.egl_surface.as_ref().unwrap().get_size() != Some(self.dimensions.to_physical(1)) {
-            self.full_clear = true;
+        if let Some(egl_surface) = self.egl_surface.as_ref() {
+            if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
+                self.full_clear = true;
+            }
         }
 
         self.last_dirty.unwrap_or_else(|| Instant::now())
