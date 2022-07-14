@@ -13,7 +13,7 @@ use std::{
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::Itertools;
-use libc::c_int;
+use libc::{c_int, wait};
 use sctk::{
     environment::Environment,
     output::OutputInfo,
@@ -101,7 +101,7 @@ pub struct PanelSpace {
     pub(crate) children: Vec<Child>,
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
-    pub(crate) full_clear: bool,
+    pub(crate) full_clear: u8,
     pub(crate) next_render_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
     /// focused surface so it can be changed when a window is removed
@@ -129,7 +129,7 @@ impl PanelSpace {
             space: Space::new(log.clone()),
             popup_manager: PopupManager::new(log.clone()),
             log: Some(log),
-            full_clear: false,
+            full_clear: 0,
             clients_left: Default::default(),
             clients_center: Default::default(),
             clients_right: Default::default(),
@@ -377,6 +377,7 @@ impl PanelSpace {
         if self.next_render_event.get() != None {
             return Ok(());
         }
+
         let clear_color = match self.config.background {
             CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
             CosmicPanelBackground::Color(c) => c,
@@ -401,8 +402,8 @@ impl PanelSpace {
             let output_geo =
                 Rectangle::from_loc_and_size(o.current_location(), output_size.to_logical(1));
 
-            let cur_damage = if self.full_clear {
-                vec![(Rectangle::from_loc_and_size((0, 0), self.dimensions.to_physical(1)))]
+            let cur_damage = if self.full_clear > 0 {
+                vec![]
             } else {
                 let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
                     let w_loc = self
@@ -441,25 +442,31 @@ impl PanelSpace {
                 acc_damage
             };
             // dbg!(&cur_damage);
-            if let Some(mut damage) = Self::damage_for_buffer(
+            let damage = Self::damage_for_buffer(
                 cur_damage,
                 &mut self.w_accumulated_damage,
                 self.egl_surface.as_ref().unwrap(),
-            ) {
-                if damage.is_empty() {
-                    damage.push(Rectangle::from_loc_and_size(
-                        (0, 0),
-                        self.dimensions.to_physical(1),
-                    ));
-                }
-                // dbg!(&damage);
-                let _ = renderer.render(
+                self.full_clear,
+            );
+            let should_render = damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
+            if should_render {
+                let mut damage = damage.unwrap_or_else(|| vec![]);
+                renderer.render(
                     self.dimensions.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                     |renderer: &mut Gles2Renderer, frame| {
-                        frame
-                            .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
-                            .expect("Failed to clear frame.");
+                        if damage.is_empty() {
+                            frame
+                                .clear(clear_color, &[Rectangle::from_loc_and_size(
+                                    (0, 0),
+                                    self.dimensions.to_physical(1),
+                                )])
+                                .expect("Failed to clear frame.");
+                        } else {
+                            frame
+                                .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                                .expect("Failed to clear frame.");
+                        }
                         for w in self.space.windows() {
                             let w_loc = self
                                 .space
@@ -467,12 +474,18 @@ impl PanelSpace {
                                 .unwrap_or_else(|| (0, 0).into());
                             let mut bbox = w.bbox();
                             bbox.loc += w_loc;
-                            let mut w_damage = damage
-                                .iter()
-                                .filter_map(|r| r.intersection(bbox.to_physical(1)))
-                                .collect_vec();
-                            w_damage.dedup();
-                            if damage.len() == 0 {
+                            let w_damage = if damage.is_empty() {
+                                vec![bbox.to_physical(1)]
+                            } else {
+                                let mut w_damage = damage
+                                    .iter()
+                                    .filter_map(|r| r.intersection(bbox.to_physical(1)))
+                                    .collect_vec();
+                                w_damage.dedup();
+                                w_damage
+                            };
+
+                            if w_damage.len() == 0 {
                                 continue;
                             }
 
@@ -482,18 +495,20 @@ impl PanelSpace {
                                 w,
                                 1.0,
                                 w_loc.to_physical(1).to_f64(),
-                                &w_damage,
+                                w_damage.as_slice(),
                                 &log_clone,
                             );
                         }
                     },
-                );
+                ).expect("render error...");
+
                 self.egl_surface
                     .as_ref()
                     .unwrap()
-                    .swap_buffers(Some(&mut damage))
+                    .swap_buffers(if damage.is_empty() { None } else { Some(&mut damage) })
                     .expect("Failed to swap buffers.");
             }
+
 
             // Popup rendering
             let clear_color = [0.0, 0.0, 0.0, 0.0];
@@ -509,8 +524,8 @@ impl PanelSpace {
                     .bind(p.egl_surface.as_ref().unwrap().clone())
                     .expect("Failed to bind surface to GL");
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-                let cur_damage = if self.full_clear {
-                    vec![p_bbox.to_physical(1)]
+                let cur_damage = if p.full_clear > 0 {
+                    vec![]
                 } else {
                     damage_from_surface_tree(
                         p.s_surface.wl_surface(),
@@ -519,17 +534,15 @@ impl PanelSpace {
                         Some((&self.space, &o)),
                     )
                 };
-                if cur_damage.len() == 0 {
-                    continue;
-                }
 
                 let mut damage = match Self::damage_for_buffer(
                     cur_damage,
                     &mut p.accumulated_damage,
                     &p.egl_surface.as_ref().unwrap().clone(),
+                    p.full_clear,
                 ) {
-                    None => continue,
-                    Some(d) if d.is_empty() => vec![p_bbox.to_physical(1)],
+                    None => vec![],
+                    Some(d) if d.is_empty() => continue,
                     Some(d) => d,
                 };
 
@@ -537,8 +550,14 @@ impl PanelSpace {
                     p_bbox.size.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                     |renderer: &mut Gles2Renderer, frame| {
+                        let p_damage = if damage.is_empty() {
+                            vec![p_bbox.to_physical(1)]
+                        } else {
+                            damage.clone()
+                        };
+
                         frame
-                            .clear(clear_color, damage.iter().cloned().collect_vec().as_slice())
+                            .clear(clear_color, p_damage.iter().cloned().collect_vec().as_slice())
                             .expect("Failed to clear frame.");
 
                         let _ = draw_surface_tree(
@@ -547,22 +566,23 @@ impl PanelSpace {
                             p.s_surface.wl_surface(),
                             1.0,
                             p_bbox.loc.to_f64().to_physical(1.0),
-                            &damage,
+                            &p_damage,
                             &log_clone,
                         );
                     },
                 );
                 p.egl_surface
                     .as_ref().unwrap()
-                    .swap_buffers(Some(&mut damage))
+                    .swap_buffers(if damage.is_empty() { None } else { Some(&mut damage) })
                     .expect("Failed to swap buffers.");
                 p.dirty = false;
+                p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
             }
         }
 
         let _ = renderer.unbind();
         self.space.send_frames(time);
-        self.full_clear = false;
+        self.full_clear = self.full_clear.checked_sub(1).unwrap_or_default();
         Ok(())
     }
 
@@ -570,19 +590,30 @@ impl PanelSpace {
         cur_damage: Vec<Rectangle<i32, Physical>>,
         acc_damage: &mut Vec<Vec<Rectangle<i32, Physical>>>,
         egl_surface: &Rc<EGLSurface>,
+        full_clear: u8,
     ) -> Option<Vec<Rectangle<i32, Physical>>> {
         let mut age: usize = egl_surface
             .buffer_age()
             .unwrap()
             .try_into()
             .unwrap_or_default();
+
+        // reset accumulated damage when applying full clear for the first time
+        if full_clear == 4 {
+            acc_damage.drain(..);
+        }
+
         let dmg_counts = acc_damage.len();
+        // buffer contents undefined, treat as a full clear
         let ret = if age == 0 {
-            Some(Vec::new())
+            acc_damage.drain(..);
+            None
+            // buffer older than we keep track of, full clear, but don't reset accumulated damage, instead add to acc damage
         } else if age >= dmg_counts {
             acc_damage.push(cur_damage);
             age += 1;
-            Some(Vec::new())
+            None
+            // use get the accumulated damage for the last [age] renders, and add to acc damage
         } else {
             acc_damage.push(cur_damage);
             age += 1;
@@ -593,13 +624,10 @@ impl PanelSpace {
                 .map(|v| v.into_iter().cloned())
                 .flatten()
                 .collect_vec();
-            if d.is_empty() {
-                None
-            } else {
-                Some(d)
-            }
+            Some(d)
         };
 
+        // acc damage should only ever be length 4
         if acc_damage.len() > 4 {
             acc_damage.drain(..acc_damage.len() - 4);
         }
@@ -936,7 +964,7 @@ impl WrapperSpace for PanelSpace {
                         .unwrap()
                         .resize(width as i32, height as i32, 0, 0);
                 }
-                self.full_clear = true;
+                self.full_clear = 4;
                 self.layer_shell_wl_surface.as_ref().unwrap().commit();
                 self.dimensions = (width as i32, height as i32).into();
             }
@@ -991,7 +1019,7 @@ impl WrapperSpace for PanelSpace {
                             height: size.h,
                         }));
                 } else {
-                    if self.full_clear {
+                    if self.full_clear == 4 {
                         self.update_window_locations();
                         self.space.refresh(&dh);
                     }
@@ -1008,7 +1036,7 @@ impl WrapperSpace for PanelSpace {
         }
         if let Some(egl_surface) = self.egl_surface.as_ref() {
             if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
-                self.full_clear = true;
+                self.full_clear = 4;
             }
         }
 
@@ -1028,7 +1056,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn add_window(&mut self, w: Window) {
-        self.full_clear = true;
+        self.full_clear = 4;
         self.space.commit(&w.toplevel().wl_surface());
         self.space
             .map_window(&w, (0, 0), self.z_index().map(|z| z as u8), true);
@@ -1164,6 +1192,7 @@ impl WrapperSpace for PanelSpace {
             popup_state: cur_popup_state,
             position: (0, 0).into(),
             accumulated_damage: Default::default(),
+            full_clear: 4,
         });
     }
 
@@ -1391,7 +1420,7 @@ impl WrapperSpace for PanelSpace {
         self.dimensions = dimensions;
         self.focused_surface = focused_surface;
         self.next_render_event = next_render_event;
-        self.full_clear = true;
+        self.full_clear = 4;
         self.layer_shell_wl_surface = Some(c_surface);
 
         Ok(())
@@ -1433,7 +1462,7 @@ impl WrapperSpace for PanelSpace {
             w.refresh();
             let new_bbox = w.bbox();
             if old_bbox.size != new_bbox.size {
-                self.full_clear = true;
+                self.full_clear = 4;
             }
 
             // TODO improve this for when there are changes to the lists of plugins while running
@@ -1462,7 +1491,6 @@ impl WrapperSpace for PanelSpace {
                 && pending_dimensions.w < size.w
                 && wait_configure_dim.0 < size.w
             {
-                self.full_clear = true;
                 self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
                 wait_configure_dim.0 = size.w;
             }
@@ -1470,7 +1498,6 @@ impl WrapperSpace for PanelSpace {
                 && pending_dimensions.h < size.h
                 && wait_configure_dim.1 < size.h
             {
-                self.full_clear = true;
                 self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
             }
         }
