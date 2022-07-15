@@ -1047,11 +1047,14 @@ impl WrapperSpace for PanelSpace {
         self.popups.iter().collect_vec()
     }
 
-    fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) {
-        if self.focused_surface.borrow().is_none()
-            && **self.layer_shell_wl_surface.as_ref().unwrap() == *c_focused_surface
+    /// returns false to forward the button press, and true to intercept
+    fn handle_button(&mut self, c_focused_surface: &c_wl_surface::WlSurface) -> bool {
+        if **self.layer_shell_wl_surface.as_ref().unwrap() == *c_focused_surface && !self.popups.is_empty()
         {
-            self.close_popups()
+            self.close_popups();
+            true
+        } else {
+            false
         }
     }
 
@@ -1083,7 +1086,11 @@ impl WrapperSpace for PanelSpace {
             parent_configure: _,
         }: PositionerState,
     ) {
-        self.close_popups();
+        // TODO handle popups not on main surface
+        if !self.popups.is_empty() {
+            self.popups.clear();
+            return;
+        }
 
         let parent_window = if let Some(s) = self.space.windows().find(|w| match w.toplevel() {
             Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
