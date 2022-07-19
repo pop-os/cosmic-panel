@@ -241,7 +241,7 @@ impl CosmicPanelConfig {
 
     /// Utility for loading the Cosmic Panel Config from the ENV variable COSMIC_DOCK_CONFIG
     pub fn load_from_env() -> anyhow::Result<Self> {
-        env::var("COSMIC_DOCK_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
+        env::var("COSMIC_PANEL_CONFIG").map(|c_name| CosmicPanelConfig::load(&c_name, None))?
     }
 
     /// get applet icon dimensions
