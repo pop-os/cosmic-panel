@@ -358,14 +358,13 @@ impl CosmicPanelConfig {
                 },
                 Some(bar_thickness),
             ),
-            _ => (None, None),
         }
     }
 }
 
 impl WrapperConfig for CosmicPanelConfig {
-    fn output(&self) -> Option<String> {
-        Some(self.output.clone())
+    fn outputs(&self) -> Vec<String> {
+        vec![self.output.clone()]
     }
 
     fn name(&self) -> &str {

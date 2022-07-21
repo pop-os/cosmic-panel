@@ -13,7 +13,7 @@ use std::{
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::Itertools;
-use libc::{c_int, wait};
+use libc::{c_int};
 use sctk::{
     environment::Environment,
     output::OutputInfo,
@@ -28,19 +28,17 @@ use sctk::{
             xdg_shell::client::{
                 xdg_popup,
                 xdg_positioner::{Anchor, Gravity, XdgPositioner},
-                xdg_surface::{self, XdgSurface},
-                xdg_wm_base::{self, XdgWmBase},
+                xdg_surface::{self},
+                xdg_wm_base::{XdgWmBase},
             },
         },
     },
     shm::AutoMemPool,
-    window,
 };
 use slog::{info, Logger, trace};
 use smithay::{
     backend::{
         egl::{
-            self,
             context::{EGLContext, GlAttributes},
             display::EGLDisplay,
             ffi::{
@@ -50,31 +48,28 @@ use smithay::{
             surface::EGLSurface,
         },
         renderer::{
-            Bind, Frame, gles2::Gles2Renderer, ImportDma, ImportEgl, Renderer,
+            Bind, Frame, gles2::Gles2Renderer, Renderer,
             Unbind, utils::draw_surface_tree,
         },
     },
     desktop::{
-        draw_popups, draw_window,
+        draw_window,
         Kind,
         PopupKind,
-        PopupManager, space::{RenderError, SurfaceTree}, Space, utils::{bbox_from_surface_tree, damage_from_surface_tree, send_frames_surface_tree}, Window, WindowSurfaceType,
+        PopupManager, space::{RenderError}, Space, utils::{bbox_from_surface_tree, damage_from_surface_tree}, Window, WindowSurfaceType,
     },
-    nix::{fcntl, libc},
+    nix::{libc},
     reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
-            self, Client, Display as s_Display, DisplayHandle,
+            Client,DisplayHandle,
             protocol::wl_surface::WlSurface as s_WlSurface, Resource,
         },
     },
     utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::{
-        SERIAL_COUNTER,
         shell::xdg::{PopupSurface, PositionerState},
     },
 };
-use smithay::desktop::Kind::Xdg;
 use smithay::desktop::space::RenderZindex;
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
@@ -611,7 +606,6 @@ impl PanelSpace {
             // buffer older than we keep track of, full clear, but don't reset accumulated damage, instead add to acc damage
         } else if age >= dmg_counts {
             acc_damage.push(cur_damage);
-            age += 1;
             None
             // use get the accumulated damage for the last [age] renders, and add to acc damage
         } else {
@@ -1332,28 +1326,141 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn add_output(
+    fn log(&self) -> Option<Logger> {
+        self.log.clone()
+    }
+
+    fn destroy(&mut self) {
+        self.layer_surface.as_mut().map(|ls| ls.destroy());
+        self.layer_shell_wl_surface
+            .as_mut()
+            .map(|wls| wls.destroy());
+    }
+
+    fn space(&mut self) -> &mut Space {
+        &mut self.space
+    }
+
+    fn popup_manager(&mut self) -> &mut PopupManager {
+        &mut self.popup_manager
+    }
+
+    fn visibility(&self) -> Visibility {
+        Visibility::Visible
+    }
+
+    fn raise_window(&mut self, w: &Window, activate: bool) {
+        self.space.raise_window(w, activate);
+    }
+
+    fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
+        self.last_dirty = Some(Instant::now());
+
+        if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
+            let old_bbox = w.bbox();
+            self.space.commit(&s);
+            w.refresh();
+            let new_bbox = w.bbox();
+            if old_bbox.size != new_bbox.size {
+                self.full_clear = 4;
+            }
+
+            // TODO improve this for when there are changes to the lists of plugins while running
+            let padding: Size<i32, Logical> = (
+                (2 * self.config.padding()).try_into().unwrap(),
+                (2 * self.config.padding()).try_into().unwrap(),
+            )
+                .into();
+            let size = self.constrain_dim(padding + w.bbox().size);
+            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
+            let mut wait_configure_dim = self
+                .next_render_event
+                .get()
+                .map(|e| match e {
+                    SpaceEvent::Configure {
+                        width,
+                        height,
+                        serial: _serial,
+                        ..
+                    } => (width, height),
+                    SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
+                    _ => self.dimensions.into(),
+                })
+                .unwrap_or(pending_dimensions.into());
+            if self.dimensions.w < size.w
+                && pending_dimensions.w < size.w
+                && wait_configure_dim.0 < size.w
+            {
+                self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
+                wait_configure_dim.0 = size.w;
+            }
+            if self.dimensions.h < size.h
+                && pending_dimensions.h < size.h
+                && wait_configure_dim.1 < size.h
+            {
+                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
+            }
+        }
+    }
+
+    fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
+        self.space.commit(&s);
+        self.space.refresh(&dh);
+        if let Some(p) = self
+            .popups
+            .iter_mut()
+            .find(|p| p.s_surface.wl_surface() == s)
+        {
+            p.dirty = true;
+            self.popup_manager.commit(s);
+        }
+    }
+
+    fn renderer(&mut self) -> Option<&mut Gles2Renderer> {
+        self.renderer.as_mut()
+    }
+
+    fn keyboard_focus_lost(&mut self) {
+        self.close_popups();
+    }
+
+    fn setup(
+        &mut self,       
+        env: &Environment<Env>,
+        c_display: client::Display,
+        log: Logger,
+        focused_surface: Rc<RefCell<Option<s_WlSurface>>>
+    ) {
+        let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
+        let pool = env
+        .create_auto_pool()
+        .expect("Failed to create a memory pool!");
+
+        self.log.replace(log);
+        self.layer_shell.replace(layer_shell);
+        self.pool.replace(pool);
+        self.focused_surface = focused_surface;
+        self.c_display.replace(c_display);
+
+    }
+
+    fn handle_output(
         &mut self,
+        env: &Environment<Env>,
         output: Option<&c_wl_output::WlOutput>,
         output_info: Option<&OutputInfo>,
-        pool: AutoMemPool,
-        c_display: client::Display,
-        layer_shell: Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-        log: Logger,
-        c_surface: Attached<c_wl_surface::WlSurface>,
-        focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
     ) -> anyhow::Result<()> {
-        if self.layer_shell_wl_surface.is_some()
-            || self.output.is_some()
-            || self.layer_shell.is_some()
-        {
-            bail!("output already added!")
+        if let Some(info) = output_info {
+            if info.obsolete {
+                todo!()
+            }
         }
         self.output = output.cloned().zip(output_info.cloned());
-
+        let log = self.log.as_ref().unwrap();
+        let c_surface = env.create_surface();
         let dimensions = self.constrain_dim((1, 1).into());
         let layer_surface =
-            layer_shell.get_layer_surface(&c_surface, output, self.config.layer(), "".to_owned());
+            self.layer_shell.as_ref().unwrap().get_layer_surface(&c_surface, output, self.config.layer(), "".to_owned());
 
         layer_surface.set_anchor(self.config.anchor.into());
         layer_surface.set_keyboard_interactivity(self.config.keyboard_interactivity());
@@ -1420,115 +1527,12 @@ impl WrapperSpace for PanelSpace {
             }
         });
 
-        self.layer_shell.replace(layer_shell);
-        self.c_display.replace(c_display);
-        self.pool.replace(pool);
         self.layer_surface.replace(layer_surface);
         self.dimensions = dimensions;
-        self.focused_surface = focused_surface;
         self.next_render_event = next_render_event;
         self.full_clear = 4;
         self.layer_shell_wl_surface = Some(c_surface);
-
         Ok(())
-    }
-
-    fn log(&self) -> Option<Logger> {
-        self.log.clone()
-    }
-
-    fn destroy(&mut self) {
-        self.layer_surface.as_mut().map(|ls| ls.destroy());
-        self.layer_shell_wl_surface
-            .as_mut()
-            .map(|wls| wls.destroy());
-    }
-
-    fn space(&mut self) -> &mut Space {
-        &mut self.space
-    }
-
-    fn popup_manager(&mut self) -> &mut PopupManager {
-        &mut self.popup_manager
-    }
-
-    fn visibility(&self) -> Visibility {
-        Visibility::Visible
-    }
-
-    fn raise_window(&mut self, w: &Window, activate: bool) {
-        self.space.raise_window(w, activate);
-    }
-
-    fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
-        self.last_dirty = Some(Instant::now());
-
-        if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
-            let old_bbox = w.bbox();
-            self.space.commit(&s);
-            w.refresh();
-            let new_bbox = w.bbox();
-            if old_bbox.size != new_bbox.size {
-                self.full_clear = 4;
-            }
-
-            // TODO improve this for when there are changes to the lists of plugins while running
-            let padding: Size<i32, Logical> = (
-                (2 * self.config.padding()).try_into().unwrap(),
-                (2 * self.config.padding()).try_into().unwrap(),
-            )
-                .into();
-            let size = self.constrain_dim(padding + w.bbox().size);
-            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
-            let mut wait_configure_dim = self
-                .next_render_event
-                .get()
-                .map(|e| match e {
-                    SpaceEvent::Configure {
-                        first,
-                        width,
-                        height,
-                        serial: _serial,
-                    } => (width, height),
-                    SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
-                    _ => self.dimensions.into(),
-                })
-                .unwrap_or(pending_dimensions.into());
-            if self.dimensions.w < size.w
-                && pending_dimensions.w < size.w
-                && wait_configure_dim.0 < size.w
-            {
-                self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
-                wait_configure_dim.0 = size.w;
-            }
-            if self.dimensions.h < size.h
-                && pending_dimensions.h < size.h
-                && wait_configure_dim.1 < size.h
-            {
-                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
-            }
-        }
-    }
-
-    fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
-        self.space.commit(&s);
-        self.space.refresh(&dh);
-        if let Some(p) = self
-            .popups
-            .iter_mut()
-            .find(|p| p.s_surface.wl_surface() == s)
-        {
-            p.dirty = true;
-            self.popup_manager.commit(s);
-        }
-    }
-
-    fn renderer(&mut self) -> Option<&mut Gles2Renderer> {
-        self.renderer.as_mut()
-    }
-
-    fn keyboard_focus_lost(&mut self) {
-        self.close_popups();
     }
 }
 
