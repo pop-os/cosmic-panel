@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use slog::{o, Drain};
+use cosmic_panel_config::CosmicPanelContainerConfig;
+use slog::{o, Drain, warn};
 use smithay::reexports::calloop;
 use xdg_shell_wrapper::run;
 
 mod space;
+mod space_container;
 
 fn main() -> Result<()> {
     dbg!(std::time::Instant::now());
@@ -18,20 +20,28 @@ fn main() -> Result<()> {
     slog_stdlog::init().expect("Could not setup log backend");
 
     let arg = std::env::args().nth(1);
-    let usage = "USAGE: cosmic-panel <profile name>";
+    let usage = "USAGE: cosmic-panel";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
             println!("{}", usage);
             std::process::exit(1);
         }
-        Some(profile) => cosmic_panel_config::CosmicPanelConfig::load(profile, Some(log.clone()))?,
         None => {
+            match cosmic_panel_config::CosmicPanelContainerConfig::load(Some(log.clone())) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(log.clone(), "Falling back to default panel configuration: {}", e);
+                    CosmicPanelContainerConfig::default()
+                },
+            }
+        }
+        _ => {
             println!("{}", usage);
             std::process::exit(1);
         }
     };
 
     let event_loop = calloop::EventLoop::try_new()?;
-    run(space::PanelSpace::new(config, log), event_loop)?;
+    run(space_container::SpaceContainer::new(config, log), event_loop)?;
     Ok(())
 }

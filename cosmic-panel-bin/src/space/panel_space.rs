@@ -110,6 +110,11 @@ impl PanelSpace {
         }
     }
 
+
+    pub(crate) fn next_space_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
+        Rc::clone(&self.next_render_event)
+    }
+
     pub(crate) fn z_index(&self) -> Option<RenderZindex> {
         match self.config.layer() {
             Layer::Background => Some(RenderZindex::Background),

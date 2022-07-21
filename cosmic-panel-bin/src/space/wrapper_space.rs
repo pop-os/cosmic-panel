@@ -440,10 +440,6 @@ impl WrapperSpace for PanelSpace {
         Ok(())
     }
 
-    fn next_space_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
-        Rc::clone(&self.next_render_event)
-    }
-
     fn config(&self) -> Self::Config {
         self.config.clone()
     }
