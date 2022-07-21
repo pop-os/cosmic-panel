@@ -2,8 +2,8 @@
 
 //! Config for cosmic-panel
 
-mod panel_config;
 mod container_config;
+mod panel_config;
 
 pub use container_config::*;
 pub use panel_config::*;

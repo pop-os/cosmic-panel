@@ -13,7 +13,11 @@ impl WrapperSpace for SpaceContainer {
         env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
         c_display: sctk::reexports::client::Display,
         log: slog::Logger,
-        focused_surface: std::rc::Rc<std::cell::RefCell<Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>>>,
+        focused_surface: std::rc::Rc<
+            std::cell::RefCell<
+                Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+            >,
+        >,
     ) {
         // create a space for each config profile and call setup on each
         todo!()
@@ -34,7 +38,10 @@ impl WrapperSpace for SpaceContainer {
         todo!()
     }
 
-    fn handle_button(&mut self, c_focused_surface: &sctk::reexports::client::protocol::wl_surface::WlSurface) -> bool {
+    fn handle_button(
+        &mut self,
+        c_focused_surface: &sctk::reexports::client::protocol::wl_surface::WlSurface,
+    ) -> bool {
         // handle button for the active space
         todo!()
     }
@@ -47,9 +54,13 @@ impl WrapperSpace for SpaceContainer {
     fn add_popup(
         &mut self,
         env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
-        xdg_surface_state: &sctk::reexports::client::Attached<sctk::reexports::protocols::xdg_shell::client::xdg_wm_base::XdgWmBase>,
+        xdg_surface_state: &sctk::reexports::client::Attached<
+            sctk::reexports::protocols::xdg_shell::client::xdg_wm_base::XdgWmBase,
+        >,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: sctk::reexports::client::Main<sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner>,
+        positioner: sctk::reexports::client::Main<
+            sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner,
+        >,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
     ) {
         // add popup to the space with a client that matches the window
@@ -64,14 +75,21 @@ impl WrapperSpace for SpaceContainer {
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: sctk::reexports::client::Main<sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner>,
+        positioner: sctk::reexports::client::Main<
+            sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner,
+        >,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    fn handle_events(&mut self, dh: &smithay::reexports::wayland_server::DisplayHandle, time: u32, focus: &xdg_shell_wrapper::client_state::Focus) -> std::time::Instant {
+    fn handle_events(
+        &mut self,
+        dh: &smithay::reexports::wayland_server::DisplayHandle,
+        time: u32,
+        focus: &xdg_shell_wrapper::client_state::Focus,
+    ) -> std::time::Instant {
         todo!()
     }
 
@@ -98,11 +116,19 @@ impl WrapperSpace for SpaceContainer {
         todo!()
     }
 
-    fn dirty_window(&mut self, dh: &smithay::reexports::wayland_server::DisplayHandle, w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+    fn dirty_window(
+        &mut self,
+        dh: &smithay::reexports::wayland_server::DisplayHandle,
+        w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         todo!()
     }
 
-    fn dirty_popup(&mut self, dh: &smithay::reexports::wayland_server::DisplayHandle, w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+    fn dirty_popup(
+        &mut self,
+        dh: &smithay::reexports::wayland_server::DisplayHandle,
+        w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         todo!()
     }
 

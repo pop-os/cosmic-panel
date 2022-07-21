@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use cosmic_panel_config::CosmicPanelContainerConfig;
-use slog::{o, Drain, warn};
+use slog::{o, warn, Drain};
 use smithay::reexports::calloop;
 use xdg_shell_wrapper::run;
 
@@ -26,15 +26,16 @@ fn main() -> Result<()> {
             println!("{}", usage);
             std::process::exit(1);
         }
-        None => {
-            match cosmic_panel_config::CosmicPanelContainerConfig::load(Some(log.clone())) {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(log.clone(), "Falling back to default panel configuration: {}", e);
-                    CosmicPanelContainerConfig::default()
-                },
+        None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(
+                    log.clone(),
+                    "Falling back to default panel configuration: {}", e
+                );
+                CosmicPanelContainerConfig::default()
             }
-        }
+        },
         _ => {
             println!("{}", usage);
             std::process::exit(1);
@@ -42,6 +43,9 @@ fn main() -> Result<()> {
     };
 
     let event_loop = calloop::EventLoop::try_new()?;
-    run(space_container::SpaceContainer::new(config, log), event_loop)?;
+    run(
+        space_container::SpaceContainer::new(config, log),
+        event_loop,
+    )?;
     Ok(())
 }

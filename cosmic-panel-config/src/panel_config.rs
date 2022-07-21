@@ -2,16 +2,14 @@
 
 //! Config for cosmic-panel
 
-use std::{collections::HashMap, env, fs::File, ops::Range, time::Duration};
+use std::{ops::Range, time::Duration};
 
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
 use serde::{Deserialize, Serialize};
-use slog::Logger;
 use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
-use xdg::BaseDirectories;
 use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};
 
 /// Edge to which the panel is anchored

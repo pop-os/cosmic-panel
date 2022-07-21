@@ -110,7 +110,6 @@ impl PanelSpace {
         }
     }
 
-
     pub(crate) fn next_space_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
         Rc::clone(&self.next_render_event)
     }

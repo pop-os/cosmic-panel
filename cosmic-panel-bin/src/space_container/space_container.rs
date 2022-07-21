@@ -13,9 +13,13 @@ pub struct SpaceContainer {
 }
 
 impl SpaceContainer {
-    pub fn new( config: CosmicPanelContainerConfig, log: Logger) -> Self {
+    pub fn new(config: CosmicPanelContainerConfig, log: Logger) -> Self {
         Self {
-            space_list: config.config_list.iter().map(|c| PanelSpace::new(c.clone(), log.clone())).collect(),
+            space_list: config
+                .config_list
+                .iter()
+                .map(|c| PanelSpace::new(c.clone(), log.clone()))
+                .collect(),
             renderer: None,
         }
     }
