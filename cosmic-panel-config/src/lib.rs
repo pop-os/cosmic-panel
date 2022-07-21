@@ -329,7 +329,10 @@ impl CosmicPanelConfig {
     }
 
     /// get constraints for the thickness of the panel bar
-    pub fn get_dimensions(&self, output_dims: (u32, u32)) -> (Option<Range<u32>>, Option<Range<u32>>) {
+    pub fn get_dimensions(
+        &self,
+        output_dims: (u32, u32),
+    ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
             PanelSize::XS => (8..61),
             PanelSize::S => (8..81),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use anyhow::Result;
-use slog::{Drain, o};
+use slog::{o, Drain};
 use smithay::reexports::calloop;
 use xdg_shell_wrapper::run;
 
@@ -24,9 +24,7 @@ fn main() -> Result<()> {
             println!("{}", usage);
             std::process::exit(1);
         }
-        Some(profile) => {
-            cosmic_panel_config::CosmicPanelConfig::load(profile, Some(log.clone()))?
-        }
+        Some(profile) => cosmic_panel_config::CosmicPanelConfig::load(profile, Some(log.clone()))?,
         None => {
             println!("{}", usage);
             std::process::exit(1);
