@@ -563,41 +563,41 @@ impl WrapperSpace for PanelSpace {
         {
             if let Some((_, prev_foc)) = prev_foc.as_mut() {
                 prev_foc.surface = s.clone();
+                Some(prev_foc.clone())
             } else {
                 self.s_hovered_surface.push(ServerPointerFocus { surface: s, seat_name: seat_name.to_string(), c_pos: (0, 0).into(), s_pos: (x, y).into()}); // TODO better c_pos
+                self.s_hovered_surface.last().cloned()
             }
-            todo!();
         } else {
             if let Some((prev_i, _)) = prev_foc {
                 self.s_hovered_surface.swap_remove(prev_i);
-            } 
+            }
+            None
         }
-        todo!()
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        // let mut prev_len = s_focused_surface.len();
-        // s_focused_surface.retain(|f| {
-            
-        // });
-        // if let Some(i) = self.active_seat_names.iter().position(|s| s.as_str() == seat_name){
-        //     self.active_seat_names.swap_remove(i);
-        //     self.close_popups();
-        // }
+        let prev_len = self.s_focused_surface.len();
+        self.s_focused_surface.retain(|(_, name)| {
+            name != name
+        });
+        if prev_len != self.s_focused_surface.len() {
+            self.close_popups();
+        }
     }
 
-    fn keyboard_enter(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) -> Option<s_WlSurface> {
-        // if self.active_seat_names.iter().find(|s| s.as_str() == seat_name).is_none() {
-        //     self.active_seat_names.push(seat_name.to_string());
-        // } 
+    fn keyboard_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
+        //  anything to do here that isn't done already by handle button press?
         None
     }
 
-    fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        todo!()
+    fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {        
+        self.s_hovered_surface.retain(|focus| {
+            focus.seat_name != seat_name
+        });
     }
 
-    fn pointer_enter(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        todo!()
+    fn pointer_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface) {
+        // anything to do here that isn't done already by update pointer?
     }
 }
