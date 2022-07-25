@@ -217,36 +217,39 @@ impl WrapperSpace for SpaceContainer {
         }       
     }
 
-    fn popups(&self) -> Vec<&xdg_shell_wrapper::space::Popup> {
-        todo!()
-    }
-
     fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles2::Gles2Renderer> {
         todo!()
+        // self.renderer
     }
 
     fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
-        todo!()
+        self.space_list.iter_mut().find_map(|s| s.update_pointer(dim, seat_name))
     }
 
     fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
-        todo!()
+        self.space_list.iter_mut().find_map(|s| s.handle_press(seat_name))
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        todo!()
+        for s in &mut self.space_list {
+            s.keyboard_leave(seat_name, surface.clone());
+        }
     }
 
     fn keyboard_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface)  -> Option<wl_surface::WlSurface> {
-        todo!()
+        self.space_list.iter_mut().find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
     }
 
     fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        todo!()
+        for s in &mut self.space_list {
+            s.pointer_leave(seat_name, surface.clone());
+        }    
     }
 
     fn pointer_enter(&mut self, seat_name: &str, surface: sctk::reexports::client::protocol::wl_surface::WlSurface) {
-        todo!()
+        for s in &mut self.space_list {
+            s.pointer_enter(seat_name, surface.clone());
+        }    
     }
     
 }

@@ -57,9 +57,6 @@ impl WrapperSpace for PanelSpace {
         panic!("this should not be called");
     }
 
-    fn popups(&self) -> Vec<&Popup> {
-        self.popups.iter().collect_vec()
-    }
 
     fn add_window(&mut self, w: Window) {
         self.full_clear = 4;
