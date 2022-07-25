@@ -2,10 +2,11 @@
 
 use std::time::Instant;
 
-use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelConfig, CosmicPanelOuput};
+use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
-use xdg_shell_wrapper::{space::WrapperSpace, client_state::ClientFocus, server_state::ServerFocus};
-
+use smithay::reexports::wayland_server::protocol::wl_surface;
+use xdg_shell_wrapper::{space::WrapperSpace, client_state::ClientFocus, server_state::{ServerFocus, ServerPointerFocus}};
+use sctk::reexports::client::protocol::{wl_surface as c_wl_surface};
 use crate::space::PanelSpace;
 
 use super::SpaceContainer;
@@ -19,14 +20,12 @@ impl WrapperSpace for SpaceContainer {
         c_display: sctk::reexports::client::Display,
         c_focused_surface: ClientFocus,
         c_hovered_surface: ClientFocus,
-        s_focused_surface: ServerFocus,
-        s_hovered_surface: ServerFocus,
     ) {
         // create a space for each config profile which is configured for Active output and call setup on each
         self.space_list = self.config.config_list.iter().filter_map(|config| {
             if matches!(config.output, CosmicPanelOuput::Active) {
                 let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
                 let _ = s.handle_output(env, None, None);
                 Some(s)
             } else {
@@ -35,8 +34,6 @@ impl WrapperSpace for SpaceContainer {
         }).collect_vec();
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
-        self.s_focused_surface = s_focused_surface;
-        self.s_hovered_surface = s_hovered_surface;
     }
 
     fn handle_output(
@@ -58,8 +55,6 @@ impl WrapperSpace for SpaceContainer {
         let c_display = self.c_display.as_ref().unwrap().clone();
         let c_focused_surface = &self.c_focused_surface;
         let c_hovered_surface = &self.c_hovered_surface;
-        let s_focused_surface = &self.s_focused_surface;
-        let s_hovered_surface = &self.s_hovered_surface;
         
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
@@ -67,13 +62,13 @@ impl WrapperSpace for SpaceContainer {
             match &config.output {
                 CosmicPanelOuput::All => {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
                     let _ = s.handle_output(env, Some(output), Some(output_info));
                     Some(s)
                 },
                 CosmicPanelOuput::Name(name) if name == &output_info.name => {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
                     let _ = s.handle_output(env, Some(output), Some(output_info));
                     Some(s)
                 },
@@ -84,13 +79,6 @@ impl WrapperSpace for SpaceContainer {
         Ok(())
     }
 
-    fn handle_button(
-        &mut self,
-        seat_name: &str,
-    ) -> bool {
-        // handle button for the active space
-        todo!()
-    }
 
     fn add_window(&mut self, s_top_level: smithay::desktop::Window) {
         // add window to the space with a client that matches the window
@@ -187,23 +175,28 @@ impl WrapperSpace for SpaceContainer {
         todo!()
     }
 
-    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) {
+    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
         todo!()
     }
 
-    fn keyboard_leave(&mut self, seat_name: &str) {
+    fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
         todo!()
     }
 
-    fn keyboard_enter(&mut self, seat_name: &str) {
+    fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
         todo!()
     }
 
-    fn pointer_leave(&mut self, seat_name: &str) {
+    fn keyboard_enter(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>)  -> Option<wl_surface::WlSurface> {
         todo!()
     }
 
-    fn pointer_enter(&mut self, seat_name: &str) {
+    fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
         todo!()
     }
+
+    fn pointer_enter(&mut self, seat_name: &str, surface: Option<sctk::reexports::client::protocol::wl_surface::WlSurface>) {
+        todo!()
+    }
+    
 }

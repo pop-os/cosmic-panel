@@ -40,7 +40,7 @@ use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     space::{Popup, SpaceEvent, Visibility, ClientEglSurface},
     util::smootherstep,
-    client_state::{ClientFocus, FocusStatus}, server_state::ServerFocus,
+    client_state::{ClientFocus, FocusStatus}, server_state::{ServerFocus, ServerPointerFocus, ServerPtrFocus},
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
@@ -61,12 +61,13 @@ pub(crate) struct PanelSpace {
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) full_clear: u8,
-    pub(crate) next_render_event: Rc<Cell<Option<SpaceEvent>>>,
+    pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
+    // TODO determine if these can be easily removed
     pub(crate) c_focused_surface: ClientFocus,
     pub(crate) c_hovered_surface: ClientFocus,
     pub(crate) s_focused_surface: ServerFocus,
-    pub(crate) s_hovered_surface: ServerFocus,
+    pub(crate) s_hovered_surface: ServerPtrFocus,
     pub(crate) visibility: Visibility,
     pub(crate) pool: Option<AutoMemPool>,
     pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
@@ -79,8 +80,6 @@ pub(crate) struct PanelSpace {
     pub(crate) popups: Vec<Popup>,
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
-    pub(crate) active_seat_names: Vec<String>,
-
 }
 
 impl PanelSpace {
@@ -98,7 +97,7 @@ impl PanelSpace {
             children: Default::default(),
             last_dirty: Default::default(),
             pending_dimensions: Default::default(),
-            next_render_event: Default::default(),
+            space_event: Default::default(),
             dimensions: Default::default(),
             pool: Default::default(),
             layer_shell: Default::default(),
@@ -112,7 +111,6 @@ impl PanelSpace {
             w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
             start_instant: Instant::now(),
-            active_seat_names: Default::default(),
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
             s_focused_surface: Default::default(),
@@ -355,7 +353,7 @@ impl PanelSpace {
     }
 
     pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> Result<(), RenderError<Gles2Renderer>> {
-        if self.next_render_event.get() != None {
+        if self.space_event.get() != None {
             return Ok(());
         }
 
@@ -877,7 +875,7 @@ impl PanelSpace {
         }
         self.handle_focus();
         let mut should_render = false;
-        match self.next_render_event.take() {
+        match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
                 trace!(
                     self.log,
@@ -973,7 +971,7 @@ impl PanelSpace {
                 width,
                 height,
             }) => {
-                self.next_render_event
+                self.space_event
                     .replace(Some(SpaceEvent::WaitConfigure {
                         first,
                         width,
@@ -1012,7 +1010,7 @@ impl PanelSpace {
                             .set_exclusive_zone(list_thickness as i32);
                     }
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
-                    self.next_render_event
+                    self.space_event
                         .replace(Some(SpaceEvent::WaitConfigure {
                             first: false,
                             width: size.w,

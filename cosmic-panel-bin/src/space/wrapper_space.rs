@@ -43,7 +43,7 @@ use xdg_shell_wrapper::{
     client_state::{Env, ClientFocus},
     config::WrapperConfig,
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
-    util::{exec_child, get_client_sock}, server_state::ServerFocus,
+    util::{exec_child, get_client_sock}, server_state::{ServerFocus, ServerPointerFocus},
 };
 
 use cosmic_panel_config::{CosmicPanelConfig};
@@ -281,8 +281,7 @@ impl WrapperSpace for PanelSpace {
                 )
                 .collect_vec();
 
-            // TODO how slow is this? Would it be worth using a faster method of comparing strings?
-            self.children = Iter::new(freedesktop_desktop_entry::default_paths())
+                self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
                     if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
                         Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
@@ -366,7 +365,7 @@ impl WrapperSpace for PanelSpace {
             let size = self.constrain_dim(padding + w.bbox().size);
             let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
             let mut wait_configure_dim = self
-                .next_render_event
+                .space_event
                 .get()
                 .map(|e| match e {
                     SpaceEvent::Configure {
@@ -419,8 +418,6 @@ impl WrapperSpace for PanelSpace {
         c_display: client::Display,
         c_focused_surface: ClientFocus,
         c_hovered_surface: ClientFocus,
-        s_focused_surface: ServerFocus,
-        s_hovered_surface: ServerFocus,
     ) {
         let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
         let pool = env
@@ -431,8 +428,6 @@ impl WrapperSpace for PanelSpace {
         self.pool.replace(pool);
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
-        self.s_focused_surface = s_focused_surface;
-        self.s_hovered_surface = s_hovered_surface;
         self.c_display.replace(c_display);
     }
 
@@ -444,7 +439,7 @@ impl WrapperSpace for PanelSpace {
     ) -> anyhow::Result<()> {
         if let Some(info) = output_info {
             if info.obsolete {
-                todo!()
+                self.space_event.replace(Some(SpaceEvent::Quit));
             }
         }
         self.output = output.cloned().zip(output_info.cloned());
@@ -524,21 +519,21 @@ impl WrapperSpace for PanelSpace {
 
         self.layer_surface.replace(layer_surface);
         self.dimensions = dimensions;
-        self.next_render_event = next_render_event;
+        self.space_event = next_render_event;
         self.full_clear = 4;
         self.layer_shell_wl_surface = Some(c_surface);
         Ok(())
     }
 
     /// returns false to forward the button press, and true to intercept
-    fn handle_button(&mut self, seat_name: &str) -> bool {
+    fn handle_press(&mut self, seat_name: &str) -> Option<s_WlSurface> {
 
         let prev_foc = {
             let c_hovered_surface = self.c_hovered_surface.borrow_mut();
 
             match c_hovered_surface.iter().enumerate().find(|(i, f)| f.1 == seat_name) {
                 Some((i, f)) => (i, f.0.clone()),
-                None => return false,
+                None => return None,
             }
         };
 
@@ -546,16 +541,20 @@ impl WrapperSpace for PanelSpace {
             && !self.popups.is_empty()
         {
             self.close_popups();
-            true
         } else {
-            false
         }
+        self.s_hovered_surface.iter().find_map(|h| {
+            if h.seat_name.as_str() == seat_name {
+                Some(h.surface.clone())
+            } else {
+                None
+            }
+        })
     }
 
     ///  update active window based on pointer location
-    fn update_pointer(&mut self, (x, y): (i32, i32), seat_name: &str) {
-        let mut s_hovered_surface = self.s_hovered_surface.borrow_mut();
-        let mut prev_foc = s_hovered_surface.iter_mut().enumerate().find(|(i, f)| f.1 == seat_name);
+    fn update_pointer(&mut self, (x, y): (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
+        let mut prev_foc = self.s_hovered_surface.iter_mut().enumerate().find(|(i, f)| f.seat_name == seat_name);
 
         // set new focused
         if let Some((_, s, _)) = self
@@ -563,34 +562,42 @@ impl WrapperSpace for PanelSpace {
             .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
         {
             if let Some((_, prev_foc)) = prev_foc.as_mut() {
-                prev_foc.0 = s.clone();
+                prev_foc.surface = s.clone();
             } else {
-                s_hovered_surface.push((s, seat_name.to_string()));
+                self.s_hovered_surface.push(ServerPointerFocus { surface: s, seat_name: seat_name.to_string(), c_pos: (0, 0).into(), s_pos: (x, y).into()}); // TODO better c_pos
             }
-            return;
+            todo!();
         } else {
             if let Some((prev_i, _)) = prev_foc {
-                s_hovered_surface.swap_remove(prev_i);
+                self.s_hovered_surface.swap_remove(prev_i);
             } 
         }
-    }
-
-    fn keyboard_leave(&mut self, seat_name: &str) {
-        if self.active_seat_names.iter().find(|s| s.as_str() == seat_name).is_none() {
-            self.active_seat_names.push(seat_name.to_string());
-            self.close_popups();
-        }
-    }
-
-    fn keyboard_enter(&mut self, seat_name: &str) {
         todo!()
     }
 
-    fn pointer_leave(&mut self, seat_name: &str) {
+    fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
+        // let mut prev_len = s_focused_surface.len();
+        // s_focused_surface.retain(|f| {
+            
+        // });
+        // if let Some(i) = self.active_seat_names.iter().position(|s| s.as_str() == seat_name){
+        //     self.active_seat_names.swap_remove(i);
+        //     self.close_popups();
+        // }
+    }
+
+    fn keyboard_enter(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) -> Option<s_WlSurface> {
+        // if self.active_seat_names.iter().find(|s| s.as_str() == seat_name).is_none() {
+        //     self.active_seat_names.push(seat_name.to_string());
+        // } 
+        None
+    }
+
+    fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
         todo!()
     }
 
-    fn pointer_enter(&mut self, seat_name: &str) {
+    fn pointer_enter(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
         todo!()
     }
 }
