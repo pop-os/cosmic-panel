@@ -33,6 +33,7 @@ impl WrapperSpace for SpaceContainer {
                 None
             }
         }).collect_vec();
+        self.c_display.replace(c_display);
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
     }
