@@ -218,8 +218,7 @@ impl WrapperSpace for SpaceContainer {
     }
 
     fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles2::Gles2Renderer> {
-        todo!()
-        // self.renderer
+        self.renderer.as_mut()
     }
 
     fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
