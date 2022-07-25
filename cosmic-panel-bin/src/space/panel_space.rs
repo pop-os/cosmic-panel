@@ -53,7 +53,6 @@ pub(crate) struct PanelSpace {
     pub config: CosmicPanelConfig,
     pub log: Logger,
     pub(crate) space: Space,
-    pub(crate) popup_manager: PopupManager,
     pub(crate) clients_left: Vec<Client>,
     pub(crate) clients_center: Vec<Client>,
     pub(crate) clients_right: Vec<Client>,
@@ -88,7 +87,6 @@ impl PanelSpace {
         Self {
             config,
             space: Space::new(log.clone()),
-            popup_manager: PopupManager::new(log.clone()),
             log: log,
             full_clear: 0,
             clients_left: Default::default(),
@@ -128,13 +126,13 @@ impl PanelSpace {
         }
     }
 
+    // TODO do we need to commit the popup surface here?
     pub(crate) fn close_popups(&mut self) {
         for w in &mut self.space.windows() {
             for (PopupKind::Xdg(p), _) in
                 PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
                 p.send_popup_done();
-                self.popup_manager.commit(p.wl_surface());
             }
         }
     }
@@ -860,7 +858,10 @@ impl PanelSpace {
     }
 
 
-    pub(crate) fn handle_events(&mut self, dh: &DisplayHandle, time: u32, renderer: &mut Option<Gles2Renderer>) -> Instant {
+    pub(crate) fn handle_events(&mut self, dh: &DisplayHandle, popup_manager: &mut PopupManager, time: u32, renderer: &mut Option<Gles2Renderer>) -> Instant {
+        self.space.refresh(dh);
+        popup_manager.cleanup();
+
         if self
             .children
             .iter_mut()
@@ -1028,7 +1029,7 @@ impl PanelSpace {
 
         self.popups.retain_mut(|p: &mut Popup| {
             p.handle_events(
-                &mut self.popup_manager,
+                popup_manager,
                 renderer.as_ref().unwrap().egl_context(),
                 self.egl_display.as_ref().unwrap(),
                 self.c_display.as_ref().unwrap(),

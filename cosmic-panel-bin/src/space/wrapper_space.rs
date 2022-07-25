@@ -35,7 +35,7 @@ use smithay::{
         renderer::gles2::Gles2Renderer,
     },
     desktop::{Kind, PopupKind, PopupManager, Space, Window, WindowSurfaceType},
-    reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle},
+    reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, self},
     utils::{Logical, Size},
     wayland::shell::xdg::{PopupSurface, PositionerState},
 };
@@ -43,7 +43,7 @@ use xdg_shell_wrapper::{
     client_state::{Env, ClientFocus},
     config::WrapperConfig,
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
-    util::{exec_child, get_client_sock}, server_state::{ServerFocus, ServerPointerFocus},
+    util::{exec_child, get_client_sock}, server_state::{ServerFocus, ServerPointerFocus}, output::c_output_as_s_output,
 };
 
 use cosmic_panel_config::{CosmicPanelConfig};
@@ -53,7 +53,7 @@ use super::PanelSpace;
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
-    fn handle_events(&mut self, _: &DisplayHandle, _: u32) -> Instant {
+    fn handle_events(&mut self, _: &DisplayHandle, _: &mut PopupManager, _: u32) -> Instant {
         panic!("this should not be called");
     }
 
@@ -108,10 +108,6 @@ impl WrapperSpace for PanelSpace {
 
         let wl_surface = s_surface.wl_surface().clone();
         let s_popup_surface = s_surface.clone();
-        self.popup_manager
-            .track_popup(PopupKind::Xdg(s_surface.clone()))
-            .unwrap();
-        self.popup_manager.commit(&wl_surface);
 
         let p_offset = self
             .space
@@ -215,8 +211,6 @@ impl WrapperSpace for PanelSpace {
     ) -> anyhow::Result<()> {
         s_popup.send_repositioned(token);
         s_popup.send_configure()?;
-        self.popup_manager.commit(s_popup.wl_surface());
-
         Ok(())
     }
 
@@ -226,7 +220,7 @@ impl WrapperSpace for PanelSpace {
 
     fn spawn_clients(
         &mut self,
-        display: &mut DisplayHandle,
+        mut display: DisplayHandle,
     ) -> Result<Vec<UnixStream>, anyhow::Error> {
         if self.children.is_empty() {
             let (clients_left, sockets_left): (Vec<_>, Vec<_>) = (0..self
@@ -236,7 +230,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|v| v.len())
                 .unwrap_or(0))
                 .map(|_p| {
-                    let (c, s) = get_client_sock(display);
+                    let (c, s) = get_client_sock(&mut display);
                     (c, s)
                 })
                 .unzip();
@@ -248,7 +242,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|v| v.len())
                 .unwrap_or(0))
                 .map(|_p| {
-                    let (c, s) = get_client_sock(display);
+                    let (c, s) = get_client_sock(&mut display);
                     (c, s)
                 })
                 .unzip();
@@ -260,7 +254,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|v| v.len())
                 .unwrap_or(0))
                 .map(|_p| {
-                    let (c, s) = get_client_sock(display);
+                    let (c, s) = get_client_sock(&mut display);
                     (c, s)
                 })
                 .unzip();
@@ -326,14 +320,6 @@ impl WrapperSpace for PanelSpace {
         self.layer_shell_wl_surface
             .as_mut()
             .map(|wls| wls.destroy());
-    }
-
-    fn space(&mut self) -> &mut Space {
-        &mut self.space
-    }
-
-    fn popup_manager(&mut self) -> &mut PopupManager {
-        &mut self.popup_manager
     }
 
     fn visibility(&self) -> Visibility {
@@ -403,7 +389,6 @@ impl WrapperSpace for PanelSpace {
             .find(|p| p.s_surface.wl_surface() == s)
         {
             p.dirty = true;
-            self.popup_manager.commit(s);
         }
     }
 
@@ -414,6 +399,7 @@ impl WrapperSpace for PanelSpace {
 
     fn setup(
         &mut self,
+        _: wayland_server::DisplayHandle,
         env: &Environment<Env>,
         c_display: client::Display,
         c_focused_surface: ClientFocus,
@@ -433,6 +419,7 @@ impl WrapperSpace for PanelSpace {
 
     fn handle_output(
         &mut self,
+        _: wayland_server::DisplayHandle,
         env: &Environment<Env>,
         output: Option<&c_wl_output::WlOutput>,
         output_info: Option<&OutputInfo>,
@@ -442,6 +429,7 @@ impl WrapperSpace for PanelSpace {
                 self.space_event.replace(Some(SpaceEvent::Quit));
             }
         }
+
         self.output = output.cloned().zip(output_info.cloned());
         let c_surface = env.create_surface();
         let dimensions = self.constrain_dim((1, 1).into());
