@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     process::Child,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, os::raw::c_int,
 };
 
 use itertools::Itertools;
@@ -20,12 +20,12 @@ use sctk::{
     },
     shm::AutoMemPool,
 };
-use slog::Logger;
-use smithay::desktop::space::RenderZindex;
+use slog::{Logger, info, trace};
+use smithay::{desktop::space::RenderZindex, reexports::wayland_server::DisplayHandle, backend::{egl::{EGLContext, context::GlAttributes, ffi::{egl::{GetConfigAttrib, SwapInterval}, self}}, renderer::{Bind, Renderer, Frame, Unbind}}};
 use smithay::{
     backend::{
         egl::{display::EGLDisplay, surface::EGLSurface},
-        renderer::{gles2::Gles2Renderer, utils::draw_surface_tree, Bind, Frame, Renderer, Unbind},
+        renderer::{gles2::Gles2Renderer, utils::draw_surface_tree},
     },
     desktop::{
         draw_window,
@@ -36,10 +36,11 @@ use smithay::{
     reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, Client, Resource},
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
+use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
-    client_state::Focus,
-    space::{Popup, SpaceEvent, Visibility},
+    space::{Popup, SpaceEvent, Visibility, ClientEglSurface},
     util::smootherstep,
+    client_state::{ClientFocus, FocusStatus}, server_state::ServerFocus,
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
@@ -50,7 +51,7 @@ use crate::space::Alignment;
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
     pub config: CosmicPanelConfig,
-    pub log: Option<Logger>,
+    pub log: Logger,
     pub(crate) space: Space,
     pub(crate) popup_manager: PopupManager,
     pub(crate) clients_left: Vec<Client>,
@@ -62,19 +63,24 @@ pub(crate) struct PanelSpace {
     pub(crate) full_clear: u8,
     pub(crate) next_render_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
-    pub(crate) focused_surface: Rc<RefCell<Option<s_WlSurface>>>,
+    pub(crate) c_focused_surface: ClientFocus,
+    pub(crate) c_hovered_surface: ClientFocus,
+    pub(crate) s_focused_surface: ServerFocus,
+    pub(crate) s_hovered_surface: ServerFocus,
     pub(crate) visibility: Visibility,
     pub(crate) pool: Option<AutoMemPool>,
     pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
     pub(crate) output: Option<(c_wl_output::WlOutput, OutputInfo)>,
     pub(crate) c_display: Option<client::Display>,
     pub(crate) egl_display: Option<EGLDisplay>,
-    pub(crate) renderer: Option<Gles2Renderer>,
     pub(crate) layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
     pub(crate) popups: Vec<Popup>,
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
+    pub(crate) start_instant: Instant,
+    pub(crate) active_seat_names: Vec<String>,
+
 }
 
 impl PanelSpace {
@@ -84,7 +90,7 @@ impl PanelSpace {
             config,
             space: Space::new(log.clone()),
             popup_manager: PopupManager::new(log.clone()),
-            log: Some(log),
+            log: log,
             full_clear: 0,
             clients_left: Default::default(),
             clients_center: Default::default(),
@@ -94,24 +100,24 @@ impl PanelSpace {
             pending_dimensions: Default::default(),
             next_render_event: Default::default(),
             dimensions: Default::default(),
-            focused_surface: Default::default(),
             pool: Default::default(),
             layer_shell: Default::default(),
             output: Default::default(),
             c_display: Default::default(),
             egl_display: Default::default(),
-            renderer: Default::default(),
             layer_surface: Default::default(),
             egl_surface: Default::default(),
             layer_shell_wl_surface: Default::default(),
             popups: Default::default(),
             w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
+            start_instant: Instant::now(),
+            active_seat_names: Default::default(),
+            c_focused_surface: Default::default(),
+            c_hovered_surface: Default::default(),
+            s_focused_surface: Default::default(),
+            s_hovered_surface: Default::default(),
         }
-    }
-
-    pub(crate) fn next_space_event(&self) -> Rc<Cell<Option<SpaceEvent>>> {
-        Rc::clone(&self.next_render_event)
     }
 
     pub(crate) fn z_index(&self) -> Option<RenderZindex> {
@@ -135,17 +141,32 @@ impl PanelSpace {
         }
     }
 
-    pub(crate) fn handle_focus(&mut self, focus: &Focus) {
-        // always visible if not configured for autohide
-        if self.config.autohide().is_none() {
-            return;
-        }
-
+    pub(crate) fn handle_focus(&mut self) {
         let layer_surface = self.layer_surface.as_ref().unwrap();
         let layer_shell_wl_surface = self.layer_shell_wl_surface.as_ref().unwrap();
+        let cur_focus = {
+            let c_focused_surface = self.c_focused_surface.borrow();
+            let c_hovered_surface = self.c_hovered_surface.borrow();
+            // always visible if not configured for autohide
+            if self.config.autohide().is_none() {
+                return;
+            }
+
+            c_focused_surface.iter().chain(c_hovered_surface.iter()).fold(FocusStatus::LastFocused(self.start_instant), |acc, (surface, seat_name, f)| {
+                if self.layer_shell_wl_surface.as_ref().map(|s| **s == *surface).unwrap_or(false)  || self.popups.iter().any(|p| &p.c_wl_surface == surface) {
+                    match (&acc, &f) {
+                        (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => if t_cur > t_acc { *f } else { acc }
+                        (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
+                        _ => acc,
+                    }   
+                } else {
+                    acc
+                }
+            })
+        };
         match self.visibility {
             Visibility::Hidden => {
-                if let Focus::Current(_) = focus {
+                if let FocusStatus::Focused = cur_focus {
                     // start transition to visible
                     let margin = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
@@ -159,9 +180,9 @@ impl PanelSpace {
                 }
             }
             Visibility::Visible => {
-                if let Focus::LastFocus(t) = focus {
+                if let FocusStatus::LastFocused(t) = cur_focus {
                     // start transition to hidden
-                    let duration_since_last_focus = match Instant::now().checked_duration_since(*t)
+                    let duration_since_last_focus = match Instant::now().checked_duration_since(t)
                     {
                         Some(d) => d,
                         None => return,
@@ -195,7 +216,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let Focus::Current(_) = focus {
+                if let FocusStatus::Focused = cur_focus {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: now,
@@ -256,7 +277,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let Focus::LastFocus(_) = focus {
+                if let FocusStatus::LastFocused(_) = cur_focus {
                     // start transition to visible
                     self.close_popups();
                     self.visibility = Visibility::TransitionToHidden {
@@ -333,7 +354,7 @@ impl PanelSpace {
         (w.try_into().unwrap(), h.try_into().unwrap()).into()
     }
 
-    pub(crate) fn render(&mut self, time: u32) -> Result<(), RenderError<Gles2Renderer>> {
+    pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> Result<(), RenderError<Gles2Renderer>> {
         if self.next_render_event.get() != None {
             return Ok(());
         }
@@ -342,12 +363,12 @@ impl PanelSpace {
             CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
             CosmicPanelBackground::Color(c) => c,
         };
-        let renderer = self.renderer.as_mut().unwrap();
+
         renderer
             .bind(self.egl_surface.as_ref().unwrap().clone())
             .expect("Failed to bind surface to GL");
 
-        let log_clone = self.log.clone().unwrap();
+        let log_clone = self.log.clone();
         if let Some(o) = self
             .space
             .windows()
@@ -838,5 +859,193 @@ impl PanelSpace {
             };
             self.space.commit(w.toplevel().wl_surface());
         }
+    }
+
+
+    pub(crate) fn handle_events(&mut self, dh: &DisplayHandle, time: u32, renderer: &mut Option<Gles2Renderer>) -> Instant {
+        if self
+            .children
+            .iter_mut()
+            .map(|c| c.try_wait())
+            .all(|r| matches!(r, Ok(Some(_))))
+        {
+            info!(
+                self.log.clone(),
+                "Child processes exited. Now exiting..."
+            );
+            std::process::exit(0);
+        }
+        self.handle_focus();
+        let mut should_render = false;
+        match self.next_render_event.take() {
+            Some(SpaceEvent::Quit) => {
+                trace!(
+                    self.log,
+                    "root layer shell surface removed, exiting..."
+                );
+                for child in &mut self.children {
+                    let _ = child.kill();
+                }
+                std::process::exit(0);
+            }
+            Some(SpaceEvent::Configure {
+                first,
+                width,
+                height,
+                serial: _serial,
+            }) => {
+                if first {
+                    let log = self.log.clone();
+                    let client_egl_surface = ClientEglSurface {
+                        wl_egl_surface: WlEglSurface::new(
+                            self.layer_shell_wl_surface.as_ref().unwrap(),
+                            width,
+                            height,
+                        ),
+                        display: self.c_display.as_ref().unwrap().clone(),
+                    };
+                    let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
+                        .expect("Failed to initialize EGL display");
+
+                    let egl_context = EGLContext::new_with_config(
+                        &egl_display,
+                        GlAttributes {
+                            version: (3, 0),
+                            profile: None,
+                            debug: cfg!(debug_assertions),
+                            vsync: false,
+                        },
+                        Default::default(),
+                        log.clone(),
+                    )
+                    .expect("Failed to initialize EGL context");
+
+                    let mut min_interval_attr = 23239;
+                    unsafe {
+                        GetConfigAttrib(
+                            egl_display.get_display_handle().handle,
+                            egl_context.config_id(),
+                            ffi::egl::MIN_SWAP_INTERVAL as c_int,
+                            &mut min_interval_attr,
+                        );
+                    }
+
+                    let new_renderer = unsafe {
+                        Gles2Renderer::new(egl_context, log.clone())
+                            .expect("Failed to initialize EGL Surface")
+                    };
+                    trace!(log, "{:?}", unsafe {
+                        SwapInterval(egl_display.get_display_handle().handle, 0)
+                    });
+
+                    let egl_surface = Rc::new(
+                        EGLSurface::new(
+                            &egl_display,
+                            new_renderer
+                                .egl_context()
+                                .pixel_format()
+                                .expect("Failed to get pixel format from EGL context "),
+                            new_renderer.egl_context().config_id(),
+                            client_egl_surface,
+                            log.clone(),
+                        )
+                        .expect("Failed to initialize EGL Surface"),
+                    );
+
+                    renderer.replace(new_renderer);
+                    self.egl_surface.replace(egl_surface);
+                    self.egl_display.replace(egl_display);
+                } else if self.dimensions != (width as i32, height as i32).into()
+                    && self.pending_dimensions.is_none()
+                {
+                    self.w_accumulated_damage.drain(..);
+                    self.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .resize(width as i32, height as i32, 0, 0);
+                }
+                self.full_clear = 4;
+                self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                self.dimensions = (width as i32, height as i32).into();
+            }
+            Some(SpaceEvent::WaitConfigure {
+                first,
+                width,
+                height,
+            }) => {
+                self.next_render_event
+                    .replace(Some(SpaceEvent::WaitConfigure {
+                        first,
+                        width,
+                        height,
+                    }));
+            }
+            None => {
+                if let Some(size) = self.pending_dimensions.take() {
+                    let width = size.w.try_into().unwrap();
+                    let height = size.h.try_into().unwrap();
+
+                    self.layer_surface.as_ref().unwrap().set_size(width, height);
+                    if let Visibility::Hidden = self.visibility {
+                        if self.config.exclusive_zone() {
+                            self.layer_surface
+                                .as_ref()
+                                .unwrap()
+                                .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
+                        }
+                        let target = match self.config.anchor() {
+                            PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
+                            PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
+                        } + self.config.get_hide_handle().unwrap() as i32;
+                        self.layer_surface
+                            .as_ref()
+                            .unwrap()
+                            .set_margin(target, target, target, target);
+                    } else if self.config.exclusive_zone() {
+                        let list_thickness = match self.config.anchor() {
+                            PanelAnchor::Left | PanelAnchor::Right => width,
+                            PanelAnchor::Top | PanelAnchor::Bottom => height,
+                        };
+                        self.layer_surface
+                            .as_ref()
+                            .unwrap()
+                            .set_exclusive_zone(list_thickness as i32);
+                    }
+                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    self.next_render_event
+                        .replace(Some(SpaceEvent::WaitConfigure {
+                            first: false,
+                            width: size.w,
+                            height: size.h,
+                        }));
+                } else {
+                    if self.full_clear == 4 {
+                        self.update_window_locations();
+                        self.space.refresh(&dh);
+                    }
+                    should_render = true;
+                }
+            }
+        }
+
+        self.popups.retain_mut(|p: &mut Popup| {
+            p.handle_events(
+                &mut self.popup_manager,
+                renderer.as_ref().unwrap().egl_context(),
+                self.egl_display.as_ref().unwrap(),
+                self.c_display.as_ref().unwrap(),
+            )
+        });
+
+        if should_render {
+            let _ = self.render(renderer.as_mut().unwrap(), time);
+        }
+        if let Some(egl_surface) = self.egl_surface.as_ref() {
+            if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
+                self.full_clear = 4;
+            }
+        }
+
+        self.last_dirty.unwrap_or_else(|| Instant::now())
     }
 }

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use cosmic_panel_config::CosmicPanelContainerConfig;
-use xdg_shell_wrapper::space::WrapperSpace;
+use std::time::Instant;
+
+use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelConfig, CosmicPanelOuput};
+use itertools::Itertools;
+use xdg_shell_wrapper::{space::WrapperSpace, client_state::ClientFocus, server_state::ServerFocus};
+
+use crate::space::PanelSpace;
 
 use super::SpaceContainer;
 
@@ -12,15 +17,26 @@ impl WrapperSpace for SpaceContainer {
         &mut self,
         env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
         c_display: sctk::reexports::client::Display,
-        log: slog::Logger,
-        focused_surface: std::rc::Rc<
-            std::cell::RefCell<
-                Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-            >,
-        >,
+        c_focused_surface: ClientFocus,
+        c_hovered_surface: ClientFocus,
+        s_focused_surface: ServerFocus,
+        s_hovered_surface: ServerFocus,
     ) {
-        // create a space for each config profile and call setup on each
-        todo!()
+        // create a space for each config profile which is configured for Active output and call setup on each
+        self.space_list = self.config.config_list.iter().filter_map(|config| {
+            if matches!(config.output, CosmicPanelOuput::Active) {
+                let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                let _ = s.handle_output(env, None, None);
+                Some(s)
+            } else {
+                None
+            }
+        }).collect_vec();
+        self.c_focused_surface = c_focused_surface;
+        self.c_hovered_surface = c_hovered_surface;
+        self.s_focused_surface = s_focused_surface;
+        self.s_hovered_surface = s_hovered_surface;
     }
 
     fn handle_output(
@@ -29,18 +45,48 @@ impl WrapperSpace for SpaceContainer {
         output: Option<&sctk::reexports::client::protocol::wl_output::WlOutput>,
         output_info: Option<&sctk::output::OutputInfo>,
     ) -> anyhow::Result<()> {
-        // call handle output for the PanelSpace which is configured for this output
-        todo!()
-    }
+        let output = match output {
+            Some(o) => o,
+            None => return Ok(()), // already created and set up
+        };
 
-    fn update_pointer(&mut self, dim: (i32, i32)) {
-        // update pointer for the active space
-        todo!()
+        let output_info = match output_info {
+            Some(o) => o,
+            None => return Ok(()), // already created and set up
+        };
+
+        let c_display = self.c_display.as_ref().unwrap().clone();
+        let c_focused_surface = &self.c_focused_surface;
+        let c_hovered_surface = &self.c_hovered_surface;
+        let s_focused_surface = &self.s_focused_surface;
+        let s_hovered_surface = &self.s_hovered_surface;
+        
+        // TODO error handling
+        // create the spaces that are configured to use this output, including spaces configured for All
+        let mut new_spaces = self.config.config_list.iter().filter_map(|config| {
+            match &config.output {
+                CosmicPanelOuput::All => {
+                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                    let _ = s.handle_output(env, Some(output), Some(output_info));
+                    Some(s)
+                },
+                CosmicPanelOuput::Name(name) if name == &output_info.name => {
+                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    s.setup(env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone(), s_focused_surface.clone(), s_hovered_surface.clone());
+                    let _ = s.handle_output(env, Some(output), Some(output_info));
+                    Some(s)
+                },
+                _ => None,
+            }
+        }).collect_vec();
+        self.space_list.append(&mut new_spaces);
+        Ok(())
     }
 
     fn handle_button(
         &mut self,
-        c_focused_surface: &sctk::reexports::client::protocol::wl_surface::WlSurface,
+        seat_name: &str,
     ) -> bool {
         // handle button for the active space
         todo!()
@@ -66,12 +112,7 @@ impl WrapperSpace for SpaceContainer {
         // add popup to the space with a client that matches the window
         todo!()
     }
-
-    fn keyboard_focus_lost(&mut self) {
-        // take keyboard focus from the active space
-        todo!()
-    }
-
+    
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
@@ -88,9 +129,11 @@ impl WrapperSpace for SpaceContainer {
         &mut self,
         dh: &smithay::reexports::wayland_server::DisplayHandle,
         time: u32,
-        focus: &xdg_shell_wrapper::client_state::Focus,
     ) -> std::time::Instant {
-        todo!()
+        self.space_list.iter_mut().fold(None, |acc, s| {
+            let last_dirtied = s.handle_events(dh, time, &mut self.renderer);
+            acc.map(|i| last_dirtied.max(i))
+        }).unwrap_or_else(|| Instant::now())
     }
 
     fn config(&self) -> Self::Config {
@@ -141,6 +184,26 @@ impl WrapperSpace for SpaceContainer {
     }
 
     fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles2::Gles2Renderer> {
+        todo!()
+    }
+
+    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) {
+        todo!()
+    }
+
+    fn keyboard_leave(&mut self, seat_name: &str) {
+        todo!()
+    }
+
+    fn keyboard_enter(&mut self, seat_name: &str) {
+        todo!()
+    }
+
+    fn pointer_leave(&mut self, seat_name: &str) {
+        todo!()
+    }
+
+    fn pointer_enter(&mut self, seat_name: &str) {
         todo!()
     }
 }
