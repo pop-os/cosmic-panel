@@ -34,7 +34,7 @@ use smithay::{
     backend::{
         renderer::gles2::Gles2Renderer,
     },
-    desktop::{Kind, PopupKind, PopupManager, Space, Window, WindowSurfaceType},
+    desktop::{Kind, PopupManager, Window, WindowSurfaceType},
     reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, self},
     utils::{Logical, Size},
     wayland::shell::xdg::{PopupSurface, PositionerState},
@@ -43,7 +43,7 @@ use xdg_shell_wrapper::{
     client_state::{Env, ClientFocus},
     config::WrapperConfig,
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
-    util::{exec_child, get_client_sock}, server_state::{ServerFocus, ServerPointerFocus}, output::c_output_as_s_output,
+    util::{exec_child, get_client_sock}, server_state::{ServerPointerFocus},
 };
 
 use cosmic_panel_config::{CosmicPanelConfig};
@@ -103,7 +103,6 @@ impl WrapperSpace for PanelSpace {
         let c_wl_surface = env.create_surface().detach();
         let c_xdg_surface = xdg_wm_base.get_xdg_surface(&c_wl_surface);
 
-        let wl_surface = s_surface.wl_surface().clone();
         let s_popup_surface = s_surface.clone();
 
         let p_offset = self
@@ -516,7 +515,7 @@ impl WrapperSpace for PanelSpace {
         let prev_foc = {
             let c_hovered_surface = self.c_hovered_surface.borrow_mut();
 
-            match c_hovered_surface.iter().enumerate().find(|(i, f)| f.1 == seat_name) {
+            match c_hovered_surface.iter().enumerate().find(|(_, f)| f.1 == seat_name) {
                 Some((i, f)) => (i, f.0.clone()),
                 None => return None,
             }
@@ -538,15 +537,21 @@ impl WrapperSpace for PanelSpace {
     }
 
     ///  update active window based on pointer location
-    fn update_pointer(&mut self, (x, y): (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
-        let mut prev_foc = self.s_hovered_surface.iter_mut().enumerate().find(|(i, f)| f.seat_name == seat_name);
+    fn update_pointer(&mut self, (x, y): (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
+        if self.layer_shell_wl_surface.as_ref().map(|s| **s != c_wl_surface).unwrap_or(true) {
+            return None;
+        }
+
+        let mut prev_foc = self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
 
         // set new focused
-        if let Some((_, s, _)) = self
+        if let Some((_, s, p)) = self
             .space
             .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
         {
+            // TODO c_pos depends on whether it is a window or a popup
             if let Some((_, prev_foc)) = prev_foc.as_mut() {
+                prev_foc.s_pos = p;
                 prev_foc.surface = s.clone();
                 Some(prev_foc.clone())
             } else {
@@ -561,28 +566,27 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
+    fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         let prev_len = self.s_focused_surface.len();
         self.s_focused_surface.retain(|(_, name)| {
-            name != name
+            name != seat_name
         });
         if prev_len != self.s_focused_surface.len() {
             self.close_popups();
         }
     }
 
-    fn keyboard_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
-        //  anything to do here that isn't done already by handle button press?
+    fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
         None
     }
 
-    fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {        
+    fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         self.s_hovered_surface.retain(|focus| {
             focus.seat_name != seat_name
         });
     }
 
-    fn pointer_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface) {
-        // anything to do here that isn't done already by update pointer?
+    fn pointer_enter(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
+        self.update_pointer(dim, seat_name, c_wl_surface)
     }
 }

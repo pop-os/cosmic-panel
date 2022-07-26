@@ -148,8 +148,10 @@ impl PanelSpace {
                 return;
             }
 
-            c_focused_surface.iter().chain(c_hovered_surface.iter()).fold(FocusStatus::LastFocused(self.start_instant), |acc, (surface, seat_name, f)| {
-                if self.layer_shell_wl_surface.as_ref().map(|s| **s == *surface).unwrap_or(false)  || self.popups.iter().any(|p| &p.c_wl_surface == surface) {
+            c_focused_surface.iter().chain(c_hovered_surface.iter()).fold(FocusStatus::LastFocused(self.start_instant), |acc, (surface, _, f)| {
+                if self.layer_shell_wl_surface.as_ref().map(|s| **s == *surface).unwrap_or(false)  || self.popups.iter().any(|p| {
+                    &p.c_wl_surface == surface || self.popups.iter().find(|p| p.c_wl_surface == *surface).is_some()
+                }) {
                     match (&acc, &f) {
                         (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => if t_cur > t_acc { *f } else { acc }
                         (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,

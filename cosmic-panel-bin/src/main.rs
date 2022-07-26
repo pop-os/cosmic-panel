@@ -10,7 +10,6 @@ mod space;
 mod space_container;
 
 fn main() -> Result<()> {
-    dbg!(std::time::Instant::now());
     let log = slog::Logger::root(
         slog_async::Async::default(slog_term::term_full().fuse()).fuse(),
         o!(),

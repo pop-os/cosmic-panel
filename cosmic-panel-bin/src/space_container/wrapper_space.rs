@@ -222,8 +222,8 @@ impl WrapperSpace for SpaceContainer {
         self.renderer.as_mut()
     }
 
-    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str) -> Option<ServerPointerFocus> {
-        self.space_list.iter_mut().find_map(|s| s.update_pointer(dim, seat_name))
+    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
+        self.space_list.iter_mut().find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
     }
 
     fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
@@ -246,10 +246,10 @@ impl WrapperSpace for SpaceContainer {
         }    
     }
 
-    fn pointer_enter(&mut self, seat_name: &str, surface: sctk::reexports::client::protocol::wl_surface::WlSurface) {
-        for s in &mut self.space_list {
-            s.pointer_enter(seat_name, surface.clone());
-        }    
+    fn pointer_enter(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
+        self.space_list.iter_mut().find_map(|s| {
+            s.pointer_enter(dim, seat_name, c_wl_surface.clone())
+        })
     }
     
 }
