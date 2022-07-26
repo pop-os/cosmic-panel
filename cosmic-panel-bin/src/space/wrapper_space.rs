@@ -109,7 +109,7 @@ impl WrapperSpace for PanelSpace {
             .space
             .window_location(parent_window)
             .unwrap_or_else(|| (0, 0).into());
-        // dbg!(s.bbox().loc);
+
         positioner.set_size(rect_size.w, rect_size.h);
         positioner.set_anchor_rect(
             anchor_rect.loc.x + p_offset.x,

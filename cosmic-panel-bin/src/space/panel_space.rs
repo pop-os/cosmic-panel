@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     os::raw::c_int,
     process::Child,
     rc::Rc,
@@ -48,13 +48,13 @@ use smithay::{
         utils::{bbox_from_surface_tree, damage_from_surface_tree},
         PopupKind, PopupManager, Space, Window,
     },
-    reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, Client, Resource},
+    reexports::wayland_server::{Client, Resource},
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
-    server_state::{ServerFocus, ServerPointerFocus, ServerPtrFocus},
+    server_state::{ServerFocus, ServerPtrFocus},
     space::{ClientEglSurface, Popup, SpaceEvent, Visibility},
     util::smootherstep,
 };
@@ -78,7 +78,6 @@ pub(crate) struct PanelSpace {
     pub(crate) full_clear: u8,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
-    // TODO determine if these can be easily removed
     pub(crate) c_focused_surface: ClientFocus,
     pub(crate) c_hovered_surface: ClientFocus,
     pub(crate) s_focused_surface: ServerFocus,
@@ -142,7 +141,6 @@ impl PanelSpace {
         }
     }
 
-    // TODO do we need to commit the popup surface here?
     pub(crate) fn close_popups(&mut self) {
         for w in &mut self.space.windows() {
             for (PopupKind::Xdg(p), _) in
