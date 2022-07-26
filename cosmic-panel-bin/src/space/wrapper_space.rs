@@ -545,31 +545,24 @@ impl WrapperSpace for PanelSpace {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        if self
-            .layer_shell_wl_surface
-            .as_ref()
-            .map(|s| **s != c_wl_surface)
-            .unwrap_or(true)
-        {
-            return None;
-        }
-
         let mut prev_foc = self
             .s_hovered_surface
             .iter_mut()
             .enumerate()
             .find(|(_, f)| f.seat_name == seat_name);
 
-        // set new focused
+        // first check if the motion is on a popup's client surface
         if let Some(p) = self
             .popups
             .iter()
             .find(|p| &p.c_wl_surface == &c_wl_surface)
         {
+            let geo = smithay::desktop::PopupKind::  Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
             if let Some((_, prev_foc)) = prev_foc.as_mut() {
-                prev_foc.s_pos = p.position.into();
                 prev_foc.c_pos = p.position.into();
+                prev_foc.s_pos = p.position - geo.loc;
+
                 prev_foc.surface = p.s_surface.wl_surface().clone();
                 Some(prev_foc.clone())
             } else {
@@ -577,33 +570,44 @@ impl WrapperSpace for PanelSpace {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
                     c_pos: p.position.into(),
-                    s_pos: p.position.into(),
-                });
-                self.s_hovered_surface.last().cloned()
-            }
-        } else if let Some((w, s, p)) = self
-            .space
-            .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
-        {
-            if let Some((_, prev_foc)) = prev_foc.as_mut() {
-                prev_foc.s_pos = p;
-                prev_foc.c_pos = w.geometry().loc;
-                prev_foc.surface = s.clone();
-                Some(prev_foc.clone())
-            } else {
-                self.s_hovered_surface.push(ServerPointerFocus {
-                    surface: s,
-                    seat_name: seat_name.to_string(),
-                    c_pos: w.geometry().loc,
-                    s_pos: (x, y).into(),
+                    s_pos: p.position - geo.loc,
                 });
                 self.s_hovered_surface.last().cloned()
             }
         } else {
-            if let Some((prev_i, _)) = prev_foc {
-                self.s_hovered_surface.swap_remove(prev_i);
+            // if not on this panel's client surface exit
+            if self
+                .layer_shell_wl_surface
+                .as_ref()
+                .map(|s| **s != c_wl_surface)
+                .unwrap_or(true)
+            {
+                return None;
+            }   
+            if let Some((w, s, p)) = self
+                .space
+                .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
+            {
+                if let Some((_, prev_foc)) = prev_foc.as_mut() {
+                    prev_foc.s_pos = p;
+                    prev_foc.c_pos = w.geometry().loc;
+                    prev_foc.surface = s.clone();
+                    Some(prev_foc.clone())
+                } else {
+                    self.s_hovered_surface.push(ServerPointerFocus {
+                        surface: s,
+                        seat_name: seat_name.to_string(),
+                        c_pos: w.geometry().loc,
+                        s_pos: (x, y).into(),
+                    });
+                    self.s_hovered_surface.last().cloned()
+                }
+            } else {
+                if let Some((prev_i, _)) = prev_foc {
+                    self.s_hovered_surface.swap_remove(prev_i);
+                }
+                None
             }
-            None
         }
     }
 
