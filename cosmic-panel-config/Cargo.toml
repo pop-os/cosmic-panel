@@ -15,6 +15,6 @@ xdg = "2.4.0"
 gtk4 = { git = "https://github.com/gtk-rs/gtk4-rs", features = ["v4_4"], optional = true }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
 wayland-protocols = { version = "0.29", features = ["client", "unstable_protocols"] }
-# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "panel-refactor" }
-xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "panel-refactor" }
+# xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 regex = "1.6.0"
