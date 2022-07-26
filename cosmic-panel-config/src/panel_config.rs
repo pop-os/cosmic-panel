@@ -2,10 +2,12 @@
 
 //! Config for cosmic-panel
 
-use std::{ops::Range, time::Duration};
+use std::{ops::Range, time::Duration, fmt::Display, str::FromStr};
 
+use anyhow::Ok;
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -23,6 +25,31 @@ pub enum PanelAnchor {
     Top,
     /// anchored to bottom edge
     Bottom,
+}
+
+impl Display for PanelAnchor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PanelAnchor::Left => write!(f, "Left"),
+            PanelAnchor::Right => write!(f, "Right"),
+            PanelAnchor::Top => write!(f, "Top"),
+            PanelAnchor::Bottom => write!(f, "Bottom"),
+        }
+    }
+}
+
+impl FromStr for PanelAnchor {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Left" => Ok(Self::Left),
+            "Right" => Ok(Self::Right),
+            "Top" => Ok(Self::Top),
+            "Bottom" => Ok(Self::Bottom),
+            _ => Err(anyhow::anyhow!("Not a valid PanelAnchor"))
+        }
+    }
 }
 
 impl Default for PanelAnchor {
@@ -92,8 +119,33 @@ pub enum PanelSize {
     L,
     /// XL
     XL,
-    /// Custom Panel Size range,
-    Custom(Range<u32>),
+}
+
+impl Display for PanelSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PanelSize::XS => write!(f, "XS"),
+            PanelSize::S => write!(f, "S"),
+            PanelSize::M => write!(f, "M"),
+            PanelSize::L => write!(f, "L"),
+            PanelSize::XL => write!(f, "XL"),
+        }
+    }
+}
+
+impl FromStr for PanelSize {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "XS" => Ok(Self::XS),
+            "S" => Ok(Self::S),
+            "M" => Ok(Self::M),
+            "L" => Ok(Self::L),
+            "XL" => Ok(Self::XL),
+            _ => Err(anyhow::anyhow!("Not a valid PanelSize"))
+        }
+    }
 }
 
 /// configurable backgrounds for the cosmic panel
@@ -127,6 +179,37 @@ pub enum CosmicPanelOuput {
     Active,
     /// show panel on a specific output
     Name(String),
+}
+
+impl Display for CosmicPanelOuput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CosmicPanelOuput::All => write!(f, "All"),
+            CosmicPanelOuput::Active => write!(f, "Active"),
+            CosmicPanelOuput::Name(n) => write!(f, "Name({})", n),
+
+        }
+    }
+}
+
+impl FromStr for CosmicPanelOuput {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "All" => Ok(Self::All),
+            "Active" => Ok(Self::Active),
+            s => {
+                let re = Regex::new(r"^Name\((\w+)\)$").unwrap();
+                let mut cap = re.captures_iter(s);
+                if let Some(name) = cap.next().and_then(|cap| cap.get(1)) {
+                    Ok(Self::Name(name.as_str().to_string()))
+                } else {
+                    anyhow::bail!("Not a valid CosmicPanelOuput")
+                }
+            }
+        }
+    }
 }
 
 impl Into<WrapperOutput> for CosmicPanelOuput {
@@ -212,7 +295,6 @@ impl CosmicPanelConfig {
             PanelSize::M => 36,
             PanelSize::L => 48,
             PanelSize::XL => 64,
-            PanelSize::Custom(c) => c.end - self.padding,
         }
     }
 
@@ -299,7 +381,6 @@ impl CosmicPanelConfig {
             PanelSize::M => (8..101),
             PanelSize::L => (8..121),
             PanelSize::XL => (8..141),
-            PanelSize::Custom(c) => c.clone(),
         };
         assert!(2 * self.padding < bar_thickness.end);
         bar_thickness.end -= 2 * self.padding;

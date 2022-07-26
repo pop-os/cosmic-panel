@@ -271,6 +271,15 @@ impl WrapperSpace for PanelSpace {
                 )
                 .collect_vec();
 
+            let config_size = self.config.size.to_string().to_string();
+            let config_output = self.config.output.to_string().to_string();
+            let config_anchor = self.config.anchor.to_string().to_string();
+            let env_vars = vec![
+                ("COSMIC_PANEL_SIZE", config_size.as_str()),
+                ("COSMIC_PANEL_OUTPUT", config_output.as_str()),
+                ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
+            ];
+
             self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
                     if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
@@ -282,14 +291,14 @@ impl WrapperSpace for PanelSpace {
                         fs::read_to_string(&path).ok().and_then(|bytes| {
                             if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                                 if let Some(exec) = entry.exec() {
-                                    let requests_host_wayland_display =
-                                        entry.desktop_entry("HostWaylandDisplay").is_some();
+                                    let requests_wayland_display = entry.desktop_entry("HostWaylandDisplay").is_some();
+
                                     return Some(exec_child(
                                         exec,
-                                        Some(self.config.name()),
                                         self.log.clone(),
                                         client_socket.as_raw_fd(),
-                                        requests_host_wayland_display,
+                                        env_vars.clone(),
+                                        requests_wayland_display
                                     ));
                                 }
                             }
