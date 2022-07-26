@@ -42,7 +42,7 @@ use smithay::{
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, Env},
     config::WrapperConfig,
-    server_state::ServerPointerFocus,
+    server_state::{ServerPointerFocus},
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
     util::{exec_child, get_client_sock},
 };
@@ -511,31 +511,41 @@ impl WrapperSpace for PanelSpace {
 
     /// returns false to forward the button press, and true to intercept
     fn handle_press(&mut self, seat_name: &str) -> Option<s_WlSurface> {
-        let prev_foc = {
-            let c_hovered_surface = self.c_hovered_surface.borrow_mut();
+        if let Some(prev_foc) = {
+            let c_hovered_surface = self.c_hovered_surface.borrow();
 
             match c_hovered_surface
                 .iter()
                 .enumerate()
                 .find(|(_, f)| f.1 == seat_name)
             {
-                Some((i, f)) => (i, f.0.clone()),
-                None => return None,
+                Some((i, f)) => Some((i, f.0.clone())),
+                None => {
+                    None
+                },
             }
-        };
+        } {
+            // close popups when panel is pressed
+            if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1 && !self.popups.is_empty()
+            {
+                self.close_popups();
+            }
 
-        if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1 && !self.popups.is_empty()
-        {
-            self.close_popups();
+            self.s_hovered_surface.iter().find_map(|h| {
+                if h.seat_name.as_str() == seat_name {
+                    Some(h.surface.clone())
+                } else {
+                    None
+                }
+            })
         } else {
+            // no hover found
+            // if has keyboard focus remove it and close popups
+            self.keyboard_leave(seat_name, None);
+            None
         }
-        self.s_hovered_surface.iter().find_map(|h| {
-            if h.seat_name.as_str() == seat_name {
-                Some(h.surface.clone())
-            } else {
-                None
-            }
-        })
+
+
     }
 
     ///  update active window based on pointer location
@@ -545,11 +555,15 @@ impl WrapperSpace for PanelSpace {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        let mut prev_foc = self
+        let mut prev_hover = self
             .s_hovered_surface
             .iter_mut()
             .enumerate()
             .find(|(_, f)| f.seat_name == seat_name);
+        let prev_kbd = self
+            .s_focused_surface
+            .iter_mut()
+            .find(|f| f.1 == seat_name);
 
         // first check if the motion is on a popup's client surface
         if let Some(p) = self
@@ -559,7 +573,13 @@ impl WrapperSpace for PanelSpace {
         {
             let geo = smithay::desktop::PopupKind::  Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
-            if let Some((_, prev_foc)) = prev_foc.as_mut() {
+
+            if let Some(prev_kbd) = prev_kbd {
+                prev_kbd.0 = p.s_surface.wl_surface().clone();
+            } else {
+                self.s_focused_surface.push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
+            }
+            if let Some((_, prev_foc)) = prev_hover.as_mut() {
                 prev_foc.c_pos = p.position.into();
                 prev_foc.s_pos = p.position - geo.loc;
 
@@ -574,6 +594,7 @@ impl WrapperSpace for PanelSpace {
                 });
                 self.s_hovered_surface.last().cloned()
             }
+
         } else {
             // if not on this panel's client surface exit
             if self
@@ -588,7 +609,12 @@ impl WrapperSpace for PanelSpace {
                 .space
                 .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
             {
-                if let Some((_, prev_foc)) = prev_foc.as_mut() {
+                if let Some(prev_kbd) = prev_kbd {
+                    prev_kbd.0 = w.toplevel().wl_surface().clone();
+                } else {
+                    self.s_focused_surface.push((w.toplevel().wl_surface().clone(), seat_name.to_string()));
+                }
+                if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = p;
                     prev_foc.c_pos = w.geometry().loc;
                     prev_foc.surface = s.clone();
@@ -603,7 +629,7 @@ impl WrapperSpace for PanelSpace {
                     self.s_hovered_surface.last().cloned()
                 }
             } else {
-                if let Some((prev_i, _)) = prev_foc {
+                if let Some((prev_i, _)) = prev_hover {
                     self.s_hovered_surface.swap_remove(prev_i);
                 }
                 None
@@ -614,6 +640,7 @@ impl WrapperSpace for PanelSpace {
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         let prev_len = self.s_focused_surface.len();
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
+
         if prev_len != self.s_focused_surface.len() {
             self.close_popups();
         }
@@ -622,7 +649,7 @@ impl WrapperSpace for PanelSpace {
     fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
         None
     }
-
+    
     fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         self.s_hovered_surface
             .retain(|focus| focus.seat_name != seat_name);
