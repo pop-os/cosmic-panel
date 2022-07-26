@@ -83,9 +83,7 @@ impl Default for CosmicPanelContainerConfig {
                     size: PanelSize::M,
                     output: CosmicPanelOuput::All,
                     background: CosmicPanelBackground::Color([0.2, 0.2, 0.2, 0.8]),
-                    plugins_left: Some(vec![
-                        "com.system76.CosmicAppletWorkspaces".to_string(),
-                    ]),
+                    plugins_left: Some(vec!["com.system76.CosmicAppletWorkspaces".to_string()]),
                     plugins_center: Some(vec!["com.system76.CosmicAppletTime".to_string()]),
                     plugins_right: Some(vec![
                         "com.system76.CosmicAppletNetwork".to_string(),

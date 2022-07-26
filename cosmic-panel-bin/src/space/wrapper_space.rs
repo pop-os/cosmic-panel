@@ -31,22 +31,23 @@ use sctk::{
 };
 use slog::{info, trace, Logger};
 use smithay::{
-    backend::{
-        renderer::gles2::Gles2Renderer,
-    },
+    backend::renderer::gles2::Gles2Renderer,
     desktop::{Kind, PopupManager, Window, WindowSurfaceType},
-    reexports::wayland_server::{protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, self},
+    reexports::wayland_server::{
+        self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
+    },
     utils::{Logical, Size},
     wayland::shell::xdg::{PopupSurface, PositionerState},
 };
 use xdg_shell_wrapper::{
-    client_state::{Env, ClientFocus},
+    client_state::{ClientFocus, Env},
     config::WrapperConfig,
+    server_state::ServerPointerFocus,
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
-    util::{exec_child, get_client_sock}, server_state::{ServerPointerFocus},
+    util::{exec_child, get_client_sock},
 };
 
-use cosmic_panel_config::{CosmicPanelConfig};
+use cosmic_panel_config::CosmicPanelConfig;
 
 use super::PanelSpace;
 
@@ -56,7 +57,6 @@ impl WrapperSpace for PanelSpace {
     fn handle_events(&mut self, _: &DisplayHandle, _: &mut PopupManager, _: u32) -> Instant {
         panic!("this should not be called");
     }
-
 
     fn add_window(&mut self, w: Window) {
         self.full_clear = 4;
@@ -271,7 +271,7 @@ impl WrapperSpace for PanelSpace {
                 )
                 .collect_vec();
 
-                self.children = Iter::new(freedesktop_desktop_entry::default_paths())
+            self.children = Iter::new(freedesktop_desktop_entry::default_paths())
                 .filter_map(|path| {
                     if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
                         Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
@@ -511,18 +511,20 @@ impl WrapperSpace for PanelSpace {
 
     /// returns false to forward the button press, and true to intercept
     fn handle_press(&mut self, seat_name: &str) -> Option<s_WlSurface> {
-
         let prev_foc = {
             let c_hovered_surface = self.c_hovered_surface.borrow_mut();
 
-            match c_hovered_surface.iter().enumerate().find(|(_, f)| f.1 == seat_name) {
+            match c_hovered_surface
+                .iter()
+                .enumerate()
+                .find(|(_, f)| f.1 == seat_name)
+            {
                 Some((i, f)) => (i, f.0.clone()),
                 None => return None,
             }
         };
 
-        if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1
-            && !self.popups.is_empty()
+        if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1 && !self.popups.is_empty()
         {
             self.close_popups();
         } else {
@@ -537,25 +539,64 @@ impl WrapperSpace for PanelSpace {
     }
 
     ///  update active window based on pointer location
-    fn update_pointer(&mut self, (x, y): (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
-        if self.layer_shell_wl_surface.as_ref().map(|s| **s != c_wl_surface).unwrap_or(true) {
+    fn update_pointer(
+        &mut self,
+        (x, y): (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        if self
+            .layer_shell_wl_surface
+            .as_ref()
+            .map(|s| **s != c_wl_surface)
+            .unwrap_or(true)
+        {
             return None;
         }
 
-        let mut prev_foc = self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
+        let mut prev_foc = self
+            .s_hovered_surface
+            .iter_mut()
+            .enumerate()
+            .find(|(_, f)| f.seat_name == seat_name);
 
         // set new focused
-        if let Some((_, s, p)) = self
+        if let Some(p) = self
+            .popups
+            .iter()
+            .find(|p| &p.c_wl_surface == &c_wl_surface)
+        {
+            // special handling for popup bc they exist on their own client surface
+            if let Some((_, prev_foc)) = prev_foc.as_mut() {
+                prev_foc.s_pos = p.position.into();
+                prev_foc.c_pos = p.position.into();
+                prev_foc.surface = p.s_surface.wl_surface().clone();
+                Some(prev_foc.clone())
+            } else {
+                self.s_hovered_surface.push(ServerPointerFocus {
+                    surface: p.s_surface.wl_surface().clone(),
+                    seat_name: seat_name.to_string(),
+                    c_pos: p.position.into(),
+                    s_pos: p.position.into(),
+                });
+                self.s_hovered_surface.last().cloned()
+            }
+        } else if let Some((w, s, p)) = self
             .space
             .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
         {
-            // TODO c_pos depends on whether it is a window or a popup
             if let Some((_, prev_foc)) = prev_foc.as_mut() {
                 prev_foc.s_pos = p;
+                prev_foc.c_pos = w.geometry().loc;
                 prev_foc.surface = s.clone();
                 Some(prev_foc.clone())
             } else {
-                self.s_hovered_surface.push(ServerPointerFocus { surface: s, seat_name: seat_name.to_string(), c_pos: (0, 0).into(), s_pos: (x, y).into()}); // TODO better c_pos
+                self.s_hovered_surface.push(ServerPointerFocus {
+                    surface: s,
+                    seat_name: seat_name.to_string(),
+                    c_pos: w.geometry().loc,
+                    s_pos: (x, y).into(),
+                });
                 self.s_hovered_surface.last().cloned()
             }
         } else {
@@ -568,9 +609,7 @@ impl WrapperSpace for PanelSpace {
 
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         let prev_len = self.s_focused_surface.len();
-        self.s_focused_surface.retain(|(_, name)| {
-            name != seat_name
-        });
+        self.s_focused_surface.retain(|(_, name)| name != seat_name);
         if prev_len != self.s_focused_surface.len() {
             self.close_popups();
         }
@@ -581,12 +620,16 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
-        self.s_hovered_surface.retain(|focus| {
-            focus.seat_name != seat_name
-        });
+        self.s_hovered_surface
+            .retain(|focus| focus.seat_name != seat_name);
     }
 
-    fn pointer_enter(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
+    fn pointer_enter(
+        &mut self,
+        dim: (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
         self.update_pointer(dim, seat_name, c_wl_surface)
     }
 }

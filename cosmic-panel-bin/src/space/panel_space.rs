@@ -2,9 +2,10 @@
 
 use std::{
     cell::{Cell, RefCell},
+    os::raw::c_int,
     process::Child,
     rc::Rc,
-    time::{Duration, Instant}, os::raw::c_int,
+    time::{Duration, Instant},
 };
 
 use itertools::Itertools;
@@ -20,8 +21,22 @@ use sctk::{
     },
     shm::AutoMemPool,
 };
-use slog::{Logger, info, trace};
-use smithay::{desktop::space::RenderZindex, reexports::wayland_server::DisplayHandle, backend::{egl::{EGLContext, context::GlAttributes, ffi::{egl::{GetConfigAttrib, SwapInterval}, self}}, renderer::{Bind, Renderer, Frame, Unbind}}};
+use slog::{info, trace, Logger};
+use smithay::{
+    backend::{
+        egl::{
+            context::GlAttributes,
+            ffi::{
+                self,
+                egl::{GetConfigAttrib, SwapInterval},
+            },
+            EGLContext,
+        },
+        renderer::{Bind, Frame, Renderer, Unbind},
+    },
+    desktop::space::RenderZindex,
+    reexports::wayland_server::DisplayHandle,
+};
 use smithay::{
     backend::{
         egl::{display::EGLDisplay, surface::EGLSurface},
@@ -38,9 +53,10 @@ use smithay::{
 };
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
-    space::{Popup, SpaceEvent, Visibility, ClientEglSurface},
+    client_state::{ClientFocus, FocusStatus},
+    server_state::{ServerFocus, ServerPointerFocus, ServerPtrFocus},
+    space::{ClientEglSurface, Popup, SpaceEvent, Visibility},
     util::smootherstep,
-    client_state::{ClientFocus, FocusStatus}, server_state::{ServerFocus, ServerPointerFocus, ServerPtrFocus},
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
@@ -148,19 +164,45 @@ impl PanelSpace {
                 return;
             }
 
-            c_focused_surface.iter().chain(c_hovered_surface.iter()).fold(FocusStatus::LastFocused(self.start_instant), |acc, (surface, _, f)| {
-                if self.layer_shell_wl_surface.as_ref().map(|s| **s == *surface).unwrap_or(false)  || self.popups.iter().any(|p| {
-                    &p.c_wl_surface == surface || self.popups.iter().find(|p| p.c_wl_surface == *surface).is_some()
-                }) {
-                    match (&acc, &f) {
-                        (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => if t_cur > t_acc { *f } else { acc }
-                        (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
-                        _ => acc,
-                    }   
-                } else {
-                    acc
-                }
-            })
+            c_focused_surface
+                .iter()
+                .chain(c_hovered_surface.iter())
+                .fold(
+                    FocusStatus::LastFocused(self.start_instant),
+                    |acc, (surface, _, f)| {
+                        if self
+                            .layer_shell_wl_surface
+                            .as_ref()
+                            .map(|s| **s == *surface)
+                            .unwrap_or(false)
+                            || self.popups.iter().any(|p| {
+                                &p.c_wl_surface == surface
+                                    || self
+                                        .popups
+                                        .iter()
+                                        .find(|p| p.c_wl_surface == *surface)
+                                        .is_some()
+                            })
+                        {
+                            match (&acc, &f) {
+                                (
+                                    FocusStatus::LastFocused(t_acc),
+                                    FocusStatus::LastFocused(t_cur),
+                                ) => {
+                                    if t_cur > t_acc {
+                                        *f
+                                    } else {
+                                        acc
+                                    }
+                                }
+                                (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
+                                _ => acc,
+                            }
+                        } else {
+                            acc
+                        }
+                    },
+                )
         };
         match self.visibility {
             Visibility::Hidden => {
@@ -180,8 +222,7 @@ impl PanelSpace {
             Visibility::Visible => {
                 if let FocusStatus::LastFocused(t) = cur_focus {
                     // start transition to hidden
-                    let duration_since_last_focus = match Instant::now().checked_duration_since(t)
-                    {
+                    let duration_since_last_focus = match Instant::now().checked_duration_since(t) {
                         Some(d) => d,
                         None => return,
                     };
@@ -352,7 +393,11 @@ impl PanelSpace {
         (w.try_into().unwrap(), h.try_into().unwrap()).into()
     }
 
-    pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> Result<(), RenderError<Gles2Renderer>> {
+    pub(crate) fn render(
+        &mut self,
+        renderer: &mut Gles2Renderer,
+        time: u32,
+    ) -> Result<(), RenderError<Gles2Renderer>> {
         if self.space_event.get() != None {
             return Ok(());
         }
@@ -859,8 +904,13 @@ impl PanelSpace {
         }
     }
 
-
-    pub(crate) fn handle_events(&mut self, dh: &DisplayHandle, popup_manager: &mut PopupManager, time: u32, renderer: &mut Option<Gles2Renderer>) -> Instant {
+    pub(crate) fn handle_events(
+        &mut self,
+        dh: &DisplayHandle,
+        popup_manager: &mut PopupManager,
+        time: u32,
+        renderer: &mut Option<Gles2Renderer>,
+    ) -> Instant {
         self.space.refresh(dh);
         popup_manager.cleanup();
 
@@ -870,20 +920,14 @@ impl PanelSpace {
             .map(|c| c.try_wait())
             .all(|r| matches!(r, Ok(Some(_))))
         {
-            info!(
-                self.log.clone(),
-                "Child processes exited. Now exiting..."
-            );
+            info!(self.log.clone(), "Child processes exited. Now exiting...");
             std::process::exit(0);
         }
         self.handle_focus();
         let mut should_render = false;
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
-                trace!(
-                    self.log,
-                    "root layer shell surface removed, exiting..."
-                );
+                trace!(self.log, "root layer shell surface removed, exiting...");
                 for child in &mut self.children {
                     let _ = child.kill();
                 }
@@ -974,12 +1018,11 @@ impl PanelSpace {
                 width,
                 height,
             }) => {
-                self.space_event
-                    .replace(Some(SpaceEvent::WaitConfigure {
-                        first,
-                        width,
-                        height,
-                    }));
+                self.space_event.replace(Some(SpaceEvent::WaitConfigure {
+                    first,
+                    width,
+                    height,
+                }));
             }
             None => {
                 if let Some(size) = self.pending_dimensions.take() {
@@ -1013,12 +1056,11 @@ impl PanelSpace {
                             .set_exclusive_zone(list_thickness as i32);
                     }
                     self.layer_shell_wl_surface.as_ref().unwrap().commit();
-                    self.space_event
-                        .replace(Some(SpaceEvent::WaitConfigure {
-                            first: false,
-                            width: size.w,
-                            height: size.h,
-                        }));
+                    self.space_event.replace(Some(SpaceEvent::WaitConfigure {
+                        first: false,
+                        width: size.w,
+                        height: size.h,
+                    }));
                 } else {
                     if self.full_clear == 4 {
                         self.update_window_locations();

@@ -2,12 +2,20 @@
 
 use std::time::Instant;
 
+use crate::space::PanelSpace;
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
-use smithay::{reexports::wayland_server::{protocol::wl_surface, Resource, self}, desktop::PopupManager};
-use xdg_shell_wrapper::{space::WrapperSpace, client_state::ClientFocus, server_state::{ServerFocus, ServerPointerFocus}, output::c_output_as_s_output};
-use sctk::reexports::client::protocol::{wl_surface as c_wl_surface};
-use crate::space::PanelSpace;
+use sctk::reexports::client::protocol::wl_surface as c_wl_surface;
+use smithay::{
+    desktop::PopupManager,
+    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+};
+use xdg_shell_wrapper::{
+    client_state::ClientFocus,
+    output::c_output_as_s_output,
+    server_state::{ServerFocus, ServerPointerFocus},
+    space::WrapperSpace,
+};
 
 use super::SpaceContainer;
 
@@ -23,16 +31,27 @@ impl WrapperSpace for SpaceContainer {
         c_hovered_surface: ClientFocus,
     ) {
         // create a space for each config profile which is configured for Active output and call setup on each
-        self.space_list = self.config.config_list.iter().filter_map(|config| {
-            if matches!(config.output, CosmicPanelOuput::Active) {
-                let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                s.setup(display.clone(), env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
-                let _ = s.handle_output(display.clone(), env, None, None);
-                Some(s)
-            } else {
-                None
-            }
-        }).collect_vec();
+        self.space_list = self
+            .config
+            .config_list
+            .iter()
+            .filter_map(|config| {
+                if matches!(config.output, CosmicPanelOuput::Active) {
+                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    s.setup(
+                        display.clone(),
+                        env,
+                        c_display.clone(),
+                        c_focused_surface.clone(),
+                        c_hovered_surface.clone(),
+                    );
+                    let _ = s.handle_output(display.clone(), env, None, None);
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .collect_vec();
         self.c_display.replace(c_display);
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
@@ -58,26 +77,41 @@ impl WrapperSpace for SpaceContainer {
         let c_display = self.c_display.as_ref().unwrap().clone();
         let c_focused_surface = &self.c_focused_surface;
         let c_hovered_surface = &self.c_hovered_surface;
-        
+
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
-        let mut new_spaces = self.config.config_list.iter().filter_map(|config| {
-            match &config.output {
+        let mut new_spaces = self
+            .config
+            .config_list
+            .iter()
+            .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                    s.setup(display.clone(), env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
+                    s.setup(
+                        display.clone(),
+                        env,
+                        c_display.clone(),
+                        c_focused_surface.clone(),
+                        c_hovered_surface.clone(),
+                    );
                     let _ = s.handle_output(display.clone(), env, Some(output), Some(output_info));
                     Some(s)
-                },
+                }
                 CosmicPanelOuput::Name(name) if name == &output_info.name => {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
-                    s.setup(display.clone(), env, c_display.clone(), c_focused_surface.clone(), c_hovered_surface.clone());
+                    s.setup(
+                        display.clone(),
+                        env,
+                        c_display.clone(),
+                        c_focused_surface.clone(),
+                        c_hovered_surface.clone(),
+                    );
                     let _ = s.handle_output(display.clone(), env, Some(output), Some(output_info));
                     Some(s)
-                },
+                }
                 _ => None,
-            }
-        }).collect_vec();
+            })
+            .collect_vec();
         self.space_list.append(&mut new_spaces);
         // add output to space
         let (s_o, _) = c_output_as_s_output::<Self>(&display, &output_info, self.log.clone());
@@ -88,15 +122,18 @@ impl WrapperSpace for SpaceContainer {
         Ok(())
     }
 
-
     fn add_window(&mut self, s_top_level: smithay::desktop::Window) {
         // add window to the space with a client that matches the window
         let w_client = s_top_level.toplevel().wl_surface().client_id();
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space.clients_center.iter().chain(space.clients_left.iter()).chain(space.clients_right.iter()).find(|c| {
-                Some(c.id()) == w_client
-            }).is_some()
+            space
+                .clients_center
+                .iter()
+                .chain(space.clients_left.iter())
+                .chain(space.clients_right.iter())
+                .find(|c| Some(c.id()) == w_client)
+                .is_some()
         }) {
             space.add_window(s_top_level);
         }
@@ -118,14 +155,24 @@ impl WrapperSpace for SpaceContainer {
         let p_client = s_surface.wl_surface().client_id();
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space.clients_center.iter().chain(space.clients_left.iter()).chain(space.clients_right.iter()).find(|c| {
-                Some(c.id()) == p_client
-            }).is_some()
+            space
+                .clients_center
+                .iter()
+                .chain(space.clients_left.iter())
+                .chain(space.clients_right.iter())
+                .find(|c| Some(c.id()) == p_client)
+                .is_some()
         }) {
-            space.add_popup(env, xdg_surface_state, s_surface, positioner, positioner_state);
-        }    
+            space.add_popup(
+                env,
+                xdg_surface_state,
+                s_surface,
+                positioner,
+                positioner_state,
+            );
+        }
     }
-    
+
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
@@ -139,13 +186,17 @@ impl WrapperSpace for SpaceContainer {
         let p_client = popup.wl_surface().client_id();
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space.clients_center.iter().chain(space.clients_left.iter()).chain(space.clients_right.iter()).find(|c| {
-                Some(c.id()) == p_client
-            }).is_some()
+            space
+                .clients_center
+                .iter()
+                .chain(space.clients_left.iter())
+                .chain(space.clients_right.iter())
+                .find(|c| Some(c.id()) == p_client)
+                .is_some()
         }) {
             space.reposition_popup(popup, positioner, positioner_state, token)?
-        }   
-        anyhow::bail!("Failed to find popup with matching client id") 
+        }
+        anyhow::bail!("Failed to find popup with matching client id")
     }
 
     fn handle_events(
@@ -154,10 +205,13 @@ impl WrapperSpace for SpaceContainer {
         popup_manager: &mut PopupManager,
         time: u32,
     ) -> std::time::Instant {
-        self.space_list.iter_mut().fold(None, |acc, s| {
-            let last_dirtied = s.handle_events(dh, popup_manager, time, &mut self.renderer);
-            acc.map(|i| last_dirtied.max(i))
-        }).unwrap_or_else(|| Instant::now())
+        self.space_list
+            .iter_mut()
+            .fold(None, |acc, s| {
+                let last_dirtied = s.handle_events(dh, popup_manager, time, &mut self.renderer);
+                acc.map(|i| last_dirtied.max(i))
+            })
+            .unwrap_or_else(|| Instant::now())
     }
 
     fn config(&self) -> Self::Config {
@@ -168,10 +222,15 @@ impl WrapperSpace for SpaceContainer {
         &mut self,
         display: smithay::reexports::wayland_server::DisplayHandle,
     ) -> anyhow::Result<Vec<std::os::unix::net::UnixStream>> {
-        Ok(self.space_list.iter_mut().map(|space| {
-            // TODO better error handling
-            space.spawn_clients(display.clone()).unwrap_or_default()
-        }).flatten().collect())
+        Ok(self
+            .space_list
+            .iter_mut()
+            .map(|space| {
+                // TODO better error handling
+                space.spawn_clients(display.clone()).unwrap_or_default()
+            })
+            .flatten()
+            .collect())
     }
 
     fn log(&self) -> Option<slog::Logger> {
@@ -193,12 +252,16 @@ impl WrapperSpace for SpaceContainer {
         let w_client = w.client_id();
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space.clients_center.iter().chain(space.clients_left.iter()).chain(space.clients_right.iter()).find(|c| {
-                Some(c.id()) == w_client
-            }).is_some()
+            space
+                .clients_center
+                .iter()
+                .chain(space.clients_left.iter())
+                .chain(space.clients_right.iter())
+                .find(|c| Some(c.id()) == w_client)
+                .is_some()
         }) {
             space.dirty_window(dh, w);
-        }    
+        }
     }
 
     fn dirty_popup(
@@ -210,24 +273,37 @@ impl WrapperSpace for SpaceContainer {
         let p_client = w.client_id();
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space.clients_center.iter().chain(space.clients_left.iter()).chain(space.clients_right.iter()).find(|c| {
-                Some(c.id()) == p_client
-            }).is_some()
+            space
+                .clients_center
+                .iter()
+                .chain(space.clients_left.iter())
+                .chain(space.clients_right.iter())
+                .find(|c| Some(c.id()) == p_client)
+                .is_some()
         }) {
             space.dirty_window(dh, w);
-        }       
+        }
     }
 
     fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles2::Gles2Renderer> {
         self.renderer.as_mut()
     }
 
-    fn update_pointer(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
-        self.space_list.iter_mut().find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
+    fn update_pointer(
+        &mut self,
+        dim: (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        self.space_list
+            .iter_mut()
+            .find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
     }
 
     fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
-        self.space_list.iter_mut().find_map(|s| s.handle_press(seat_name))
+        self.space_list
+            .iter_mut()
+            .find_map(|s| s.handle_press(seat_name))
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
@@ -236,20 +312,30 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn keyboard_enter(&mut self, seat_name: &str, surface: c_wl_surface::WlSurface)  -> Option<wl_surface::WlSurface> {
-        self.space_list.iter_mut().find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
+    fn keyboard_enter(
+        &mut self,
+        seat_name: &str,
+        surface: c_wl_surface::WlSurface,
+    ) -> Option<wl_surface::WlSurface> {
+        self.space_list
+            .iter_mut()
+            .find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
     }
 
     fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
         for s in &mut self.space_list {
             s.pointer_leave(seat_name, surface.clone());
-        }    
+        }
     }
 
-    fn pointer_enter(&mut self, dim: (i32, i32), seat_name: &str, c_wl_surface: c_wl_surface::WlSurface) -> Option<ServerPointerFocus> {
-        self.space_list.iter_mut().find_map(|s| {
-            s.pointer_enter(dim, seat_name, c_wl_surface.clone())
-        })
+    fn pointer_enter(
+        &mut self,
+        dim: (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        self.space_list
+            .iter_mut()
+            .find_map(|s| s.pointer_enter(dim, seat_name, c_wl_surface.clone()))
     }
-    
 }

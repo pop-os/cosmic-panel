@@ -5,7 +5,10 @@ use std::{cell::RefCell, rc::Rc};
 use cosmic_panel_config::CosmicPanelContainerConfig;
 use sctk::reexports::client;
 use slog::Logger;
-use smithay::{backend::renderer::gles2::Gles2Renderer, reexports::wayland_server::protocol::wl_surface::WlSurface};
+use smithay::{
+    backend::renderer::gles2::Gles2Renderer,
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+};
 use xdg_shell_wrapper::{client_state::ClientFocus, server_state::ServerFocus};
 
 use crate::space::PanelSpace;
@@ -21,7 +24,6 @@ pub struct SpaceContainer {
     pub(crate) s_focused_surface: ServerFocus,
     pub(crate) s_hovered_surface: ServerFocus,
     pub log: Logger,
-
 }
 
 impl SpaceContainer {
