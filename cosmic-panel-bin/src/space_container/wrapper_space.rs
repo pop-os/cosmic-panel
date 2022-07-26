@@ -281,7 +281,7 @@ impl WrapperSpace for SpaceContainer {
                 .find(|c| Some(c.id()) == p_client)
                 .is_some()
         }) {
-            space.dirty_window(dh, w);
+            space.dirty_popup(dh, w);
         }
     }
 
