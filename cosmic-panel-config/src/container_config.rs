@@ -113,7 +113,7 @@ impl Default for CosmicPanelContainerConfig {
                     expand_to_edges: true,
                     padding: 4,
                     spacing: 4,
-                    exclusive_zone: true,
+                    exclusive_zone: false,
                     autohide: Some(AutoHide {
                         wait_time: 500,
                         transition_time: 200,
