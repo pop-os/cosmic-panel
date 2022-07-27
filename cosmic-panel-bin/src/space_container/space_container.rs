@@ -21,8 +21,6 @@ pub struct SpaceContainer {
     pub(crate) c_display: Option<client::Display>,
     pub(crate) c_focused_surface: ClientFocus,
     pub(crate) c_hovered_surface: ClientFocus,
-    pub(crate) s_focused_surface: ServerFocus,
-    pub(crate) s_hovered_surface: ServerFocus,
     pub log: Logger,
 }
 
@@ -36,8 +34,6 @@ impl SpaceContainer {
             c_display: None,
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
-            s_focused_surface: Default::default(),
-            s_hovered_surface: Default::default(),
         }
     }
 }
