@@ -86,6 +86,8 @@ impl WrapperSpace for SpaceContainer {
             .iter()
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
+                    let mut config = config.clone();
+                    config.output = CosmicPanelOuput::Name(output_info.name.clone());
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
                     s.setup(
                         display.clone(),
