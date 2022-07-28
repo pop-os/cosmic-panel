@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::Itertools;
+use itertools::{Itertools, izip};
 use sctk::{
     environment::Environment,
     output::OutputInfo,
@@ -37,11 +37,10 @@ use smithay::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
     utils::{Logical, Size},
-    wayland::shell::xdg::{PopupSurface, PositionerState},
+    wayland::{shell::xdg::{PopupSurface, PositionerState}, output::Output},
 };
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, Env},
-    config::WrapperConfig,
     server_state::{ServerPointerFocus},
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
     util::{exec_child, get_client_sock},
@@ -426,7 +425,8 @@ impl WrapperSpace for PanelSpace {
         &mut self,
         _: wayland_server::DisplayHandle,
         env: &Environment<Env>,
-        output: Option<&c_wl_output::WlOutput>,
+        c_output: Option<c_wl_output::WlOutput>,
+        s_output: Option<Output>,
         output_info: Option<&OutputInfo>,
     ) -> anyhow::Result<()> {
         if let Some(info) = output_info {
@@ -435,12 +435,12 @@ impl WrapperSpace for PanelSpace {
             }
         }
 
-        self.output = output.cloned().zip(output_info.cloned());
+        self.output = izip!(c_output.clone().into_iter(), s_output.clone().into_iter(), output_info.cloned()).next();
         let c_surface = env.create_surface();
         let dimensions = self.constrain_dim((1, 1).into());
         let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
             &c_surface,
-            output,
+            c_output.as_ref(),
             self.config.layer(),
             "".to_owned(),
         );

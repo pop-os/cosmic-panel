@@ -35,7 +35,7 @@ use smithay::{
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::space::RenderZindex,
-    reexports::wayland_server::DisplayHandle,
+    reexports::wayland_server::DisplayHandle, wayland::output::Output,
 };
 use smithay::{
     backend::{
@@ -85,7 +85,7 @@ pub(crate) struct PanelSpace {
     pub(crate) visibility: Visibility,
     pub(crate) pool: Option<AutoMemPool>,
     pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
-    pub(crate) output: Option<(c_wl_output::WlOutput, OutputInfo)>,
+    pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
     pub(crate) c_display: Option<client::Display>,
     pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
@@ -365,7 +365,7 @@ impl PanelSpace {
         let output_dims = self
             .output
             .as_ref()
-            .map(|(_, info)| info.modes[0].dimensions);
+            .map(|(_, _, info)| info.modes[0].dimensions);
         let (min_w, min_h) = (
             1.max(self.config.padding() * 2),
             1.max(self.config.padding() * 2),
@@ -395,7 +395,7 @@ impl PanelSpace {
         &mut self,
         renderer: &mut Gles2Renderer,
         time: u32,
-    ) -> Result<(), RenderError<Gles2Renderer>> {
+    ) -> anyhow::Result<()> {
         if self.space_event.get() != None {
             return Ok(());
         }
@@ -405,17 +405,15 @@ impl PanelSpace {
             CosmicPanelBackground::Color(c) => c,
         };
 
+        let _ = renderer.unbind();
         renderer
-            .bind(self.egl_surface.as_ref().unwrap().clone())
-            .expect("Failed to bind surface to GL");
-
+            .bind(self.egl_surface.as_ref().unwrap().clone())?;
+        
         let log_clone = self.log.clone();
-        if let Some(o) = self
-            .space
-            .windows()
-            .find_map(|w| self.space.outputs_for_window(w).pop())
+        if let Some((o, info)) = &self.output.as_ref().and_then(|(_, o, info)| Some((o, info)))
         {
-            let output_size = o.current_mode().ok_or(RenderError::OutputNoMode)?.size;
+            dbg!(&self.config.name, &info.name, &self.space.windows().collect_vec().len());
+            let output_size = o.current_mode().ok_or(anyhow::anyhow!("output no mode"))?.size;
             // TODO handle fractional scaling?
             // let output_scale = o.current_scale().fractional_scale();
             // We explicitly use ceil for the output geometry size to make sure the damage
@@ -539,8 +537,7 @@ impl PanelSpace {
                         None
                     } else {
                         Some(&mut damage)
-                    })
-                    .expect("Failed to swap buffers.");
+                    })?;
             }
 
             // Popup rendering
@@ -554,8 +551,7 @@ impl PanelSpace {
             }) {
                 let _ = renderer.unbind();
                 renderer
-                    .bind(p.egl_surface.as_ref().unwrap().clone())
-                    .expect("Failed to bind surface to GL");
+                    .bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
                 let cur_damage = if p.full_clear > 0 {
                     vec![]
@@ -614,8 +610,7 @@ impl PanelSpace {
                         None
                     } else {
                         Some(&mut damage)
-                    })
-                    .expect("Failed to swap buffers.");
+                    })?;
                 p.dirty = false;
                 p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
             }
@@ -973,9 +968,13 @@ impl PanelSpace {
                         );
                     }
 
-                    let new_renderer = unsafe {
-                        Gles2Renderer::new(egl_context, log.clone())
-                            .expect("Failed to initialize EGL Surface")
+                    let new_renderer = if let Some(renderer) = renderer.take() {
+                        renderer
+                    } else {
+                        unsafe {
+                            Gles2Renderer::new(egl_context, log.clone())
+                                .expect("Failed to initialize EGL Surface")
+                        }
                     };
                     trace!(log, "{:?}", unsafe {
                         SwapInterval(egl_display.get_display_handle().handle, 0)

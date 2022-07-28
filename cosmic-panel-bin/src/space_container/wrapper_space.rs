@@ -8,12 +8,11 @@ use itertools::Itertools;
 use sctk::reexports::client::protocol::wl_surface as c_wl_surface;
 use smithay::{
     desktop::PopupManager,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+    reexports::wayland_server::{self, protocol::wl_surface, Resource}, wayland::output::Output,
 };
 use xdg_shell_wrapper::{
     client_state::ClientFocus,
-    output::c_output_as_s_output,
-    server_state::{ServerFocus, ServerPointerFocus},
+    server_state::ServerPointerFocus,
     space::WrapperSpace,
 };
 
@@ -45,7 +44,7 @@ impl WrapperSpace for SpaceContainer {
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, None, None);
+                    let _ = s.handle_output(display.clone(), env, None, None, None);
                     Some(s)
                 } else {
                     None
@@ -61,10 +60,16 @@ impl WrapperSpace for SpaceContainer {
         &mut self,
         display: wayland_server::DisplayHandle,
         env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
-        output: Option<&sctk::reexports::client::protocol::wl_output::WlOutput>,
+        c_output: Option<sctk::reexports::client::protocol::wl_output::WlOutput>,
+        s_output: Option<Output>,
         output_info: Option<&sctk::output::OutputInfo>,
     ) -> anyhow::Result<()> {
-        let output = match output {
+        let c_output = match c_output {
+            Some(o) => o,
+            None => return Ok(()), // already created and set up
+        };
+
+        let s_output = match s_output {
             Some(o) => o,
             None => return Ok(()), // already created and set up
         };
@@ -96,7 +101,7 @@ impl WrapperSpace for SpaceContainer {
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, Some(output), Some(output_info));
+                    let _ = s.handle_output(display.clone(), env, Some(c_output.clone()), Some(s_output.clone()), Some(output_info));
                     Some(s)
                 }
                 CosmicPanelOuput::Name(name) if name == &output_info.name => {
@@ -108,7 +113,7 @@ impl WrapperSpace for SpaceContainer {
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, Some(output), Some(output_info));
+                    let _ = s.handle_output(display.clone(), env, Some(c_output.clone()), Some(s_output.clone()), Some(output_info));
                     Some(s)
                 }
                 _ => None,
@@ -116,9 +121,8 @@ impl WrapperSpace for SpaceContainer {
             .collect_vec();
         self.space_list.append(&mut new_spaces);
         // add output to space
-        let (s_o, _) = c_output_as_s_output::<Self>(&display, &output_info, self.log.clone());
         for s in &mut self.space_list {
-            s.space.map_output(&s_o, output_info.location);
+            s.space.map_output(&s_output, output_info.location);
         }
 
         Ok(())
