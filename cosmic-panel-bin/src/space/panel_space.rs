@@ -412,7 +412,6 @@ impl PanelSpace {
         let log_clone = self.log.clone();
         if let Some((o, info)) = &self.output.as_ref().and_then(|(_, o, info)| Some((o, info)))
         {
-            dbg!(&self.config.name, &info.name, &self.space.windows().collect_vec().len());
             let output_size = o.current_mode().ok_or(anyhow::anyhow!("output no mode"))?.size;
             // TODO handle fractional scaling?
             // let output_scale = o.current_scale().fractional_scale();
