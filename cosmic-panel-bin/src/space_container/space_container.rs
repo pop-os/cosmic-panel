@@ -19,8 +19,8 @@ pub struct SpaceContainer {
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<Gles2Renderer>,
     pub(crate) c_display: Option<client::Display>,
-    pub(crate) c_focused_surface: ClientFocus,
-    pub(crate) c_hovered_surface: ClientFocus,
+    pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
+    pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub log: Logger,
 }
 

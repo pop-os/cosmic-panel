@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     ffi::OsString,
     fs,
     os::unix::{net::UnixStream, prelude::AsRawFd},
@@ -32,11 +32,11 @@ use sctk::{
 use slog::{info, trace, Logger};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    desktop::{Kind, PopupManager, Window, WindowSurfaceType},
+    desktop::{Kind, PopupManager, Window, WindowSurfaceType, utils::bbox_from_surface_tree},
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
-    utils::{Logical, Size},
+    utils::{Logical, Size, Rectangle},
     wayland::{shell::xdg::{PopupSurface, PositionerState}, output::Output},
 };
 use xdg_shell_wrapper::{
@@ -191,7 +191,7 @@ impl WrapperSpace for PanelSpace {
             egl_surface: None,
             dirty: false,
             popup_state: cur_popup_state,
-            position: (0, 0).into(),
+            rectangle: Rectangle::from_loc_and_size((0,0), (0,0)),
             accumulated_damage: Default::default(),
             full_clear: 4,
         });
@@ -392,6 +392,14 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .find(|p| p.s_surface.wl_surface() == s)
         {
+            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+            if p_bbox != p.rectangle {
+                let first = p.popup_state.get().map(|state| match state {
+                    PopupState::Configure { first, .. } => true,
+                    _ => false
+                }).unwrap_or(false);
+                p.popup_state.replace(Some(PopupState::Configure { first, x: p_bbox.loc.x, y: p_bbox.loc.y, width: p_bbox.size.w, height: p_bbox.size.h }));
+            }
             p.dirty = true;
         }
     }
@@ -406,8 +414,8 @@ impl WrapperSpace for PanelSpace {
         _: wayland_server::DisplayHandle,
         env: &Environment<Env>,
         c_display: client::Display,
-        c_focused_surface: ClientFocus,
-        c_hovered_surface: ClientFocus,
+        c_focused_surface: Rc<RefCell<ClientFocus>>,
+        c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
         let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
         let pool = env
@@ -521,7 +529,7 @@ impl WrapperSpace for PanelSpace {
     /// returns false to forward the button press, and true to intercept
     fn handle_press(&mut self, seat_name: &str) -> Option<s_WlSurface> {
         if let Some(prev_foc) = {
-            let c_hovered_surface = self.c_hovered_surface.borrow();
+            let c_hovered_surface: &ClientFocus = &self.c_hovered_surface.borrow();
 
             match c_hovered_surface
                 .iter()
@@ -589,8 +597,8 @@ impl WrapperSpace for PanelSpace {
                 self.s_focused_surface.push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                prev_foc.c_pos = p.position.into();
-                prev_foc.s_pos = p.position - geo.loc;
+                prev_foc.c_pos = p.rectangle.loc.into();
+                prev_foc.s_pos = p.rectangle.loc - geo.loc;
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
                 Some(prev_foc.clone())
@@ -598,8 +606,8 @@ impl WrapperSpace for PanelSpace {
                 self.s_hovered_surface.push(ServerPointerFocus {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
-                    c_pos: p.position.into(),
-                    s_pos: p.position - geo.loc,
+                    c_pos: p.rectangle.loc.into(),
+                    s_pos: p.rectangle.loc - geo.loc,
                 });
                 self.s_hovered_surface.last().cloned()
             }
@@ -656,6 +664,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
+
         None
     }
     

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::time::Instant;
+use std::{time::Instant, cell::RefCell, rc::Rc};
 
 use crate::space::PanelSpace;
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
@@ -26,8 +26,8 @@ impl WrapperSpace for SpaceContainer {
         display: wayland_server::DisplayHandle,
         env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
         c_display: sctk::reexports::client::Display,
-        c_focused_surface: ClientFocus,
-        c_hovered_surface: ClientFocus,
+        c_focused_surface: Rc<RefCell<ClientFocus>>,
+        c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
         // create a space for each config profile which is configured for Active output and call setup on each
         self.space_list = self

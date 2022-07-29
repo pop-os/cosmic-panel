@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     os::raw::c_int,
     process::Child,
     rc::Rc,
@@ -78,8 +78,8 @@ pub(crate) struct PanelSpace {
     pub(crate) full_clear: u8,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
-    pub(crate) c_focused_surface: ClientFocus,
-    pub(crate) c_hovered_surface: ClientFocus,
+    pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
+    pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) s_focused_surface: ServerFocus,
     pub(crate) s_hovered_surface: ServerPtrFocus,
     pub(crate) visibility: Visibility,
@@ -552,6 +552,7 @@ impl PanelSpace {
                 renderer
                     .bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+                
                 let cur_damage = if p.full_clear > 0 {
                     vec![]
                 } else {
