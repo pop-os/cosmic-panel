@@ -7,9 +7,8 @@ use sctk::reexports::client;
 use slog::Logger;
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
 };
-use xdg_shell_wrapper::{client_state::ClientFocus, server_state::ServerFocus};
+use xdg_shell_wrapper::client_state::ClientFocus;
 
 use crate::space::PanelSpace;
 

@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::{Itertools, izip};
+use itertools::{izip, Itertools};
 use sctk::{
     environment::Environment,
     output::OutputInfo,
@@ -32,16 +32,19 @@ use sctk::{
 use slog::{info, trace, Logger};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    desktop::{Kind, PopupManager, Window, WindowSurfaceType, utils::bbox_from_surface_tree},
+    desktop::{utils::bbox_from_surface_tree, Kind, PopupManager, Window, WindowSurfaceType},
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
-    utils::{Logical, Size, Rectangle},
-    wayland::{shell::xdg::{PopupSurface, PositionerState}, output::Output},
+    utils::{Logical, Rectangle, Size},
+    wayland::{
+        output::Output,
+        shell::xdg::{PopupSurface, PositionerState},
+    },
 };
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, Env},
-    server_state::{ServerPointerFocus},
+    server_state::ServerPointerFocus,
     space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
     util::{exec_child, get_client_sock},
 };
@@ -191,7 +194,7 @@ impl WrapperSpace for PanelSpace {
             egl_surface: None,
             dirty: false,
             popup_state: cur_popup_state,
-            rectangle: Rectangle::from_loc_and_size((0,0), (0,0)),
+            rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
             accumulated_damage: Default::default(),
             full_clear: 4,
         });
@@ -220,7 +223,7 @@ impl WrapperSpace for PanelSpace {
         if self.children.is_empty() {
             let (clients_left, sockets_left): (Vec<_>, Vec<_>) = (0..self
                 .config
-                .plugins_left
+                .plugins_left()
                 .as_ref()
                 .map(|v| v.len())
                 .unwrap_or(0))
@@ -244,7 +247,7 @@ impl WrapperSpace for PanelSpace {
             self.clients_center = clients_center;
             let (clients_right, sockets_right): (Vec<_>, Vec<_>) = (0..self
                 .config
-                .plugins_right
+                .plugins_right()
                 .as_ref()
                 .map(|v| v.len())
                 .unwrap_or(0))
@@ -257,10 +260,10 @@ impl WrapperSpace for PanelSpace {
 
             let mut desktop_ids = self
                 .config
-                .plugins_left
-                .iter()
-                .chain(self.config.plugins_center.iter())
-                .chain(self.config.plugins_right.iter())
+                .plugins_left()
+                .into_iter()
+                .chain(self.config.plugins_center().into_iter())
+                .chain(self.config.plugins_right().into_iter())
                 .flatten()
                 .zip(
                     sockets_left
@@ -269,7 +272,7 @@ impl WrapperSpace for PanelSpace {
                         .chain(sockets_right.into_iter()),
                 )
                 .collect_vec();
-
+            
             let config_size = self.config.size.to_string().to_string();
             let config_output = self.config.output.to_string().to_string();
             let config_anchor = self.config.anchor.to_string().to_string();
@@ -290,14 +293,14 @@ impl WrapperSpace for PanelSpace {
                         fs::read_to_string(&path).ok().and_then(|bytes| {
                             if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                                 if let Some(exec) = entry.exec() {
-                                    let requests_wayland_display = entry.desktop_entry("HostWaylandDisplay").is_some();
-
+                                    let requests_wayland_display =
+                                        entry.desktop_entry("HostWaylandDisplay").is_some();
                                     return Some(exec_child(
                                         exec,
                                         self.log.clone(),
                                         client_socket.as_raw_fd(),
                                         env_vars.clone(),
-                                        requests_wayland_display
+                                        requests_wayland_display,
                                     ));
                                 }
                             }
@@ -394,11 +397,21 @@ impl WrapperSpace for PanelSpace {
         {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
             if p_bbox != p.rectangle {
-                let first = p.popup_state.get().map(|state| match state {
-                    PopupState::Configure { first, .. } => true,
-                    _ => false
-                }).unwrap_or(false);
-                p.popup_state.replace(Some(PopupState::Configure { first, x: p_bbox.loc.x, y: p_bbox.loc.y, width: p_bbox.size.w, height: p_bbox.size.h }));
+                let first = p
+                    .popup_state
+                    .get()
+                    .map(|state| match state {
+                        PopupState::Configure { first, .. } => first,
+                        _ => false,
+                    })
+                    .unwrap_or(false);
+                p.popup_state.replace(Some(PopupState::Configure {
+                    first,
+                    x: p_bbox.loc.x,
+                    y: p_bbox.loc.y,
+                    width: p_bbox.size.w,
+                    height: p_bbox.size.h,
+                }));
             }
             p.dirty = true;
         }
@@ -443,7 +456,12 @@ impl WrapperSpace for PanelSpace {
             }
         }
 
-        self.output = izip!(c_output.clone().into_iter(), s_output.clone().into_iter(), output_info.cloned()).next();
+        self.output = izip!(
+            c_output.clone().into_iter(),
+            s_output.clone().into_iter(),
+            output_info.cloned()
+        )
+        .next();
         let c_surface = env.create_surface();
         let dimensions = self.constrain_dim((1, 1).into());
         let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
@@ -537,13 +555,12 @@ impl WrapperSpace for PanelSpace {
                 .find(|(_, f)| f.1 == seat_name)
             {
                 Some((i, f)) => Some((i, f.0.clone())),
-                None => {
-                    None
-                },
+                None => None,
             }
         } {
             // close popups when panel is pressed
-            if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1 && !self.popups.is_empty()
+            if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1
+                && !self.popups.is_empty()
             {
                 self.close_popups();
             }
@@ -561,8 +578,6 @@ impl WrapperSpace for PanelSpace {
             self.keyboard_leave(seat_name, None);
             None
         }
-
-
     }
 
     ///  update active window based on pointer location
@@ -577,10 +592,7 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .enumerate()
             .find(|(_, f)| f.seat_name == seat_name);
-        let prev_kbd = self
-            .s_focused_surface
-            .iter_mut()
-            .find(|f| f.1 == seat_name);
+        let prev_kbd = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
 
         // first check if the motion is on a popup's client surface
         if let Some(p) = self
@@ -588,13 +600,14 @@ impl WrapperSpace for PanelSpace {
             .iter()
             .find(|p| &p.c_wl_surface == &c_wl_surface)
         {
-            let geo = smithay::desktop::PopupKind::  Xdg(p.s_surface.clone()).geometry();
+            let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 
             if let Some(prev_kbd) = prev_kbd {
                 prev_kbd.0 = p.s_surface.wl_surface().clone();
             } else {
-                self.s_focused_surface.push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
+                self.s_focused_surface
+                    .push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
                 prev_foc.c_pos = p.rectangle.loc.into();
@@ -611,7 +624,6 @@ impl WrapperSpace for PanelSpace {
                 });
                 self.s_hovered_surface.last().cloned()
             }
-
         } else {
             // if not on this panel's client surface exit
             if self
@@ -621,7 +633,7 @@ impl WrapperSpace for PanelSpace {
                 .unwrap_or(true)
             {
                 return None;
-            }   
+            }
             if let Some((w, s, p)) = self
                 .space
                 .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
@@ -629,7 +641,8 @@ impl WrapperSpace for PanelSpace {
                 if let Some(prev_kbd) = prev_kbd {
                     prev_kbd.0 = w.toplevel().wl_surface().clone();
                 } else {
-                    self.s_focused_surface.push((w.toplevel().wl_surface().clone(), seat_name.to_string()));
+                    self.s_focused_surface
+                        .push((w.toplevel().wl_surface().clone(), seat_name.to_string()));
                 }
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = p;
@@ -664,10 +677,9 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
-
         None
     }
-    
+
     fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         self.s_hovered_surface
             .retain(|focus| focus.seat_name != seat_name);

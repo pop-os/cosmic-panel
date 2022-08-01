@@ -35,7 +35,8 @@ use smithay::{
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::space::RenderZindex,
-    reexports::wayland_server::DisplayHandle, wayland::output::Output,
+    reexports::wayland_server::DisplayHandle,
+    wayland::output::Output,
 };
 use smithay::{
     backend::{
@@ -44,7 +45,6 @@ use smithay::{
     },
     desktop::{
         draw_window,
-        space::RenderError,
         utils::{bbox_from_surface_tree, damage_from_surface_tree},
         PopupKind, PopupManager, Space, Window,
     },
@@ -391,11 +391,7 @@ impl PanelSpace {
         (w.try_into().unwrap(), h.try_into().unwrap()).into()
     }
 
-    pub(crate) fn render(
-        &mut self,
-        renderer: &mut Gles2Renderer,
-        time: u32,
-    ) -> anyhow::Result<()> {
+    pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> anyhow::Result<()> {
         if self.space_event.get() != None {
             return Ok(());
         }
@@ -406,13 +402,18 @@ impl PanelSpace {
         };
 
         let _ = renderer.unbind();
-        renderer
-            .bind(self.egl_surface.as_ref().unwrap().clone())?;
-        
+        renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
+
         let log_clone = self.log.clone();
-        if let Some((o, info)) = &self.output.as_ref().and_then(|(_, o, info)| Some((o, info)))
+        if let Some((o, _info)) = &self
+            .output
+            .as_ref()
+            .and_then(|(_, o, info)| Some((o, info)))
         {
-            let output_size = o.current_mode().ok_or(anyhow::anyhow!("output no mode"))?.size;
+            let output_size = o
+                .current_mode()
+                .ok_or(anyhow::anyhow!("output no mode"))?
+                .size;
             // TODO handle fractional scaling?
             // let output_scale = o.current_scale().fractional_scale();
             // We explicitly use ceil for the output geometry size to make sure the damage
@@ -549,10 +550,9 @@ impl PanelSpace {
                     }
             }) {
                 let _ = renderer.unbind();
-                renderer
-                    .bind(p.egl_surface.as_ref().unwrap().clone())?;
+                renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-                
+
                 let cur_damage = if p.full_clear > 0 {
                     vec![]
                 } else {
@@ -683,11 +683,8 @@ impl PanelSpace {
         };
 
         let mut num_lists = 0;
-        if self.config.plugins_left.is_some() {
-            num_lists += 1;
-        }
-        if self.config.plugins_right.is_some() {
-            num_lists += 1;
+        if self.config.plugins_wings.is_some() {
+            num_lists += 2;
         }
         let mut is_dock = false;
         if self.config.plugins_center.is_some() {

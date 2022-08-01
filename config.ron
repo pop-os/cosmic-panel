@@ -9,20 +9,22 @@
             size: M,
             output: All,
             background: Color((0.2, 0.2, 0.2, 0.8)),
-            plugins_left: Some([
-                "com.system76.CosmicAppletWorkspaces",
-            ]),
             plugins_center: Some([
                 "com.system76.CosmicAppletTime",
             ]),
-            plugins_right: Some([
-                "com.system76.CosmicAppletNetwork",
-                "com.system76.CosmicAppletGraphics",
-                "com.system76.CosmicAppletBattery",
-                "com.system76.CosmicAppletNotifications",
-                "com.system76.CosmicAppletPower",
-            ]),
-            expand_to_edges: false,
+            plugins_wings: Some((
+                [
+                    "com.system76.CosmicAppletWorkspaces",
+                ],
+                [
+                    "com.system76.CosmicAppletNetwork",
+                    "com.system76.CosmicAppletGraphics",
+                    "com.system76.CosmicAppletBattery",
+                    "com.system76.CosmicAppletNotifications",
+                    "com.system76.CosmicAppletPower",
+                ]
+            )),
+            expand_to_edges: true,
             padding: 2,
             spacing: 2,
             exclusive_zone: true,
@@ -42,7 +44,7 @@
                 "com.system76.CosmicAppList",
             ]),
             plugins_right: None,
-            expand_to_edges: true,
+            expand_to_edges: false,
             padding: 4,
             spacing: 4,
             exclusive_zone: false,

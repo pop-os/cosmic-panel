@@ -2,7 +2,7 @@
 
 //! Config for cosmic-panel
 
-use std::{ops::Range, time::Duration, fmt::Display, str::FromStr};
+use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::Ok;
 #[cfg(feature = "gtk4")]
@@ -47,7 +47,7 @@ impl FromStr for PanelAnchor {
             "Right" => Ok(Self::Right),
             "Top" => Ok(Self::Top),
             "Bottom" => Ok(Self::Bottom),
-            _ => Err(anyhow::anyhow!("Not a valid PanelAnchor"))
+            _ => Err(anyhow::anyhow!("Not a valid PanelAnchor")),
         }
     }
 }
@@ -143,7 +143,7 @@ impl FromStr for PanelSize {
             "M" => Ok(Self::M),
             "L" => Ok(Self::L),
             "XL" => Ok(Self::XL),
-            _ => Err(anyhow::anyhow!("Not a valid PanelSize"))
+            _ => Err(anyhow::anyhow!("Not a valid PanelSize")),
         }
     }
 }
@@ -187,7 +187,6 @@ impl Display for CosmicPanelOuput {
             CosmicPanelOuput::All => write!(f, "All"),
             CosmicPanelOuput::Active => write!(f, "Active"),
             CosmicPanelOuput::Name(n) => write!(f, "Name({})", n),
-
         }
     }
 }
@@ -241,12 +240,10 @@ pub struct CosmicPanelConfig {
     pub output: CosmicPanelOuput,
     /// customized background, or
     pub background: CosmicPanelBackground,
-    /// list of plugins on the left or top of the panel
-    pub plugins_left: Option<Vec<String>>,
+    /// list of plugins on the left / top and right / bottom of the panel
+    pub plugins_wings: Option<(Vec<String>, Vec<String>)>,
     /// list of plugins in the center of the panel
     pub plugins_center: Option<Vec<String>>,
-    /// list of plugins on the right or bottom of the panel
-    pub plugins_right: Option<Vec<String>>,
     /// whether the panel should stretch to the edges of output
     pub expand_to_edges: bool,
     /// padding around the panel
@@ -270,9 +267,8 @@ impl Default for CosmicPanelConfig {
             size: PanelSize::M,
             output: CosmicPanelOuput::All,
             background: CosmicPanelBackground::Color([0.5, 0.0, 0.5, 0.5]),
-            plugins_left: Default::default(),
+            plugins_wings: Default::default(),
             plugins_center: Default::default(),
-            plugins_right: Default::default(),
             expand_to_edges: true,
             padding: 4,
             spacing: 4,
@@ -339,11 +335,11 @@ impl CosmicPanelConfig {
 
     /// get whether the panel should expand to cover the edges of the output
     pub fn expand_to_edges(&self) -> bool {
-        self.expand_to_edges || self.plugins_left.is_some() || self.plugins_right.is_some()
+        self.expand_to_edges || self.plugins_wings.is_some()
     }
 
     pub fn plugins_left(&self) -> Option<Vec<String>> {
-        self.plugins_left.clone()
+        self.plugins_wings.as_ref().map(|w| w.0.clone())
     }
 
     pub fn plugins_center(&self) -> Option<Vec<String>> {
@@ -351,7 +347,7 @@ impl CosmicPanelConfig {
     }
 
     pub fn plugins_right(&self) -> Option<Vec<String>> {
-        self.plugins_right.clone()
+        self.plugins_wings.as_ref().map(|w| w.1.clone())
     }
 
     pub fn anchor(&self) -> PanelAnchor {

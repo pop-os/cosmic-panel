@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::{time::Instant, cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use crate::space::PanelSpace;
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
@@ -8,12 +8,11 @@ use itertools::Itertools;
 use sctk::reexports::client::protocol::wl_surface as c_wl_surface;
 use smithay::{
     desktop::PopupManager,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource}, wayland::output::Output,
+    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+    wayland::output::Output,
 };
 use xdg_shell_wrapper::{
-    client_state::ClientFocus,
-    server_state::ServerPointerFocus,
-    space::WrapperSpace,
+    client_state::ClientFocus, server_state::ServerPointerFocus, space::WrapperSpace,
 };
 
 use super::SpaceContainer;
@@ -101,7 +100,13 @@ impl WrapperSpace for SpaceContainer {
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, Some(c_output.clone()), Some(s_output.clone()), Some(output_info));
+                    let _ = s.handle_output(
+                        display.clone(),
+                        env,
+                        Some(c_output.clone()),
+                        Some(s_output.clone()),
+                        Some(output_info),
+                    );
                     Some(s)
                 }
                 CosmicPanelOuput::Name(name) if name == &output_info.name => {
@@ -113,7 +118,13 @@ impl WrapperSpace for SpaceContainer {
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, Some(c_output.clone()), Some(s_output.clone()), Some(output_info));
+                    let _ = s.handle_output(
+                        display.clone(),
+                        env,
+                        Some(c_output.clone()),
+                        Some(s_output.clone()),
+                        Some(output_info),
+                    );
                     Some(s)
                 }
                 _ => None,
@@ -297,7 +308,7 @@ impl WrapperSpace for SpaceContainer {
 
     // FIXME
     // all pointer / keyboard handling should be called on the active space first, then on the rest
-    // Eg: likely opening a popup on one panel, then without clicking anywhere else, opening a popup on another panel will crash 
+    // Eg: likely opening a popup on one panel, then without clicking anywhere else, opening a popup on another panel will crash
     fn update_pointer(
         &mut self,
         dim: (i32, i32),
