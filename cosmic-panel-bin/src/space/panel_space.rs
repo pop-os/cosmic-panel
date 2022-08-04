@@ -146,7 +146,11 @@ impl PanelSpace {
             for (PopupKind::Xdg(p), _) in
                 PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
-                p.send_popup_done();
+                if self.s_hovered_surface.iter().find(|hs| {
+                    &hs.surface == w.toplevel().wl_surface()
+                }).is_none() {
+                    p.send_popup_done();
+                }
             }
         }
     }
@@ -511,7 +515,7 @@ impl PanelSpace {
                                     w_damage.dedup();
                                     w_damage
                                 };
-
+                                dbg!(time, &w_damage);
                                 if w_damage.len() == 0 {
                                     continue;
                                 }
