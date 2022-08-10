@@ -515,7 +515,6 @@ impl PanelSpace {
                                     w_damage.dedup();
                                     w_damage
                                 };
-                                dbg!(time, &w_damage);
                                 if w_damage.len() == 0 {
                                     continue;
                                 }
