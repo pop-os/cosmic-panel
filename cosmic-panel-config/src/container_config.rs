@@ -80,7 +80,7 @@ impl Default for CosmicPanelContainerConfig {
                     anchor_gap: false,
                     layer: Layer::Top,
                     keyboard_interactivity: KeyboardInteractivity::OnDemand,
-                    size: PanelSize::M,
+                    size: PanelSize::XS,
                     output: CosmicPanelOuput::All,
                     background: CosmicPanelBackground::Color([0.2, 0.2, 0.2, 0.8]),
                     plugins_wings: Some((
