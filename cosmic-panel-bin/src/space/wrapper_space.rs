@@ -32,7 +32,7 @@ use sctk::{
 use slog::{info, trace, Logger};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    desktop::{utils::bbox_from_surface_tree, Kind, PopupManager, Window, WindowSurfaceType},
+    desktop::{Kind, PopupManager, Window, WindowSurfaceType, PopupKind},
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
@@ -395,7 +395,10 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .find(|p| p.s_surface.wl_surface() == s)
         {
-            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+            // TODO use actual bbox eventually
+            // for now use the geometry
+            // let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+            let p_bbox = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.rectangle {
                 let first = p
                     .popup_state
