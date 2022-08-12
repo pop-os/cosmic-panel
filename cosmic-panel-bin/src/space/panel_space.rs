@@ -561,7 +561,7 @@ impl PanelSpace {
                 } else {
                     damage_from_surface_tree(
                         p.s_surface.wl_surface(),
-                        p_geo.to_f64().to_physical(1.0).loc,
+                        (0.0,0.0),
                         1.0,
                         Some((&self.space, &o)),
                     )
