@@ -6,7 +6,7 @@
             anchor_gap: false,
             layer: Top,
             keyboard_interactivity: OnDemand,
-            size: M,
+            size: XS,
             output: All,
             background: Color((0.2, 0.2, 0.2, 0.8)),
             plugins_center: Some([
@@ -39,11 +39,10 @@
             size: L,
             output: All,
             background: Color((0.2, 0.2, 0.2, 0.8)),
-            plugins_left: None,
             plugins_center: Some([
                 "com.system76.CosmicAppList",
             ]),
-            plugins_right: None,
+            plugins_wings: None,
             expand_to_edges: false,
             padding: 4,
             spacing: 4,
