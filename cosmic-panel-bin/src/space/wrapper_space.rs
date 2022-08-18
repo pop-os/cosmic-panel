@@ -38,8 +38,9 @@ use smithay::{
     },
     utils::{Logical, Rectangle, Size},
     wayland::{
+        compositor::with_states,
         output::Output,
-        shell::xdg::{PopupSurface, PositionerState},
+        shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
 };
 use xdg_shell_wrapper::{
@@ -134,6 +135,15 @@ impl WrapperSpace for PanelSpace {
         }
         let c_popup = c_xdg_surface.get_popup(None, &positioner);
         self.layer_surface.as_ref().unwrap().get_popup(&c_popup);
+        
+        let s_window_geometry = with_states(s_popup_surface.wl_surface(), |states| {
+            states
+                .cached_state
+                .current::<SurfaceCachedState>()
+                .geometry
+                .unwrap_or_default()
+        });
+        c_xdg_surface.set_window_geometry(s_window_geometry.loc.x, s_window_geometry.loc.y, s_window_geometry.size.w, s_window_geometry.size.h);
 
         //must be done after role is assigned as popup
         c_wl_surface.commit();
