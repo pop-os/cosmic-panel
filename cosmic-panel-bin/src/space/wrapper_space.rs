@@ -32,7 +32,7 @@ use sctk::{
 use slog::{info, trace, Logger};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    desktop::{Kind, PopupManager, Window, WindowSurfaceType, PopupKind},
+    desktop::{Kind, PopupManager, Window, WindowSurfaceType, PopupKind, utils::bbox_from_surface_tree},
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
@@ -136,14 +136,14 @@ impl WrapperSpace for PanelSpace {
         let c_popup = c_xdg_surface.get_popup(None, &positioner);
         self.layer_surface.as_ref().unwrap().get_popup(&c_popup);
         
-        let s_window_geometry = with_states(s_popup_surface.wl_surface(), |states| {
+        if let Some(s_window_geometry) = with_states(s_popup_surface.wl_surface(), |states| {
             states
                 .cached_state
                 .current::<SurfaceCachedState>()
                 .geometry
-                .unwrap_or_default()
-        });
-        c_xdg_surface.set_window_geometry(s_window_geometry.loc.x, s_window_geometry.loc.y, s_window_geometry.size.w, s_window_geometry.size.h);
+        }) {
+            c_xdg_surface.set_window_geometry(s_window_geometry.loc.x, s_window_geometry.loc.y, s_window_geometry.size.w, s_window_geometry.size.h);
+        }
 
         //must be done after role is assigned as popup
         c_wl_surface.commit();
@@ -407,8 +407,8 @@ impl WrapperSpace for PanelSpace {
         {
             // TODO use actual bbox eventually
             // for now use the geometry
-            // let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-            let p_bbox = PopupKind::Xdg(p.s_surface.clone()).geometry();
+            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+            let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.rectangle {
                 let first = p
                     .popup_state
@@ -418,6 +418,7 @@ impl WrapperSpace for PanelSpace {
                         _ => false,
                     })
                     .unwrap_or(false);
+                p.c_xdg_surface.set_window_geometry(p_geo.loc.x, p_geo.loc.y, p_geo.size.w, p_geo.size.h);
                 p.popup_state.replace(Some(PopupState::Configure {
                     first,
                     x: p_bbox.loc.x,
@@ -613,7 +614,7 @@ impl WrapperSpace for PanelSpace {
             .iter()
             .find(|p| &p.c_wl_surface == &c_wl_surface)
         {
-            let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
+            let bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0,0));
             // special handling for popup bc they exist on their own client surface
 
             if let Some(prev_kbd) = prev_kbd {
@@ -624,7 +625,7 @@ impl WrapperSpace for PanelSpace {
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
                 prev_foc.c_pos = p.rectangle.loc.into();
-                prev_foc.s_pos = p.rectangle.loc - geo.loc;
+                prev_foc.s_pos = p.rectangle.loc - bbox.loc;
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
                 Some(prev_foc.clone())
@@ -633,7 +634,7 @@ impl WrapperSpace for PanelSpace {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
                     c_pos: p.rectangle.loc.into(),
-                    s_pos: p.rectangle.loc - geo.loc,
+                    s_pos: p.rectangle.loc - bbox.loc,
                 });
                 self.s_hovered_surface.last().cloned()
             }

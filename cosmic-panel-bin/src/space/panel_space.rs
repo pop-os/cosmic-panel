@@ -34,7 +34,7 @@ use smithay::{
         },
         renderer::{Bind, Frame, Renderer, Unbind},
     },
-    desktop::space::RenderZindex,
+    desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
     reexports::wayland_server::DisplayHandle,
     wayland::output::Output,
 };
@@ -45,7 +45,7 @@ use smithay::{
     },
     desktop::{
         draw_window,
-        utils::{bbox_from_surface_tree, damage_from_surface_tree},
+        utils::{damage_from_surface_tree},
         PopupKind, PopupManager, Space, Window,
     },
     reexports::wayland_server::{Client, Resource},
@@ -554,8 +554,8 @@ impl PanelSpace {
             }) {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
-                let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
-                // let(shadow_offset_x, shadow_offset_y) = (p_bbox.size.w - p_geo.size.w, p_bbox.size.h - p_geo.size.h);
+                let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+                let(shadow_offset_x, shadow_offset_y) = (p_bbox.size.w - p_bbox.size.w, p_bbox.size.h - p_bbox.size.h);
                 let cur_damage = if p.full_clear > 0 {
                     vec![]
                 } else {
@@ -579,11 +579,11 @@ impl PanelSpace {
                 };
 
                 let _ = renderer.render(
-                    p_geo.size.to_physical(1),
+                    p_bbox.size.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                     |renderer: &mut Gles2Renderer, frame| {
                         let p_damage = if damage.is_empty() {
-                            let mut d = p_geo.to_physical(1);
+                            let mut d = p_bbox.to_physical(1);
                             d.loc = (0,0).into();
                             vec![d]
                         } else {
@@ -596,7 +596,7 @@ impl PanelSpace {
                                 p_damage.iter().cloned().collect_vec().as_slice(),
                             )
                             .expect("Failed to clear frame.");
-                        let mut loc = p_geo.clone().loc;
+                        let mut loc = p_bbox.clone().loc;
                         loc.x *= -1;
                         loc.y *= -1;
                         let _ = draw_surface_tree(
