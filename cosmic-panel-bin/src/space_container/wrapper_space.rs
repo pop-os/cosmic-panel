@@ -274,8 +274,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .find(|c| Some(c.id()) == w_client)
-                .is_some()
+                .any(|c| Some(c.id()) == w_client)
         }) {
             space.dirty_window(dh, w);
         }
@@ -295,8 +294,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .find(|c| Some(c.id()) == p_client)
-                .is_some()
+                .any(|c| Some(c.id()) == p_client)
         }) {
             space.dirty_popup(dh, w);
         }

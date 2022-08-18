@@ -555,7 +555,6 @@ impl PanelSpace {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-                let(shadow_offset_x, shadow_offset_y) = (p_bbox.size.w - p_bbox.size.w, p_bbox.size.h - p_bbox.size.h);
                 let cur_damage = if p.full_clear > 0 {
                     vec![]
                 } else {

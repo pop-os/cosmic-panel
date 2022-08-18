@@ -6,7 +6,7 @@ use std::{
     fs,
     os::unix::{net::UnixStream, prelude::AsRawFd},
     rc::Rc,
-    time::Instant,
+    time::Instant, sync::Mutex,
 };
 
 use anyhow::bail;
@@ -16,7 +16,7 @@ use sctk::{
     environment::Environment,
     output::OutputInfo,
     reexports::{
-        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
+        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface, wl_compositor::WlCompositor},
         client::{self, Attached, Main},
         protocols::{
             wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
@@ -38,7 +38,7 @@ use smithay::{
     },
     utils::{Logical, Rectangle, Size},
     wayland::{
-        compositor::with_states,
+        compositor::{with_states, SurfaceAttributes},
         output::Output,
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
@@ -135,14 +135,24 @@ impl WrapperSpace for PanelSpace {
         }
         let c_popup = c_xdg_surface.get_popup(None, &positioner);
         self.layer_surface.as_ref().unwrap().get_popup(&c_popup);
-        
-        if let Some(s_window_geometry) = with_states(s_popup_surface.wl_surface(), |states| {
-            states
+        let compositor = env.require_global::<WlCompositor>();
+        let input_region = compositor.create_region();
+        if let (Some(s_window_geometry), Some(input_regions)) = with_states(s_popup_surface.wl_surface(), |states| {
+            (states
                 .cached_state
                 .current::<SurfaceCachedState>()
-                .geometry
+                .geometry,
+            states
+                .cached_state
+                .current::<SurfaceAttributes>()
+                .input_region.as_ref().cloned()  
+            )
         }) {
             c_xdg_surface.set_window_geometry(s_window_geometry.loc.x, s_window_geometry.loc.y, s_window_geometry.size.w, s_window_geometry.size.h);
+            for r in input_regions.rects {
+                input_region.add(r.1.loc.x, r.1.loc.y, r.1.size.w, r.1.size.h);
+            }
+            c_wl_surface.set_input_region(Some(&input_region));
         }
 
         //must be done after role is assigned as popup
@@ -207,6 +217,7 @@ impl WrapperSpace for PanelSpace {
             rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
             accumulated_damage: Default::default(),
             full_clear: 4,
+            input_region
         });
     }
 
@@ -405,8 +416,6 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .find(|p| p.s_surface.wl_surface() == s)
         {
-            // TODO use actual bbox eventually
-            // for now use the geometry
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.rectangle {
@@ -419,6 +428,18 @@ impl WrapperSpace for PanelSpace {
                     })
                     .unwrap_or(false);
                 p.c_xdg_surface.set_window_geometry(p_geo.loc.x, p_geo.loc.y, p_geo.size.w, p_geo.size.h);
+                if let Some(input_regions) = with_states(p.s_surface.wl_surface(), |states| {
+                    states
+                        .cached_state
+                        .current::<SurfaceAttributes>()
+                        .input_region.as_ref().cloned() 
+                }) {
+                    p.input_region.subtract (p_bbox.loc.x, p_bbox.loc.y, p_bbox.size.w, p_bbox.size.h);
+                    for r in input_regions.rects {
+                        p.input_region.add(r.1.loc.x, r.1.loc.y, r.1.size.w, r.1.size.h);
+                    }
+                    p.c_wl_surface.set_input_region(Some(&p.input_region));
+                }
                 p.popup_state.replace(Some(PopupState::Configure {
                     first,
                     x: p_bbox.loc.x,
