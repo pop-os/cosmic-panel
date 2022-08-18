@@ -102,7 +102,7 @@ impl PanelSpace {
         Self {
             config,
             space: Space::new(log.clone()),
-            log: log,
+            log,
             full_clear: 0,
             clients_left: Default::default(),
             clients_center: Default::default(),
@@ -146,9 +146,9 @@ impl PanelSpace {
             for (PopupKind::Xdg(p), _) in
                 PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
-                if self.s_hovered_surface.iter().find(|hs| {
+                if !self.s_hovered_surface.iter().any(|hs| {
                     &hs.surface == w.toplevel().wl_surface()
-                }).is_none() {
+                }) {
                     p.send_popup_done();
                 }
             }
@@ -182,8 +182,7 @@ impl PanelSpace {
                                     || self
                                         .popups
                                         .iter()
-                                        .find(|p| p.c_wl_surface == *surface)
-                                        .is_some()
+                                        .any(|p| p.c_wl_surface == *surface)
                             })
                         {
                             match (&acc, &f) {
@@ -412,11 +411,11 @@ impl PanelSpace {
         if let Some((o, _info)) = &self
             .output
             .as_ref()
-            .and_then(|(_, o, info)| Some((o, info)))
+            .map(|(_, o, info)| (o, info))
         {
             let output_size = o
                 .current_mode()
-                .ok_or(anyhow::anyhow!("output no mode"))?
+                .ok_or_else(|| anyhow::anyhow!("output no mode"))?
                 .size;
             // TODO handle fractional scaling?
             // let output_scale = o.current_scale().fractional_scale();
@@ -441,7 +440,7 @@ impl PanelSpace {
                         .chain(w.accumulated_damage(
                             w_loc.to_f64().to_physical(1.0),
                             1.0,
-                            Some((&self.space, &o)),
+                            Some((&self.space, o)),
                         ))
                         .collect_vec()
                 });
@@ -474,7 +473,7 @@ impl PanelSpace {
             );
             let should_render = damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
             if should_render {
-                let mut damage = damage.unwrap_or_else(|| vec![]);
+                let mut damage = damage.unwrap_or_else(Vec::new);
                 renderer
                     .render(
                         self.dimensions.to_physical(1),
@@ -501,7 +500,7 @@ impl PanelSpace {
                             for w in self.space.windows() {
                                 let w_loc = self
                                     .space
-                                    .window_location(&w)
+                                    .window_location(w)
                                     .unwrap_or_else(|| (0, 0).into());
                                 let mut bbox = w.bbox();
                                 bbox.loc += w_loc;
@@ -515,7 +514,7 @@ impl PanelSpace {
                                     w_damage.dedup();
                                     w_damage
                                 };
-                                if w_damage.len() == 0 {
+                                if w_damage.is_empty() {
                                     continue;
                                 }
 
@@ -547,10 +546,7 @@ impl PanelSpace {
             let clear_color = [0.0, 0.0, 0.0, 0.0];
             for p in self.popups.iter_mut().filter(|p| {
                 p.dirty
-                    && match p.popup_state.get() {
-                        None => true,
-                        _ => false,
-                    }
+                    && matches!(p.popup_state.get(), None)
             }) {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
@@ -562,7 +558,7 @@ impl PanelSpace {
                         p.s_surface.wl_surface(),
                         (0.0,0.0),
                         1.0,
-                        Some((&self.space, &o)),
+                        Some((&self.space, o)),
                     )
                 };
 
@@ -595,7 +591,7 @@ impl PanelSpace {
                                 p_damage.iter().cloned().collect_vec().as_slice(),
                             )
                             .expect("Failed to clear frame.");
-                        let mut loc = p_bbox.clone().loc;
+                        let mut loc = p_bbox.loc;
                         loc.x *= -1;
                         loc.y *= -1;
                         let _ = draw_surface_tree(
@@ -661,9 +657,8 @@ impl PanelSpace {
             let mut d = acc_damage.clone();
             d.reverse();
             let d = d[..age + 1]
-                .into_iter()
-                .map(|v| v.into_iter().cloned())
-                .flatten()
+                .iter()
+                .flat_map(|v| v.iter().cloned())
                 .collect_vec();
             Some(d)
         };
@@ -792,7 +787,7 @@ impl PanelSpace {
             (thickness as i32 - dim as i32) / 2
         }
 
-        let requested_eq_length: i32 = (list_length / num_lists).try_into().unwrap();
+        let requested_eq_length = list_length / num_lists;
         // dbg!(requested_eq_length);
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32 + (list_length - center_sum) / 2)
@@ -825,7 +820,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -834,7 +829,7 @@ impl PanelSpace {
                     );
                     prev += size.x as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
@@ -854,7 +849,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -864,7 +859,7 @@ impl PanelSpace {
                     // dbg!(cur);
                     prev += size.x as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
@@ -884,7 +879,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -893,7 +888,7 @@ impl PanelSpace {
                     );
                     prev += size.x as u32;
                     self.space
-                        .map_window(&w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
                 }
             };
             self.space.commit(w.toplevel().wl_surface());
@@ -1064,7 +1059,7 @@ impl PanelSpace {
                 } else {
                     if self.full_clear == 4 {
                         self.update_window_locations();
-                        self.space.refresh(&dh);
+                        self.space.refresh(dh);
                     }
                     should_render = true;
                 }
@@ -1089,6 +1084,6 @@ impl PanelSpace {
             }
         }
 
-        self.last_dirty.unwrap_or_else(|| Instant::now())
+        self.last_dirty.unwrap_or_else(Instant::now)
     }
 }

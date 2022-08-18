@@ -92,7 +92,7 @@ impl WrapperSpace for SpaceContainer {
                 CosmicPanelOuput::All => {
                     let mut config = config.clone();
                     config.output = CosmicPanelOuput::Name(output_info.name.clone());
-                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    let mut s = PanelSpace::new(config, self.log.clone());
                     s.setup(
                         display.clone(),
                         env,
@@ -149,8 +149,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .find(|c| Some(c.id()) == w_client)
-                .is_some()
+                .any(|c| Some(c.id()) == w_client)
         }) {
             space.add_window(s_top_level);
         }
@@ -177,8 +176,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .find(|c| Some(c.id()) == p_client)
-                .is_some()
+                .any(|c| Some(c.id()) == p_client)
         }) {
             space.add_popup(
                 env,
@@ -208,8 +206,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .find(|c| Some(c.id()) == p_client)
-                .is_some()
+                .any(|c| Some(c.id()) == p_client)
         }) {
             space.reposition_popup(popup, positioner, positioner_state, token)?
         }
@@ -228,7 +225,7 @@ impl WrapperSpace for SpaceContainer {
                 let last_dirtied = s.handle_events(dh, popup_manager, time, &mut self.renderer);
                 acc.map(|i| last_dirtied.max(i))
             })
-            .unwrap_or_else(|| Instant::now())
+            .unwrap_or_else(Instant::now)
     }
 
     fn config(&self) -> Self::Config {
@@ -242,11 +239,10 @@ impl WrapperSpace for SpaceContainer {
         Ok(self
             .space_list
             .iter_mut()
-            .map(|space| {
+            .flat_map(|space| {
                 // TODO better error handling
                 space.spawn_clients(display.clone()).unwrap_or_default()
             })
-            .flatten()
             .collect())
     }
 

@@ -35,7 +35,7 @@ impl WrapperConfig for CosmicPanelContainerConfig {
     }
 }
 
-static CONFIG_PATH: &'static str = "cosmic-panel/config.ron";
+static CONFIG_PATH: &str = "cosmic-panel/config.ron";
 
 impl CosmicPanelContainerConfig {
     /// load config with the provided name

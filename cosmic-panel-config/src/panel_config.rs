@@ -357,7 +357,7 @@ impl CosmicPanelConfig {
     }
 
     pub fn anchor(&self) -> PanelAnchor {
-        self.anchor.clone()
+        self.anchor
     }
 
     pub fn padding(&self) -> u32 {

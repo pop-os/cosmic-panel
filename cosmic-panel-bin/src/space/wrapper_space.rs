@@ -6,7 +6,7 @@ use std::{
     fs,
     os::unix::{net::UnixStream, prelude::AsRawFd},
     rc::Rc,
-    time::Instant, sync::Mutex,
+    time::Instant,
 };
 
 use anyhow::bail;
@@ -63,7 +63,7 @@ impl WrapperSpace for PanelSpace {
 
     fn add_window(&mut self, w: Window) {
         self.full_clear = 4;
-        self.space.commit(&w.toplevel().wl_surface());
+        self.space.commit(w.toplevel().wl_surface());
         self.space
             .map_window(&w, (0, 0), self.z_index().map(|z| z as u8), true);
         for w in self.space.windows() {
@@ -294,9 +294,9 @@ impl WrapperSpace for PanelSpace {
                 )
                 .collect_vec();
             
-            let config_size = self.config.size.to_string().to_string();
-            let config_output = self.config.output.to_string().to_string();
-            let config_anchor = self.config.anchor.to_string().to_string();
+            let config_size = self.config.size.to_string();
+            let config_output = self.config.output.to_string();
+            let config_anchor = self.config.anchor.to_string();
             let env_vars = vec![
                 ("COSMIC_PANEL_SIZE", config_size.as_str()),
                 ("COSMIC_PANEL_OUTPUT", config_output.as_str()),
@@ -345,9 +345,9 @@ impl WrapperSpace for PanelSpace {
 
     fn destroy(&mut self) {
         self.layer_surface.as_mut().map(|ls| ls.destroy());
-        self.layer_shell_wl_surface
-            .as_mut()
-            .map(|wls| wls.destroy());
+        if let Some(wls) = self.layer_shell_wl_surface.as_mut() {
+            wls.destroy();
+        }
     }
 
     fn visibility(&self) -> Visibility {
@@ -363,7 +363,7 @@ impl WrapperSpace for PanelSpace {
 
         if let Some(w) = self.space.window_for_surface(s, WindowSurfaceType::ALL) {
             let old_bbox = w.bbox();
-            self.space.commit(&s);
+            self.space.commit(s);
             w.refresh();
             let new_bbox = w.bbox();
             if old_bbox.size != new_bbox.size {
@@ -391,7 +391,7 @@ impl WrapperSpace for PanelSpace {
                     SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
                     _ => self.dimensions.into(),
                 })
-                .unwrap_or(pending_dimensions.into());
+                .unwrap_or_else(|| pending_dimensions.into());
             if self.dimensions.w < size.w
                 && pending_dimensions.w < size.w
                 && wait_configure_dim.0 < size.w
@@ -409,8 +409,8 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
-        self.space.commit(&s);
-        self.space.refresh(&dh);
+        self.space.commit(s);
+        self.space.refresh(dh);
         if let Some(p) = self
             .popups
             .iter_mut()
@@ -493,7 +493,7 @@ impl WrapperSpace for PanelSpace {
 
         self.output = izip!(
             c_output.clone().into_iter(),
-            s_output.clone().into_iter(),
+            s_output.into_iter(),
             output_info.cloned()
         )
         .next();
@@ -584,14 +584,11 @@ impl WrapperSpace for PanelSpace {
         if let Some(prev_foc) = {
             let c_hovered_surface: &ClientFocus = &self.c_hovered_surface.borrow();
 
-            match c_hovered_surface
+            c_hovered_surface
                 .iter()
                 .enumerate()
                 .find(|(_, f)| f.1 == seat_name)
-            {
-                Some((i, f)) => Some((i, f.0.clone())),
-                None => None,
-            }
+                .map(|(i, f)| (i, f.0.clone()))
         } {
             // close popups when panel is pressed
             if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1
@@ -633,7 +630,7 @@ impl WrapperSpace for PanelSpace {
         if let Some(p) = self
             .popups
             .iter()
-            .find(|p| &p.c_wl_surface == &c_wl_surface)
+            .find(|p| p.c_wl_surface == c_wl_surface)
         {
             let bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0,0));
             // special handling for popup bc they exist on their own client surface
@@ -645,7 +642,7 @@ impl WrapperSpace for PanelSpace {
                     .push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                prev_foc.c_pos = p.rectangle.loc.into();
+                prev_foc.c_pos = p.rectangle.loc;
                 prev_foc.s_pos = p.rectangle.loc - bbox.loc;
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
@@ -654,7 +651,7 @@ impl WrapperSpace for PanelSpace {
                 self.s_hovered_surface.push(ServerPointerFocus {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
-                    c_pos: p.rectangle.loc.into(),
+                    c_pos: p.rectangle.loc,
                     s_pos: p.rectangle.loc - bbox.loc,
                 });
                 self.s_hovered_surface.last().cloned()
@@ -682,7 +679,7 @@ impl WrapperSpace for PanelSpace {
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = p;
                     prev_foc.c_pos = w.geometry().loc;
-                    prev_foc.surface = s.clone();
+                    prev_foc.surface = s;
                     Some(prev_foc.clone())
                 } else {
                     self.s_hovered_surface.push(ServerPointerFocus {
