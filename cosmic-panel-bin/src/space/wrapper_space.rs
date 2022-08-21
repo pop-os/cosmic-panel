@@ -293,7 +293,7 @@ impl WrapperSpace for PanelSpace {
                         .chain(sockets_right.into_iter()),
                 )
                 .collect_vec();
-            
+
             let config_size = self.config.size.to_string();
             let config_output = self.config.output.to_string();
             let config_anchor = self.config.anchor.to_string();
@@ -632,7 +632,7 @@ impl WrapperSpace for PanelSpace {
             .iter()
             .find(|p| p.c_wl_surface == c_wl_surface)
         {
-            let bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0,0));
+            let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 
             if let Some(prev_kbd) = prev_kbd {
@@ -643,7 +643,7 @@ impl WrapperSpace for PanelSpace {
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
                 prev_foc.c_pos = p.rectangle.loc;
-                prev_foc.s_pos = p.rectangle.loc - bbox.loc;
+                prev_foc.s_pos = p.rectangle.loc - geo.loc;
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
                 Some(prev_foc.clone())
@@ -652,7 +652,7 @@ impl WrapperSpace for PanelSpace {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
                     c_pos: p.rectangle.loc,
-                    s_pos: p.rectangle.loc - bbox.loc,
+                    s_pos: p.rectangle.loc - geo.loc,
                 });
                 self.s_hovered_surface.last().cloned()
             }
