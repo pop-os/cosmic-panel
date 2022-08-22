@@ -465,7 +465,7 @@ impl PanelSpace {
             );
             let should_render = damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
             if should_render {
-                let mut damage = damage.unwrap_or_default();
+                let damage = damage.unwrap_or_default();
                 renderer
                     .render(
                         self.dimensions.to_physical(1),
