@@ -682,7 +682,7 @@ impl PanelSpace {
         ret
     }
 
-    pub(crate) fn update_window_locations(&mut self) {
+    pub(crate) fn update_window_locations(&mut self) -> anyhow::Result<()> {
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -784,12 +784,17 @@ impl PanelSpace {
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
 
         // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
-        // FIXME panics if the list is larger than the output can hold
         let total_sum = left_sum + center_sum + right_sum;
-        if total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1)
+        let new_list_length = total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
+        if new_list_length
             > list_length as i32
         {
-            panic!("List expanded past max size!");
+            let new_dim = self.constrain_dim(match anchor {
+                PanelAnchor::Left | PanelAnchor::Right => (list_thickness, new_list_length),
+                PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, list_thickness),
+            }.into());
+            self.pending_dimensions = Some(new_dim);
+            anyhow::bail!("resizing list");
         }
 
         fn center_in_bar(thickness: u32, dim: u32) -> i32 {
@@ -898,6 +903,7 @@ impl PanelSpace {
             };
             self.space.commit(w.toplevel().wl_surface());
         }
+        Ok(())
     }
 
     pub(crate) fn handle_events(
@@ -978,11 +984,11 @@ impl PanelSpace {
                         height: size.h,
                     }));
                 } else if self.layer_surface.is_some() {
-                    if self.full_clear == 4 {
-                        self.update_window_locations();
-                        self.space.refresh(dh);
-                    }
-                    should_render = true;
+                    should_render = if self.full_clear == 4 {
+                        self.update_window_locations().is_ok()
+                    } else {
+                        true
+                    };
                 }
             }
         }
