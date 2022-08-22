@@ -11,15 +11,11 @@ use std::{
 use itertools::Itertools;
 use sctk::{
     output::OutputInfo,
-    reexports::{
-        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
-        client::{self, Attached, Main},
-        protocols::wlr::unstable::layer_shell::v1::client::{
-            zwlr_layer_shell_v1::{self, Layer},
-            zwlr_layer_surface_v1,
-        },
+    reexports::client::{
+        protocol::{wl_display::WlDisplay, wl_output as c_wl_output, wl_surface as c_wl_surface},
+        Proxy,
     },
-    shm::AutoMemPool,
+    shell::{layer::LayerSurface, xdg::popup},
 };
 use slog::{info, trace, Logger};
 use smithay::{
@@ -52,10 +48,11 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use wayland_egl::WlEglSurface;
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
-    space::{ClientEglSurface, Popup, SpaceEvent, Visibility},
+    space::{ClientEglSurface, SpaceEvent, Visibility, WrapperPopup},
     util::smootherstep,
 };
 
@@ -83,15 +80,13 @@ pub(crate) struct PanelSpace {
     pub(crate) s_focused_surface: ServerFocus,
     pub(crate) s_hovered_surface: ServerPtrFocus,
     pub(crate) visibility: Visibility,
-    pub(crate) pool: Option<AutoMemPool>,
-    pub(crate) layer_shell: Option<Attached<zwlr_layer_shell_v1::ZwlrLayerShellV1>>,
     pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
-    pub(crate) c_display: Option<client::Display>,
+    pub(crate) c_display: Option<WlDisplay>,
     pub(crate) egl_display: Option<EGLDisplay>,
-    pub(crate) layer_surface: Option<Main<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>>,
+    pub(crate) layer_surface: Option<LayerSurface>,
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
-    pub(crate) layer_shell_wl_surface: Option<Attached<c_wl_surface::WlSurface>>,
-    pub(crate) popups: Vec<Popup>,
+    pub(crate) layer_shell_wl_surface: Option<c_wl_surface::WlSurface>,
+    pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
 }
@@ -112,8 +107,6 @@ impl PanelSpace {
             pending_dimensions: Default::default(),
             space_event: Default::default(),
             dimensions: Default::default(),
-            pool: Default::default(),
-            layer_shell: Default::default(),
             output: Default::default(),
             c_display: Default::default(),
             egl_display: Default::default(),
@@ -156,8 +149,15 @@ impl PanelSpace {
     }
 
     pub(crate) fn handle_focus(&mut self) {
-        let layer_surface = self.layer_surface.as_ref().unwrap();
-        let layer_shell_wl_surface = self.layer_shell_wl_surface.as_ref().unwrap();
+        let (layer_surface, layer_shell_wl_surface) =
+            if let (Some(layer_surface), Some(layer_shell_wl_surface)) = (
+                self.layer_surface.as_ref(),
+                self.layer_shell_wl_surface.as_ref(),
+            ) {
+                (layer_surface, layer_shell_wl_surface)
+            } else {
+                return;
+            };
         let cur_focus = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
@@ -175,14 +175,11 @@ impl PanelSpace {
                         if self
                             .layer_shell_wl_surface
                             .as_ref()
-                            .map(|s| **s == *surface)
+                            .map(|s| *s == *surface)
                             .unwrap_or(false)
                             || self.popups.iter().any(|p| {
                                 &p.c_wl_surface == surface
-                                    || self
-                                        .popups
-                                        .iter()
-                                        .any(|p| p.c_wl_surface == *surface)
+                                    || self.popups.iter().any(|p| p.c_wl_surface == *surface)
                             })
                         {
                             match (&acc, &f) {
@@ -408,11 +405,7 @@ impl PanelSpace {
         renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
 
         let log_clone = self.log.clone();
-        if let Some((o, _info)) = &self
-            .output
-            .as_ref()
-            .map(|(_, o, info)| (o, info))
-        {
+        if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
             let output_size = o
                 .current_mode()
                 .ok_or_else(|| anyhow::anyhow!("output no mode"))?
@@ -464,7 +457,6 @@ impl PanelSpace {
                     });
                 acc_damage
             };
-            // dbg!(&cur_damage);
             let damage = Self::damage_for_buffer(
                 cur_damage,
                 &mut self.w_accumulated_damage,
@@ -473,7 +465,7 @@ impl PanelSpace {
             );
             let should_render = damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
             if should_render {
-                let mut damage = damage.unwrap_or_else(Vec::new);
+                let mut damage = damage.unwrap_or_default();
                 renderer
                     .render(
                         self.dimensions.to_physical(1),
@@ -514,6 +506,7 @@ impl PanelSpace {
                                     w_damage.dedup();
                                     w_damage
                                 };
+
                                 if w_damage.is_empty() {
                                     continue;
                                 }
@@ -532,6 +525,15 @@ impl PanelSpace {
                     )
                     .expect("render error...");
 
+                let mut damage = damage
+                .iter()
+                .map(|rect| {
+                    Rectangle::from_loc_and_size(
+                        (rect.loc.x, self.dimensions.h - rect.loc.y - rect.size.h),
+                        rect.size,
+                    )
+                })
+                .collect::<Vec<_>>();
                 self.egl_surface
                     .as_ref()
                     .unwrap()
@@ -544,10 +546,11 @@ impl PanelSpace {
 
             // Popup rendering
             let clear_color = [0.0, 0.0, 0.0, 0.0];
-            for p in self.popups.iter_mut().filter(|p| {
-                p.dirty
-                    && matches!(p.popup_state.get(), None)
-            }) {
+            for p in self
+                .popups
+                .iter_mut()
+                .filter(|p| p.dirty && p.state.is_none())
+            {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
@@ -556,13 +559,13 @@ impl PanelSpace {
                 } else {
                     damage_from_surface_tree(
                         p.s_surface.wl_surface(),
-                        (0.0,0.0),
+                    (0.0, 0.0),
                         1.0,
                         Some((&self.space, o)),
                     )
                 };
 
-                let mut damage = match Self::damage_for_buffer(
+                let damage = match Self::damage_for_buffer(
                     cur_damage,
                     &mut p.accumulated_damage,
                     &p.egl_surface.as_ref().unwrap().clone(),
@@ -591,20 +594,27 @@ impl PanelSpace {
                                 p_damage.iter().cloned().collect_vec().as_slice(),
                             )
                             .expect("Failed to clear frame.");
-                        let mut loc = p_bbox.loc;
-                        loc.x *= -1;
-                        loc.y *= -1;
-                        let _ = draw_surface_tree(
+
+                            let _ = draw_surface_tree(
                             renderer,
                             frame,
                             p.s_surface.wl_surface(),
                             1.0,
-                            loc.to_f64().to_physical(1.0),
+                            p_bbox.loc.to_f64().to_physical(1.0),
                             &p_damage,
                             &log_clone,
                         );
                     },
                 );
+                let mut damage = damage
+                .iter()
+                .map(|rect| {
+                    Rectangle::from_loc_and_size(
+                        (rect.loc.x, p_bbox.size.h - rect.loc.y - rect.size.h),
+                        rect.size,
+                    )
+                })
+                .collect::<Vec<_>>();
                 p.egl_surface
                     .as_ref()
                     .unwrap()
@@ -748,7 +758,6 @@ impl PanelSpace {
             anchor: PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, i32) {
-            // dbg!(w.bbox());
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, w.bbox().size.h),
                 PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, w.bbox().size.w),
@@ -787,8 +796,7 @@ impl PanelSpace {
             (thickness as i32 - dim as i32) / 2
         }
 
-        let requested_eq_length = list_length / num_lists;
-        // dbg!(requested_eq_length);
+        let requested_eq_length: i32 = list_length / num_lists;
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32 + (list_length - center_sum) / 2)
         } else if left_sum <= requested_eq_length
@@ -836,10 +844,8 @@ impl PanelSpace {
         }
 
         let mut prev: u32 = center_offset as u32;
-        // dbg!(center_offset);
         for (i, w) in &mut windows_center.iter_mut() {
             let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
-            // dbg!(size);
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -856,7 +862,6 @@ impl PanelSpace {
                         cur,
                         center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
                     );
-                    // dbg!(cur);
                     prev += size.x as u32;
                     self.space
                         .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
@@ -911,102 +916,17 @@ impl PanelSpace {
             .map(|c| c.try_wait())
             .all(|r| matches!(r, Ok(Some(_))))
         {
-            info!(self.log.clone(), "Child processes exited. Now exiting...");
-            std::process::exit(0);
+            info!(self.log.clone(), "Child processes exited.");
         }
         self.handle_focus();
         let mut should_render = false;
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
-                trace!(self.log, "root layer shell surface removed, exiting...");
+                trace!(self.log, "root layer shell surface removed.");
                 for child in &mut self.children {
                     let _ = child.kill();
                 }
                 std::process::exit(0);
-            }
-            Some(SpaceEvent::Configure {
-                first,
-                width,
-                height,
-                serial: _serial,
-            }) => {
-                if first {
-                    let log = self.log.clone();
-                    let client_egl_surface = ClientEglSurface {
-                        wl_egl_surface: WlEglSurface::new(
-                            self.layer_shell_wl_surface.as_ref().unwrap(),
-                            width,
-                            height,
-                        ),
-                        display: self.c_display.as_ref().unwrap().clone(),
-                    };
-                    let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
-                        .expect("Failed to initialize EGL display");
-
-                    let egl_context = EGLContext::new_with_config(
-                        &egl_display,
-                        GlAttributes {
-                            version: (3, 0),
-                            profile: None,
-                            debug: cfg!(debug_assertions),
-                            vsync: false,
-                        },
-                        Default::default(),
-                        log.clone(),
-                    )
-                    .expect("Failed to initialize EGL context");
-
-                    let mut min_interval_attr = 23239;
-                    unsafe {
-                        GetConfigAttrib(
-                            egl_display.get_display_handle().handle,
-                            egl_context.config_id(),
-                            ffi::egl::MIN_SWAP_INTERVAL as c_int,
-                            &mut min_interval_attr,
-                        );
-                    }
-
-                    let new_renderer = if let Some(renderer) = renderer.take() {
-                        renderer
-                    } else {
-                        unsafe {
-                            Gles2Renderer::new(egl_context, log.clone())
-                                .expect("Failed to initialize EGL Surface")
-                        }
-                    };
-                    trace!(log, "{:?}", unsafe {
-                        SwapInterval(egl_display.get_display_handle().handle, 0)
-                    });
-
-                    let egl_surface = Rc::new(
-                        EGLSurface::new(
-                            &egl_display,
-                            new_renderer
-                                .egl_context()
-                                .pixel_format()
-                                .expect("Failed to get pixel format from EGL context "),
-                            new_renderer.egl_context().config_id(),
-                            client_egl_surface,
-                            log.clone(),
-                        )
-                        .expect("Failed to initialize EGL Surface"),
-                    );
-
-                    renderer.replace(new_renderer);
-                    self.egl_surface.replace(egl_surface);
-                    self.egl_display.replace(egl_display);
-                } else if self.dimensions != (width as i32, height as i32).into()
-                    && self.pending_dimensions.is_none()
-                {
-                    self.w_accumulated_damage.drain(..);
-                    self.egl_surface
-                        .as_ref()
-                        .unwrap()
-                        .resize(width as i32, height as i32, 0, 0);
-                }
-                self.full_clear = 4;
-                self.layer_shell_wl_surface.as_ref().unwrap().commit();
-                self.dimensions = (width as i32, height as i32).into();
             }
             Some(SpaceEvent::WaitConfigure {
                 first,
@@ -1020,11 +940,15 @@ impl PanelSpace {
                 }));
             }
             None => {
-                if let Some(size) = self.pending_dimensions.take() {
+                if let (Some(size), Some(layer_surface), Some(layer_shell_wl_surface)) = (
+                    self.pending_dimensions.take(),
+                    self.layer_surface.as_ref(),
+                    self.layer_shell_wl_surface.as_ref(),
+                ) {
                     let width = size.w.try_into().unwrap();
                     let height = size.h.try_into().unwrap();
 
-                    self.layer_surface.as_ref().unwrap().set_size(width, height);
+                    layer_surface.set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone() {
                             self.layer_surface
@@ -1036,10 +960,7 @@ impl PanelSpace {
                             PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
                             PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
                         } + self.config.get_hide_handle().unwrap() as i32;
-                        self.layer_surface
-                            .as_ref()
-                            .unwrap()
-                            .set_margin(target, target, target, target);
+                        layer_surface.set_margin(target, target, target, target);
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
                             PanelAnchor::Left | PanelAnchor::Right => width,
@@ -1050,13 +971,13 @@ impl PanelSpace {
                             .unwrap()
                             .set_exclusive_zone(list_thickness as i32);
                     }
-                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    layer_shell_wl_surface.commit();
                     self.space_event.replace(Some(SpaceEvent::WaitConfigure {
                         first: false,
                         width: size.w,
                         height: size.h,
                     }));
-                } else {
+                } else if self.layer_surface.is_some() {
                     if self.full_clear == 4 {
                         self.update_window_locations();
                         self.space.refresh(dh);
@@ -1066,24 +987,205 @@ impl PanelSpace {
             }
         }
 
-        self.popups.retain_mut(|p: &mut Popup| {
-            p.handle_events(
-                popup_manager,
-                renderer.as_ref().unwrap().egl_context(),
-                self.egl_display.as_ref().unwrap(),
-                self.c_display.as_ref().unwrap(),
-            )
-        });
+        if let Some(renderer) = renderer.as_mut() {
+            self.popups.retain_mut(|p: &mut WrapperPopup| {
+                p.handle_events(
+                    popup_manager,
+                    renderer.egl_context(),
+                    self.egl_display.as_ref().unwrap(),
+                    self.c_display.as_ref().unwrap(),
+                )
+            });
 
-        if should_render {
-            let _ = self.render(renderer.as_mut().unwrap(), time);
-        }
-        if let Some(egl_surface) = self.egl_surface.as_ref() {
-            if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
-                self.full_clear = 4;
+            if should_render {
+                let _ = self.render(renderer, time);
+            }
+            if let Some(egl_surface) = self.egl_surface.as_ref() {
+                if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
+                    self.full_clear = 4;
+                }
             }
         }
 
         self.last_dirty.unwrap_or_else(Instant::now)
+    }
+
+    pub fn configure_panel_layer(
+        &mut self,
+        _layer: &LayerSurface,
+        configure: sctk::shell::layer::LayerSurfaceConfigure,
+        renderer: &mut Option<Gles2Renderer>,
+    ) {
+        let (w, h) = configure.new_size;
+
+        match self.space_event.take() {
+            Some(e) => match e {
+                SpaceEvent::WaitConfigure {
+                    first,
+                    mut width,
+                    mut height,
+                } => {
+                    if w != 0 {
+                        width = w as i32;
+                    }
+                    if h != 0 {
+                        height = h as i32;
+                    }
+                    if first {
+                        let log = self.log.clone();
+                        let client_egl_surface = ClientEglSurface {
+                            wl_egl_surface: WlEglSurface::new(
+                                self.layer_shell_wl_surface.as_ref().unwrap().id(),
+                                width,
+                                height,
+                            )
+                            .unwrap(), // TODO remove unwrap
+                            display: self.c_display.as_ref().unwrap().clone(),
+                        };
+                        let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
+                            .expect("Failed to initialize EGL display");
+
+                        let egl_context = EGLContext::new_with_config(
+                            &egl_display,
+                            GlAttributes {
+                                version: (3, 0),
+                                profile: None,
+                                debug: cfg!(debug_assertions),
+                                vsync: false,
+                            },
+                            Default::default(),
+                            log.clone(),
+                        )
+                        .expect("Failed to initialize EGL context");
+
+                        let mut min_interval_attr = 23239;
+                        unsafe {
+                            GetConfigAttrib(
+                                egl_display.get_display_handle().handle,
+                                egl_context.config_id(),
+                                ffi::egl::MIN_SWAP_INTERVAL as c_int,
+                                &mut min_interval_attr,
+                            );
+                        }
+
+                        let new_renderer = if let Some(renderer) = renderer.take() {
+                            renderer
+                        } else {
+                            unsafe {
+                                Gles2Renderer::new(egl_context, log.clone())
+                                    .expect("Failed to initialize EGL Surface")
+                            }
+                        };
+                        trace!(log, "{:?}", unsafe {
+                            SwapInterval(egl_display.get_display_handle().handle, 0)
+                        });
+
+                        let egl_surface = Rc::new(
+                            EGLSurface::new(
+                                &egl_display,
+                                new_renderer
+                                    .egl_context()
+                                    .pixel_format()
+                                    .expect("Failed to get pixel format from EGL context "),
+                                new_renderer.egl_context().config_id(),
+                                client_egl_surface,
+                                log.clone(),
+                            )
+                            .expect("Failed to initialize EGL Surface"),
+                        );
+
+                        renderer.replace(new_renderer);
+                        self.egl_surface.replace(egl_surface);
+                        self.egl_display.replace(egl_display);
+                    } else if self.dimensions != (width as i32, height as i32).into()
+                        && self.pending_dimensions.is_none()
+                    {
+                        self.w_accumulated_damage.drain(..);
+                        self.egl_surface.as_ref().unwrap().resize(
+                            width as i32,
+                            height as i32,
+                            0,
+                            0,
+                        );
+                    }
+                    self.dimensions = (w as i32, h as i32).into();
+                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    self.full_clear = 4;
+                }
+                SpaceEvent::Quit => (),
+            },
+            None => {
+                if w != 0
+                    && h != 0
+                    && self.dimensions != (w as i32, h as i32).into()
+                    && self.pending_dimensions.is_none()
+                {
+                    self.w_accumulated_damage.drain(..);
+                    self.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .resize(w as i32, h as i32, 0, 0);
+                    self.dimensions = (w as i32, h as i32).into();
+                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    self.full_clear = 4;
+                }
+            }
+        }
+    }
+
+    pub fn configure_panel_popup(
+        &mut self,
+        popup: &sctk::shell::xdg::popup::Popup,
+        config: sctk::shell::xdg::popup::PopupConfigure,
+        renderer: Option<&Gles2Renderer>,
+    ) {
+        let (width, height) = (config.width, config.height);
+        if let Some(p) = self
+            .popups
+            .iter_mut()
+            .find(|p| popup.wl_surface() == p.c_popup.wl_surface())
+        {
+            p.state.take();
+            let _ = p.s_surface.send_configure();
+            match config.kind {
+                popup::ConfigureKind::Initial => {
+                    let wl_egl_surface = match WlEglSurface::new(p.c_wl_surface.id(), width, height)
+                    {
+                        Ok(s) => s,
+                        Err(_) => return,
+                    };
+                    let client_egl_surface = ClientEglSurface {
+                        wl_egl_surface,
+                        display: self.c_display.as_ref().unwrap().clone(),
+                    };
+                    if let Some(egl_context) = renderer.map(|r| r.egl_context()) {
+                        let egl_surface = Rc::new(
+                            EGLSurface::new(
+                                self.egl_display.as_ref().unwrap(),
+                                egl_context
+                                    .pixel_format()
+                                    .expect("Failed to get pixel format from EGL context "),
+                                egl_context.config_id(),
+                                client_egl_surface,
+                                None,
+                            )
+                            .expect("Failed to initialize EGL Surface"),
+                        );
+                        p.egl_surface.replace(egl_surface);
+                    }
+                }
+                popup::ConfigureKind::Reactive => {
+                    // TODO
+                }
+                popup::ConfigureKind::Reposition { token: _token } => {
+                    // TODO
+                }
+                _ => {}
+            };
+            // TODO is this needed?
+            // popup_manager.commit(p.s_surface.wl_surface());
+            p.dirty = true;
+            p.full_clear = 4;
+        }
     }
 }

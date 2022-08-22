@@ -13,26 +13,26 @@ use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use sctk::{
-    environment::Environment,
+    compositor::{CompositorState, Region},
     output::OutputInfo,
     reexports::{
-        client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface, wl_compositor::WlCompositor},
-        client::{self, Attached, Main},
-        protocols::{
-            wlr::unstable::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
-            xdg_shell::client::{
-                xdg_popup,
-                xdg_positioner::{Anchor, Gravity, XdgPositioner},
-                xdg_surface,
-                xdg_wm_base::XdgWmBase,
-            },
+        client::{
+            protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
+            Connection, Proxy, QueueHandle,
         },
+        protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
+    },
+    shell::{
+        layer::{self, KeyboardInteractivity, Layer, LayerState, LayerSurface},
+        xdg::popup,
     },
 };
-use slog::{info, trace, Logger};
+use slog::Logger;
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
-    desktop::{Kind, PopupManager, Window, WindowSurfaceType, PopupKind, utils::bbox_from_surface_tree},
+    desktop::{
+        utils::bbox_from_surface_tree, Kind, PopupKind, PopupManager, Window, WindowSurfaceType,
+    },
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
@@ -43,10 +43,12 @@ use smithay::{
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
 };
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
-    client_state::{ClientFocus, Env},
+    client_state::ClientFocus,
     server_state::ServerPointerFocus,
-    space::{Popup, PopupState, SpaceEvent, Visibility, WrapperSpace},
+    shared_state::GlobalState,
+    space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
     util::{exec_child, get_client_sock},
 };
 
@@ -71,13 +73,17 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn add_popup(
+    fn add_popup<W: WrapperSpace>(
         &mut self,
-        env: &Environment<Env>,
-        xdg_wm_base: &Attached<XdgWmBase>,
+        compositor_state: &sctk::compositor::CompositorState,
+        _conn: &sctk::reexports::client::Connection,
+        qh: &QueueHandle<GlobalState<W>>,
+        xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
         s_surface: PopupSurface,
-        positioner: Main<XdgPositioner>,
-        PositionerState {
+        positioner: &sctk::shell::xdg::XdgPositioner,
+        positioner_state: PositionerState,
+    ) -> anyhow::Result<()> {
+        let PositionerState {
             rect_size,
             anchor_rect,
             anchor_edges,
@@ -87,12 +93,11 @@ impl WrapperSpace for PanelSpace {
             reactive,
             parent_size,
             parent_configure: _,
-        }: PositionerState,
-    ) {
+        } = positioner_state;
         // TODO handle popups not on main surface
         if !self.popups.is_empty() {
             self.popups.clear();
-            return;
+            return Ok(());
         }
 
         let parent_window = if let Some(s) = self.space.windows().find(|w| match w.toplevel() {
@@ -100,13 +105,10 @@ impl WrapperSpace for PanelSpace {
         }) {
             s
         } else {
-            return;
+            bail!("Could not find parent window");
         };
 
-        let c_wl_surface = env.create_surface().detach();
-        let c_xdg_surface = xdg_wm_base.get_xdg_surface(&c_wl_surface);
-
-        let s_popup_surface = s_surface.clone();
+        let c_wl_surface = compositor_state.create_surface(qh)?;
 
         let p_offset = self
             .space
@@ -120,12 +122,12 @@ impl WrapperSpace for PanelSpace {
             anchor_rect.size.w,
             anchor_rect.size.h,
         );
-        positioner.set_anchor(Anchor::from_raw(anchor_edges as u32).unwrap_or(Anchor::None));
-        positioner.set_gravity(Gravity::from_raw(gravity as u32).unwrap_or(Gravity::None));
+        positioner.set_anchor(Anchor::try_from(anchor_edges as u32).unwrap_or(Anchor::None));
+        positioner.set_gravity(Gravity::try_from(gravity as u32).unwrap_or(Gravity::None));
 
         positioner.set_constraint_adjustment(u32::from(constraint_adjustment));
         positioner.set_offset(offset.x, offset.y);
-        if positioner.as_ref().version() >= 3 {
+        if positioner.version() >= 3 {
             if reactive {
                 positioner.set_reactive();
             }
@@ -133,103 +135,77 @@ impl WrapperSpace for PanelSpace {
                 positioner.set_parent_size(parent_size.w, parent_size.h);
             }
         }
-        let c_popup = c_xdg_surface.get_popup(None, &positioner);
-        self.layer_surface.as_ref().unwrap().get_popup(&c_popup);
-        let compositor = env.require_global::<WlCompositor>();
-        let input_region = compositor.create_region();
-        if let (Some(s_window_geometry), Some(input_regions)) = with_states(s_popup_surface.wl_surface(), |states| {
-            (states
-                .cached_state
-                .current::<SurfaceCachedState>()
-                .geometry,
-            states
-                .cached_state
-                .current::<SurfaceAttributes>()
-                .input_region.as_ref().cloned()  
-            )
-        }) {
-            c_xdg_surface.set_window_geometry(s_window_geometry.loc.x, s_window_geometry.loc.y, s_window_geometry.size.w, s_window_geometry.size.h);
+        let c_popup = popup::Popup::from_surface(
+            None,
+            positioner,
+            qh,
+            c_wl_surface.clone(),
+            xdg_shell_state,
+        )?;
+
+        let input_region = Region::new(compositor_state)?;
+
+        if let (Some(s_window_geometry), Some(input_regions)) =
+            with_states(s_surface.wl_surface(), |states| {
+                (
+                    states.cached_state.current::<SurfaceCachedState>().geometry,
+                    states
+                        .cached_state
+                        .current::<SurfaceAttributes>()
+                        .input_region
+                        .as_ref()
+                        .cloned(),
+                )
+            })
+        {
+            c_popup.xdg_surface().set_window_geometry(
+                s_window_geometry.loc.x,
+                s_window_geometry.loc.y,
+                s_window_geometry.size.w,
+                s_window_geometry.size.h,
+            );
             for r in input_regions.rects {
-                input_region.add(r.1.loc.x, r.1.loc.y, r.1.size.w, r.1.size.h);
+                input_region.add(0, 0, r.1.size.w, r.1.size.h);
             }
-            c_wl_surface.set_input_region(Some(&input_region));
+            c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
 
-        //must be done after role is assigned as popup
+        // get_popup is not implemented yet in sctk 0.30
+        self.layer_surface
+            .as_ref()
+            .unwrap()
+            .get_popup(c_popup.xdg_popup());
+
+        // //must be done after role is assigned as popup
         c_wl_surface.commit();
 
-        let cur_popup_state = Rc::new(Cell::new(Some(PopupState::WaitConfigure(true))));
-        c_xdg_surface.quick_assign(move |c_xdg_surface, e, _| {
-            if let xdg_surface::Event::Configure { serial, .. } = e {
-                c_xdg_surface.ack_configure(serial);
-            }
-        });
+        let cur_popup_state = Some(WrapperPopupState::WaitConfigure);
 
-        let popup_state = cur_popup_state.clone();
-
-        c_popup.quick_assign(move |_c_popup, e, _| {
-            if let Some(PopupState::Closed) = popup_state.get().as_ref() {
-                return;
-            }
-
-            match e {
-                xdg_popup::Event::Configure {
-                    x,
-                    y,
-                    width,
-                    height,
-                } => {
-                    if popup_state.get() != Some(PopupState::Closed) {
-                        let _ = s_popup_surface.send_configure();
-
-                        let first = match popup_state.get() {
-                            Some(PopupState::Configure { first, .. }) => first,
-                            Some(PopupState::WaitConfigure(first)) => first,
-                            _ => false,
-                        };
-                        popup_state.set(Some(PopupState::Configure {
-                            first,
-                            x,
-                            y,
-                            width,
-                            height,
-                        }));
-                    }
-                }
-                xdg_popup::Event::PopupDone => {
-                    popup_state.set(Some(PopupState::Closed));
-                }
-                xdg_popup::Event::Repositioned { token } => {
-                    popup_state.set(Some(PopupState::Repositioned(token)));
-                }
-                _ => {}
-            };
-        });
-
-        self.popups.push(Popup {
+        self.popups.push(WrapperPopup {
             c_popup,
-            c_xdg_surface,
             c_wl_surface,
             s_surface,
             egl_surface: None,
             dirty: false,
-            popup_state: cur_popup_state,
             rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
             accumulated_damage: Default::default(),
             full_clear: 4,
-            input_region
+            state: cur_popup_state,
+            input_region,
         });
+
+        Ok(())
     }
 
     fn reposition_popup(
         &mut self,
-        s_popup: PopupSurface,
-        _: Main<XdgPositioner>,
-        _: PositionerState,
+        popup: PopupSurface,
+        _positioner: &sctk::shell::xdg::XdgPositioner,
+        _positioner_state: PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
-        s_popup.send_repositioned(token);
-        s_popup.send_configure()?;
+        popup.send_repositioned(token);
+        popup.send_configure()?;
         Ok(())
     }
 
@@ -344,10 +320,9 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn destroy(&mut self) {
-        self.layer_surface.as_mut().map(|ls| ls.destroy());
-        if let Some(wls) = self.layer_shell_wl_surface.as_mut() {
-            wls.destroy();
-        }
+        // self.layer_shell_wl_surface
+        //     .as_mut()
+        //     .map(|wls| wls.destroy());
     }
 
     fn visibility(&self) -> Visibility {
@@ -382,12 +357,6 @@ impl WrapperSpace for PanelSpace {
                 .space_event
                 .get()
                 .map(|e| match e {
-                    SpaceEvent::Configure {
-                        width,
-                        height,
-                        serial: _serial,
-                        ..
-                    } => (width, height),
                     SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
                     _ => self.dimensions.into(),
                 })
@@ -411,6 +380,7 @@ impl WrapperSpace for PanelSpace {
     fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
         self.space.commit(s);
         self.space.refresh(dh);
+
         if let Some(p) = self
             .popups
             .iter_mut()
@@ -419,34 +389,39 @@ impl WrapperSpace for PanelSpace {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.rectangle {
-                let first = p
-                    .popup_state
-                    .get()
-                    .map(|state| match state {
-                        PopupState::Configure { first, .. } => first,
-                        _ => false,
-                    })
-                    .unwrap_or(false);
-                p.c_xdg_surface.set_window_geometry(p_geo.loc.x, p_geo.loc.y, p_geo.size.w, p_geo.size.h);
+                p.c_popup.xdg_surface().set_window_geometry(
+                    p_geo.loc.x,
+                    p_geo.loc.y,
+                    p_geo.size.w,
+                    p_geo.size.h,
+                );
                 if let Some(input_regions) = with_states(p.s_surface.wl_surface(), |states| {
                     states
                         .cached_state
                         .current::<SurfaceAttributes>()
-                        .input_region.as_ref().cloned() 
+                        .input_region
+                        .as_ref()
+                        .cloned()
                 }) {
-                    p.input_region.subtract (p_bbox.loc.x, p_bbox.loc.y, p_bbox.size.w, p_bbox.size.h);
+                    p.input_region.subtract(
+                        p_bbox.loc.x,
+                        p_bbox.loc.y,
+                        p_bbox.size.w,
+                        p_bbox.size.h,
+                    );
                     for r in input_regions.rects {
-                        p.input_region.add(r.1.loc.x, r.1.loc.y, r.1.size.w, r.1.size.h);
+                        p.input_region
+                            .add(0, 0, r.1.size.w, r.1.size.h);
                     }
-                    p.c_wl_surface.set_input_region(Some(&p.input_region));
+                    p.c_wl_surface
+                        .set_input_region(Some(p.input_region.wl_region()));
                 }
-                p.popup_state.replace(Some(PopupState::Configure {
-                    first,
+                p.state.replace(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
                     y: p_bbox.loc.y,
                     width: p_bbox.size.w,
                     height: p_bbox.size.h,
-                }));
+                });
             }
             p.dirty = true;
         }
@@ -457,119 +432,89 @@ impl WrapperSpace for PanelSpace {
         None
     }
 
-    fn setup(
+    fn setup<W: WrapperSpace>(
         &mut self,
-        _: wayland_server::DisplayHandle,
-        env: &Environment<Env>,
-        c_display: client::Display,
+        _compositor_state: &CompositorState,
+        _layer_state: &mut LayerState,
+        conn: &Connection,
+        _qh: &QueueHandle<GlobalState<W>>,
+        _display: wayland_server::DisplayHandle,
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
-        let layer_shell = env.require_global::<zwlr_layer_shell_v1::ZwlrLayerShellV1>();
-        let pool = env
-            .create_auto_pool()
-            .expect("Failed to create a memory pool!");
-
-        self.layer_shell.replace(layer_shell);
-        self.pool.replace(pool);
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
-        self.c_display.replace(c_display);
+        self.c_display.replace(conn.display());
     }
 
-    fn handle_output(
+    fn handle_output<W: WrapperSpace>(
         &mut self,
-        _: wayland_server::DisplayHandle,
-        env: &Environment<Env>,
+        compositor_state: &sctk::compositor::CompositorState,
+        layer_state: &mut LayerState,
+        _conn: &sctk::reexports::client::Connection,
+        qh: &QueueHandle<GlobalState<W>>,
         c_output: Option<c_wl_output::WlOutput>,
         s_output: Option<Output>,
-        output_info: Option<&OutputInfo>,
+        output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
-        if let Some(info) = output_info {
-            if info.obsolete {
-                self.space_event.replace(Some(SpaceEvent::Quit));
-            }
+        if let (Some(_info), Some(_name)) = (
+            output_info.as_ref(),
+            self.output.as_ref().and_then(|o| o.2.name.as_ref()),
+        ) {
+            // TODO update
         }
 
         self.output = izip!(
-            c_output.clone().into_iter(),
+            c_output.into_iter(),
             s_output.into_iter(),
-            output_info.cloned()
+            output_info.as_ref().cloned()
         )
         .next();
-        let c_surface = env.create_surface();
+        let c_surface = compositor_state.create_surface(qh)?;
         let dimensions = self.constrain_dim((1, 1).into());
-        let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
-            &c_surface,
-            c_output.as_ref(),
-            self.config.layer(),
-            "".to_owned(),
-        );
+        // let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
+        //     &c_surface,
+        //     c_output.as_ref(),
+        //     self.config.layer(),
+        //     "".to_owned(),
+        // );
+        let layer = match self.config().layer() {
+            zwlr_layer_shell_v1::Layer::Background => Layer::Background,
+            zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
+            zwlr_layer_shell_v1::Layer::Top => Layer::Top,
+            zwlr_layer_shell_v1::Layer::Overlay => Layer::Overlay,
+            _ => bail!("Invalid layer"),
+        };
 
-        layer_surface.set_anchor(self.config.anchor.into());
-        layer_surface.set_keyboard_interactivity(self.config.keyboard_interactivity());
-        layer_surface.set_size(
-            dimensions.w.try_into().unwrap(),
-            dimensions.h.try_into().unwrap(),
-        );
-
-        // Commit so that the server will send a configure event
+        let layer_surface_builder = LayerSurface::builder()
+            .keyboard_interactivity(match self.config.keyboard_interactivity {
+                xdg_shell_wrapper_config::KeyboardInteractivity::None => {
+                    KeyboardInteractivity::None
+                }
+                xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
+                    KeyboardInteractivity::Exclusive
+                }
+                xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
+                    KeyboardInteractivity::OnDemand
+                }
+            })
+            .size((
+                dimensions.w.try_into().unwrap(),
+                dimensions.h.try_into().unwrap(),
+            ));
+        let layer_surface = layer_surface_builder.map(qh, layer_state, c_surface.clone(), layer)?;
+        layer_surface.set_anchor(match self.config.anchor {
+            cosmic_panel_config::PanelAnchor::Left => layer::Anchor::LEFT,
+            cosmic_panel_config::PanelAnchor::Right => layer::Anchor::RIGHT,
+            cosmic_panel_config::PanelAnchor::Top => layer::Anchor::TOP,
+            cosmic_panel_config::PanelAnchor::Bottom => layer::Anchor::BOTTOM,
+        });
         c_surface.commit();
-
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,
             width: dimensions.w,
             height: dimensions.h,
         })));
-
-        let next_render_event_handle = next_render_event.clone();
-        let logger = self.log.clone();
-        layer_surface.quick_assign(move |layer_surface, event, _| {
-            match (event, next_render_event_handle.get()) {
-                (zwlr_layer_surface_v1::Event::Closed, _) => {
-                    info!(logger, "Received close event. closing.");
-                    next_render_event_handle.set(Some(SpaceEvent::Quit));
-                }
-                (
-                    zwlr_layer_surface_v1::Event::Configure {
-                        serial,
-                        width,
-                        height,
-                    },
-                    next,
-                ) if next != Some(SpaceEvent::Quit) => {
-                    trace!(
-                        logger,
-                        "received configure event {:?} {:?} {:?}",
-                        serial,
-                        width,
-                        height
-                    );
-                    layer_surface.ack_configure(serial);
-
-                    let first = match next {
-                        Some(SpaceEvent::Configure { first, .. }) => first,
-                        Some(SpaceEvent::WaitConfigure { first, .. }) => first,
-                        _ => false,
-                    };
-                    next_render_event_handle.set(Some(SpaceEvent::Configure {
-                        first,
-                        width: if width == 0 {
-                            dimensions.w
-                        } else {
-                            width.try_into().unwrap()
-                        },
-                        height: if height == 0 {
-                            dimensions.h
-                        } else {
-                            height.try_into().unwrap()
-                        },
-                        serial: serial.try_into().unwrap(),
-                    }));
-                }
-                (_, _) => {}
-            }
-        });
 
         self.layer_surface.replace(layer_surface);
         self.dimensions = dimensions;
@@ -591,8 +536,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|(i, f)| (i, f.0.clone()))
         } {
             // close popups when panel is pressed
-            if **self.layer_shell_wl_surface.as_ref().unwrap() == prev_foc.1
-                && !self.popups.is_empty()
+            if self.layer_shell_wl_surface.as_ref() == Some(&prev_foc.1) && !self.popups.is_empty()
             {
                 self.close_popups();
             }
@@ -627,11 +571,7 @@ impl WrapperSpace for PanelSpace {
         let prev_kbd = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
 
         // first check if the motion is on a popup's client surface
-        if let Some(p) = self
-            .popups
-            .iter()
-            .find(|p| p.c_wl_surface == c_wl_surface)
-        {
+        if let Some(p) = self.popups.iter().find(|p| p.c_wl_surface == c_wl_surface) {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 
@@ -646,6 +586,7 @@ impl WrapperSpace for PanelSpace {
                 prev_foc.s_pos = p.rectangle.loc - geo.loc;
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
+
                 Some(prev_foc.clone())
             } else {
                 self.s_hovered_surface.push(ServerPointerFocus {
@@ -657,11 +598,11 @@ impl WrapperSpace for PanelSpace {
                 self.s_hovered_surface.last().cloned()
             }
         } else {
-            // if not on this panel's client surface exit
+            // if not on this panel's client surface retun None
             if self
                 .layer_shell_wl_surface
                 .as_ref()
-                .map(|s| **s != c_wl_surface)
+                .map(|s| *s != c_wl_surface)
                 .unwrap_or(true)
             {
                 return None;
@@ -724,5 +665,41 @@ impl WrapperSpace for PanelSpace {
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
         self.update_pointer(dim, seat_name, c_wl_surface)
+    }
+
+    // TODO after get popup is implemented
+    fn configure_popup(
+        &mut self,
+        _popup: &sctk::shell::xdg::popup::Popup,
+        _config: sctk::shell::xdg::popup::PopupConfigure,
+    ) {
+    }
+
+    // TODO after get popup is implemented
+    fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
+        self.popups.retain(|p| {
+            if p.c_popup.wl_surface() == popup.wl_surface() {
+                p.s_surface.send_popup_done();
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    // handled by custom method with access to renderer instead
+    fn configure_layer(&mut self, _: &LayerSurface, _: sctk::shell::layer::LayerSurfaceConfigure) {}
+
+    // handled by the container
+    fn close_layer(&mut self, _: &LayerSurface) {}
+
+    // handled by the container
+    fn output_leave(
+        &mut self,
+        _c_output: Option<c_wl_output::WlOutput>,
+        _s_output: Option<Output>,
+        _info: Option<OutputInfo>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("Output leaving should be handled by the container")
     }
 }

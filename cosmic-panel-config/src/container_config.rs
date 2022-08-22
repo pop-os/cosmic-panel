@@ -8,7 +8,7 @@ use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, Wrap
 
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub struct CosmicPanelContainerConfig {
     pub config_list: Vec<CosmicPanelConfig>,
 }

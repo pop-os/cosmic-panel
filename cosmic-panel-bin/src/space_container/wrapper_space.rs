@@ -2,29 +2,41 @@
 
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::space::PanelSpace;
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
-use sctk::reexports::client::protocol::wl_surface as c_wl_surface;
+use sctk::{
+    compositor::CompositorState,
+    output::OutputInfo,
+    reexports::client::{
+        protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
+        Connection, QueueHandle,
+    },
+    shell::layer::LayerState,
+};
 use smithay::{
     desktop::PopupManager,
     reexports::wayland_server::{self, protocol::wl_surface, Resource},
     wayland::output::Output,
 };
 use xdg_shell_wrapper::{
-    client_state::ClientFocus, server_state::ServerPointerFocus, space::WrapperSpace,
+    client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
+    space::WrapperSpace,
 };
+
+use crate::space::PanelSpace;
 
 use super::SpaceContainer;
 
 impl WrapperSpace for SpaceContainer {
     type Config = CosmicPanelContainerConfig;
 
-    fn setup(
+    fn setup<W: WrapperSpace>(
         &mut self,
+        compositor_state: &CompositorState,
+        layer_state: &mut LayerState,
+        conn: &Connection,
+        qh: &QueueHandle<GlobalState<W>>,
         display: wayland_server::DisplayHandle,
-        env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
-        c_display: sctk::reexports::client::Display,
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
@@ -37,31 +49,36 @@ impl WrapperSpace for SpaceContainer {
                 if matches!(config.output, CosmicPanelOuput::Active) {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
                     s.setup(
+                        compositor_state,
+                        layer_state,
+                        conn,
+                        qh,
                         display.clone(),
-                        env,
-                        c_display.clone(),
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
-                    let _ = s.handle_output(display.clone(), env, None, None, None);
+                    let _ =
+                        s.handle_output(compositor_state, layer_state, conn, qh, None, None, None);
                     Some(s)
                 } else {
                     None
                 }
             })
             .collect_vec();
-        self.c_display.replace(c_display);
+        self.c_display.replace(display);
         self.c_focused_surface = c_focused_surface;
         self.c_hovered_surface = c_hovered_surface;
     }
 
-    fn handle_output(
+    fn handle_output<W: WrapperSpace>(
         &mut self,
-        display: wayland_server::DisplayHandle,
-        env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
-        c_output: Option<sctk::reexports::client::protocol::wl_output::WlOutput>,
+        compositor_state: &sctk::compositor::CompositorState,
+        layer_state: &mut LayerState,
+        conn: &sctk::reexports::client::Connection,
+        qh: &QueueHandle<GlobalState<W>>,
+        c_output: Option<WlOutput>,
         s_output: Option<Output>,
-        output_info: Option<&sctk::output::OutputInfo>,
+        output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
         let c_output = match c_output {
             Some(o) => o,
@@ -78,6 +95,11 @@ impl WrapperSpace for SpaceContainer {
             None => return Ok(()), // already created and set up
         };
 
+        let output_name = match output_info.name.clone() {
+            Some(n) => n,
+            None => anyhow::bail!("Output missing name"),
+        };
+
         let c_display = self.c_display.as_ref().unwrap().clone();
         let c_focused_surface = &self.c_focused_surface;
         let c_hovered_surface = &self.c_hovered_surface;
@@ -91,39 +113,47 @@ impl WrapperSpace for SpaceContainer {
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
                     let mut config = config.clone();
-                    config.output = CosmicPanelOuput::Name(output_info.name.clone());
+                    config.output = CosmicPanelOuput::Name(output_name.clone());
                     let mut s = PanelSpace::new(config, self.log.clone());
                     s.setup(
-                        display.clone(),
-                        env,
+                        compositor_state,
+                        layer_state,
+                        conn,
+                        qh,
                         c_display.clone(),
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
                     let _ = s.handle_output(
-                        display.clone(),
-                        env,
+                        compositor_state,
+                        layer_state,
+                        conn,
+                        qh,
                         Some(c_output.clone()),
                         Some(s_output.clone()),
-                        Some(output_info),
+                        Some(output_info.clone()),
                     );
                     Some(s)
                 }
-                CosmicPanelOuput::Name(name) if name == &output_info.name => {
+                CosmicPanelOuput::Name(name) if name == &output_name => {
                     let mut s = PanelSpace::new(config.clone(), self.log.clone());
                     s.setup(
-                        display.clone(),
-                        env,
+                        compositor_state,
+                        layer_state,
+                        conn,
+                        qh,
                         c_display.clone(),
                         c_focused_surface.clone(),
                         c_hovered_surface.clone(),
                     );
                     let _ = s.handle_output(
-                        display.clone(),
-                        env,
+                        compositor_state,
+                        layer_state,
+                        conn,
+                        qh,
                         Some(c_output.clone()),
                         Some(s_output.clone()),
-                        Some(output_info),
+                        Some(output_info.clone()),
                     );
                     Some(s)
                 }
@@ -155,18 +185,16 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn add_popup(
+    fn add_popup<W: WrapperSpace>(
         &mut self,
-        env: &sctk::environment::Environment<xdg_shell_wrapper::client_state::Env>,
-        xdg_surface_state: &sctk::reexports::client::Attached<
-            sctk::reexports::protocols::xdg_shell::client::xdg_wm_base::XdgWmBase,
-        >,
+        compositor_state: &CompositorState,
+        conn: &Connection,
+        qh: &QueueHandle<GlobalState<W>>,
+        xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: sctk::reexports::client::Main<
-            sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner,
-        >,
+        positioner: &sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
-    ) {
+    ) -> anyhow::Result<()> {
         // add popup to the space with a client that matches the window
         let p_client = s_surface.wl_surface().client_id();
 
@@ -179,21 +207,23 @@ impl WrapperSpace for SpaceContainer {
                 .any(|c| Some(c.id()) == p_client)
         }) {
             space.add_popup(
-                env,
-                xdg_surface_state,
+                compositor_state,
+                conn,
+                qh,
+                xdg_shell_state,
                 s_surface,
                 positioner,
                 positioner_state,
-            );
+            )
+        } else {
+            anyhow::bail!("failed to find a matching panel space for this popup.")
         }
     }
 
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: sctk::reexports::client::Main<
-            sctk::reexports::protocols::xdg_shell::client::xdg_positioner::XdgPositioner,
-        >,
+        positioner: &sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
@@ -301,7 +331,7 @@ impl WrapperSpace for SpaceContainer {
     }
 
     // FIXME
-    // all pointer / keyboard handling should be called on the active space first, then on the rest
+    // all pointer / keyboard handling should be called on any space with an active popup first, then on the rest
     // Eg: likely opening a popup on one panel, then without clicking anywhere else, opening a popup on another panel will crash
     fn update_pointer(
         &mut self,
@@ -309,20 +339,72 @@ impl WrapperSpace for SpaceContainer {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        self.space_list
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
             .iter_mut()
-            .find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            if let Some(p_ret) = popup_space.update_pointer(dim, seat_name, c_wl_surface.clone()) {
+                Some(p_ret)
+            } else {
+                self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
+                    if i != popup_space_i {
+                        s.update_pointer(dim, seat_name, c_wl_surface.clone())
+                    } else {
+                        None
+                    }
+                })
+            }
+        } else {
+            self.space_list
+                .iter_mut()
+                .find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
+        }
     }
 
     fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
-        self.space_list
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
             .iter_mut()
-            .find_map(|s| s.handle_press(seat_name))
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            if let Some(p_ret) = popup_space.handle_press(seat_name) {
+                Some(p_ret)
+            } else {
+                self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
+                    if i != popup_space_i {
+                        s.handle_press(seat_name)
+                    } else {
+                        None
+                    }
+                })
+            }
+        } else {
+            self.space_list
+                .iter_mut()
+                .find_map(|s| s.handle_press(seat_name))
+        }
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        for s in &mut self.space_list {
-            s.keyboard_leave(seat_name, surface.clone());
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            popup_space.keyboard_leave(seat_name, surface.clone());
+            for (i, s) in &mut self.space_list.iter_mut().enumerate() {
+                if i != popup_space_i {
+                    s.keyboard_leave(seat_name, surface.clone())
+                };
+            }
+        } else {
+            for s in &mut self.space_list {
+                s.keyboard_leave(seat_name, surface.clone());
+            }
         }
     }
 
@@ -331,14 +413,46 @@ impl WrapperSpace for SpaceContainer {
         seat_name: &str,
         surface: c_wl_surface::WlSurface,
     ) -> Option<wl_surface::WlSurface> {
-        self.space_list
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
             .iter_mut()
-            .find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            if let Some(p_ret) = popup_space.keyboard_enter(seat_name, surface.clone()) {
+                Some(p_ret);
+            }
+            self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
+                if i != popup_space_i {
+                    s.keyboard_enter(seat_name, surface.clone())
+                } else {
+                    None
+                }
+            })
+        } else {
+            self.space_list
+                .iter_mut()
+                .find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
+        }
     }
 
     fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
-        for s in &mut self.space_list {
-            s.pointer_leave(seat_name, surface.clone());
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            popup_space.pointer_leave(seat_name, surface.clone());
+            for (i, s) in &mut self.space_list.iter_mut().enumerate() {
+                if i != popup_space_i {
+                    s.pointer_leave(seat_name, surface.clone())
+                };
+            }
+        } else {
+            for s in &mut self.space_list {
+                s.pointer_leave(seat_name, surface.clone());
+            }
         }
     }
 
@@ -348,8 +462,92 @@ impl WrapperSpace for SpaceContainer {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        self.space_list
+        if let Some((popup_space_i, popup_space)) = self
+            .space_list
             .iter_mut()
-            .find_map(|s| s.pointer_enter(dim, seat_name, c_wl_surface.clone()))
+            .enumerate()
+            .find(|(_, s)| !s.popups.is_empty())
+        {
+            if let Some(p_ret) = popup_space.pointer_enter(dim, seat_name, c_wl_surface.clone()) {
+                Some(p_ret)
+            } else {
+                self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
+                    if i != popup_space_i {
+                        s.pointer_enter(dim, seat_name, c_wl_surface.clone())
+                    } else {
+                        None
+                    }
+                })
+            }
+        } else {
+            self.space_list
+                .iter_mut()
+                .find_map(|s| s.pointer_enter(dim, seat_name, c_wl_surface.clone()))
+        }
+    }
+
+    fn configure_popup(
+        &mut self,
+        popup: &sctk::shell::xdg::popup::Popup,
+        config: sctk::shell::xdg::popup::PopupConfigure,
+    ) {
+        if let Some(space) = self.space_list.iter_mut().find(|s| {
+            s.popups
+                .iter()
+                .any(|p| p.c_popup.wl_surface() == popup.wl_surface())
+        }) {
+            space.configure_panel_popup(popup, config, self.renderer.as_ref());
+        }
+    }
+
+    // TODO check if any panels are visible
+    fn visibility(&self) -> xdg_shell_wrapper::space::Visibility {
+        xdg_shell_wrapper::space::Visibility::Visible
+    }
+
+    fn raise_window(&mut self, _: &smithay::desktop::Window, _: bool) {}
+
+    fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
+        if let Some(space) = self.space_list.iter_mut().find(|s| {
+            s.popups
+                .iter()
+                .any(|p| p.c_popup.wl_surface() == popup.wl_surface())
+        }) {
+            space.close_popup(popup);
+        }
+    }
+
+    fn configure_layer(
+        &mut self,
+        layer: &sctk::shell::layer::LayerSurface,
+        configure: sctk::shell::layer::LayerSurfaceConfigure,
+    ) {
+        if let Some(space) = self
+            .space_list
+            .iter_mut()
+            .find(|s| s.layer_shell_wl_surface.as_ref() == Some(layer.wl_surface()))
+        {
+            space.configure_panel_layer(layer, configure, &mut self.renderer);
+        }
+    }
+
+    fn close_layer(&mut self, layer: &sctk::shell::layer::LayerSurface) {
+        self.space_list
+            .retain(|s| s.layer_shell_wl_surface.as_ref() != Some(layer.wl_surface()));
+    }
+
+    fn output_leave(
+        &mut self,
+        _c_output: Option<sctk::reexports::client::protocol::wl_output::WlOutput>,
+        s_output: Option<Output>,
+        _info: Option<OutputInfo>,
+    ) -> anyhow::Result<()> {
+        let s_output = match s_output {
+            Some(o) => o,
+            None => return Ok(()),
+        };
+        self.space_list
+            .retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));
+        Ok(())
     }
 }

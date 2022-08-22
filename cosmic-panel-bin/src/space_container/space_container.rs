@@ -3,11 +3,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use cosmic_panel_config::CosmicPanelContainerConfig;
-use sctk::reexports::client;
 use slog::Logger;
-use smithay::{
-    backend::renderer::gles2::Gles2Renderer,
-};
+use smithay::{backend::renderer::gles2::Gles2Renderer, reexports::wayland_server};
 use xdg_shell_wrapper::client_state::ClientFocus;
 
 use crate::space::PanelSpace;
@@ -17,7 +14,7 @@ pub struct SpaceContainer {
     pub(crate) config: CosmicPanelContainerConfig,
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<Gles2Renderer>,
-    pub(crate) c_display: Option<client::Display>,
+    pub(crate) c_display: Option<wayland_server::DisplayHandle>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub log: Logger,

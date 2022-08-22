@@ -9,14 +9,12 @@ use anyhow::Ok;
 use gtk4::Orientation;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use wayland_protocols::wlr::unstable::layer_shell::v1::client::{
-    zwlr_layer_shell_v1, zwlr_layer_surface_v1,
-};
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};
 
 /// Edge to which the panel is anchored
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub enum PanelAnchor {
     /// anchored to left edge
     Left,
@@ -109,7 +107,7 @@ impl Into<Orientation> for PanelAnchor {
 
 /// Configurable size for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub enum PanelSize {
     /// XS
     XS,
@@ -152,7 +150,7 @@ impl FromStr for PanelSize {
 
 /// configurable backgrounds for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub enum CosmicPanelBackground {
     /// theme default color
     ThemeDefault,
@@ -163,7 +161,7 @@ pub enum CosmicPanelBackground {
 // TODO configurable interpolation type?
 /// configurable autohide behavior
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub struct AutoHide {
     /// time without pointer focus before hiding
     pub wait_time: u32,
@@ -176,7 +174,7 @@ pub struct AutoHide {
 
 /// Configuration for the panel's ouput
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub enum CosmicPanelOuput {
     /// show panel on all outputs
     All,
@@ -228,7 +226,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
 
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields)] 
+#[serde(deny_unknown_fields)]
 pub struct CosmicPanelConfig {
     /// profile name for this config
     pub name: String,
