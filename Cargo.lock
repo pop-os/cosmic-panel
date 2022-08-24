@@ -1506,7 +1506,7 @@ dependencies = [
  "nix 0.24.2",
  "thiserror",
  "wayland-backend",
- "wayland-scanner 0.30.0-beta.8 (git+https://github.com/smithay/wayland-rs)",
+ "wayland-scanner",
 ]
 
 [[package]]
@@ -1537,20 +1537,19 @@ dependencies = [
  "bitflags",
  "wayland-backend",
  "wayland-client",
- "wayland-scanner 0.30.0-beta.8 (git+https://github.com/smithay/wayland-rs)",
+ "wayland-scanner",
  "wayland-server",
 ]
 
 [[package]]
 name = "wayland-protocols-misc"
 version = "0.1.0-beta.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b660ecc6e9709a438d9e227eedbea31d6c551672ff75eec90eeef0447c8ecc7c"
+source = "git+https://github.com/smithay/wayland-rs#1f38f9abfa70770b7d8af134bc971f8242dd644d"
 dependencies = [
  "bitflags",
  "wayland-backend",
  "wayland-protocols",
- "wayland-scanner 0.30.0-beta.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "wayland-scanner",
  "wayland-server",
 ]
 
@@ -1563,20 +1562,8 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
- "wayland-scanner 0.30.0-beta.8 (git+https://github.com/smithay/wayland-rs)",
+ "wayland-scanner",
  "wayland-server",
-]
-
-[[package]]
-name = "wayland-scanner"
-version = "0.30.0-beta.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87933ccc3df4f6335cf240aca0647aa34319fdd693dda503f645ca4df4e10386"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "xml-rs",
 ]
 
 [[package]]
@@ -1600,7 +1587,7 @@ dependencies = [
  "nix 0.24.2",
  "thiserror",
  "wayland-backend",
- "wayland-scanner 0.30.0-beta.8 (git+https://github.com/smithay/wayland-rs)",
+ "wayland-scanner",
 ]
 
 [[package]]
@@ -1707,3 +1694,8 @@ name = "xml-rs"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2d7d3948613f75c98fd9328cfdcc45acc4d360655289d0a7d4ec931392200a3"
+
+[[patch.unused]]
+name = "wayland-protocols-plasma"
+version = "0.1.0-beta.8"
+source = "git+https://github.com/smithay/wayland-rs#1f38f9abfa70770b7d8af134bc971f8242dd644d"
