@@ -21,6 +21,7 @@
                     "com.system76.CosmicAppletGraphics",
                     "com.system76.CosmicAppletBattery",
                     "com.system76.CosmicAppletNotifications",
+                    "com.system76.CosmicAppletAudio"
                     "com.system76.CosmicAppletPower",
                 ]
             )),

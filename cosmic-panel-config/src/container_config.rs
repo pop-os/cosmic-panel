@@ -91,6 +91,7 @@ impl Default for CosmicPanelContainerConfig {
                             "com.system76.CosmicAppletGraphics".to_string(),
                             "com.system76.CosmicAppletBattery".to_string(),
                             "com.system76.CosmicAppletNotifications".to_string(),
+                            "com.system76.CosmicAppletAudio".to_string(),
                             "com.system76.CosmicAppletPower".to_string(),
                         ],
                     )),
