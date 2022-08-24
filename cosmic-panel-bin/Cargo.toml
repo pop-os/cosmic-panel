@@ -21,6 +21,9 @@ xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper"
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
 wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"] }
+# for watching theme
+adw = { git = "https://gitlab.gnome.org/World/Rust/libadwaita-rs", package = "libadwaita"}
+adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
 
 anyhow = "1.0.53"
 shlex = "1.1.0"

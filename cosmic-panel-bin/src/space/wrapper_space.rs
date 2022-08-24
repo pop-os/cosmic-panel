@@ -410,8 +410,7 @@ impl WrapperSpace for PanelSpace {
                         p_bbox.size.h,
                     );
                     for r in input_regions.rects {
-                        p.input_region
-                            .add(0, 0, r.1.size.w, r.1.size.h);
+                        p.input_region.add(0, 0, r.1.size.w, r.1.size.h);
                     }
                     p.c_wl_surface
                         .set_input_region(Some(p.input_region.wl_region()));

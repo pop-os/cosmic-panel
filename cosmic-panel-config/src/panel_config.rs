@@ -152,8 +152,8 @@ impl FromStr for PanelSize {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub enum CosmicPanelBackground {
-    /// theme default color
-    ThemeDefault,
+    /// theme default color with optional transparency
+    ThemeDefault(Option<f32>),
     /// RGBA
     Color([f32; 4]),
 }
@@ -270,7 +270,7 @@ impl Default for CosmicPanelConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size: PanelSize::M,
             output: CosmicPanelOuput::All,
-            background: CosmicPanelBackground::Color([0.5, 0.0, 0.5, 0.5]),
+            background: CosmicPanelBackground::ThemeDefault(Some(0.8)),
             plugins_wings: Default::default(),
             plugins_center: Default::default(),
             expand_to_edges: true,

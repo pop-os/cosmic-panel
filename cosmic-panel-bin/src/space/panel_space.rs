@@ -2,12 +2,15 @@
 
 use std::{
     cell::{Cell, RefCell},
+    fs::File,
+    io::{BufRead, BufReader},
     os::raw::c_int,
     process::Child,
     rc::Rc,
     time::{Duration, Instant},
 };
 
+use adw::gdk::RGBA;
 use itertools::Itertools;
 use sctk::{
     output::OutputInfo,
@@ -40,9 +43,7 @@ use smithay::{
         renderer::{gles2::Gles2Renderer, utils::draw_surface_tree},
     },
     desktop::{
-        draw_window,
-        utils::{damage_from_surface_tree},
-        PopupKind, PopupManager, Space, Window,
+        draw_window, utils::damage_from_surface_tree, PopupKind, PopupManager, Space, Window,
     },
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Physical, Point, Rectangle, Size},
@@ -89,11 +90,44 @@ pub(crate) struct PanelSpace {
     pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
+    pub(crate) bg_color: [f32; 4],
 }
 
 impl PanelSpace {
     /// create a new space for the cosmic panel
     pub fn new(config: CosmicPanelConfig, log: Logger) -> Self {
+        let bg_color = match config.background {
+            CosmicPanelBackground::ThemeDefault(alpha) => {
+                let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
+                    .ok()
+                    .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
+                    .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
+                let window_bg_color_pattern = "@define-color window_bg_color";
+                if let Some(color) = File::open(path).ok().and_then(|file| {
+                    BufReader::new(file)
+                        .lines()
+                        .filter_map(|l| l.ok())
+                        .find_map(|line| {
+                            line.rfind(window_bg_color_pattern)
+                                .and_then(|i| line.get(i + window_bg_color_pattern.len()..))
+                                .and_then(|color_str| {
+                                    RGBA::parse(&color_str.trim().replace(";", "")).ok()
+                                })
+                        })
+                }) {
+                    [
+                        color.red(),
+                        color.green(),
+                        color.blue(),
+                        alpha.unwrap_or(color.alpha()),
+                    ]
+                } else {
+                    [0.0, 0.0, 0.0, alpha.unwrap_or(1.0)]
+                }
+            }
+            CosmicPanelBackground::Color(c) => c,
+        };
+
         Self {
             config,
             space: Space::new(log.clone()),
@@ -121,6 +155,7 @@ impl PanelSpace {
             c_hovered_surface: Default::default(),
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
+            bg_color,
         }
     }
 
@@ -139,9 +174,11 @@ impl PanelSpace {
             for (PopupKind::Xdg(p), _) in
                 PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
-                if !self.s_hovered_surface.iter().any(|hs| {
-                    &hs.surface == w.toplevel().wl_surface()
-                }) {
+                if !self
+                    .s_hovered_surface
+                    .iter()
+                    .any(|hs| &hs.surface == w.toplevel().wl_surface())
+                {
                     p.send_popup_done();
                 }
             }
@@ -396,11 +433,7 @@ impl PanelSpace {
             return Ok(());
         }
 
-        let clear_color = match self.config.background {
-            CosmicPanelBackground::ThemeDefault => [0.5, 0.5, 0.5, 0.5],
-            CosmicPanelBackground::Color(c) => c,
-        };
-
+        let clear_color = self.bg_color;
         let _ = renderer.unbind();
         renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
 
@@ -526,14 +559,14 @@ impl PanelSpace {
                     .expect("render error...");
 
                 let mut damage = damage
-                .iter()
-                .map(|rect| {
-                    Rectangle::from_loc_and_size(
-                        (rect.loc.x, self.dimensions.h - rect.loc.y - rect.size.h),
-                        rect.size,
-                    )
-                })
-                .collect::<Vec<_>>();
+                    .iter()
+                    .map(|rect| {
+                        Rectangle::from_loc_and_size(
+                            (rect.loc.x, self.dimensions.h - rect.loc.y - rect.size.h),
+                            rect.size,
+                        )
+                    })
+                    .collect::<Vec<_>>();
                 self.egl_surface
                     .as_ref()
                     .unwrap()
@@ -559,7 +592,7 @@ impl PanelSpace {
                 } else {
                     damage_from_surface_tree(
                         p.s_surface.wl_surface(),
-                    (0.0, 0.0),
+                        (0.0, 0.0),
                         1.0,
                         Some((&self.space, o)),
                     )
@@ -582,7 +615,7 @@ impl PanelSpace {
                     |renderer: &mut Gles2Renderer, frame| {
                         let p_damage = if damage.is_empty() {
                             let mut d = p_bbox.to_physical(1);
-                            d.loc = (0,0).into();
+                            d.loc = (0, 0).into();
                             vec![d]
                         } else {
                             damage.clone()
@@ -595,7 +628,7 @@ impl PanelSpace {
                             )
                             .expect("Failed to clear frame.");
 
-                            let _ = draw_surface_tree(
+                        let _ = draw_surface_tree(
                             renderer,
                             frame,
                             p.s_surface.wl_surface(),
@@ -607,14 +640,14 @@ impl PanelSpace {
                     },
                 );
                 let mut damage = damage
-                .iter()
-                .map(|rect| {
-                    Rectangle::from_loc_and_size(
-                        (rect.loc.x, p_bbox.size.h - rect.loc.y - rect.size.h),
-                        rect.size,
-                    )
-                })
-                .collect::<Vec<_>>();
+                    .iter()
+                    .map(|rect| {
+                        Rectangle::from_loc_and_size(
+                            (rect.loc.x, p_bbox.size.h - rect.loc.y - rect.size.h),
+                            rect.size,
+                        )
+                    })
+                    .collect::<Vec<_>>();
                 p.egl_surface
                     .as_ref()
                     .unwrap()
@@ -678,7 +711,6 @@ impl PanelSpace {
             acc_damage.drain(..acc_damage.len() - 4);
         }
 
-        // dbg!(age, dmg_counts, &acc_damage, &ret);
         ret
     }
 
@@ -785,14 +817,16 @@ impl PanelSpace {
 
         // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
         let total_sum = left_sum + center_sum + right_sum;
-        let new_list_length = total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
-        if new_list_length
-            > list_length as i32
-        {
-            let new_dim = self.constrain_dim(match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (list_thickness, new_list_length),
-                PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, list_thickness),
-            }.into());
+        let new_list_length =
+            total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
+        if new_list_length > list_length as i32 {
+            let new_dim = self.constrain_dim(
+                match anchor {
+                    PanelAnchor::Left | PanelAnchor::Right => (list_thickness, new_list_length),
+                    PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, list_thickness),
+                }
+                .into(),
+            );
             self.pending_dimensions = Some(new_dim);
             anyhow::bail!("resizing list");
         }
@@ -1193,5 +1227,16 @@ impl PanelSpace {
             p.dirty = true;
             p.full_clear = 4;
         }
+    }
+
+    pub fn set_theme_window_color(&mut self, mut color: [f32; 4]) {
+        if let CosmicPanelBackground::ThemeDefault(alpha) = self.config.background {
+            if let Some(alpha) = alpha {
+                color[3] = alpha;
+            }
+            self.bg_color = color;
+        }
+        self.bg_color = color;
+        self.full_clear = 4;
     }
 }

@@ -8,7 +8,7 @@
             keyboard_interactivity: OnDemand,
             size: XS,
             output: All,
-            background: Color((0.2, 0.2, 0.2, 0.8)),
+            background: ThemeDefault(Some(0.8)),
             plugins_center: Some([
                 "com.system76.CosmicAppletTime",
             ]),
@@ -39,7 +39,7 @@
             keyboard_interactivity: OnDemand,
             size: L,
             output: All,
-            background: Color((0.2, 0.2, 0.2, 0.8)),
+            background: ThemeDefault(Some(0.8)),
             plugins_center: Some([
                 "com.system76.CosmicAppList",
             ]),

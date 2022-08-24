@@ -83,7 +83,7 @@ impl Default for CosmicPanelContainerConfig {
                     keyboard_interactivity: KeyboardInteractivity::OnDemand,
                     size: PanelSize::XS,
                     output: CosmicPanelOuput::All,
-                    background: CosmicPanelBackground::Color([0.2, 0.2, 0.2, 0.8]),
+                    background: CosmicPanelBackground::ThemeDefault(Some(0.8)),
                     plugins_wings: Some((
                         vec!["com.system76.CosmicAppletWorkspaces".to_string()],
                         vec![
@@ -110,7 +110,7 @@ impl Default for CosmicPanelContainerConfig {
                     keyboard_interactivity: KeyboardInteractivity::OnDemand,
                     size: PanelSize::L,
                     output: CosmicPanelOuput::All,
-                    background: CosmicPanelBackground::Color([0.2, 0.2, 0.2, 0.8]),
+                    background: CosmicPanelBackground::ThemeDefault(Some(0.8)),
                     plugins_center: Some(vec!["com.system76.CosmicAppList".to_string()]),
                     plugins_wings: None,
                     expand_to_edges: true,
