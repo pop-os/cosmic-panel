@@ -37,3 +37,4 @@ itertools = "0.10.3"
 [profile.release]
 incremental = true
 debug = 1
+

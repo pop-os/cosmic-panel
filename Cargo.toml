@@ -4,3 +4,12 @@ members = [
     "cosmic-panel-bin",
     "cosmic-panel-config"
 ]
+
+
+[patch.crates-io]
+wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs" }
+wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
+wayland-protocols = { git = "https://github.com/smithay/wayland-rs" }
+wayland-server = { git = "https://github.com/smithay/wayland-rs" }
+wayland-sys = { git = "https://github.com/smithay/wayland-rs" }
+wayland-backend = { git = "https://github.com/smithay/wayland-rs" }
