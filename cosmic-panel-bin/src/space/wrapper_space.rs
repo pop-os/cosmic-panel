@@ -52,7 +52,7 @@ use xdg_shell_wrapper::{
     util::{exec_child, get_client_sock},
 };
 
-use cosmic_panel_config::CosmicPanelConfig;
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
 
 use super::PanelSpace;
 
@@ -410,8 +410,7 @@ impl WrapperSpace for PanelSpace {
                         p_bbox.size.h,
                     );
                     for r in input_regions.rects {
-                        p.input_region
-                            .add(0, 0, r.1.size.w, r.1.size.h);
+                        p.input_region.add(0, 0, r.1.size.w, r.1.size.h);
                     }
                     p.c_wl_surface
                         .set_input_region(Some(p.input_region.wl_region()));
@@ -457,19 +456,23 @@ impl WrapperSpace for PanelSpace {
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
-        if let (Some(_info), Some(_name)) = (
-            output_info.as_ref(),
-            self.output.as_ref().and_then(|o| o.2.name.as_ref()),
-        ) {
-            // TODO update
+        if let (Some(_), Some(s_output), Some(output_info)) =
+            (c_output.as_ref(), s_output.as_ref(), output_info.as_ref())
+        {
+            self.space.map_output(s_output, output_info.location);
+            match &self.config.output {
+                CosmicPanelOuput::All |
+                CosmicPanelOuput::Active =>  bail!("output does not match config"),
+                CosmicPanelOuput::Name(config_name) if output_info.name != Some(config_name.to_string()) =>  {
+                    bail!("output does not match config")
+                },
+                _ => {}
+            };
+        } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
+            bail!("output does not match config");
         }
 
-        self.output = izip!(
-            c_output.into_iter(),
-            s_output.into_iter(),
-            output_info.as_ref().cloned()
-        )
-        .next();
+
         let c_surface = compositor_state.create_surface(qh)?;
         let dimensions = self.constrain_dim((1, 1).into());
         // let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
@@ -486,7 +489,7 @@ impl WrapperSpace for PanelSpace {
             _ => bail!("Invalid layer"),
         };
 
-        let layer_surface_builder = LayerSurface::builder()
+        let mut layer_surface_builder = LayerSurface::builder()
             .keyboard_interactivity(match self.config.keyboard_interactivity {
                 xdg_shell_wrapper_config::KeyboardInteractivity::None => {
                     KeyboardInteractivity::None
@@ -502,6 +505,9 @@ impl WrapperSpace for PanelSpace {
                 dimensions.w.try_into().unwrap(),
                 dimensions.h.try_into().unwrap(),
             ));
+        if let Some(output) = c_output.as_ref() {
+            layer_surface_builder = layer_surface_builder.output(output);
+        }
         let layer_surface = layer_surface_builder.map(qh, layer_state, c_surface.clone(), layer)?;
         layer_surface.set_anchor(match self.config.anchor {
             cosmic_panel_config::PanelAnchor::Left => layer::Anchor::LEFT,
@@ -509,6 +515,7 @@ impl WrapperSpace for PanelSpace {
             cosmic_panel_config::PanelAnchor::Top => layer::Anchor::TOP,
             cosmic_panel_config::PanelAnchor::Bottom => layer::Anchor::BOTTOM,
         });
+
         c_surface.commit();
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,
@@ -516,6 +523,12 @@ impl WrapperSpace for PanelSpace {
             height: dimensions.h,
         })));
 
+        self.output = izip!(
+            c_output.into_iter(),
+            s_output.into_iter(),
+            output_info.as_ref().cloned()
+        )
+        .next();
         self.layer_surface.replace(layer_surface);
         self.dimensions = dimensions;
         self.space_event = next_render_event;

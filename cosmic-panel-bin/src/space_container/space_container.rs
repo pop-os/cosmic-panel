@@ -32,4 +32,10 @@ impl SpaceContainer {
             c_hovered_surface: Default::default(),
         }
     }
+
+    pub fn set_theme_window_color(&mut self, color: [f32; 4]) {
+        for space in &mut self.space_list {
+            space.set_theme_window_color(color);
+        }
+    }
 }

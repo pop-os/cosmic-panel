@@ -1,10 +1,9 @@
 use std::fs::File;
 
 use crate::CosmicPanelConfig;
-use crate::{AutoHide, CosmicPanelBackground, CosmicPanelOuput, PanelAnchor, PanelSize};
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
-use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};
+use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
 
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
