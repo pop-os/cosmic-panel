@@ -59,6 +59,22 @@ use super::PanelSpace;
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
+    /// set the display handle of the space
+    fn set_display_handle(
+        &mut self,
+        _display: wayland_server::DisplayHandle,
+    ) {}
+
+    /// get the client hovered surface of the space
+    fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
+        self.c_hovered_surface.clone()
+    }
+    
+    /// get the client focused surface of the space
+    fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>> {
+        self.c_focused_surface.clone()
+    }
+
     fn handle_events(&mut self, _: &DisplayHandle, _: &mut PopupManager, _: u32) -> Instant {
         panic!("this should not be called");
     }
@@ -437,12 +453,7 @@ impl WrapperSpace for PanelSpace {
         _layer_state: &mut LayerState,
         conn: &Connection,
         _qh: &QueueHandle<GlobalState<W>>,
-        _display: wayland_server::DisplayHandle,
-        c_focused_surface: Rc<RefCell<ClientFocus>>,
-        c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
-        self.c_focused_surface = c_focused_surface;
-        self.c_hovered_surface = c_hovered_surface;
         self.c_display.replace(conn.display());
     }
 
@@ -475,12 +486,7 @@ impl WrapperSpace for PanelSpace {
 
         let c_surface = compositor_state.create_surface(qh)?;
         let dimensions = self.constrain_dim((1, 1).into());
-        // let layer_surface = self.layer_shell.as_ref().unwrap().get_layer_surface(
-        //     &c_surface,
-        //     c_output.as_ref(),
-        //     self.config.layer(),
-        //     "".to_owned(),
-        // );
+
         let layer = match self.config().layer() {
             zwlr_layer_shell_v1::Layer::Background => Layer::Background,
             zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
@@ -680,7 +686,7 @@ impl WrapperSpace for PanelSpace {
         self.update_pointer(dim, seat_name, c_wl_surface)
     }
 
-    // TODO after get popup is implemented
+    // TODO
     fn configure_popup(
         &mut self,
         _popup: &sctk::shell::xdg::popup::Popup,
@@ -688,14 +694,15 @@ impl WrapperSpace for PanelSpace {
     ) {
     }
 
-    // TODO after get popup is implemented
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
         self.popups.retain(|p| {
             if p.c_popup.wl_surface() == popup.wl_surface() {
-                p.s_surface.send_popup_done();
-                true
-            } else {
+                if p.s_surface.alive() {
+                    p.s_surface.send_popup_done();
+                }
                 false
+            } else {
+                true
             }
         });
     }

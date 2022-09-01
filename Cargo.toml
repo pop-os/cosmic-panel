@@ -8,7 +8,6 @@ members = [
 
 [patch.crates-io]
 wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs" }
-wayland-protocols-misc = { git = "https://github.com/smithay/wayland-rs" }
 wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
 wayland-protocols = { git = "https://github.com/smithay/wayland-rs" }
 wayland-server = { git = "https://github.com/smithay/wayland-rs" }
