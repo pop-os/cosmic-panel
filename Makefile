@@ -14,7 +14,7 @@ endif
 
 VENDOR ?= 0
 ifneq ($(VENDOR),0)
-	ARGS += --locked
+	ARGS += --offline
 endif
 
 BIN = cosmic-panel
@@ -35,7 +35,7 @@ install:
 
 ## Cargo Vendoring
 
-vendor:
+.VENDOR:
 	rm .cargo -rf
 	mkdir -p .cargo
 	cargo vendor | head -n -1 > .cargo/config

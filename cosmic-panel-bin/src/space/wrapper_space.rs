@@ -559,7 +559,6 @@ impl WrapperSpace for PanelSpace {
             {
                 self.close_popups();
             }
-
             self.s_hovered_surface.iter().find_map(|h| {
                 if h.seat_name.as_str() == seat_name {
                     Some(h.surface.clone())
@@ -587,15 +586,14 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .enumerate()
             .find(|(_, f)| f.seat_name == seat_name);
-        let prev_kbd = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
-
+        let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
         if let Some(p) = self.popups.iter().find(|p| p.c_wl_surface == c_wl_surface) {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 
-            if let Some(prev_kbd) = prev_kbd {
-                prev_kbd.0 = p.s_surface.wl_surface().clone();
+            if let Some(prev_foc) = prev_foc {
+                prev_foc.0 = p.s_surface.wl_surface().clone();
             } else {
                 self.s_focused_surface
                     .push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
@@ -630,7 +628,7 @@ impl WrapperSpace for PanelSpace {
                 .space
                 .surface_under((x as f64, y as f64), WindowSurfaceType::ALL)
             {
-                if let Some(prev_kbd) = prev_kbd {
+                if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = w.toplevel().wl_surface().clone();
                 } else {
                     self.s_focused_surface

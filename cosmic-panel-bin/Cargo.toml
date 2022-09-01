@@ -10,7 +10,7 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "7d755cd5e0069ea9e6bdfd0cf6e5d6a6bbe4e977" }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"]}
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
 # sctk = { package = "smithay-client-toolkit", version = "0.16.0", default-features = false, features = ["calloop"] }
 sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "get_popup" }
@@ -19,8 +19,8 @@ sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-cli
 xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
-wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"] }
+wayland-egl = { git = "https://github.com/smithay/wayland-rs", rev = "746c68154d35763025877c9713a30c2b35232f8c" }
+wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"], rev = "746c68154d35763025877c9713a30c2b35232f8c" }
 # for watching theme
 adw = { git = "https://gitlab.gnome.org/World/Rust/libadwaita-rs", package = "libadwaita"}
 adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
@@ -36,8 +36,4 @@ libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
 itertools = "0.10.3"
-
-[profile.release]
-incremental = true
-debug = 1
 

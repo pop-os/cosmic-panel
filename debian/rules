@@ -6,13 +6,16 @@ VENDOR ?= 1
 %:
 	dh $@
 
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+
 override_dh_auto_clean:
 ifeq ($(CLEAN),1)
 	make clean
 endif
 ifeq ($(VENDOR),1)
 	if ! ischroot; then \
-		make vendor; \
+		make .VENDOR; \
 	fi
 endif
 
@@ -22,3 +25,4 @@ override_dh_auto_build:
 
 override_dh_auto_install:
 	dh_auto_install -- prefix=/usr
+	

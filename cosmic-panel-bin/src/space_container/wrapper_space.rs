@@ -331,7 +331,6 @@ impl WrapperSpace for SpaceContainer {
         self.renderer.as_mut()
     }
 
-    // FIXME
     // all pointer / keyboard handling should be called on any space with an active popup first, then on the rest
     // Eg: likely opening a popup on one panel, then without clicking anywhere else, opening a popup on another panel will crash
     fn update_pointer(
