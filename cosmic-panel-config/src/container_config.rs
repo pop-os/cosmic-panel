@@ -72,6 +72,6 @@ impl CosmicPanelContainerConfig {
 
 impl Default for CosmicPanelContainerConfig {
     fn default() -> Self {
-        ron::de::from_str(include_str!("../../config.ron")).unwrap()
+        ron::de::from_str(include_str!("../config.ron")).unwrap()
     }
 }
