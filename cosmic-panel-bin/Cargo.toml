@@ -10,7 +10,7 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "7d755cd5e0069ea9e6bdfd0cf6e5d6a6bbe4e977" }
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
 # sctk = { package = "smithay-client-toolkit", version = "0.16.0", default-features = false, features = ["calloop"] }
 sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "get_popup" }
@@ -25,16 +25,16 @@ wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", feature
 adw = { git = "https://gitlab.gnome.org/World/Rust/libadwaita-rs", package = "libadwaita"}
 adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
 
-anyhow = "1.0.53"
+anyhow = "1.0.63"
 shlex = "1.1.0"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
-slog-term = "2.8.1"
+slog-term = "2.9.0"
 slog-async = "2.7.0"
-slog-stdlog = "4.1.0"
+slog-stdlog = "4.1.1"
 slog-scope = "4.4.0"
-libc = "0.2.117"
+libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
-xdg = "2.4.0"
+xdg = "2.4.1"
 itertools = "0.10.3"
 
 [profile.release]

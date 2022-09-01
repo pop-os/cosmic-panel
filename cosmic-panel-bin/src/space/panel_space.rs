@@ -95,7 +95,7 @@ pub(crate) struct PanelSpace {
 
 impl PanelSpace {
     /// create a new space for the cosmic panel
-    pub fn new(config: CosmicPanelConfig, log: Logger) -> Self {
+    pub fn new(config: CosmicPanelConfig, log: Logger, c_focused_surface: Rc<RefCell<ClientFocus>>, c_hovered_surface: Rc<RefCell<ClientFocus>>) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
                 let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
@@ -151,8 +151,8 @@ impl PanelSpace {
             w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
             start_instant: Instant::now(),
-            c_focused_surface: Default::default(),
-            c_hovered_surface: Default::default(),
+            c_focused_surface: c_focused_surface,
+            c_hovered_surface: c_hovered_surface,
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
             bg_color,
@@ -567,13 +567,16 @@ impl PanelSpace {
                         )
                     })
                     .collect::<Vec<_>>();
+
                 self.egl_surface
                     .as_ref()
                     .unwrap()
                     .swap_buffers(if damage.is_empty() {
                         None
                     } else {
-                        Some(&mut damage)
+                        // FIXME: swapping buffers in nvidia seems to be broken
+                        None
+                        // Some(&mut damage)
                     })?;
             }
 
@@ -654,7 +657,8 @@ impl PanelSpace {
                     .swap_buffers(if damage.is_empty() {
                         None
                     } else {
-                        Some(&mut damage)
+                        None
+                        // Some(&mut damage)
                     })?;
                 p.dirty = false;
                 p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
@@ -958,6 +962,7 @@ impl PanelSpace {
         {
             info!(self.log.clone(), "Child processes exited.");
         }
+
         self.handle_focus();
         let mut should_render = false;
         match self.space_event.take() {
@@ -1073,15 +1078,16 @@ impl PanelSpace {
                     }
                     if first {
                         let log = self.log.clone();
-                        let client_egl_surface = ClientEglSurface {
-                            wl_egl_surface: WlEglSurface::new(
+                        let client_egl_surface = unsafe { ClientEglSurface::new(
+                            WlEglSurface::new(
                                 self.layer_shell_wl_surface.as_ref().unwrap().id(),
                                 width,
                                 height,
                             )
                             .unwrap(), // TODO remove unwrap
-                            display: self.c_display.as_ref().unwrap().clone(),
-                        };
+                            self.c_display.as_ref().unwrap().clone(),
+                            self.layer_shell_wl_surface.as_ref().unwrap().clone(),
+                        )};
                         let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
                             .expect("Failed to initialize EGL display");
 
@@ -1194,10 +1200,11 @@ impl PanelSpace {
                         Ok(s) => s,
                         Err(_) => return,
                     };
-                    let client_egl_surface = ClientEglSurface {
+                    let client_egl_surface = unsafe { ClientEglSurface::new(
                         wl_egl_surface,
-                        display: self.c_display.as_ref().unwrap().clone(),
-                    };
+                        self.c_display.as_ref().unwrap().clone(),
+                        p.c_wl_surface.clone(),
+                    )};
                     if let Some(egl_context) = renderer.map(|r| r.egl_context()) {
                         let egl_surface = Rc::new(
                             EGLSurface::new(

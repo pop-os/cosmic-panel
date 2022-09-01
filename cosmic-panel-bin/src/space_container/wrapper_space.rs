@@ -30,32 +30,45 @@ use super::SpaceContainer;
 impl WrapperSpace for SpaceContainer {
     type Config = CosmicPanelContainerConfig;
 
+    /// set the display handle of the space
+    fn set_display_handle(
+        &mut self,
+        display: wayland_server::DisplayHandle,
+    ) {
+        self.c_display.replace(display);
+    }
+
+    /// get the client hovered surface of the space
+    fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
+        self.c_hovered_surface.clone()
+    }
+    
+    /// get the client focused surface of the space
+    fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>> {
+        self.c_focused_surface.clone()
+    }
+
+    /// run after the connection is ready
     fn setup<W: WrapperSpace>(
         &mut self,
         compositor_state: &CompositorState,
         layer_state: &mut LayerState,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
-        display: wayland_server::DisplayHandle,
-        c_focused_surface: Rc<RefCell<ClientFocus>>,
-        c_hovered_surface: Rc<RefCell<ClientFocus>>,
     ) {
         // create a space for each config profile which is configured for Active output and call setup on each
-        self.space_list = self
+        self.space_list.append(&mut self
             .config
             .config_list
             .iter()
             .filter_map(|config| {
                 if matches!(config.output, CosmicPanelOuput::Active) {
-                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    let mut s = PanelSpace::new(config.clone(), self.log.clone(), self.c_focused_surface.clone(), self.c_hovered_surface.clone());
                     s.setup(
                         compositor_state,
                         layer_state,
                         conn,
                         qh,
-                        display.clone(),
-                        c_focused_surface.clone(),
-                        c_hovered_surface.clone(),
                     );
                     let _ =
                         s.handle_output(compositor_state, layer_state, conn, qh, None, None, None);
@@ -64,10 +77,8 @@ impl WrapperSpace for SpaceContainer {
                     None
                 }
             })
-            .collect_vec();
-        self.c_display.replace(display);
-        self.c_focused_surface = c_focused_surface;
-        self.c_hovered_surface = c_hovered_surface;
+            .collect_vec());
+
     }
 
     fn handle_output<W: WrapperSpace>(
@@ -100,10 +111,6 @@ impl WrapperSpace for SpaceContainer {
             None => anyhow::bail!("Output missing name"),
         };
 
-        let c_display = self.c_display.as_ref().unwrap().clone();
-        let c_focused_surface = &self.c_focused_surface;
-        let c_hovered_surface = &self.c_hovered_surface;
-
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
         let mut new_spaces = self
@@ -114,15 +121,12 @@ impl WrapperSpace for SpaceContainer {
                 CosmicPanelOuput::All => {
                     let mut config = config.clone();
                     config.output = CosmicPanelOuput::Name(output_name.clone());
-                    let mut s = PanelSpace::new(config, self.log.clone());
+                    let mut s = PanelSpace::new(config, self.log.clone(), self.c_focused_surface.clone(), self.c_hovered_surface.clone());
                     s.setup(
                         compositor_state,
                         layer_state,
                         conn,
                         qh,
-                        c_display.clone(),
-                        c_focused_surface.clone(),
-                        c_hovered_surface.clone(),
                     );
                     let _ = s.handle_output(
                         compositor_state,
@@ -136,15 +140,12 @@ impl WrapperSpace for SpaceContainer {
                     Some(s)
                 }
                 CosmicPanelOuput::Name(name) if name == &output_name => {
-                    let mut s = PanelSpace::new(config.clone(), self.log.clone());
+                    let mut s = PanelSpace::new(config.clone(), self.log.clone(), self.c_focused_surface.clone(), self.c_hovered_surface.clone());
                     s.setup(
                         compositor_state,
                         layer_state,
                         conn,
                         qh,
-                        c_display.clone(),
-                        c_focused_surface.clone(),
-                        c_hovered_surface.clone(),
                     );
                     let _ = s.handle_output(
                         compositor_state,
@@ -508,6 +509,7 @@ impl WrapperSpace for SpaceContainer {
     fn raise_window(&mut self, _: &smithay::desktop::Window, _: bool) {}
 
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
+        println!("wrapper closing");
         if let Some(space) = self.space_list.iter_mut().find(|s| {
             s.popups
                 .iter()

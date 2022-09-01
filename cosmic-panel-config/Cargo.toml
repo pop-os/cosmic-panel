@@ -8,10 +8,10 @@ license = "MPL-2.0"
 default = []
 
 [dependencies]
-anyhow = "1.0.53"
+anyhow = "1.0.63"
 ron = "0.8.0"
-serde = { version = "1.0.136", features = ["derive"] }
-xdg = "2.4.0"
+serde = { version = "1.0.144", features = ["derive"] }
+xdg = "2.4.1"
 gtk4 = { git = "https://github.com/gtk-rs/gtk4-rs", features = ["v4_4"], optional = true }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
 wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"] }
