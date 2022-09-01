@@ -7,12 +7,12 @@ members = [
 
 
 [patch.crates-io]
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs" }
-wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
-wayland-protocols = { git = "https://github.com/smithay/wayland-rs" }
-wayland-server = { git = "https://github.com/smithay/wayland-rs" }
-wayland-sys = { git = "https://github.com/smithay/wayland-rs" }
-wayland-backend = { git = "https://github.com/smithay/wayland-rs" }
-wayland-scanner = { git = "https://github.com/smithay/wayland-rs" }
-wayland-cursor = { git = "https://github.com/smithay/wayland-rs" }
-wayland-client = { git = "https://github.com/smithay/wayland-rs" }
+wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-egl = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-protocols = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-server = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-sys = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-backend = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-scanner = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-cursor = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
+wayland-client = { git = "https://github.com/smithay/wayland-rs", rev = "a03fba88e08fe757d739db17177ce0cc45516a46" }
