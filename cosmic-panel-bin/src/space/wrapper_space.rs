@@ -307,7 +307,7 @@ impl WrapperSpace for PanelSpace {
                             if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                                 if let Some(exec) = entry.exec() {
                                     let requests_wayland_display =
-                                        entry.desktop_entry("HostWaylandDisplay").is_some();
+                                        entry.desktop_entry("X-HostWaylandDisplay").is_some();
                                     return Some(exec_child(
                                         exec,
                                         self.log.clone(),
