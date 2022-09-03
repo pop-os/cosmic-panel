@@ -95,7 +95,12 @@ pub(crate) struct PanelSpace {
 
 impl PanelSpace {
     /// create a new space for the cosmic panel
-    pub fn new(config: CosmicPanelConfig, log: Logger, c_focused_surface: Rc<RefCell<ClientFocus>>, c_hovered_surface: Rc<RefCell<ClientFocus>>) -> Self {
+    pub fn new(
+        config: CosmicPanelConfig,
+        log: Logger,
+        c_focused_surface: Rc<RefCell<ClientFocus>>,
+        c_hovered_surface: Rc<RefCell<ClientFocus>>,
+    ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
                 let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
@@ -1078,16 +1083,18 @@ impl PanelSpace {
                     }
                     if first {
                         let log = self.log.clone();
-                        let client_egl_surface = unsafe { ClientEglSurface::new(
-                            WlEglSurface::new(
-                                self.layer_shell_wl_surface.as_ref().unwrap().id(),
-                                width,
-                                height,
+                        let client_egl_surface = unsafe {
+                            ClientEglSurface::new(
+                                WlEglSurface::new(
+                                    self.layer_shell_wl_surface.as_ref().unwrap().id(),
+                                    width,
+                                    height,
+                                )
+                                .unwrap(), // TODO remove unwrap
+                                self.c_display.as_ref().unwrap().clone(),
+                                self.layer_shell_wl_surface.as_ref().unwrap().clone(),
                             )
-                            .unwrap(), // TODO remove unwrap
-                            self.c_display.as_ref().unwrap().clone(),
-                            self.layer_shell_wl_surface.as_ref().unwrap().clone(),
-                        )};
+                        };
                         let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
                             .expect("Failed to initialize EGL display");
 
@@ -1200,11 +1207,13 @@ impl PanelSpace {
                         Ok(s) => s,
                         Err(_) => return,
                     };
-                    let client_egl_surface = unsafe { ClientEglSurface::new(
-                        wl_egl_surface,
-                        self.c_display.as_ref().unwrap().clone(),
-                        p.c_wl_surface.clone(),
-                    )};
+                    let client_egl_surface = unsafe {
+                        ClientEglSurface::new(
+                            wl_egl_surface,
+                            self.c_display.as_ref().unwrap().clone(),
+                            p.c_wl_surface.clone(),
+                        )
+                    };
                     if let Some(egl_context) = renderer.map(|r| r.egl_context()) {
                         let egl_surface = Rc::new(
                             EGLSurface::new(

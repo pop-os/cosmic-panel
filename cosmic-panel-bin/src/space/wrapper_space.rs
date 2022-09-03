@@ -60,16 +60,13 @@ impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
     /// set the display handle of the space
-    fn set_display_handle(
-        &mut self,
-        _display: wayland_server::DisplayHandle,
-    ) {}
+    fn set_display_handle(&mut self, _display: wayland_server::DisplayHandle) {}
 
     /// get the client hovered surface of the space
     fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
         self.c_hovered_surface.clone()
     }
-    
+
     /// get the client focused surface of the space
     fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>> {
         self.c_focused_surface.clone()
@@ -472,17 +469,19 @@ impl WrapperSpace for PanelSpace {
         {
             self.space.map_output(s_output, output_info.location);
             match &self.config.output {
-                CosmicPanelOuput::All |
-                CosmicPanelOuput::Active =>  bail!("output does not match config"),
-                CosmicPanelOuput::Name(config_name) if output_info.name != Some(config_name.to_string()) =>  {
+                CosmicPanelOuput::All | CosmicPanelOuput::Active => {
                     bail!("output does not match config")
-                },
+                }
+                CosmicPanelOuput::Name(config_name)
+                    if output_info.name != Some(config_name.to_string()) =>
+                {
+                    bail!("output does not match config")
+                }
                 _ => {}
             };
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }
-
 
         let c_surface = compositor_state.create_surface(qh)?;
         let dimensions = self.constrain_dim((1, 1).into());
