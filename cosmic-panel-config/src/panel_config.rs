@@ -4,7 +4,7 @@
 
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
-use anyhow::Ok;
+use anyhow::{Ok, bail};
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
 use regex::Regex;
@@ -201,15 +201,10 @@ impl FromStr for CosmicPanelOuput {
         match s {
             "All" => Ok(Self::All),
             "Active" => Ok(Self::Active),
-            s => {
-                let re = Regex::new(r"^Name\((\w+)\)$").unwrap();
-                let mut cap = re.captures_iter(s);
-                if let Some(name) = cap.next().and_then(|cap| cap.get(1)) {
-                    Ok(Self::Name(name.as_str().to_string()))
-                } else {
-                    anyhow::bail!("Not a valid CosmicPanelOuput")
-                }
+            s if s.len() >= 6 && &s[..5] == "Name(" && s.chars().last() == Some(')') => {
+                Ok(Self::Name(s[5..s.len() - 1].to_string()))
             }
+            _ => bail!("Failed to parse output.")
         }
     }
 }
