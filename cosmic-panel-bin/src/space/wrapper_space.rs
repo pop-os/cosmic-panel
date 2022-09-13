@@ -39,9 +39,9 @@ use smithay::{
     utils::{Logical, Rectangle, Size},
     wayland::{
         compositor::{with_states, SurfaceAttributes},
-        output::Output,
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
+    output::Output
 };
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{

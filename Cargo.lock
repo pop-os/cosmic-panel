@@ -1512,7 +1512,7 @@ checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay#d35a46e8ca298ea8f9d5cfa2a4dcd8ce44609ef0"
+source = "git+https://github.com/smithay/smithay#355513d3f675dbf5c61196cd98f5134bba53582c"
 dependencies = [
  "appendlist",
  "bitflags",
@@ -1541,13 +1541,13 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-server",
  "wayland-sys",
- "xkbcommon 0.4.1",
+ "xkbcommon",
 ]
 
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.16.0"
-source = "git+https://github.com/wash2/client-toolkit?branch=get_popup#cb210f718709b26e93fc90fbd3fa7e6f82c987ef"
+source = "git+https://github.com/wash2/client-toolkit?branch=get_popup#303f7d3584f8fef52b6c4cc6f47c087f12c8086b"
 dependencies = [
  "bitflags",
  "calloop",
@@ -1563,7 +1563,7 @@ dependencies = [
  "wayland-cursor",
  "wayland-protocols",
  "wayland-protocols-wlr",
- "xkbcommon 0.5.0",
+ "xkbcommon",
 ]
 
 [[package]]
@@ -1730,8 +1730,8 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wayland-backend"
-version = "0.1.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.1.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "cc",
  "downcast-rs",
@@ -1743,8 +1743,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-client"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -1757,8 +1757,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-cursor"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "nix",
  "wayland-client",
@@ -1767,8 +1767,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-egl"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "thiserror",
  "wayland-backend",
@@ -1777,8 +1777,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-protocols"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -1789,8 +1789,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-protocols-misc"
-version = "0.1.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.1.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -1801,8 +1801,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-protocols-wlr"
-version = "0.1.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.1.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -1814,8 +1814,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-scanner"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -1825,8 +1825,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-server"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "bitflags",
  "downcast-rs",
@@ -1838,8 +1838,8 @@ dependencies = [
 
 [[package]]
 name = "wayland-sys"
-version = "0.30.0-beta.8"
-source = "git+https://github.com/smithay/wayland-rs?rev=746c68154d35763025877c9713a30c2b35232f8c#746c68154d35763025877c9713a30c2b35232f8c"
+version = "0.30.0-beta.9"
+source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
 dependencies = [
  "dlib",
  "libc",
@@ -1900,7 +1900,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#0abeb268b3208b46ab577cf09e5a63bb8aa22162"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4c8c53628f2b445c7a3b36d1eb2236a86dad5d24"
 dependencies = [
  "anyhow",
  "itertools",
@@ -1920,19 +1920,10 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#0abeb268b3208b46ab577cf09e5a63bb8aa22162"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4c8c53628f2b445c7a3b36d1eb2236a86dad5d24"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
-]
-
-[[package]]
-name = "xkbcommon"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "032ed00cc755c31221bbd6aaf9fa4196a01bf33bca185f9316e14f26d28c28cf"
-dependencies = [
- "libc",
 ]
 
 [[package]]

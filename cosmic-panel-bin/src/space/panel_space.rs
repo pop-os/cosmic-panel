@@ -35,7 +35,7 @@ use smithay::{
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
     reexports::wayland_server::DisplayHandle,
-    wayland::output::Output,
+    output::Output,
 };
 use smithay::{
     backend::{
