@@ -11,7 +11,7 @@ use std::{
 };
 
 use adw::gdk::RGBA;
-use itertools::Itertools;
+use itertools::{chain, Itertools};
 use sctk::{
     output::OutputInfo,
     reexports::client::{
@@ -34,8 +34,8 @@ use smithay::{
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
-    reexports::wayland_server::DisplayHandle,
     output::Output,
+    reexports::wayland_server::DisplayHandle,
 };
 use smithay::{
     backend::{
@@ -418,14 +418,14 @@ impl PanelSpace {
             if let (Some(w_range), _) = self.config.get_dimensions((o_w as u32, o_h as u32)) {
                 if w < w_range.start {
                     w = w_range.start;
-                } else if w > w_range.end {
+                } else if w > w_range.end - 1 {
                     w = w_range.end;
                 }
             }
             if let (_, Some(h_range)) = self.config.get_dimensions((o_w as u32, o_h as u32)) {
                 if h < h_range.start {
                     h = h_range.start;
-                } else if h > h_range.end {
+                } else if h > h_range.end - 1 {
                     h = h_range.end;
                 }
             }
@@ -798,45 +798,60 @@ impl PanelSpace {
             (i, w): &(usize, Window),
             anchor: PanelAnchor,
             alignment: Alignment,
-        ) -> (Alignment, usize, i32) {
+        ) -> (Alignment, usize, i32, i32) {
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, w.bbox().size.h),
-                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, w.bbox().size.w),
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    (alignment, *i, w.bbox().size.h, w.bbox().size.w)
+                }
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    (alignment, *i, w.bbox().size.w, w.bbox().size.h)
+                }
             }
         }
 
         let left = windows_left
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Left));
-        let left_sum = left.clone().map(|(_, _, d)| d).sum::<i32>()
+        let left_sum = left.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_left.len().max(1) as i32 - 1);
 
         let center = windows_center
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Center));
-        let center_sum = center.clone().map(|(_, _, d)| d).sum::<i32>()
+        let center_sum = center.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_center.len().max(1) as i32 - 1);
 
         let right = windows_right
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Right));
 
-        let right_sum = right.clone().map(|(_, _, d)| d).sum::<i32>()
+        let right_sum = right.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
 
         // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
         let total_sum = left_sum + center_sum + right_sum;
         let new_list_length =
             total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
-        if new_list_length > list_length as i32 {
-            let new_dim = self.constrain_dim(
-                match anchor {
-                    PanelAnchor::Left | PanelAnchor::Right => (list_thickness, new_list_length),
-                    PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, list_thickness),
-                }
-                .into(),
-            );
+        let new_list_thickness: i32 = 2 * padding as i32
+            + chain!(left.clone(), center.clone(), right.clone())
+                .map(|(_, _, _, thickness)| thickness)
+                .max()
+                .unwrap_or(0);
+        let new_dim = self.constrain_dim(
+            match anchor {
+                PanelAnchor::Left | PanelAnchor::Right => (new_list_thickness, new_list_length),
+                PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
+            }
+            .into(),
+        );
+        let (new_list_length, new_list_thickness) = match anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
+            PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
+        };
+
+        if new_list_length != list_length as i32 || new_list_thickness != list_thickness {
             self.pending_dimensions = Some(new_dim);
+            self.full_clear = 4;
             anyhow::bail!("resizing list");
         }
 

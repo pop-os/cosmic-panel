@@ -113,9 +113,10 @@ fn main() -> Result<()> {
             let cosmic_file = gio::File::for_path(path);
             // initital send of color
             let _ = tx.send(
-                cosmic_file.path().and_then(|p| get_color(&p)).unwrap_or_else(|| {
-                    get_default_color().unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5])
-                }),
+                cosmic_file
+                    .path()
+                    .and_then(|p| get_color(&p))
+                    .unwrap_or_else(|| get_default_color().unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5])),
             );
             let _cosmic_css_monitor = cosmic_file
                 .monitor(FileMonitorFlags::all(), None::<&gio::Cancellable>)

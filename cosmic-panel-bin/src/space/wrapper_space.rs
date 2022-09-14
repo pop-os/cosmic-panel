@@ -33,6 +33,7 @@ use smithay::{
     desktop::{
         utils::bbox_from_surface_tree, Kind, PopupKind, PopupManager, Window, WindowSurfaceType,
     },
+    output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
     },
@@ -41,7 +42,6 @@ use smithay::{
         compositor::{with_states, SurfaceAttributes},
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
-    output::Output
 };
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
@@ -464,7 +464,7 @@ impl WrapperSpace for PanelSpace {
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
-        if let (Some(_), Some(s_output), Some(output_info)) =
+        if let (Some(c_output), Some(s_output), Some(output_info)) =
             (c_output.as_ref(), s_output.as_ref(), output_info.as_ref())
         {
             self.space.map_output(s_output, output_info.location);
@@ -479,6 +479,21 @@ impl WrapperSpace for PanelSpace {
                 }
                 _ => {}
             };
+            if let Some((existing_c_output, ..)) = self.output.as_ref() {
+                if c_output.is_alive() && existing_c_output.is_alive() {
+                    bail!("This panel already handled the configured output, and the output is still alive");
+                } else if !c_output.is_alive() && existing_c_output.is_alive() {
+                    self.output.take();
+                    self.layer_surface.take();
+                    self.layer_shell_wl_surface.take();
+                    self.w_accumulated_damage.clear();
+                    return Ok(());
+                }
+            } else if matches!(self.config.output, CosmicPanelOuput::Active)
+                && self.layer_surface.is_some()
+            {
+                bail!("This panel already handled the configured output (None).");
+            }
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }

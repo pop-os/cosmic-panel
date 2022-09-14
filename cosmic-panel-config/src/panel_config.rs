@@ -4,7 +4,7 @@
 
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
-use anyhow::{Ok, bail};
+use anyhow::{bail, Ok};
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
 use regex::Regex;
@@ -173,7 +173,7 @@ pub struct AutoHide {
 }
 
 /// Configuration for the panel's ouput
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum CosmicPanelOuput {
     /// show panel on all outputs
@@ -204,7 +204,7 @@ impl FromStr for CosmicPanelOuput {
             s if s.len() >= 6 && &s[..5] == "Name(" && s.chars().last() == Some(')') => {
                 Ok(Self::Name(s[5..s.len() - 1].to_string()))
             }
-            _ => bail!("Failed to parse output.")
+            _ => bail!("Failed to parse output."),
         }
     }
 }
@@ -223,7 +223,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct CosmicPanelConfig {
-    /// profile name for this config
+    /// profile name for this config, should be unique
     pub name: String,
     /// edge which the panel is locked to
     pub anchor: PanelAnchor,

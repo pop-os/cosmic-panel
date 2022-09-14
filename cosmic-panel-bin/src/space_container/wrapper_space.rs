@@ -15,8 +15,8 @@ use sctk::{
 };
 use smithay::{
     desktop::PopupManager,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource},
     output::Output,
+    reexports::wayland_server::{self, protocol::wl_surface, Resource},
 };
 use xdg_shell_wrapper::{
     client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
@@ -126,12 +126,19 @@ impl WrapperSpace for SpaceContainer {
                 CosmicPanelOuput::All => {
                     let mut config = config.clone();
                     config.output = CosmicPanelOuput::Name(output_name.clone());
-                    let mut s = PanelSpace::new(
-                        config,
-                        self.log.clone(),
-                        self.c_focused_surface.clone(),
-                        self.c_hovered_surface.clone(),
-                    );
+
+                    let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
+                        s.config.name == config.name && config.output == s.config.output
+                    }) {
+                        self.space_list.remove(s)
+                    } else {
+                        PanelSpace::new(
+                            config,
+                            self.log.clone(),
+                            self.c_focused_surface.clone(),
+                            self.c_hovered_surface.clone(),
+                        )
+                    };
                     s.setup(compositor_state, layer_state, conn, qh);
                     let _ = s.handle_output(
                         compositor_state,
@@ -513,7 +520,6 @@ impl WrapperSpace for SpaceContainer {
     fn raise_window(&mut self, _: &smithay::desktop::Window, _: bool) {}
 
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
-        println!("wrapper closing");
         if let Some(space) = self.space_list.iter_mut().find(|s| {
             s.popups
                 .iter()
