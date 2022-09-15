@@ -21,8 +21,8 @@ xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branc
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
-wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"] }
+wayland-egl = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
+wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"], rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
 # for watching theme
 adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
 

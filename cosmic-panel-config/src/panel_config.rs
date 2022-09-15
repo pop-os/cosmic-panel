@@ -7,7 +7,6 @@ use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 use anyhow::{bail, Ok};
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};

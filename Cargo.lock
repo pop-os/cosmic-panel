@@ -229,7 +229,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gtk4",
- "regex",
  "ron 0.8.0",
  "serde",
  "slog",
@@ -1698,7 +1697,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.16.0"
-source = "git+https://github.com/wash2/client-toolkit?branch=get_popup#303f7d3584f8fef52b6c4cc6f47c087f12c8086b"
+source = "git+https://github.com/wash2/client-toolkit?branch=get_popup#3c3cf6858d6019f7871e22c88c13e9c4beedaff9"
 dependencies = [
  "bitflags",
  "calloop",
@@ -1936,7 +1935,7 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 [[package]]
 name = "wayland-backend"
 version = "0.1.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "cc",
  "downcast-rs",
@@ -1949,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "wayland-client"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -1963,7 +1962,7 @@ dependencies = [
 [[package]]
 name = "wayland-cursor"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "nix",
  "wayland-client",
@@ -1973,7 +1972,7 @@ dependencies = [
 [[package]]
 name = "wayland-egl"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "thiserror",
  "wayland-backend",
@@ -1983,7 +1982,7 @@ dependencies = [
 [[package]]
 name = "wayland-protocols"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -1995,7 +1994,7 @@ dependencies = [
 [[package]]
 name = "wayland-protocols-misc"
 version = "0.1.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -2007,7 +2006,7 @@ dependencies = [
 [[package]]
 name = "wayland-protocols-wlr"
 version = "0.1.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "bitflags",
  "wayland-backend",
@@ -2020,7 +2019,7 @@ dependencies = [
 [[package]]
 name = "wayland-scanner"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#1cf18d60bf10b18a5054b8a94e6d5a162c173ac3"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "proc-macro2",
  "quick-xml",
@@ -2031,7 +2030,7 @@ dependencies = [
 [[package]]
 name = "wayland-server"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "bitflags",
  "downcast-rs",
@@ -2044,7 +2043,7 @@ dependencies = [
 [[package]]
 name = "wayland-sys"
 version = "0.30.0-beta.9"
-source = "git+https://github.com/smithay/wayland-rs#fa4be85e8f3b57c8b6e8dd2476d6b4734b810e59"
+source = "git+https://github.com/smithay/wayland-rs?rev=f4740097ba42b1ec5d439c82eff4e748e38178d2#f4740097ba42b1ec5d439c82eff4e748e38178d2"
 dependencies = [
  "dlib",
  "libc",
@@ -2148,7 +2147,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#28a8272a16bf36d7f90db1fcf05be4bca94dc93d"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4a27302056771e29d12596ff65d1c4b2897dd12f"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2168,7 +2167,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#28a8272a16bf36d7f90db1fcf05be4bca94dc93d"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4a27302056771e29d12596ff65d1c4b2897dd12f"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
@@ -2177,7 +2176,7 @@ dependencies = [
 [[package]]
 name = "xkbcommon"
 version = "0.5.0"
-source = "git+https://github.com/rust-x-bindings/xkbcommon-rs#4e491bee1b850625ae077134901f89836edb6e81"
+source = "git+https://github.com/rust-x-bindings/xkbcommon-rs?rev=4e491bee#4e491bee1b850625ae077134901f89836edb6e81"
 dependencies = [
  "libc",
  "memmap2",

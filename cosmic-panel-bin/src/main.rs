@@ -111,8 +111,6 @@ fn main() -> Result<()> {
                 Ok(w) => w,
                 Err(_) => return,
             };
-            dbg!(get_color(&path)
-            .unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]));
             // initital send of color
             let _ = tx.send(
                 get_color(&path)
@@ -124,7 +122,6 @@ fn main() -> Result<()> {
             let mut watcher = match RecommendedWatcher::new(
                 move |res| {
                     if let Ok(e) = res {
-                        dbg!(&e);
                         let notify_tx = notify_tx_clone.clone();
                         tokio::spawn( async move {let _ = notify_tx.send(e).await;});
                     }
@@ -142,7 +139,6 @@ fn main() -> Result<()> {
             }
             tokio::spawn(async move {
                 while let Some(e) = notify_rx.recv().await {
-                    dbg!(&e);
                     match e.kind {
                         // TODO only notify for changed data file if it is the active file
                         notify::EventKind::Create(_)

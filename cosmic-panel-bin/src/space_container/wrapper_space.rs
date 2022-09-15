@@ -128,7 +128,6 @@ impl WrapperSpace for SpaceContainer {
                     config.output = CosmicPanelOuput::Name(output_name.clone());
 
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
-                        dbg!(&output_name);
                         s.config.name == config.name && config.output == s.config.output
                     }) {
                         self.space_list.remove(s)
