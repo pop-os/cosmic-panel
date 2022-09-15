@@ -10,7 +10,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use adw::gdk::RGBA;
 use itertools::{chain, Itertools};
 use sctk::{
     output::OutputInfo,
@@ -116,15 +115,15 @@ impl PanelSpace {
                             line.rfind(window_bg_color_pattern)
                                 .and_then(|i| line.get(i + window_bg_color_pattern.len()..))
                                 .and_then(|color_str| {
-                                    RGBA::parse(&color_str.trim().replace(";", "")).ok()
+                                    csscolorparser::parse(&color_str.trim().replace(";", "")).ok()
                                 })
                         })
                 }) {
                     [
-                        color.red(),
-                        color.green(),
-                        color.blue(),
-                        alpha.unwrap_or(color.alpha()),
+                        color.r as f32,
+                        color.g as f32,
+                        color.b as f32,
+                        alpha.unwrap_or(color.a as f32),
                     ]
                 } else {
                     [0.0, 0.0, 0.0, alpha.unwrap_or(1.0)]

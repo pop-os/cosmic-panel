@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
+calloop = { version = "*", features = ["executor"] }
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
 # sctk = { package = "smithay-client-toolkit", version = "0.16.0", default-features = false, features = ["calloop"] }
 sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "get_popup" }
@@ -18,11 +19,11 @@ sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-cli
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
+launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 wayland-egl = { git = "https://github.com/smithay/wayland-rs" }
 wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"] }
 # for watching theme
-adw = { git = "https://gitlab.gnome.org/World/Rust/libadwaita-rs", package = "libadwaita"}
 adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
 
 anyhow = "1.0.63"
@@ -36,4 +37,6 @@ libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
 itertools = "0.10.3"
-
+notify = "5.0"
+tokio = { version = "1", features = ["process", "sync", "rt", "rt-multi-thread", "macros", "io-util"] }
+csscolorparser = "0.6.2"

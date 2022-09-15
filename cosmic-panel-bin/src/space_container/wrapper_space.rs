@@ -16,7 +16,7 @@ use sctk::{
 use smithay::{
     desktop::PopupManager,
     output::Output,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+    reexports::wayland_server::{self, protocol::wl_surface, Resource}, wayland::output,
 };
 use xdg_shell_wrapper::{
     client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
@@ -128,6 +128,7 @@ impl WrapperSpace for SpaceContainer {
                     config.output = CosmicPanelOuput::Name(output_name.clone());
 
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
+                        dbg!(&output_name);
                         s.config.name == config.name && config.output == s.config.output
                     }) {
                         self.space_list.remove(s)
