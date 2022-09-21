@@ -454,7 +454,6 @@ impl PanelSpace {
             // frame size could be bigger than the maximum the output_geo would define.
             let output_geo =
                 Rectangle::from_loc_and_size(o.current_location(), output_size.to_logical(1));
-
             let cur_damage = if self.full_clear > 0 {
                 vec![]
             } else {
@@ -475,7 +474,6 @@ impl PanelSpace {
                         .collect_vec()
                 });
                 acc_damage.dedup();
-                acc_damage.retain(|rect| rect.overlaps(output_geo.to_physical(1)));
                 acc_damage.retain(|rect| rect.size.h > 0 && rect.size.w > 0);
                 // merge overlapping rectangles
                 acc_damage = acc_damage
