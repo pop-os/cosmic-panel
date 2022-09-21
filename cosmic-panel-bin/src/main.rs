@@ -9,10 +9,13 @@ use std::{
 use adw_user_colors_lib::NAME;
 use anyhow::Result;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
-use notify::{RecommendedWatcher, Watcher, RecursiveMode};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use slog::{o, warn, Drain};
 use smithay::reexports::calloop;
-use tokio::{runtime::{Runtime, self}, sync::mpsc};
+use tokio::{
+    runtime::{self, Runtime},
+    sync::mpsc,
+};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
 
 mod launch_applets;
@@ -48,10 +51,17 @@ fn get_color(path: &PathBuf) -> Option<[f32; 4]> {
         .find_map(|line| {
             line.rfind(window_bg_color_pattern)
                 .and_then(|i| line.get(i + window_bg_color_pattern.len()..))
-                .and_then(|color_str| csscolorparser::parse(&color_str.trim().replace(";", "")).ok())
+                .and_then(|color_str| {
+                    csscolorparser::parse(&color_str.trim().replace(";", "")).ok()
+                })
         })
     {
-        return Some([color.r as f32, color.g as f32, color.b as f32, color.a as f32]);
+        return Some([
+            color.r as f32,
+            color.g as f32,
+            color.b as f32,
+            color.a as f32,
+        ]);
     }
     None
 }
@@ -94,68 +104,62 @@ fn main() -> Result<()> {
         .iter()
         .any(|c| matches!(c.background, CosmicPanelBackground::ThemeDefault(_)))
     {
-
         let (tx, rx) = calloop::channel::sync_channel(100);
 
         std::thread::spawn(move || -> anyhow::Result<()> {
             let rt = runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
+                .enable_all()
+                .build()?;
             rt.block_on(async {
                 let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
-                .ok()
-                .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
-                .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
-            let (notify_tx, mut notify_rx) = mpsc::channel(20);
-            let xdg_dirs = match xdg::BaseDirectories::with_prefix(NAME) {
-                Ok(w) => w,
-                Err(_) => return,
-            };
-            // initital send of color
-            let _ = tx.send(
-                get_color(&path)
-                .unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]),
-            );
-            // Automatically select the best implementation for your platform.
-            // You can also access each implementation directly e.g. INotifyWatcher.
-            let notify_tx_clone = notify_tx.clone();
-            let mut watcher = match RecommendedWatcher::new(
-                move |res| {
-                    if let Ok(e) = res {
-                        let notify_tx = notify_tx_clone.clone();
-                        tokio::spawn( async move {let _ = notify_tx.send(e).await;});
-                    }
-                },
-                notify::Config::default(),
-            ) {
-                Ok(w) => w,
-                Err(_) => return,
-            };
-            for config_dir in xdg_dirs.get_config_dirs() {
-                let _ = watcher.watch(&config_dir, RecursiveMode::Recursive);
-            }
-            for data_dir in xdg_dirs.get_data_dirs() {
-                let _ = watcher.watch(&&data_dir.as_ref(), RecursiveMode::Recursive);
-            }
-            tokio::spawn(async move {
-                while let Some(e) = notify_rx.recv().await {
-                    match e.kind {
-                        // TODO only notify for changed data file if it is the active file
-                        notify::EventKind::Create(_)
-                        | notify::EventKind::Modify(_)
-                        | notify::EventKind::Remove(_) => {
-                            let _ = tx.send(
-                                get_color(&path).unwrap_or_else(|| {
-                                    [0.5, 0.5, 0.5, 0.5]
-                                },
-                            ));
+                    .ok()
+                    .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
+                    .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
+                let (notify_tx, mut notify_rx) = mpsc::channel(20);
+                let xdg_dirs = match xdg::BaseDirectories::with_prefix(NAME) {
+                    Ok(w) => w,
+                    Err(_) => return,
+                };
+                // initital send of color
+                let _ = tx.send(get_color(&path).unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]));
+                // Automatically select the best implementation for your platform.
+                // You can also access each implementation directly e.g. INotifyWatcher.
+                let notify_tx_clone = notify_tx.clone();
+                let mut watcher = match RecommendedWatcher::new(
+                    move |res| {
+                        if let Ok(e) = res {
+                            let notify_tx = notify_tx_clone.clone();
+                            tokio::spawn(async move {
+                                let _ = notify_tx.send(e).await;
+                            });
                         }
-                        _ => {}
-                    }
+                    },
+                    notify::Config::default(),
+                ) {
+                    Ok(w) => w,
+                    Err(_) => return,
+                };
+                for config_dir in xdg_dirs.get_config_dirs() {
+                    let _ = watcher.watch(&config_dir, RecursiveMode::Recursive);
                 }
+                for data_dir in xdg_dirs.get_data_dirs() {
+                    let _ = watcher.watch(&&data_dir.as_ref(), RecursiveMode::Recursive);
+                }
+                tokio::spawn(async move {
+                    while let Some(e) = notify_rx.recv().await {
+                        match e.kind {
+                            // TODO only notify for changed data file if it is the active file
+                            notify::EventKind::Create(_)
+                            | notify::EventKind::Modify(_)
+                            | notify::EventKind::Remove(_) => {
+                                let _ = tx
+                                    .send(get_color(&path).unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]));
+                            }
+                            _ => {}
+                        }
+                    }
+                });
             });
-            });
-
 
             Ok(())
         });

@@ -16,7 +16,8 @@ use sctk::{
 use smithay::{
     desktop::PopupManager,
     output::Output,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource}, wayland::output,
+    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+    wayland::output,
 };
 use xdg_shell_wrapper::{
     client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
