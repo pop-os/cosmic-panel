@@ -495,6 +495,7 @@ impl PanelSpace {
                 Some(acc_damage)
             };
             let should_render = cur_damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
+
             if should_render {
                 let damage = Self::damage_for_buffer(
                     cur_damage,

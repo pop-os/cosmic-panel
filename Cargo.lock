@@ -940,7 +940,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git#9fd3f2b0070ae1f14fccbe68774a2aafd0e5b887"
+source = "git+https://github.com/pop-os/launch-pad.git?branch=avoid-busy-loop#f2fb5e9b47407bce094ec407fde9d2b2395a9c9d"
 dependencies = [
  "log",
  "slotmap",
@@ -2145,6 +2145,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#63bb772e221a43c89508c92dfab427726cd8f2fd"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2164,6 +2165,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#63bb772e221a43c89508c92dfab427726cd8f2fd"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
