@@ -6,7 +6,7 @@ use std::{
     fs,
     os::unix::prelude::AsRawFd,
     rc::Rc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use anyhow::bail;
@@ -357,8 +357,6 @@ impl WrapperSpace for PanelSpace {
                                         }
                                         let fd = s.as_raw_fd().to_string();
                                         let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
-                                        // XXX possible race, the client & socket need to be update in the panel_space state before the process starts again
-                                        tokio::time::sleep(Duration::from_millis(200)).await;
                                         let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
                                     }
                                 });

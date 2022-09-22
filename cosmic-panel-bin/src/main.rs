@@ -89,6 +89,7 @@ fn main() -> Result<()> {
     };
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
+    let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
 
     let mut space = space_container::SpaceContainer::new(config, log, applet_tx);
 
@@ -105,6 +106,9 @@ fn main() -> Result<()> {
                         PanelCalloopMsg::Color(c) => state.space.set_theme_window_color(c),
                         PanelCalloopMsg::ClientSocketPair(id, client_id, c, s) => {
                             state.space.replace_client(id, client_id, c, s);
+                            unpause_launchpad_tx
+                                .try_send(())
+                                .expect("Failed to unblock launchpad");
                         }
                     },
                     calloop::channel::Event::Closed => {}
@@ -176,6 +180,9 @@ fn main() -> Result<()> {
                         space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
                             let _ = calloop_tx
                                 .send(PanelCalloopMsg::ClientSocketPair(id, client_id, c, s));
+                            // XXX This is done to avoid a possible race,
+                            // the client & socket need to be update in the panel_space state before the process starts again
+                            let _ = unpause_launchpad_rx.recv();
                         }
                     };
                 }
