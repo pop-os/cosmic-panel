@@ -6,7 +6,7 @@
 mod panel_space;
 mod wrapper_space;
 
-pub(crate) use panel_space::PanelSpace;
+pub(crate) use panel_space::{AppletMsg, PanelSpace};
 pub use wrapper_space::*;
 
 #[derive(Debug)]

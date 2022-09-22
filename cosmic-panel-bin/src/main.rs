@@ -3,6 +3,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
+    os::unix::net::UnixStream,
     path::PathBuf,
 };
 
@@ -12,15 +13,20 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
 use launch_pad::ProcessManager;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use slog::{o, warn, Drain};
-use smithay::reexports::calloop;
-use tokio::{
-    runtime,
-    sync::mpsc,
+use smithay::reexports::{
+    calloop,
+    wayland_server::{backend::ClientId, Client},
 };
+use tokio::{runtime, sync::mpsc};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
 
 mod space;
 mod space_container;
+
+pub enum PanelCalloopMsg {
+    Color([f32; 4]),
+    ClientSocketPair(String, ClientId, Client, UnixStream),
+}
 
 fn get_color(path: &PathBuf) -> Option<[f32; 4]> {
     let file = match File::open(path) {
@@ -36,7 +42,7 @@ fn get_color(path: &PathBuf) -> Option<[f32; 4]> {
             line.rfind(window_bg_color_pattern)
                 .and_then(|i| line.get(i + window_bg_color_pattern.len()..))
                 .and_then(|color_str| {
-                    csscolorparser::parse(&color_str.trim().replace(";", "")).ok()
+                    csscolorparser::parse(&color_str.trim().replace(';', "")).ok()
                 })
         })
     {
@@ -81,34 +87,63 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
 
     let mut space = space_container::SpaceContainer::new(config, log, applet_tx);
 
+    let (calloop_tx, calloop_rx) = calloop::channel::sync_channel(100);
     let event_loop = calloop::EventLoop::try_new()?;
-    if space.config
+
+    event_loop
+        .handle()
+        .insert_source(
+            calloop_rx,
+            move |e, _, state: &mut GlobalState<space_container::SpaceContainer>| {
+                match e {
+                    calloop::channel::Event::Msg(e) => match e {
+                        PanelCalloopMsg::Color(c) => state.space.set_theme_window_color(c),
+                        PanelCalloopMsg::ClientSocketPair(id, client_id, c, s) => {
+                            state.space.replace_client(id, client_id, c, s);
+                        }
+                    },
+                    calloop::channel::Event::Closed => {}
+                };
+            },
+        )
+        .expect("failed to insert dbus event source");
+
+    if space
+        .config
         .config_list
         .iter()
         .any(|c| matches!(c.background, CosmicPanelBackground::ThemeDefault(_)))
     {
-        let (color_tx, color_rx) = calloop::channel::sync_channel(100);
-
         let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
             .ok()
             .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
             .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
         if let Ok(xdg_dirs) = xdg::BaseDirectories::with_prefix(NAME) {
             // initital send of color
-            space.set_theme_window_color(get_color(&path).unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]));
-                        // Automatically select the best implementation for your platform.
+            space.set_theme_window_color(get_color(&path).unwrap_or([0.5, 0.5, 0.5, 0.5]));
+            // Automatically select the best implementation for your platform.
             // You can also access each implementation directly e.g. INotifyWatcher.
-            let color_tx_clone = color_tx.clone();
+            let color_tx_clone = calloop_tx.clone();
             if let Ok(mut watcher) = RecommendedWatcher::new(
-                move |res| {
+                move |res: Result<notify::Event, notify::Error>| {
                     if let Ok(e) = res {
                         let color_tx = color_tx_clone.clone();
-                        let _ = color_tx.send(e);
+                        match e.kind {
+                            // TODO only notify for changed data file if it is the active file
+                            notify::EventKind::Create(_)
+                            | notify::EventKind::Modify(_)
+                            | notify::EventKind::Remove(_) => {
+                                let _ = color_tx.send(PanelCalloopMsg::Color(
+                                    get_color(&path).unwrap_or([0.5, 0.5, 0.5, 0.5]),
+                                ));
+                            }
+                            _ => {}
+                        }
                     }
                 },
                 notify::Config::default(),
@@ -117,34 +152,11 @@ fn main() -> Result<()> {
                     let _ = watcher.watch(&config_dir, RecursiveMode::Recursive);
                 }
                 for data_dir in xdg_dirs.get_data_dirs() {
-                    let _ = watcher.watch(&&data_dir.as_ref(), RecursiveMode::Recursive);
+                    let _ = watcher.watch(data_dir.as_ref(), RecursiveMode::Recursive);
                 }
-        
-                event_loop
-                    .handle()
-                    .insert_source(
-                        color_rx,
-                        move |e, _, state: &mut GlobalState<space_container::SpaceContainer>| {
-                            match e {
-                                calloop::channel::Event::Msg(e) => {
-                                    match e.kind {
-                                        // TODO only notify for changed data file if it is the active file
-                                        notify::EventKind::Create(_)
-                                        | notify::EventKind::Modify(_)
-                                        | notify::EventKind::Remove(_) => {
-                                            let _ = state.space.set_theme_window_color(get_color(&path).unwrap_or_else(|| [0.5, 0.5, 0.5, 0.5]));
-                                        }
-                                        _ => {}
-                                    }
-                                },
-                                calloop::channel::Event::Closed => {}
-                            };
-                        },
-                    )
-                    .expect("failed to insert dbus event source");
-    
+
                 for data_dir in xdg_dirs.get_data_dirs() {
-                    let _ = watcher.watch(&&data_dir.as_ref(), RecursiveMode::Recursive);
+                    let _ = watcher.watch(data_dir.as_ref(), RecursiveMode::Recursive);
                 }
             }
         }
@@ -156,9 +168,16 @@ fn main() -> Result<()> {
             rt.block_on(async {
                 let process_manager = ProcessManager::new().await;
                 let _ = process_manager.set_max_restarts(10);
-                while let Some(process) = applet_rx.recv().await {
-                    // TODO handle keys
-                    let _ = process_manager.start(process).await;
+                while let Some(msg) = applet_rx.recv().await {
+                    match msg {
+                        space::AppletMsg::NewProcess(process) => {
+                            let _ = process_manager.start(process).await;
+                        }
+                        space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
+                            let _ = calloop_tx
+                                .send(PanelCalloopMsg::ClientSocketPair(id, client_id, c, s));
+                        }
+                    };
                 }
             });
 
@@ -166,9 +185,6 @@ fn main() -> Result<()> {
         });
     }
 
-    run(
-        space,
-        event_loop,
-    )?;
+    run(space, event_loop)?;
     Ok(())
 }

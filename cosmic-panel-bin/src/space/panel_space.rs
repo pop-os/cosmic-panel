@@ -5,7 +5,6 @@ use std::{
     fs::File,
     io::{BufRead, BufReader},
     os::{raw::c_int, unix::net::UnixStream},
-    process::Child,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -35,7 +34,7 @@ use smithay::{
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
     output::Output,
-    reexports::wayland_server::DisplayHandle,
+    reexports::wayland_server::{backend::ClientId, DisplayHandle},
 };
 use smithay::{
     backend::{
@@ -62,15 +61,20 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 use crate::space::Alignment;
 
+pub enum AppletMsg {
+    NewProcess(Process),
+    ClientSocketPair(String, ClientId, Client, UnixStream),
+}
+
 /// space for the cosmic panel
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
     pub config: CosmicPanelConfig,
     pub log: Logger,
     pub(crate) space: Space,
-    pub(crate) clients_left: Vec<Client>,
-    pub(crate) clients_center: Vec<Client>,
-    pub(crate) clients_right: Vec<Client>,
+    pub(crate) clients_left: Vec<(String, Client, UnixStream)>,
+    pub(crate) clients_center: Vec<(String, Client, UnixStream)>,
+    pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) full_clear: u8,
@@ -92,8 +96,7 @@ pub(crate) struct PanelSpace {
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
-    pub applet_tx: mpsc::Sender<Process>,
-    pub desktop_id_socket_list: Vec<(String, UnixStream)>,
+    pub applet_tx: mpsc::Sender<AppletMsg>,
 }
 
 impl PanelSpace {
@@ -103,7 +106,7 @@ impl PanelSpace {
         log: Logger,
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
-        applet_tx: mpsc::Sender<Process>
+        applet_tx: mpsc::Sender<AppletMsg>,
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
@@ -160,13 +163,12 @@ impl PanelSpace {
             w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
             start_instant: Instant::now(),
-            c_focused_surface: c_focused_surface,
-            c_hovered_surface: c_hovered_surface,
+            c_focused_surface,
+            c_hovered_surface,
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
-            desktop_id_socket_list: Vec::new(),
         }
     }
 
@@ -756,13 +758,16 @@ impl PanelSpace {
             .windows()
             .cloned()
             .filter_map(|w| {
-                self.clients_right.iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.id()) == w.toplevel().wl_surface().client_id() {
-                        Some((i, w.clone()))
-                    } else {
-                        None
-                    }
-                })
+                self.clients_right
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, (_, c, _))| {
+                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                            Some((i, w.clone()))
+                        } else {
+                            None
+                        }
+                    })
             })
             .collect_vec();
         windows_right.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
@@ -772,13 +777,16 @@ impl PanelSpace {
             .windows()
             .cloned()
             .filter_map(|w| {
-                self.clients_center.iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.id()) == w.toplevel().wl_surface().client_id() {
-                        Some((i, w.clone()))
-                    } else {
-                        None
-                    }
-                })
+                self.clients_center
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, (_, c, _))| {
+                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                            Some((i, w.clone()))
+                        } else {
+                            None
+                        }
+                    })
             })
             .collect_vec();
         windows_center.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
@@ -788,13 +796,16 @@ impl PanelSpace {
             .windows()
             .cloned()
             .filter_map(|w| {
-                self.clients_left.iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.id()) == w.toplevel().wl_surface().client_id() {
-                        Some((i, w.clone()))
-                    } else {
-                        None
-                    }
-                })
+                self.clients_left
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, (_, c, _))| {
+                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                            Some((i, w.clone()))
+                        } else {
+                            None
+                        }
+                    })
             })
             .collect_vec();
         windows_left.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));

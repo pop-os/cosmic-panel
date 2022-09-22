@@ -17,7 +17,6 @@ use smithay::{
     desktop::PopupManager,
     output::Output,
     reexports::wayland_server::{self, protocol::wl_surface, Resource},
-    wayland::output,
 };
 use xdg_shell_wrapper::{
     client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
@@ -67,7 +66,7 @@ impl WrapperSpace for SpaceContainer {
                             self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
-                            self.applet_tx.clone()
+                            self.applet_tx.clone(),
                         );
                         s.setup(compositor_state, layer_state, conn, qh);
                         if let Some(s_display) = self.s_display.as_ref() {
@@ -143,7 +142,7 @@ impl WrapperSpace for SpaceContainer {
                             self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
-                            self.applet_tx.clone()
+                            self.applet_tx.clone(),
                         );
                         s.setup(compositor_state, layer_state, conn, qh);
                         if let Some(s_display) = self.s_display.as_ref() {
@@ -174,7 +173,7 @@ impl WrapperSpace for SpaceContainer {
                             self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
-                            self.applet_tx.clone()
+                            self.applet_tx.clone(),
                         );
                         s.setup(compositor_state, layer_state, conn, qh);
 
@@ -217,7 +216,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .any(|c| Some(c.id()) == w_client)
+                .any(|(_, c, _)| Some(c.id()) == w_client)
         }) {
             space.add_window(s_top_level);
         }
@@ -242,7 +241,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .any(|c| Some(c.id()) == p_client)
+                .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.add_popup(
                 compositor_state,
@@ -274,7 +273,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .any(|c| Some(c.id()) == p_client)
+                .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.reposition_popup(popup, positioner, positioner_state, token)?
         }
@@ -302,7 +301,7 @@ impl WrapperSpace for SpaceContainer {
 
     fn spawn_clients(
         &mut self,
-        display: smithay::reexports::wayland_server::DisplayHandle,
+        _display: smithay::reexports::wayland_server::DisplayHandle,
     ) -> anyhow::Result<()> {
         // spaces spawn their clients when they are created
         Ok(())
@@ -332,7 +331,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .any(|c| Some(c.id()) == w_client)
+                .any(|(_, c, _)| Some(c.id()) == w_client)
         }) {
             space.dirty_window(dh, w);
         }
@@ -352,7 +351,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.iter())
                 .chain(space.clients_right.iter())
-                .any(|c| Some(c.id()) == p_client)
+                .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.dirty_popup(dh, w);
         }

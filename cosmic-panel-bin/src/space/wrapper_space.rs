@@ -4,9 +4,9 @@ use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
     fs,
-    os::unix::{net::UnixStream, prelude::AsRawFd},
+    os::unix::prelude::AsRawFd,
     rc::Rc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::bail;
@@ -29,7 +29,7 @@ use sctk::{
     },
 };
 use shlex::Shlex;
-use slog::{Logger, trace};
+use slog::{trace, Logger};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
     desktop::{
@@ -51,10 +51,12 @@ use xdg_shell_wrapper::{
     server_state::ServerPointerFocus,
     shared_state::GlobalState,
     space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
-    util::{exec_child, get_client_sock},
+    util::get_client_sock,
 };
 
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
+
+use crate::space::AppletMsg;
 
 use super::PanelSpace;
 
@@ -230,61 +232,55 @@ impl WrapperSpace for PanelSpace {
         self.config.clone()
     }
 
-    fn spawn_clients(
-        &mut self,
-        mut display: DisplayHandle,
-    ) -> anyhow::Result<()> {
-        if self.desktop_id_socket_list.is_empty() {
-            let (clients_left, sockets_left): (Vec<_>, Vec<_>) = (0..self
+    fn spawn_clients(&mut self, mut display: DisplayHandle) -> anyhow::Result<()> {
+        if self.clients_left.is_empty()
+            && self.clients_center.is_empty()
+            && self.clients_right.is_empty()
+        {
+            self.clients_left = self
                 .config
                 .plugins_left()
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0))
-                .map(|_p| {
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (c, s)
+                    (id, c, s)
                 })
-                .unzip();
-            self.clients_left = clients_left;
-            let (clients_center, sockets_center): (Vec<_>, Vec<_>) = (0..self
+                .collect();
+
+            self.clients_center = self
                 .config
-                .plugins_center
+                .plugins_center()
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0))
-                .map(|_p| {
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (c, s)
+                    (id, c, s)
                 })
-                .unzip();
-            self.clients_center = clients_center;
-            let (clients_right, sockets_right): (Vec<_>, Vec<_>) = (0..self
+                .collect();
+
+            self.clients_right = self
                 .config
                 .plugins_right()
                 .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0))
-                .map(|_p| {
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (c, s)
+                    (id, c, s)
                 })
-                .unzip();
-            self.clients_right = clients_right;
+                .collect();
 
             let mut desktop_ids = self
-                .config
-                .plugins_left()
-                .into_iter()
-                .chain(self.config.plugins_center().into_iter())
-                .chain(self.config.plugins_right().into_iter())
-                .flatten()
-                .zip(
-                    sockets_left
-                        .into_iter()
-                        .chain(sockets_center.into_iter())
-                        .chain(sockets_right.into_iter()),
-                )
+                .clients_left
+                .iter()
+                .chain(self.clients_center.iter())
+                .chain(self.clients_right.iter())
                 .collect_vec();
 
             let config_size = self.config.size.to_string();
@@ -297,12 +293,12 @@ impl WrapperSpace for PanelSpace {
             ];
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
-                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
+                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _)| {
                     Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
                 }) {
                     // This way each applet is at most started once,
                     // even if multiple desktop files in different directories match
-                    let (id, client_socket) = desktop_ids.remove(position);
+                    let (id, client, socket) = desktop_ids.remove(position);
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                             if let Some(exec) = entry.exec() {
@@ -325,28 +321,58 @@ impl WrapperSpace for PanelSpace {
                                     }
                                     applet_env.push((*key, *val));
                                 }
-                                let fd = client_socket.as_raw_fd().to_string();
+                                let fd = socket.as_raw_fd().to_string();
                                 applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
-                                trace!(self.log.clone(), "child: {}, {:?} {:?}", &exec, args, applet_env);
+                                trace!(
+                                    self.log.clone(),
+                                    "child: {}, {:?} {:?}",
+                                    &exec,
+                                    args,
+                                    applet_env
+                                );
 
+                                let log_clone = self.log.clone();
+                                let display_handle = display.clone();
+                                let applet_tx_clone = self.applet_tx.clone();
+                                let id_clone = id.clone();
+                                let client_id = client.id();
                                 let process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
-                                .with_env(applet_env);
+                                .with_env(applet_env)
+                                .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                                    let log_clone = log_clone.clone();
+                                    let mut display_handle = display_handle.clone();
+                                    let id_clone = id_clone.clone();
+                                    let client_id_clone = client_id.clone();
+                                    let applet_tx_clone = applet_tx_clone.clone();
+
+                                    let (c, s) = get_client_sock(&mut display_handle);
+                                    async move {
+                                        if !is_restarting {
+                                            if let Some(err_code) = err_code {
+                                                slog::error!(log_clone, "Exited with error code and will not restart! {}", err_code);
+                                            }
+                                            return;
+                                        }
+                                        let fd = s.as_raw_fd().to_string();
+                                        let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
+                                        // XXX possible race, the client & socket need to be update in the panel_space state before the process starts again
+                                        tokio::time::sleep(Duration::from_millis(200)).await;
+                                        let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
+                                    }
+                                });
 
                                 // TODO error handling
-                                match self.applet_tx.try_send(process) {
-                                    Ok(_) => {},
+                                match self.applet_tx.try_send(AppletMsg::NewProcess(process)) {
+                                    Ok(_) => {}
                                     Err(e) => eprintln!("{e}"),
                                 };
                             }
                         }
                     }
-                    self.desktop_id_socket_list.push((id, client_socket));
                 }
             }
-                
-            self.desktop_id_socket_list.append(&mut desktop_ids);
             Ok(())
         } else {
             bail!("Clients have already been spawned!");

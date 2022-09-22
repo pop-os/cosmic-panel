@@ -940,7 +940,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git?branch=avoid-busy-loop#f2fb5e9b47407bce094ec407fde9d2b2395a9c9d"
+source = "git+https://github.com/pop-os/launch-pad.git?branch=on-exit-before-restart#6d2eb722ff807014bdc0618e9fda983e8c269163"
 dependencies = [
  "log",
  "slotmap",

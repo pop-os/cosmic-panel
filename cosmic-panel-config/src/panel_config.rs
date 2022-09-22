@@ -200,7 +200,7 @@ impl FromStr for CosmicPanelOuput {
         match s {
             "All" => Ok(Self::All),
             "Active" => Ok(Self::Active),
-            s if s.len() >= 6 && &s[..5] == "Name(" && s.chars().last() == Some(')') => {
+            s if s.len() >= 6 && &s[..5] == "Name(" && s.ends_with(')') => {
                 Ok(Self::Name(s[5..s.len() - 1].to_string()))
             }
             _ => bail!("Failed to parse output."),
