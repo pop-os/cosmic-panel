@@ -4,13 +4,14 @@ use std::{
     cell::{Cell, RefCell},
     fs::File,
     io::{BufRead, BufReader},
-    os::raw::c_int,
+    os::{raw::c_int, unix::net::UnixStream},
     process::Child,
     rc::Rc,
     time::{Duration, Instant},
 };
 
 use itertools::{chain, Itertools};
+use launch_pad::process::Process;
 use sctk::{
     output::OutputInfo,
     reexports::client::{
@@ -47,6 +48,7 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
+use tokio::sync::mpsc;
 use wayland_egl::WlEglSurface;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use xdg_shell_wrapper::{
@@ -69,7 +71,6 @@ pub(crate) struct PanelSpace {
     pub(crate) clients_left: Vec<Client>,
     pub(crate) clients_center: Vec<Client>,
     pub(crate) clients_right: Vec<Client>,
-    pub(crate) children: Vec<Child>,
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) full_clear: u8,
@@ -81,6 +82,7 @@ pub(crate) struct PanelSpace {
     pub(crate) s_hovered_surface: ServerPtrFocus,
     pub(crate) visibility: Visibility,
     pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
+    pub(crate) s_display: Option<DisplayHandle>,
     pub(crate) c_display: Option<WlDisplay>,
     pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) layer_surface: Option<LayerSurface>,
@@ -90,6 +92,8 @@ pub(crate) struct PanelSpace {
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
+    pub applet_tx: mpsc::Sender<Process>,
+    pub desktop_id_socket_list: Vec<(String, UnixStream)>,
 }
 
 impl PanelSpace {
@@ -99,6 +103,7 @@ impl PanelSpace {
         log: Logger,
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
+        applet_tx: mpsc::Sender<Process>
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
@@ -140,12 +145,12 @@ impl PanelSpace {
             clients_left: Default::default(),
             clients_center: Default::default(),
             clients_right: Default::default(),
-            children: Default::default(),
             last_dirty: Default::default(),
             pending_dimensions: Default::default(),
             space_event: Default::default(),
             dimensions: Default::default(),
             output: Default::default(),
+            s_display: Default::default(),
             c_display: Default::default(),
             egl_display: Default::default(),
             layer_surface: Default::default(),
@@ -160,6 +165,8 @@ impl PanelSpace {
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
             bg_color,
+            applet_tx,
+            desktop_id_socket_list: Vec::new(),
         }
     }
 
@@ -443,19 +450,14 @@ impl PanelSpace {
 
         let log_clone = self.log.clone();
         if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-            let output_size = o
-                .current_mode()
-                .ok_or_else(|| anyhow::anyhow!("output no mode"))?
-                .size;
             // TODO handle fractional scaling?
             // let output_scale = o.current_scale().fractional_scale();
             // We explicitly use ceil for the output geometry size to make sure the damage
             // spans at least the output size. Round and floor would result in parts not drawn as the
             // frame size could be bigger than the maximum the output_geo would define.
-            let output_geo =
-                Rectangle::from_loc_and_size(o.current_location(), output_size.to_logical(1));
+
             let cur_damage = if self.full_clear > 0 {
-                vec![]
+                None
             } else {
                 let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
                     let w_loc = self
@@ -490,16 +492,16 @@ impl PanelSpace {
                         new_damage.push(rect);
                         new_damage
                     });
-                acc_damage
+                Some(acc_damage)
             };
-            let damage = Self::damage_for_buffer(
-                cur_damage,
-                &mut self.w_accumulated_damage,
-                self.egl_surface.as_ref().unwrap(),
-                self.full_clear,
-            );
-            let should_render = damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
+            let should_render = cur_damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
             if should_render {
+                let damage = Self::damage_for_buffer(
+                    cur_damage,
+                    &mut self.w_accumulated_damage,
+                    self.egl_surface.as_ref().unwrap(),
+                    self.full_clear,
+                );
                 let damage = damage.unwrap_or_default();
                 renderer
                     .render(
@@ -593,15 +595,19 @@ impl PanelSpace {
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
                 let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
                 let cur_damage = if p.full_clear > 0 {
-                    vec![]
+                    None
                 } else {
-                    damage_from_surface_tree(
+                    Some(damage_from_surface_tree(
                         p.s_surface.wl_surface(),
                         (0.0, 0.0),
                         1.0,
                         Some((&self.space, o)),
-                    )
+                    ))
                 };
+
+                if cur_damage.as_ref().map(|d| d.is_empty()).unwrap_or(false) {
+                    continue;
+                }
 
                 let damage = match Self::damage_for_buffer(
                     cur_damage,
@@ -674,7 +680,7 @@ impl PanelSpace {
     }
 
     pub(crate) fn damage_for_buffer(
-        cur_damage: Vec<Rectangle<i32, Physical>>,
+        cur_damage: Option<Vec<Rectangle<i32, Physical>>>,
         acc_damage: &mut Vec<Vec<Rectangle<i32, Physical>>>,
         egl_surface: &Rc<EGLSurface>,
         full_clear: u8,
@@ -689,6 +695,7 @@ impl PanelSpace {
         if full_clear == 4 {
             acc_damage.drain(..);
         }
+        let cur_damage = cur_damage.unwrap_or_default();
 
         let dmg_counts = acc_damage.len();
         // buffer contents undefined, treat as a full clear
@@ -971,24 +978,11 @@ impl PanelSpace {
         self.space.refresh(dh);
         popup_manager.cleanup();
 
-        if self
-            .children
-            .iter_mut()
-            .map(|c| c.try_wait())
-            .all(|r| matches!(r, Ok(Some(_))))
-        {
-            info!(self.log.clone(), "Child processes exited.");
-        }
-
         self.handle_focus();
         let mut should_render = false;
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
-                trace!(self.log, "root layer shell surface removed.");
-                for child in &mut self.children {
-                    let _ = child.kill();
-                }
-                std::process::exit(0);
+                info!(self.log, "root layer shell surface removed.");
             }
             Some(SpaceEvent::WaitConfigure {
                 first,

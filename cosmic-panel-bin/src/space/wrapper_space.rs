@@ -12,6 +12,7 @@ use std::{
 use anyhow::bail;
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
+use launch_pad::process::Process;
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
@@ -27,7 +28,8 @@ use sctk::{
         xdg::popup,
     },
 };
-use slog::Logger;
+use shlex::Shlex;
+use slog::{Logger, trace};
 use smithay::{
     backend::renderer::gles2::Gles2Renderer,
     desktop::{
@@ -60,7 +62,9 @@ impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
     /// set the display handle of the space
-    fn set_display_handle(&mut self, _display: wayland_server::DisplayHandle) {}
+    fn set_display_handle(&mut self, s_display: wayland_server::DisplayHandle) {
+        self.s_display.replace(s_display);
+    }
 
     /// get the client hovered surface of the space
     fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
@@ -229,8 +233,8 @@ impl WrapperSpace for PanelSpace {
     fn spawn_clients(
         &mut self,
         mut display: DisplayHandle,
-    ) -> Result<Vec<UnixStream>, anyhow::Error> {
-        if self.children.is_empty() {
+    ) -> anyhow::Result<()> {
+        if self.desktop_id_socket_list.is_empty() {
             let (clients_left, sockets_left): (Vec<_>, Vec<_>) = (0..self
                 .config
                 .plugins_left()
@@ -292,37 +296,58 @@ impl WrapperSpace for PanelSpace {
                 ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
             ];
 
-            self.children = Iter::new(freedesktop_desktop_entry::default_paths())
-                .filter_map(|path| {
-                    if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
-                        Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
-                    }) {
-                        // This way each applet is at most started once,
-                        // even if multiple desktop files in different directories match
-                        let (_, client_socket) = desktop_ids.remove(position);
-                        fs::read_to_string(&path).ok().and_then(|bytes| {
-                            if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                                if let Some(exec) = entry.exec() {
-                                    let requests_wayland_display =
-                                        entry.desktop_entry("X-HostWaylandDisplay").is_some();
-                                    return Some(exec_child(
-                                        exec,
-                                        self.log.clone(),
-                                        client_socket.as_raw_fd(),
-                                        env_vars.clone(),
-                                        requests_wayland_display,
-                                    ));
-                                }
-                            }
-                            None
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect_vec();
+            for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
+                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _)| {
+                    Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
+                }) {
+                    // This way each applet is at most started once,
+                    // even if multiple desktop files in different directories match
+                    let (id, client_socket) = desktop_ids.remove(position);
+                    if let Ok(bytes) = fs::read_to_string(&path) {
+                        if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
+                            if let Some(exec) = entry.exec() {
+                                let requests_wayland_display =
+                                    entry.desktop_entry("X-HostWaylandDisplay").is_some();
+                                let mut exec_iter = Shlex::new(exec);
+                                let exec = exec_iter
+                                    .next()
+                                    .expect("exec parameter must contain at least on word");
 
-            Ok(desktop_ids.into_iter().map(|(_, socket)| socket).collect())
+                                let mut args = Vec::new();
+                                for arg in exec_iter {
+                                    trace!(self.log.clone(), "child argument: {}", &arg);
+                                    args.push(arg);
+                                }
+                                let mut applet_env = Vec::new();
+                                for (key, val) in &env_vars {
+                                    if !requests_wayland_display && *key == "WAYLAND_DISPLAY" {
+                                        continue;
+                                    }
+                                    applet_env.push((*key, *val));
+                                }
+                                let fd = client_socket.as_raw_fd().to_string();
+                                applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
+                                trace!(self.log.clone(), "child: {}, {:?} {:?}", &exec, args, applet_env);
+
+                                let process = Process::new()
+                                .with_executable(&exec)
+                                .with_args(args)
+                                .with_env(applet_env);
+
+                                // TODO error handling
+                                match self.applet_tx.try_send(process) {
+                                    Ok(_) => {},
+                                    Err(e) => eprintln!("{e}"),
+                                };
+                            }
+                        }
+                    }
+                    self.desktop_id_socket_list.push((id, client_socket));
+                }
+            }
+                
+            self.desktop_id_socket_list.append(&mut desktop_ids);
+            Ok(())
         } else {
             bail!("Clients have already been spawned!");
         }

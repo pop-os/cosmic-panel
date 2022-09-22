@@ -154,7 +154,6 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a22a6a8f622f797120d452c630b0ab12e1331a1a753e2039ce7868d4ac77b4ee"
 dependencies = [
- "futures-util",
  "log",
  "nix",
  "slotmap",
@@ -199,7 +198,6 @@ version = "0.1.0"
 dependencies = [
  "adw-user-colors-lib",
  "anyhow",
- "calloop",
  "cosmic-panel-config",
  "csscolorparser",
  "freedesktop-desktop-entry",
@@ -942,7 +940,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad#2815570c919c6ff7b7d06c2ae6dd57c9acdbb927"
+source = "git+https://github.com/pop-os/launch-pad.git#9fd3f2b0070ae1f14fccbe68774a2aafd0e5b887"
 dependencies = [
  "log",
  "slotmap",
@@ -2147,7 +2145,6 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4a27302056771e29d12596ff65d1c4b2897dd12f"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2167,7 +2164,6 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#4a27302056771e29d12596ff65d1c4b2897dd12f"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",

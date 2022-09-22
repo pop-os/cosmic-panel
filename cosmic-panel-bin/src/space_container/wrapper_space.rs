@@ -33,7 +33,7 @@ impl WrapperSpace for SpaceContainer {
 
     /// set the display handle of the space
     fn set_display_handle(&mut self, display: wayland_server::DisplayHandle) {
-        self.c_display.replace(display);
+        self.s_display.replace(display);
     }
 
     /// get the client hovered surface of the space
@@ -67,8 +67,13 @@ impl WrapperSpace for SpaceContainer {
                             self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
+                            self.applet_tx.clone()
                         );
                         s.setup(compositor_state, layer_state, conn, qh);
+                        if let Some(s_display) = self.s_display.as_ref() {
+                            s.set_display_handle(s_display.clone());
+                            let _ = s.spawn_clients(s_display.clone());
+                        }
                         let _ = s.handle_output(
                             compositor_state,
                             layer_state,
@@ -133,14 +138,20 @@ impl WrapperSpace for SpaceContainer {
                     }) {
                         self.space_list.remove(s)
                     } else {
-                        PanelSpace::new(
+                        let mut s = PanelSpace::new(
                             config,
                             self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
-                        )
+                            self.applet_tx.clone()
+                        );
+                        s.setup(compositor_state, layer_state, conn, qh);
+                        if let Some(s_display) = self.s_display.as_ref() {
+                            s.set_display_handle(s_display.clone());
+                            let _ = s.spawn_clients(s_display.clone());
+                        }
+                        s
                     };
-                    s.setup(compositor_state, layer_state, conn, qh);
                     let _ = s.handle_output(
                         compositor_state,
                         layer_state,
@@ -153,13 +164,26 @@ impl WrapperSpace for SpaceContainer {
                     Some(s)
                 }
                 CosmicPanelOuput::Name(name) if name == &output_name => {
-                    let mut s = PanelSpace::new(
-                        config.clone(),
-                        self.log.clone(),
-                        self.c_focused_surface.clone(),
-                        self.c_hovered_surface.clone(),
-                    );
-                    s.setup(compositor_state, layer_state, conn, qh);
+                    let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
+                        s.config.name == config.name && config.output == s.config.output
+                    }) {
+                        self.space_list.remove(s)
+                    } else {
+                        let mut s = PanelSpace::new(
+                            config.clone(),
+                            self.log.clone(),
+                            self.c_focused_surface.clone(),
+                            self.c_hovered_surface.clone(),
+                            self.applet_tx.clone()
+                        );
+                        s.setup(compositor_state, layer_state, conn, qh);
+
+                        if let Some(s_display) = self.s_display.as_ref() {
+                            s.set_display_handle(s_display.clone());
+                            let _ = s.spawn_clients(s_display.clone());
+                        }
+                        s
+                    };
                     let _ = s.handle_output(
                         compositor_state,
                         layer_state,
@@ -279,15 +303,9 @@ impl WrapperSpace for SpaceContainer {
     fn spawn_clients(
         &mut self,
         display: smithay::reexports::wayland_server::DisplayHandle,
-    ) -> anyhow::Result<Vec<std::os::unix::net::UnixStream>> {
-        Ok(self
-            .space_list
-            .iter_mut()
-            .flat_map(|space| {
-                // TODO better error handling
-                space.spawn_clients(display.clone()).unwrap_or_default()
-            })
-            .collect())
+    ) -> anyhow::Result<()> {
+        // spaces spawn their clients when they are created
+        Ok(())
     }
 
     fn log(&self) -> Option<slog::Logger> {
