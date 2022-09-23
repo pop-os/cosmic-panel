@@ -190,7 +190,7 @@ impl WrapperSpace for PanelSpace {
         }
 
         // get_popup is not implemented yet in sctk 0.30
-        self.layer_surface
+        self.layer
             .as_ref()
             .unwrap()
             .get_popup(c_popup.xdg_popup());
@@ -503,7 +503,7 @@ impl WrapperSpace for PanelSpace {
         self.c_display.replace(conn.display());
     }
 
-    fn handle_output<W: WrapperSpace>(
+    fn new_output<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
         layer_state: &mut LayerState,
@@ -528,20 +528,10 @@ impl WrapperSpace for PanelSpace {
                 }
                 _ => {}
             };
-            if let Some((existing_c_output, ..)) = self.output.as_ref() {
-                if c_output.is_alive() && existing_c_output.is_alive() {
-                    bail!("This panel already handled the configured output, and the output is still alive");
-                } else if !c_output.is_alive() && existing_c_output.is_alive() {
-                    self.output.take();
-                    self.layer_surface.take();
-                    self.layer_shell_wl_surface.take();
-                    self.w_accumulated_damage.clear();
-                    return Ok(());
-                }
-            } else if matches!(self.config.output, CosmicPanelOuput::Active)
-                && self.layer_surface.is_some()
+            if matches!(self.config.output, CosmicPanelOuput::Active)
+                && self.layer.is_some()
             {
-                bail!("This panel already handled the configured output (None).");
+                return Ok(());
             }
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
@@ -598,11 +588,10 @@ impl WrapperSpace for PanelSpace {
             output_info.as_ref().cloned()
         )
         .next();
-        self.layer_surface.replace(layer_surface);
+        self.layer.replace(layer_surface);
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.full_clear = 4;
-        self.layer_shell_wl_surface = Some(c_surface);
         Ok(())
     }
 
@@ -618,7 +607,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|(i, f)| (i, f.0.clone()))
         } {
             // close popups when panel is pressed
-            if self.layer_shell_wl_surface.as_ref() == Some(&prev_foc.1) && !self.popups.is_empty()
+            if self.layer.as_ref().map(|s| s.wl_surface())== Some(&prev_foc.1) && !self.popups.is_empty()
             {
                 self.close_popups();
             }
@@ -680,9 +669,9 @@ impl WrapperSpace for PanelSpace {
         } else {
             // if not on this panel's client surface retun None
             if self
-                .layer_shell_wl_surface
+                .layer
                 .as_ref()
-                .map(|s| *s != c_wl_surface)
+                .map(|s| *s.wl_surface() != c_wl_surface)
                 .unwrap_or(true)
             {
                 return None;
@@ -777,10 +766,21 @@ impl WrapperSpace for PanelSpace {
     // handled by the container
     fn output_leave(
         &mut self,
-        _c_output: Option<c_wl_output::WlOutput>,
-        _s_output: Option<Output>,
-        _info: Option<OutputInfo>,
+        _c_output: c_wl_output::WlOutput,
+        _s_output: Output,
     ) -> anyhow::Result<()> {
         anyhow::bail!("Output leaving should be handled by the container")
+    }
+
+    fn update_output(
+        &mut self,
+        c_output: c_wl_output::WlOutput,
+        s_output: Output,
+        info: OutputInfo,
+    ) -> anyhow::Result<()> {
+        self.output.replace((c_output, s_output, info));
+        self.dimensions = self.constrain_dim(self.dimensions.clone());
+        self.full_clear = 4;
+        Ok(())
     }
 }

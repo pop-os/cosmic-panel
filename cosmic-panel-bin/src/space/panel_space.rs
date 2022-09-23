@@ -34,7 +34,7 @@ use smithay::{
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
     output::Output,
-    reexports::wayland_server::{backend::ClientId, DisplayHandle},
+    reexports::wayland_server::{backend::{ClientId, DisconnectReason}, DisplayHandle},
 };
 use smithay::{
     backend::{
@@ -65,10 +65,14 @@ pub enum AppletMsg {
     NewProcess(Process),
     ClientSocketPair(String, ClientId, Client, UnixStream),
 }
-
 /// space for the cosmic panel
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
+    // XXX implicitly drops egl_surface first to avoid segfault
+    pub(crate) egl_surface: Option<Rc<EGLSurface>>,
+    pub(crate) egl_display: Option<EGLDisplay>,
+    pub(crate) c_display: Option<WlDisplay>,
+
     pub config: CosmicPanelConfig,
     pub log: Logger,
     pub(crate) space: Space,
@@ -87,16 +91,13 @@ pub(crate) struct PanelSpace {
     pub(crate) visibility: Visibility,
     pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
     pub(crate) s_display: Option<DisplayHandle>,
-    pub(crate) c_display: Option<WlDisplay>,
-    pub(crate) egl_display: Option<EGLDisplay>,
-    pub(crate) layer_surface: Option<LayerSurface>,
-    pub(crate) egl_surface: Option<Rc<EGLSurface>>,
-    pub(crate) layer_shell_wl_surface: Option<c_wl_surface::WlSurface>,
+    pub(crate) layer: Option<LayerSurface>,
     pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub to_destroy: bool,
 }
 
 impl PanelSpace {
@@ -156,9 +157,8 @@ impl PanelSpace {
             s_display: Default::default(),
             c_display: Default::default(),
             egl_display: Default::default(),
-            layer_surface: Default::default(),
+            layer: Default::default(),
             egl_surface: Default::default(),
-            layer_shell_wl_surface: Default::default(),
             popups: Default::default(),
             w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
@@ -169,6 +169,7 @@ impl PanelSpace {
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
+            to_destroy: false,
         }
     }
 
@@ -200,11 +201,10 @@ impl PanelSpace {
 
     pub(crate) fn handle_focus(&mut self) {
         let (layer_surface, layer_shell_wl_surface) =
-            if let (Some(layer_surface), Some(layer_shell_wl_surface)) = (
-                self.layer_surface.as_ref(),
-                self.layer_shell_wl_surface.as_ref(),
-            ) {
-                (layer_surface, layer_shell_wl_surface)
+            if let Some(layer_surface) = 
+                self.layer.as_ref()
+             {
+                (layer_surface, layer_surface.wl_surface())
             } else {
                 return;
             };
@@ -223,9 +223,9 @@ impl PanelSpace {
                     FocusStatus::LastFocused(self.start_instant),
                     |acc, (surface, _, f)| {
                         if self
-                            .layer_shell_wl_surface
+                            .layer
                             .as_ref()
-                            .map(|s| *s == *surface)
+                            .map(|s| *s.wl_surface() == *surface)
                             .unwrap_or(false)
                             || self.popups.iter().any(|p| {
                                 &p.c_wl_surface == surface
@@ -1008,10 +1008,9 @@ impl PanelSpace {
                 }));
             }
             None => {
-                if let (Some(size), Some(layer_surface), Some(layer_shell_wl_surface)) = (
+                if let (Some(size), Some(layer_surface)) = (
                     self.pending_dimensions.take(),
-                    self.layer_surface.as_ref(),
-                    self.layer_shell_wl_surface.as_ref(),
+                    self.layer.as_ref(),
                 ) {
                     let width = size.w.try_into().unwrap();
                     let height = size.h.try_into().unwrap();
@@ -1019,7 +1018,7 @@ impl PanelSpace {
                     layer_surface.set_size(width, height);
                     if let Visibility::Hidden = self.visibility {
                         if self.config.exclusive_zone() {
-                            self.layer_surface
+                            self.layer
                                 .as_ref()
                                 .unwrap()
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
@@ -1034,18 +1033,18 @@ impl PanelSpace {
                             PanelAnchor::Left | PanelAnchor::Right => width,
                             PanelAnchor::Top | PanelAnchor::Bottom => height,
                         };
-                        self.layer_surface
+                        self.layer
                             .as_ref()
                             .unwrap()
                             .set_exclusive_zone(list_thickness as i32);
                     }
-                    layer_shell_wl_surface.commit();
+                    layer_surface.wl_surface().commit();
                     self.space_event.replace(Some(SpaceEvent::WaitConfigure {
                         first: false,
                         width: size.w,
                         height: size.h,
                     }));
-                } else if self.layer_surface.is_some() {
+                } else if self.layer.is_some() {
                     should_render = if self.full_clear == 4 {
                         self.update_window_locations().is_ok()
                     } else {
@@ -1104,13 +1103,13 @@ impl PanelSpace {
                         let client_egl_surface = unsafe {
                             ClientEglSurface::new(
                                 WlEglSurface::new(
-                                    self.layer_shell_wl_surface.as_ref().unwrap().id(),
+                                    self.layer.as_ref().unwrap().wl_surface().id(),
                                     width,
                                     height,
                                 )
                                 .unwrap(), // TODO remove unwrap
                                 self.c_display.as_ref().unwrap().clone(),
-                                self.layer_shell_wl_surface.as_ref().unwrap().clone(),
+                                self.layer.as_ref().unwrap().wl_surface().clone(),
                             )
                         };
                         let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
@@ -1147,9 +1146,6 @@ impl PanelSpace {
                                     .expect("Failed to initialize EGL Surface")
                             }
                         };
-                        trace!(log, "{:?}", unsafe {
-                            SwapInterval(egl_display.get_display_handle().handle, 0)
-                        });
 
                         let egl_surface = Rc::new(
                             EGLSurface::new(
@@ -1180,7 +1176,7 @@ impl PanelSpace {
                         );
                     }
                     self.dimensions = (w as i32, h as i32).into();
-                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    self.layer.as_ref().unwrap().wl_surface().commit();
                     self.full_clear = 4;
                 }
                 SpaceEvent::Quit => (),
@@ -1197,7 +1193,7 @@ impl PanelSpace {
                         .unwrap()
                         .resize(w as i32, h as i32, 0, 0);
                     self.dimensions = (w as i32, h as i32).into();
-                    self.layer_shell_wl_surface.as_ref().unwrap().commit();
+                    self.layer.as_ref().unwrap().wl_surface().commit();
                     self.full_clear = 4;
                 }
             }

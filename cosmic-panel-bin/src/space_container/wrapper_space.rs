@@ -9,7 +9,7 @@ use sctk::{
     output::OutputInfo,
     reexports::client::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
-        Connection, QueueHandle,
+        Connection, QueueHandle, Proxy
     },
     shell::layer::LayerState,
 };
@@ -73,7 +73,7 @@ impl WrapperSpace for SpaceContainer {
                             s.set_display_handle(s_display.clone());
                             let _ = s.spawn_clients(s_display.clone());
                         }
-                        let _ = s.handle_output(
+                        let _ = s.new_output(
                             compositor_state,
                             layer_state,
                             conn,
@@ -91,7 +91,7 @@ impl WrapperSpace for SpaceContainer {
         );
     }
 
-    fn handle_output<W: WrapperSpace>(
+    fn new_output<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
         layer_state: &mut LayerState,
@@ -120,6 +120,7 @@ impl WrapperSpace for SpaceContainer {
             Some(n) => n,
             None => anyhow::bail!("Output missing name"),
         };
+
 
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
@@ -151,7 +152,8 @@ impl WrapperSpace for SpaceContainer {
                         }
                         s
                     };
-                    let _ = s.handle_output(
+
+                    if s.new_output(
                         compositor_state,
                         layer_state,
                         conn,
@@ -159,8 +161,11 @@ impl WrapperSpace for SpaceContainer {
                         Some(c_output.clone()),
                         Some(s_output.clone()),
                         Some(output_info.clone()),
-                    );
-                    Some(s)
+                    ).is_ok() {
+                        Some(s)
+                    } else {
+                        None
+                    }
                 }
                 CosmicPanelOuput::Name(name) if name == &output_name => {
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
@@ -183,7 +188,7 @@ impl WrapperSpace for SpaceContainer {
                         }
                         s
                     };
-                    let _ = s.handle_output(
+                    if s.new_output(
                         compositor_state,
                         layer_state,
                         conn,
@@ -191,8 +196,11 @@ impl WrapperSpace for SpaceContainer {
                         Some(c_output.clone()),
                         Some(s_output.clone()),
                         Some(output_info.clone()),
-                    );
-                    Some(s)
+                    ).is_ok() {
+                        Some(s)
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             })
@@ -285,7 +293,7 @@ impl WrapperSpace for SpaceContainer {
         dh: &smithay::reexports::wayland_server::DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
-    ) -> std::time::Instant {
+    ) -> std::time::Instant {         
         self.space_list
             .iter_mut()
             .fold(None, |acc, s| {
@@ -293,6 +301,7 @@ impl WrapperSpace for SpaceContainer {
                 acc.map(|i| last_dirtied.max(i))
             })
             .unwrap_or_else(Instant::now)
+        
     }
 
     fn config(&self) -> Self::Config {
@@ -555,7 +564,7 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self
             .space_list
             .iter_mut()
-            .find(|s| s.layer_shell_wl_surface.as_ref() == Some(layer.wl_surface()))
+            .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
             space.configure_panel_layer(layer, configure, &mut self.renderer);
         }
@@ -563,21 +572,29 @@ impl WrapperSpace for SpaceContainer {
 
     fn close_layer(&mut self, layer: &sctk::shell::layer::LayerSurface) {
         self.space_list
-            .retain(|s| s.layer_shell_wl_surface.as_ref() != Some(layer.wl_surface()));
+            .retain(|s| s.layer.as_ref().map(|s| s.wl_surface()) != Some(layer.wl_surface()));
     }
 
     fn output_leave(
         &mut self,
-        _c_output: Option<sctk::reexports::client::protocol::wl_output::WlOutput>,
-        s_output: Option<Output>,
-        _info: Option<OutputInfo>,
+        _c_output: sctk::reexports::client::protocol::wl_output::WlOutput,
+        s_output: Output,
     ) -> anyhow::Result<()> {
-        let s_output = match s_output {
-            Some(o) => o,
-            None => return Ok(()),
-        };
-        self.space_list
-            .retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));
+        self.space_list.retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));   
+        Ok(())
+    }
+
+    fn update_output(
+        &mut self,
+        c_output: WlOutput,
+        s_output: Output,
+        info: OutputInfo,
+    ) -> anyhow::Result<()> {
+        for s in &mut self.space_list {
+            if s.output.as_ref().map(|o| &o.1) == Some(&s_output) {
+                let _ = s.update_output(c_output.clone(), s_output.clone(), info.clone());
+            }
+        }
         Ok(())
     }
 }

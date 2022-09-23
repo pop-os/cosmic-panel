@@ -383,14 +383,16 @@ impl CosmicPanelConfig {
             PanelAnchor::Left | PanelAnchor::Right => (
                 Some(bar_thickness),
                 if self.expand_to_edges() {
-                    Some(output_dims.1..output_dims.1 + 1)
+                    let o_h = output_dims.1.max(1);
+                    Some(o_h..o_h + 1)
                 } else {
                     None
                 },
             ),
             PanelAnchor::Top | PanelAnchor::Bottom => (
                 if self.expand_to_edges() {
-                    Some(output_dims.0..output_dims.0 + 1)
+                    let o_w = output_dims.0.max(1);
+                    Some(o_w..o_w + 1)
                 } else {
                     None
                 },

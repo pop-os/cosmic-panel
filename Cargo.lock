@@ -1660,7 +1660,7 @@ checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay#355513d3f675dbf5c61196cd98f5134bba53582c"
+source = "git+https://github.com/smithay/smithay?rev=355513d3f675dbf5c61196cd98f5134bba53582c#355513d3f675dbf5c61196cd98f5134bba53582c"
 dependencies = [
  "appendlist",
  "bitflags",
@@ -2145,7 +2145,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#63bb772e221a43c89508c92dfab427726cd8f2fd"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#86c64a701ffcde60b2bb675e5791c48721ebe18b"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2165,7 +2165,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#63bb772e221a43c89508c92dfab427726cd8f2fd"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=launchpad#86c64a701ffcde60b2bb675e5791c48721ebe18b"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
