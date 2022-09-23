@@ -6,7 +6,7 @@ use crate::space::{AppletMsg, PanelSpace};
 use cosmic_panel_config::CosmicPanelContainerConfig;
 use slog::Logger;
 use smithay::{
-    backend::renderer::gles2::Gles2Renderer,
+    backend::{egl::EGLDisplay, renderer::gles2::Gles2Renderer},
     reexports::wayland_server::{self, backend::ClientId, Client},
 };
 use tokio::sync::mpsc;
@@ -18,6 +18,7 @@ pub struct SpaceContainer {
     pub(crate) config: CosmicPanelContainerConfig,
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<Gles2Renderer>,
+    pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) s_display: Option<wayland_server::DisplayHandle>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
@@ -36,6 +37,7 @@ impl SpaceContainer {
             log,
             space_list: vec![],
             renderer: None,
+            egl_display: None,
             s_display: None,
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),

@@ -190,10 +190,7 @@ impl WrapperSpace for PanelSpace {
         }
 
         // get_popup is not implemented yet in sctk 0.30
-        self.layer
-            .as_ref()
-            .unwrap()
-            .get_popup(c_popup.xdg_popup());
+        self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
 
         // //must be done after role is assigned as popup
         c_wl_surface.commit();
@@ -513,7 +510,7 @@ impl WrapperSpace for PanelSpace {
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
-        if let (Some(c_output), Some(s_output), Some(output_info)) =
+        if let (Some(_c_output), Some(s_output), Some(output_info)) =
             (c_output.as_ref(), s_output.as_ref(), output_info.as_ref())
         {
             self.space.map_output(s_output, output_info.location);
@@ -528,9 +525,7 @@ impl WrapperSpace for PanelSpace {
                 }
                 _ => {}
             };
-            if matches!(self.config.output, CosmicPanelOuput::Active)
-                && self.layer.is_some()
-            {
+            if matches!(self.config.output, CosmicPanelOuput::Active) && self.layer.is_some() {
                 return Ok(());
             }
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
@@ -607,7 +602,8 @@ impl WrapperSpace for PanelSpace {
                 .map(|(i, f)| (i, f.0.clone()))
         } {
             // close popups when panel is pressed
-            if self.layer.as_ref().map(|s| s.wl_surface())== Some(&prev_foc.1) && !self.popups.is_empty()
+            if self.layer.as_ref().map(|s| s.wl_surface()) == Some(&prev_foc.1)
+                && !self.popups.is_empty()
             {
                 self.close_popups();
             }

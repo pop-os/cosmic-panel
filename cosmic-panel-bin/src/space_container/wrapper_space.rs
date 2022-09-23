@@ -9,7 +9,7 @@ use sctk::{
     output::OutputInfo,
     reexports::client::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
-        Connection, QueueHandle, Proxy
+        Connection, QueueHandle,
     },
     shell::layer::LayerState,
 };
@@ -73,15 +73,8 @@ impl WrapperSpace for SpaceContainer {
                             s.set_display_handle(s_display.clone());
                             let _ = s.spawn_clients(s_display.clone());
                         }
-                        let _ = s.new_output(
-                            compositor_state,
-                            layer_state,
-                            conn,
-                            qh,
-                            None,
-                            None,
-                            None,
-                        );
+                        let _ =
+                            s.new_output(compositor_state, layer_state, conn, qh, None, None, None);
                         Some(s)
                     } else {
                         None
@@ -120,7 +113,6 @@ impl WrapperSpace for SpaceContainer {
             Some(n) => n,
             None => anyhow::bail!("Output missing name"),
         };
-
 
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
@@ -161,7 +153,9 @@ impl WrapperSpace for SpaceContainer {
                         Some(c_output.clone()),
                         Some(s_output.clone()),
                         Some(output_info.clone()),
-                    ).is_ok() {
+                    )
+                    .is_ok()
+                    {
                         Some(s)
                     } else {
                         None
@@ -196,7 +190,9 @@ impl WrapperSpace for SpaceContainer {
                         Some(c_output.clone()),
                         Some(s_output.clone()),
                         Some(output_info.clone()),
-                    ).is_ok() {
+                    )
+                    .is_ok()
+                    {
                         Some(s)
                     } else {
                         None
@@ -293,15 +289,20 @@ impl WrapperSpace for SpaceContainer {
         dh: &smithay::reexports::wayland_server::DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
-    ) -> std::time::Instant {         
+    ) -> std::time::Instant {
         self.space_list
             .iter_mut()
             .fold(None, |acc, s| {
-                let last_dirtied = s.handle_events(dh, popup_manager, time, &mut self.renderer);
+                let last_dirtied = s.handle_events(
+                    dh,
+                    popup_manager,
+                    time,
+                    self.renderer.as_mut(),
+                    self.egl_display.as_mut(),
+                );
                 acc.map(|i| last_dirtied.max(i))
             })
             .unwrap_or_else(Instant::now)
-        
     }
 
     fn config(&self) -> Self::Config {
@@ -535,7 +536,12 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .any(|p| p.c_popup.wl_surface() == popup.wl_surface())
         }) {
-            space.configure_panel_popup(popup, config, self.renderer.as_ref());
+            space.configure_panel_popup(
+                popup,
+                config,
+                self.renderer.as_mut(),
+                self.egl_display.as_mut(),
+            );
         }
     }
 
@@ -566,7 +572,12 @@ impl WrapperSpace for SpaceContainer {
             .iter_mut()
             .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
-            space.configure_panel_layer(layer, configure, &mut self.renderer);
+            space.configure_panel_layer(
+                layer,
+                configure,
+                &mut self.renderer,
+                &mut self.egl_display,
+            );
         }
     }
 
@@ -580,7 +591,8 @@ impl WrapperSpace for SpaceContainer {
         _c_output: sctk::reexports::client::protocol::wl_output::WlOutput,
         s_output: Output,
     ) -> anyhow::Result<()> {
-        self.space_list.retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));   
+        self.space_list
+            .retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));
         Ok(())
     }
 

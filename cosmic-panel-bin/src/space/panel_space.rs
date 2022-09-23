@@ -14,27 +14,24 @@ use launch_pad::process::Process;
 use sctk::{
     output::OutputInfo,
     reexports::client::{
-        protocol::{wl_display::WlDisplay, wl_output as c_wl_output, wl_surface as c_wl_surface},
+        protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
         Proxy,
     },
     shell::{layer::LayerSurface, xdg::popup},
 };
-use slog::{info, trace, Logger};
+use slog::{info, Logger};
 use smithay::{
     backend::{
         egl::{
             context::GlAttributes,
-            ffi::{
-                self,
-                egl::{GetConfigAttrib, SwapInterval},
-            },
+            ffi::{self, egl::GetConfigAttrib},
             EGLContext,
         },
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
     output::Output,
-    reexports::wayland_server::{backend::{ClientId, DisconnectReason}, DisplayHandle},
+    reexports::wayland_server::{backend::ClientId, DisplayHandle},
 };
 use smithay::{
     backend::{
@@ -70,7 +67,6 @@ pub enum AppletMsg {
 pub(crate) struct PanelSpace {
     // XXX implicitly drops egl_surface first to avoid segfault
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
-    pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) c_display: Option<WlDisplay>,
 
     pub config: CosmicPanelConfig,
@@ -97,7 +93,6 @@ pub(crate) struct PanelSpace {
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
-    pub to_destroy: bool,
 }
 
 impl PanelSpace {
@@ -156,7 +151,6 @@ impl PanelSpace {
             output: Default::default(),
             s_display: Default::default(),
             c_display: Default::default(),
-            egl_display: Default::default(),
             layer: Default::default(),
             egl_surface: Default::default(),
             popups: Default::default(),
@@ -169,7 +163,6 @@ impl PanelSpace {
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
-            to_destroy: false,
         }
     }
 
@@ -201,9 +194,7 @@ impl PanelSpace {
 
     pub(crate) fn handle_focus(&mut self) {
         let (layer_surface, layer_shell_wl_surface) =
-            if let Some(layer_surface) = 
-                self.layer.as_ref()
-             {
+            if let Some(layer_surface) = self.layer.as_ref() {
                 (layer_surface, layer_surface.wl_surface())
             } else {
                 return;
@@ -985,7 +976,8 @@ impl PanelSpace {
         dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
-        renderer: &mut Option<Gles2Renderer>,
+        renderer: Option<&mut Gles2Renderer>,
+        egl_display: Option<&mut EGLDisplay>,
     ) -> Instant {
         self.space.refresh(dh);
         popup_manager.cleanup();
@@ -1008,10 +1000,9 @@ impl PanelSpace {
                 }));
             }
             None => {
-                if let (Some(size), Some(layer_surface)) = (
-                    self.pending_dimensions.take(),
-                    self.layer.as_ref(),
-                ) {
+                if let (Some(size), Some(layer_surface)) =
+                    (self.pending_dimensions.take(), self.layer.as_ref())
+                {
                     let width = size.w.try_into().unwrap();
                     let height = size.h.try_into().unwrap();
 
@@ -1054,12 +1045,12 @@ impl PanelSpace {
             }
         }
 
-        if let Some(renderer) = renderer.as_mut() {
+        if let (Some(renderer), Some(egl_display)) = (renderer, egl_display) {
             self.popups.retain_mut(|p: &mut WrapperPopup| {
                 p.handle_events(
                     popup_manager,
                     renderer.egl_context(),
-                    self.egl_display.as_ref().unwrap(),
+                    egl_display,
                     self.c_display.as_ref().unwrap(),
                 )
             });
@@ -1082,6 +1073,7 @@ impl PanelSpace {
         _layer: &LayerSurface,
         configure: sctk::shell::layer::LayerSurfaceConfigure,
         renderer: &mut Option<Gles2Renderer>,
+        egl_display: &mut Option<EGLDisplay>,
     ) {
         let (w, h) = configure.new_size;
 
@@ -1112,11 +1104,15 @@ impl PanelSpace {
                                 self.layer.as_ref().unwrap().wl_surface().clone(),
                             )
                         };
-                        let egl_display = EGLDisplay::new(&client_egl_surface, log.clone())
-                            .expect("Failed to initialize EGL display");
+                        let new_egl_display = if let Some(egl_display) = egl_display.take() {
+                            egl_display
+                        } else {
+                            EGLDisplay::new(&client_egl_surface, log.clone())
+                                .expect("Failed to initialize EGL display")
+                        };
 
                         let egl_context = EGLContext::new_with_config(
-                            &egl_display,
+                            &new_egl_display,
                             GlAttributes {
                                 version: (3, 0),
                                 profile: None,
@@ -1131,7 +1127,7 @@ impl PanelSpace {
                         let mut min_interval_attr = 23239;
                         unsafe {
                             GetConfigAttrib(
-                                egl_display.get_display_handle().handle,
+                                new_egl_display.get_display_handle().handle,
                                 egl_context.config_id(),
                                 ffi::egl::MIN_SWAP_INTERVAL as c_int,
                                 &mut min_interval_attr,
@@ -1149,7 +1145,7 @@ impl PanelSpace {
 
                         let egl_surface = Rc::new(
                             EGLSurface::new(
-                                &egl_display,
+                                &new_egl_display,
                                 new_renderer
                                     .egl_context()
                                     .pixel_format()
@@ -1162,8 +1158,8 @@ impl PanelSpace {
                         );
 
                         renderer.replace(new_renderer);
+                        egl_display.replace(new_egl_display);
                         self.egl_surface.replace(egl_surface);
-                        self.egl_display.replace(egl_display);
                     } else if self.dimensions != (width as i32, height as i32).into()
                         && self.pending_dimensions.is_none()
                     {
@@ -1204,8 +1200,16 @@ impl PanelSpace {
         &mut self,
         popup: &sctk::shell::xdg::popup::Popup,
         config: sctk::shell::xdg::popup::PopupConfigure,
-        renderer: Option<&Gles2Renderer>,
+        renderer: Option<&mut Gles2Renderer>,
+        egl_display: Option<&mut EGLDisplay>,
     ) {
+        let (renderer, egl_display) =
+            if let (Some(renderer), Some(egl_display)) = (renderer, egl_display) {
+                (renderer, egl_display)
+            } else {
+                return;
+            };
+
         let (width, height) = (config.width, config.height);
         if let Some(p) = self
             .popups
@@ -1228,21 +1232,20 @@ impl PanelSpace {
                             p.c_wl_surface.clone(),
                         )
                     };
-                    if let Some(egl_context) = renderer.map(|r| r.egl_context()) {
-                        let egl_surface = Rc::new(
-                            EGLSurface::new(
-                                self.egl_display.as_ref().unwrap(),
-                                egl_context
-                                    .pixel_format()
-                                    .expect("Failed to get pixel format from EGL context "),
-                                egl_context.config_id(),
-                                client_egl_surface,
-                                None,
-                            )
-                            .expect("Failed to initialize EGL Surface"),
-                        );
-                        p.egl_surface.replace(egl_surface);
-                    }
+                    let egl_context = renderer.egl_context();
+                    let egl_surface = Rc::new(
+                        EGLSurface::new(
+                            egl_display,
+                            egl_context
+                                .pixel_format()
+                                .expect("Failed to get pixel format from EGL context "),
+                            egl_context.config_id(),
+                            client_egl_surface,
+                            None,
+                        )
+                        .expect("Failed to initialize EGL Surface"),
+                    );
+                    p.egl_surface.replace(egl_surface);
                 }
                 popup::ConfigureKind::Reactive => {
                     // TODO
