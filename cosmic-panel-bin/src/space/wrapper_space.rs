@@ -420,17 +420,12 @@ impl WrapperSpace for PanelSpace {
                     _ => self.dimensions.into(),
                 })
                 .unwrap_or_else(|| pending_dimensions.into());
-            if self.dimensions.w < size.w
-                && pending_dimensions.w < size.w
-                && wait_configure_dim.0 < size.w
-            {
+
+            if pending_dimensions.w < size.w {
                 self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
                 wait_configure_dim.0 = size.w;
             }
-            if self.dimensions.h < size.h
-                && pending_dimensions.h < size.h
-                && wait_configure_dim.1 < size.h
-            {
+            if pending_dimensions.h < size.h {
                 self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
             }
         }
@@ -533,7 +528,7 @@ impl WrapperSpace for PanelSpace {
         }
 
         let c_surface = compositor_state.create_surface(qh)?;
-        let dimensions = self.constrain_dim((1, 1).into());
+        let dimensions: Size<i32, Logical> = self.constrain_dim((0, 0).into());
 
         let layer = match self.config().layer() {
             zwlr_layer_shell_v1::Layer::Background => Layer::Background,
@@ -558,17 +553,25 @@ impl WrapperSpace for PanelSpace {
             .size((
                 dimensions.w.try_into().unwrap(),
                 dimensions.h.try_into().unwrap(),
-            ));
+            ))
+            .anchor(match self.config.anchor {
+                cosmic_panel_config::PanelAnchor::Left => {
+                    layer::Anchor::all().difference(layer::Anchor::RIGHT)
+                }
+                cosmic_panel_config::PanelAnchor::Right => {
+                    layer::Anchor::all().difference(layer::Anchor::LEFT)
+                }
+                cosmic_panel_config::PanelAnchor::Top => {
+                    layer::Anchor::all().difference(layer::Anchor::BOTTOM)
+                }
+                cosmic_panel_config::PanelAnchor::Bottom => {
+                    layer::Anchor::all().difference(layer::Anchor::TOP)
+                }
+            });
         if let Some(output) = c_output.as_ref() {
             layer_surface_builder = layer_surface_builder.output(output);
         }
         let layer_surface = layer_surface_builder.map(qh, layer_state, c_surface.clone(), layer)?;
-        layer_surface.set_anchor(match self.config.anchor {
-            cosmic_panel_config::PanelAnchor::Left => layer::Anchor::LEFT,
-            cosmic_panel_config::PanelAnchor::Right => layer::Anchor::RIGHT,
-            cosmic_panel_config::PanelAnchor::Top => layer::Anchor::TOP,
-            cosmic_panel_config::PanelAnchor::Bottom => layer::Anchor::BOTTOM,
-        });
 
         c_surface.commit();
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {

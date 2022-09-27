@@ -50,7 +50,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
-    space::{ClientEglSurface, SpaceEvent, Visibility, WrapperPopup},
+    space::{ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace},
     util::smootherstep,
 };
 
@@ -77,6 +77,8 @@ pub(crate) struct PanelSpace {
     pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
+    pub(crate) suggested_length: Option<u32>,
+    pub(crate) actual_length: u32,
     pub(crate) full_clear: u8,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
@@ -148,6 +150,7 @@ impl PanelSpace {
             pending_dimensions: Default::default(),
             space_event: Default::default(),
             dimensions: Default::default(),
+            suggested_length: None,
             output: Default::default(),
             s_display: Default::default(),
             c_display: Default::default(),
@@ -163,6 +166,7 @@ impl PanelSpace {
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
+            actual_length: 0,
         }
     }
 
@@ -315,7 +319,12 @@ impl PanelSpace {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(handle);
                         }
-                        layer_surface.set_margin(target, target, target, target);
+                        match self.config.anchor {
+                            PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, target),
+                            PanelAnchor::Right => layer_surface.set_margin(0, target, 0, 0),
+                            PanelAnchor::Top => layer_surface.set_margin(target, 0, 0, 0),
+                            PanelAnchor::Bottom => layer_surface.set_margin(0, 0, target, 0),
+                        };
                         layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Hidden;
                     } else {
@@ -323,7 +332,12 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            layer_surface.set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            match self.config.anchor {
+                                PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, cur_pix),
+                                PanelAnchor::Right => layer_surface.set_margin(0, cur_pix, 0, 0),
+                                PanelAnchor::Top => layer_surface.set_margin(cur_pix, 0, 0, 0),
+                                PanelAnchor::Bottom => layer_surface.set_margin(0, 0, cur_pix, 0),
+                            };
                             layer_shell_wl_surface.commit();
                         }
                         self.close_popups();
@@ -385,7 +399,12 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            layer_surface.set_margin(cur_pix, cur_pix, cur_pix, cur_pix);
+                            match self.config.anchor {
+                                PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, cur_pix),
+                                PanelAnchor::Right => layer_surface.set_margin(0, cur_pix, 0, 0),
+                                PanelAnchor::Top => layer_surface.set_margin(cur_pix, 0, 0, 0),
+                                PanelAnchor::Bottom => layer_surface.set_margin(0, 0, cur_pix, 0),
+                            };
                             layer_shell_wl_surface.commit();
                         }
                         self.visibility = Visibility::TransitionToVisible {
@@ -406,30 +425,35 @@ impl PanelSpace {
         let output_dims = self
             .output
             .as_ref()
-            .map(|(_, _, info)| info.modes[0].dimensions);
-        let (min_w, min_h) = (
-            1.max(self.config.padding() * 2),
-            1.max(self.config.padding() * 2),
-        );
-        w = min_w.max(w);
-        h = min_h.max(h);
-        if let Some((o_w, o_h)) = output_dims {
-            if let (Some(w_range), _) = self.config.get_dimensions((o_w as u32, o_h as u32)) {
-                if w < w_range.start {
-                    w = w_range.start;
-                } else if w > w_range.end - 1 {
-                    w = w_range.end;
-                }
-            }
-            if let (_, Some(h_range)) = self.config.get_dimensions((o_w as u32, o_h as u32)) {
-                if h < h_range.start {
-                    h = h_range.start;
-                } else if h > h_range.end - 1 {
-                    h = h_range.end;
-                }
+            .and_then(|(_, _, info)| {
+                info.modes
+                    .iter()
+                    .find_map(|m| if m.current { Some(m.dimensions) } else { None })
+            })
+            .map(|(w, h)| (w as u32, h as u32));
+
+        if let (Some(w_range), _) = self
+            .config
+            .get_dimensions(output_dims, self.suggested_length)
+        {
+            if w < w_range.start {
+                w = w_range.start;
+            } else if w >= w_range.end {
+                w = w_range.end - 1;
             }
         }
-        (w.try_into().unwrap(), h.try_into().unwrap()).into()
+        if let (_, Some(h_range)) = self
+            .config
+            .get_dimensions(output_dims, self.suggested_length)
+        {
+            if h < h_range.start {
+                h = h_range.start;
+            } else if h >= h_range.end {
+                h = h_range.end - 1;
+            }
+        }
+
+        (w as i32, h as i32).into()
     }
 
     pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> anyhow::Result<()> {
@@ -496,6 +520,7 @@ impl PanelSpace {
                     self.egl_surface.as_ref().unwrap(),
                     self.full_clear,
                 );
+
                 let damage = damage.unwrap_or_default();
                 renderer
                     .render(
@@ -503,15 +528,69 @@ impl PanelSpace {
                         smithay::utils::Transform::Flipped180,
                         |renderer: &mut Gles2Renderer, frame| {
                             if damage.is_empty() {
-                                frame
-                                    .clear(
-                                        clear_color,
-                                        &[Rectangle::from_loc_and_size(
-                                            (0, 0),
-                                            self.dimensions.to_physical(1),
-                                        )],
-                                    )
-                                    .expect("Failed to clear frame.");
+                                let actual_length = self.actual_length;
+                                let (layer_length, layer_height) = if self.config.is_horizontal() {
+                                    (self.dimensions.w, self.dimensions.h)
+                                } else {
+                                    (self.dimensions.h, self.dimensions.w)
+                                };
+                                if self.config.expand_to_edges
+                                    || actual_length > layer_length as u32
+                                {
+                                    frame
+                                        .clear(
+                                            clear_color,
+                                            &[Rectangle::from_loc_and_size(
+                                                (0, 0),
+                                                self.dimensions.to_physical(1),
+                                            )],
+                                        )
+                                        .expect("Failed to clear frame.");
+                                } else {
+                                    let side = (layer_length as u32 - actual_length) / 2;
+                                    // clear side 1
+                                    frame
+                                        .clear(
+                                            [0.0, 0.0, 0.0, 0.0],
+                                            &[Rectangle::from_loc_and_size(
+                                                (0, 0),
+                                                (side as i32, layer_height),
+                                            )],
+                                        )
+                                        .expect("Failed to clear frame.");
+
+                                    // clear center
+                                    let loc = if self.config.is_horizontal() {
+                                        (side as i32, 0)
+                                    } else {
+                                        (0, side as i32)
+                                    };
+                                    frame
+                                        .clear(
+                                            clear_color,
+                                            &[Rectangle::from_loc_and_size(
+                                                loc,
+                                                (actual_length as i32, layer_height),
+                                            )],
+                                        )
+                                        .expect("Failed to clear frame.");
+
+                                    // clear side 2
+                                    let loc = if self.config.is_horizontal() {
+                                        ((layer_length - side as i32), 0)
+                                    } else {
+                                        (0, (layer_length - side as i32))
+                                    };
+                                    frame
+                                        .clear(
+                                            [0.0, 0.0, 0.0, 0.0],
+                                            &[Rectangle::from_loc_and_size(
+                                                loc,
+                                                (side as i32, layer_height),
+                                            )],
+                                        )
+                                        .expect("Failed to clear frame.");
+                                }
                             } else {
                                 frame
                                     .clear(
@@ -839,6 +918,7 @@ impl PanelSpace {
         let total_sum = left_sum + center_sum + right_sum;
         let new_list_length =
             total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
+        self.actual_length = new_list_length as u32;
         let new_list_thickness: i32 = 2 * padding as i32
             + chain!(left.clone(), center.clone(), right.clone())
                 .map(|(_, _, _, thickness)| thickness)
@@ -1007,18 +1087,24 @@ impl PanelSpace {
                     let height = size.h.try_into().unwrap();
 
                     layer_surface.set_size(width, height);
-                    if let Visibility::Hidden = self.visibility {
+                    if self.config().autohide.is_some() {
                         if self.config.exclusive_zone() {
                             self.layer
                                 .as_ref()
                                 .unwrap()
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         }
-                        let target = match self.config.anchor() {
-                            PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
-                            PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
+                        let target = match (&self.visibility, self.config.anchor()) {
+                            (Visibility::Hidden, PanelAnchor::Left | PanelAnchor::Right) => -size.w,
+                            (Visibility::Hidden, PanelAnchor::Top | PanelAnchor::Bottom) => -size.h,
+                            _ => 0,
                         } + self.config.get_hide_handle().unwrap() as i32;
-                        layer_surface.set_margin(target, target, target, target);
+                        match self.config.anchor {
+                            PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, target),
+                            PanelAnchor::Right => layer_surface.set_margin(0, target, 0, 0),
+                            PanelAnchor::Top => layer_surface.set_margin(target, 0, 0, 0),
+                            PanelAnchor::Bottom => layer_surface.set_margin(0, 0, target, 0),
+                        };
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
                             PanelAnchor::Left | PanelAnchor::Right => width,
@@ -1037,7 +1123,8 @@ impl PanelSpace {
                     }));
                 } else if self.layer.is_some() {
                     should_render = if self.full_clear == 4 {
-                        self.update_window_locations().is_ok()
+                        let update_res = self.update_window_locations();
+                        update_res.is_ok()
                     } else {
                         true
                     };
@@ -1076,7 +1163,6 @@ impl PanelSpace {
         egl_display: &mut Option<EGLDisplay>,
     ) {
         let (w, h) = configure.new_size;
-
         match self.space_event.take() {
             Some(e) => match e {
                 SpaceEvent::WaitConfigure {
@@ -1086,9 +1172,21 @@ impl PanelSpace {
                 } => {
                     if w != 0 {
                         width = w as i32;
+                        if self.config.is_horizontal() {
+                            self.suggested_length.replace(w);
+                        }
                     }
                     if h != 0 {
                         height = h as i32;
+                        if !self.config.is_horizontal() {
+                            self.suggested_length.replace(h);
+                        }
+                    }
+                    if width == 0 {
+                        width = 1;
+                    }
+                    if height == 0 {
+                        height = 1;
                     }
                     if first {
                         let log = self.log.clone();
@@ -1163,7 +1261,7 @@ impl PanelSpace {
                     } else if self.dimensions != (width as i32, height as i32).into()
                         && self.pending_dimensions.is_none()
                     {
-                        self.w_accumulated_damage.drain(..);
+                        self.w_accumulated_damage.clear();
                         self.egl_surface.as_ref().unwrap().resize(
                             width as i32,
                             height as i32,
@@ -1178,20 +1276,35 @@ impl PanelSpace {
                 SpaceEvent::Quit => (),
             },
             None => {
-                if w != 0
-                    && h != 0
-                    && self.dimensions != (w as i32, h as i32).into()
-                    && self.pending_dimensions.is_none()
-                {
-                    self.w_accumulated_damage.drain(..);
-                    self.egl_surface
-                        .as_ref()
-                        .unwrap()
-                        .resize(w as i32, h as i32, 0, 0);
-                    self.dimensions = (w as i32, h as i32).into();
-                    self.layer.as_ref().unwrap().wl_surface().commit();
-                    self.full_clear = 4;
+                let mut width = self.dimensions.w;
+                let mut height = self.dimensions.h;
+                if w != 0 {
+                    width = w as i32;
+                    if self.config.is_horizontal() {
+                        self.suggested_length.replace(w);
+                    }
                 }
+                if h != 0 {
+                    height = h as i32;
+                    if !self.config.is_horizontal() {
+                        self.suggested_length.replace(h);
+                    }
+                }
+                if width == 0 {
+                    width = 1;
+                }
+                if height == 0 {
+                    height = 1;
+                }
+
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .resize(width as i32, height as i32, 0, 0);
+                self.dimensions = (width as i32, height as i32).into();
+                self.layer.as_ref().unwrap().wl_surface().commit();
+                self.w_accumulated_damage.clear();
+                self.full_clear = 4;
             }
         }
     }

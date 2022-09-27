@@ -218,6 +218,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
     }
 }
 
+// TODO refactor to have separate dock mode config & panel mode config
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -248,6 +249,7 @@ pub struct CosmicPanelConfig {
     pub padding: u32,
     /// space between panel plugins
     pub spacing: u32,
+    // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
     /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
@@ -364,10 +366,18 @@ impl CosmicPanelConfig {
         self.keyboard_interactivity.into()
     }
 
+    pub fn is_horizontal(&self) -> bool {
+        match self.anchor {
+            PanelAnchor::Top | PanelAnchor::Bottom => true,
+            _ => false,
+        }
+    }
+
     /// get constraints for the thickness of the panel bar
     pub fn get_dimensions(
         &self,
-        output_dims: (u32, u32),
+        output_dims: Option<(u32, u32)>,
+        suggested_length: Option<u32>,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
             PanelSize::XS => (8..61),
@@ -378,26 +388,12 @@ impl CosmicPanelConfig {
         };
         assert!(2 * self.padding < bar_thickness.end);
         bar_thickness.end -= 2 * self.padding;
+        let o_h = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().1);
+        let o_w = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().0);
 
         match self.anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (
-                Some(bar_thickness),
-                if self.expand_to_edges() {
-                    let o_h = output_dims.1.max(1);
-                    Some(o_h..o_h + 1)
-                } else {
-                    None
-                },
-            ),
-            PanelAnchor::Top | PanelAnchor::Bottom => (
-                if self.expand_to_edges() {
-                    let o_w = output_dims.0.max(1);
-                    Some(o_w..o_w + 1)
-                } else {
-                    None
-                },
-                Some(bar_thickness),
-            ),
+            PanelAnchor::Left | PanelAnchor::Right => (Some(bar_thickness), Some(o_h..o_h + 1)),
+            PanelAnchor::Top | PanelAnchor::Bottom => (Some(o_w..o_w + 1), Some(bar_thickness)),
         }
     }
 }
