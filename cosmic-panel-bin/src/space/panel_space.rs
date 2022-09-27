@@ -1085,8 +1085,11 @@ impl PanelSpace {
                 {
                     let width = size.w.try_into().unwrap();
                     let height = size.h.try_into().unwrap();
-
-                    layer_surface.set_size(width, height);
+                    if self.config.is_horizontal() {
+                        layer_surface.set_size(0, height);
+                    } else {
+                        layer_surface.set_size(width, 0);
+                    }
                     if self.config().autohide.is_some() {
                         if self.config.exclusive_zone() {
                             self.layer
@@ -1170,6 +1173,7 @@ impl PanelSpace {
                     mut width,
                     mut height,
                 } => {
+                    let _ = self.spawn_clients(self.s_display.clone().unwrap());
                     if w != 0 {
                         width = w as i32;
                         if self.config.is_horizontal() {

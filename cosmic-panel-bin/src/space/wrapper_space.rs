@@ -86,7 +86,7 @@ impl WrapperSpace for PanelSpace {
         self.full_clear = 4;
         self.space.commit(w.toplevel().wl_surface());
         self.space
-            .map_window(&w, (0, 0), self.z_index().map(|z| z as u8), true);
+            .map_window(&w, (0, 0), self.z_index().map(|z| z as u8), false);
         for w in self.space.windows() {
             w.configure();
         }
@@ -402,31 +402,6 @@ impl WrapperSpace for PanelSpace {
             let new_bbox = w.bbox();
             if old_bbox.size != new_bbox.size {
                 self.full_clear = 4;
-            }
-
-            // TODO improve this for when there are changes to the lists of plugins while running
-            let padding: Size<i32, Logical> = (
-                (2 * self.config.padding()).try_into().unwrap(),
-                (2 * self.config.padding()).try_into().unwrap(),
-            )
-                .into();
-            let size = self.constrain_dim(padding + w.bbox().size);
-            let pending_dimensions = self.pending_dimensions.unwrap_or(self.dimensions);
-            let mut wait_configure_dim = self
-                .space_event
-                .get()
-                .map(|e| match e {
-                    SpaceEvent::WaitConfigure { width, height, .. } => (width, height),
-                    _ => self.dimensions.into(),
-                })
-                .unwrap_or_else(|| pending_dimensions.into());
-
-            if pending_dimensions.w < size.w {
-                self.pending_dimensions = Some((size.w, wait_configure_dim.1).into());
-                wait_configure_dim.0 = size.w;
-            }
-            if pending_dimensions.h < size.h {
-                self.pending_dimensions = Some((wait_configure_dim.0, size.h).into());
             }
         }
     }

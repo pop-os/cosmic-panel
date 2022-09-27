@@ -71,7 +71,6 @@ impl WrapperSpace for SpaceContainer {
                         s.setup(compositor_state, layer_state, conn, qh);
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
-                            let _ = s.spawn_clients(s_display.clone());
                         }
                         let _ =
                             s.new_output(compositor_state, layer_state, conn, qh, None, None, None);
@@ -140,7 +139,6 @@ impl WrapperSpace for SpaceContainer {
                         s.setup(compositor_state, layer_state, conn, qh);
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
-                            let _ = s.spawn_clients(s_display.clone());
                         }
                         s
                     };
@@ -178,7 +176,6 @@ impl WrapperSpace for SpaceContainer {
 
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
-                            let _ = s.spawn_clients(s_display.clone());
                         }
                         s
                     };
