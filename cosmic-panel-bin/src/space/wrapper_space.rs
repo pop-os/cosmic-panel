@@ -548,6 +548,14 @@ impl WrapperSpace for PanelSpace {
         }
         let layer_surface = layer_surface_builder.map(qh, layer_state, c_surface.clone(), layer)?;
 
+        if !self.config.expand_to_edges {
+            let input_region = Region::new(compositor_state)?;
+            layer_surface
+                .wl_surface()
+                .set_input_region(Some(input_region.wl_region()));
+            self.input_region.replace(input_region);
+        }
+
         c_surface.commit();
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,

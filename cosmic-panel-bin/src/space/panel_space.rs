@@ -12,6 +12,7 @@ use std::{
 use itertools::{chain, Itertools};
 use launch_pad::process::Process;
 use sctk::{
+    compositor::Region,
     output::OutputInfo,
     reexports::client::{
         protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
@@ -95,6 +96,7 @@ pub(crate) struct PanelSpace {
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub(crate) input_region: Option<Region>,
 }
 
 impl PanelSpace {
@@ -167,6 +169,7 @@ impl PanelSpace {
             bg_color,
             applet_tx,
             actual_length: 0,
+            input_region: None,
         }
     }
 
@@ -918,19 +921,64 @@ impl PanelSpace {
         let total_sum = left_sum + center_sum + right_sum;
         let new_list_length =
             total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
-        self.actual_length = new_list_length as u32;
         let new_list_thickness: i32 = 2 * padding as i32
             + chain!(left.clone(), center.clone(), right.clone())
                 .map(|(_, _, _, thickness)| thickness)
                 .max()
                 .unwrap_or(0);
-        let new_dim = self.constrain_dim(
-            match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (new_list_thickness, new_list_length),
-                PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
+        let mut new_dim: Size<i32, Logical> = match anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (new_list_thickness, new_list_length),
+            PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
+        }
+        .into();
+
+        // update input region of panel when list length changes
+        if self.actual_length != new_list_length as u32 && !self.config.expand_to_edges {
+            let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
+                (Some(r), Some(layer)) => (r, layer),
+                _ => anyhow::bail!("Missing input region or layer!"),
+            };
+            input_region.subtract(
+                0,
+                0,
+                self.dimensions.w.max(new_dim.w),
+                self.dimensions.h.max(new_dim.h),
+            );
+
+            let (layer_length, _) = if self.config.is_horizontal() {
+                (self.dimensions.w, self.dimensions.h)
+            } else {
+                (self.dimensions.h, self.dimensions.w)
+            };
+
+            if new_list_length < layer_length {
+                let side = (layer_length as u32 - new_list_length as u32) / 2;
+
+                // clear center
+                let loc = if self.config.is_horizontal() {
+                    (side as i32, 0)
+                } else {
+                    (0, side as i32)
+                };
+
+                input_region.add(loc.0, loc.1, new_dim.w, new_dim.h);
+            } else {
+                input_region.add(
+                    0,
+                    0,
+                    self.dimensions.w.max(new_dim.w),
+                    self.dimensions.h.max(new_dim.h),
+                );
             }
-            .into(),
-        );
+            layer
+                .wl_surface()
+                .set_input_region(Some(input_region.wl_region()));
+            layer.wl_surface().commit();
+        }
+
+        self.actual_length = new_list_length as u32;
+        new_dim = self.constrain_dim(new_dim);
+
         let (new_list_length, new_list_thickness) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
             PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
