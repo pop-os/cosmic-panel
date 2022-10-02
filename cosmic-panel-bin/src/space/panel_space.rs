@@ -1258,7 +1258,7 @@ impl PanelSpace {
                             egl_display
                         } else {
                             EGLDisplay::new(&client_egl_surface, log.clone())
-                                .expect("Failed to initialize EGL display")
+                                .expect("Failed to create EGL display")
                         };
 
                         let egl_context = EGLContext::new_with_config(
@@ -1272,24 +1272,27 @@ impl PanelSpace {
                             Default::default(),
                             log.clone(),
                         )
-                        .expect("Failed to initialize EGL context");
-
-                        let mut min_interval_attr = 23239;
-                        unsafe {
-                            GetConfigAttrib(
-                                new_egl_display.get_display_handle().handle,
-                                egl_context.config_id(),
-                                ffi::egl::MIN_SWAP_INTERVAL as c_int,
-                                &mut min_interval_attr,
-                            );
-                        }
+                        .unwrap_or_else(|_| {
+                            EGLContext::new_with_config(
+                                &new_egl_display,
+                                GlAttributes {
+                                    version: (2, 0),
+                                    profile: None,
+                                    debug: cfg!(debug_assertions),
+                                    vsync: false,
+                                },
+                                Default::default(),
+                                log.clone(),
+                            )
+                            .expect("Failed to create EGL context")
+                        });
 
                         let new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
                         } else {
                             unsafe {
                                 Gles2Renderer::new(egl_context, log.clone())
-                                    .expect("Failed to initialize EGL Surface")
+                                    .expect("Failed to create EGL Surface")
                             }
                         };
 
@@ -1304,7 +1307,7 @@ impl PanelSpace {
                                 client_egl_surface,
                                 log.clone(),
                             )
-                            .expect("Failed to initialize EGL Surface"),
+                            .expect("Failed to create EGL Surface"),
                         );
 
                         renderer.replace(new_renderer);
