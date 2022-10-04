@@ -5,20 +5,6 @@ members = [
     "cosmic-panel-config"
 ]
 
-
-[patch.crates-io]
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-protocols-misc = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-egl = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-protocols = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-server = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-sys = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-backend = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-scanner = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-cursor = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-client = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-xkbcommon = { git = "https://github.com/rust-x-bindings/xkbcommon-rs", rev = "4e491bee" }
-
 [profile.release]
 incremental = true
 debug = 1

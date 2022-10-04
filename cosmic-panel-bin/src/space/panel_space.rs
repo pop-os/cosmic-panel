@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     fs::File,
     io::{BufRead, BufReader},
-    os::{raw::c_int, unix::net::UnixStream},
+    os::unix::net::UnixStream,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -23,11 +23,7 @@ use sctk::{
 use slog::{info, Logger};
 use smithay::{
     backend::{
-        egl::{
-            context::GlAttributes,
-            ffi::{self, egl::GetConfigAttrib},
-            EGLContext,
-        },
+        egl::{context::GlAttributes, EGLContext},
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
@@ -1257,7 +1253,7 @@ impl PanelSpace {
                         let new_egl_display = if let Some(egl_display) = egl_display.take() {
                             egl_display
                         } else {
-                            EGLDisplay::new(&client_egl_surface, log.clone())
+                            unsafe { EGLDisplay::new(&client_egl_surface, log.clone()) }
                                 .expect("Failed to create EGL display")
                         };
 

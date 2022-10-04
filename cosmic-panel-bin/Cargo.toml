@@ -10,19 +10,19 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "355513d3f675dbf5c61196cd98f5134bba53582c"}
-# smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
-# sctk = { package = "smithay-client-toolkit", version = "0.16.0", default-features = false, features = ["calloop"] }
-sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "get_popup" }
-# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "76a878698ea1910607e866519b0f5999f1e66caa"}
+# smithay = { path = "../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
+sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "dev" }# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "launchpad" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "launchpad" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
+# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+
 launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "on-exit-before-restart" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
-wayland-egl = { git = "https://github.com/smithay/wayland-rs", rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"], rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
+wayland-egl = { version = "=0.30.0-beta.10" }
+wayland-protocols-wlr = { version = "=0.1.0-beta.10", features = ["client"] }# for watching theme
 # for watching theme
 adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
 

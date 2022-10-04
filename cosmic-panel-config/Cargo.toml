@@ -14,6 +14,6 @@ serde = { version = "1.0.144", features = ["derive"] }
 xdg = "2.4.1"
 gtk4 = { git = "https://github.com/gtk-rs/gtk4-rs", features = ["v4_4"], optional = true }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
-wayland-protocols-wlr = { git = "https://github.com/smithay/wayland-rs", features = ["client"], rev = "f4740097ba42b1ec5d439c82eff4e748e38178d2" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "launchpad" }
+wayland-protocols-wlr = { version = "=0.1.0-beta.10", features = ["server"]}
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
