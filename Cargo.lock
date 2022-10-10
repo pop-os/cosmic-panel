@@ -1700,13 +1700,13 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-server",
  "wayland-sys",
- "xkbcommon 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "xkbcommon",
 ]
 
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.16.0"
-source = "git+https://github.com/wash2/client-toolkit?branch=dev#56e53341050b026dda9cc01fc96c3020a0287be3"
+source = "git+https://github.com/wash2/client-toolkit?branch=dev#d28d41735a6e9b50a53667d0942749636eef6728"
 dependencies = [
  "bitflags",
  "calloop",
@@ -1723,7 +1723,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "wayland-scanner",
- "xkbcommon 0.5.0 (git+https://github.com/rust-x-bindings/xkbcommon-rs)",
+ "xkbcommon",
 ]
 
 [[package]]
@@ -2168,7 +2168,6 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#34d655961b9c583ba173e58d3d72d823d3b7f940"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2188,7 +2187,6 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=master_jammy#34d655961b9c583ba173e58d3d72d823d3b7f940"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
@@ -2197,17 +2195,7 @@ dependencies = [
 [[package]]
 name = "xkbcommon"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbee136714379ab22da0280207fdb7f47e0bb940adea97731b65598b8c7a92e"
-dependencies = [
- "libc",
- "memmap2",
-]
-
-[[package]]
-name = "xkbcommon"
-version = "0.5.0"
-source = "git+https://github.com/rust-x-bindings/xkbcommon-rs#4e491bee1b850625ae077134901f89836edb6e81"
+source = "git+https://github.com/rust-x-bindings/xkbcommon-rs?rev=4e491bee#4e491bee1b850625ae077134901f89836edb6e81"
 dependencies = [
  "libc",
  "memmap2",

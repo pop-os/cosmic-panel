@@ -5,6 +5,9 @@ members = [
     "cosmic-panel-config"
 ]
 
+[patch.crates-io]
+xkbcommon = { git = "https://github.com/rust-x-bindings/xkbcommon-rs", rev = "4e491bee" }
+
 [profile.release]
 incremental = true
 debug = 1

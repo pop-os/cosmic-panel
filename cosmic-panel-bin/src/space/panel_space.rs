@@ -23,7 +23,7 @@ use sctk::{
 use slog::{info, Logger};
 use smithay::{
     backend::{
-        egl::{context::GlAttributes, EGLContext},
+        egl::{EGLContext, context::GlAttributes},
         renderer::{Bind, Frame, Renderer, Unbind},
     },
     desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
