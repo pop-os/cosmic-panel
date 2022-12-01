@@ -8,7 +8,9 @@ use anyhow::{bail, Ok};
 #[cfg(feature = "gtk4")]
 use gtk4::Orientation;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+#[cfg(feature = "wayland-rs")]
 use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};
 
 /// Edge to which the panel is anchored
@@ -56,6 +58,7 @@ impl Default for PanelAnchor {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     type Error = anyhow::Error;
     fn try_from(align: zwlr_layer_surface_v1::Anchor) -> Result<Self, Self::Error> {
@@ -73,6 +76,7 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     fn into(self) -> zwlr_layer_surface_v1::Anchor {
         let mut anchor = zwlr_layer_surface_v1::Anchor::empty();
@@ -208,6 +212,7 @@ impl FromStr for CosmicPanelOuput {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 impl Into<WrapperOutput> for CosmicPanelOuput {
     fn into(self) -> WrapperOutput {
         match self {
@@ -218,6 +223,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 // TODO refactor to have separate dock mode config & panel mode config
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -256,6 +262,7 @@ pub struct CosmicPanelConfig {
     pub autohide: Option<AutoHide>,
 }
 
+#[cfg(feature = "wayland-rs")]
 impl Default for CosmicPanelConfig {
     fn default() -> Self {
         Self {
@@ -282,6 +289,7 @@ impl Default for CosmicPanelConfig {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 impl CosmicPanelConfig {
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self) -> u32 {
@@ -380,11 +388,11 @@ impl CosmicPanelConfig {
         suggested_length: Option<u32>,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
-            PanelSize::XS => (8..61),
-            PanelSize::S => (8..81),
-            PanelSize::M => (8..101),
-            PanelSize::L => (8..121),
-            PanelSize::XL => (8..141),
+            PanelSize::XS => 8..61,
+            PanelSize::S => 8..81,
+            PanelSize::M => 8..101,
+            PanelSize::L => 8..121,
+            PanelSize::XL => 8..141,
         };
         assert!(2 * self.padding < bar_thickness.end);
         bar_thickness.end -= 2 * self.padding;
@@ -398,6 +406,7 @@ impl CosmicPanelConfig {
     }
 }
 
+#[cfg(feature = "wayland-rs")]
 impl WrapperConfig for CosmicPanelConfig {
     fn outputs(&self) -> WrapperOutput {
         self.output.clone().into()

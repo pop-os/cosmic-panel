@@ -2,6 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     fs::File,
     io::{BufRead, BufReader},
     os::unix::net::UnixStream,
@@ -9,51 +10,74 @@ use std::{
     time::{Duration, Instant},
 };
 
-use itertools::{chain, Itertools};
+use anyhow::bail;
+use itertools::{chain, izip, Itertools};
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
     output::OutputInfo,
     reexports::client::{
+        backend::ObjectId,
         protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
-        Proxy,
+        Proxy, QueueHandle,
     },
-    shell::{layer::LayerSurface, xdg::popup},
+    shell::{
+        layer::{self, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
+        xdg::popup,
+    },
 };
 use slog::{info, Logger};
 use smithay::{
     backend::{
-        egl::{EGLContext, context::GlAttributes},
-        renderer::{Bind, Frame, Renderer, Unbind},
+        egl::{context::GlAttributes, EGLContext},
+        renderer::{
+            damage::DamageTrackedRenderer,
+            element::{
+                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+                Element, RenderElement,
+            },
+            Bind, Frame, Renderer, Unbind,
+        },
     },
-    desktop::{space::RenderZindex, utils::bbox_from_surface_tree},
+    desktop::{
+        space::{space_render_elements, RenderZindex, SpaceElement},
+        utils::{
+            bbox_from_surface_tree, surface_primary_scanout_output,
+            update_surface_primary_scanout_output,
+        },
+    },
     output::Output,
-    reexports::wayland_server::{backend::ClientId, DisplayHandle},
+    reexports::wayland_server::{
+        backend::ClientId, protocol::wl_surface::WlSurface, DisplayHandle,
+    },
+    wayland::seat::WaylandFocus,
 };
 use smithay::{
     backend::{
         egl::{display::EGLDisplay, surface::EGLSurface},
-        renderer::{gles2::Gles2Renderer, utils::draw_surface_tree},
+        renderer::gles2::Gles2Renderer,
     },
-    desktop::{
-        draw_window, utils::damage_from_surface_tree, PopupKind, PopupManager, Space, Window,
-    },
+    desktop::{PopupKind, PopupManager, Space, Window},
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use tokio::sync::mpsc;
 use wayland_egl::WlEglSurface;
-use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::Layer;
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
+    shared_state::GlobalState,
     space::{ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace},
     util::smootherstep,
 };
 
-use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+use cosmic_panel_config::{
+    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelOuput, PanelAnchor,
+};
 
 use crate::space::Alignment;
+use xdg_shell_wrapper::space::WrapperSpaceElement;
 
 pub enum AppletMsg {
     NewProcess(Process),
@@ -65,10 +89,10 @@ pub(crate) struct PanelSpace {
     // XXX implicitly drops egl_surface first to avoid segfault
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) c_display: Option<WlDisplay>,
-
     pub config: CosmicPanelConfig,
     pub log: Logger,
-    pub(crate) space: Space,
+    pub(crate) space: Space<Window>,
+    pub(crate) damage_tracked_renderer: Option<DamageTrackedRenderer>,
     pub(crate) clients_left: Vec<(String, Client, UnixStream)>,
     pub(crate) clients_center: Vec<(String, Client, UnixStream)>,
     pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
@@ -88,7 +112,6 @@ pub(crate) struct PanelSpace {
     pub(crate) s_display: Option<DisplayHandle>,
     pub(crate) layer: Option<LayerSurface>,
     pub(crate) popups: Vec<WrapperPopup>,
-    pub(crate) w_accumulated_damage: Vec<Vec<Rectangle<i32, Physical>>>,
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
@@ -155,7 +178,6 @@ impl PanelSpace {
             layer: Default::default(),
             egl_surface: Default::default(),
             popups: Default::default(),
-            w_accumulated_damage: Default::default(),
             visibility: Visibility::Visible,
             start_instant: Instant::now(),
             c_focused_surface,
@@ -166,21 +188,12 @@ impl PanelSpace {
             applet_tx,
             actual_length: 0,
             input_region: None,
-        }
-    }
-
-    pub(crate) fn z_index(&self) -> Option<RenderZindex> {
-        match self.config.layer() {
-            Layer::Background => Some(RenderZindex::Background),
-            Layer::Bottom => Some(RenderZindex::Bottom),
-            Layer::Top => Some(RenderZindex::Top),
-            Layer::Overlay => Some(RenderZindex::Overlay),
-            _ => None,
+            damage_tracked_renderer: Default::default(),
         }
     }
 
     pub(crate) fn close_popups(&mut self) {
-        for w in &mut self.space.windows() {
+        for w in &mut self.space.elements() {
             for (PopupKind::Xdg(p), _) in
                 PopupManager::popups_for_surface(w.toplevel().wl_surface())
             {
@@ -460,204 +473,66 @@ impl PanelSpace {
             return Ok(());
         }
 
-        let clear_color = self.bg_color;
+        let my_renderer = match self.damage_tracked_renderer.as_mut() {
+            Some(r) => r,
+            None => return Ok(()),
+        };
         let _ = renderer.unbind();
         renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
+        let clear_color = [0.0, 0.0, 0.0, 0.0];
 
-        let log_clone = self.log.clone();
         if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-            // TODO handle fractional scaling?
-            // let output_scale = o.current_scale().fractional_scale();
-            // We explicitly use ceil for the output geometry size to make sure the damage
-            // spans at least the output size. Round and floor would result in parts not drawn as the
-            // frame size could be bigger than the maximum the output_geo would define.
-
-            let cur_damage = if self.full_clear > 0 {
-                None
-            } else {
-                let mut acc_damage = self.space.windows().fold(vec![], |acc, w| {
-                    let w_loc = self
+            let elements: Vec<WaylandSurfaceRenderElement<_>> = self
+                .space
+                .elements()
+                .map(|w| {
+                    let loc = self
                         .space
-                        .window_location(w)
-                        .unwrap_or_else(|| (0, 0).into());
-                    let mut bbox = w.bbox();
-                    bbox.loc += w_loc;
-
-                    acc.into_iter()
-                        .chain(w.accumulated_damage(
-                            w_loc.to_f64().to_physical(1.0),
-                            1.0,
-                            Some((&self.space, o)),
-                        ))
-                        .collect_vec()
-                });
-                acc_damage.dedup();
-                acc_damage.retain(|rect| rect.size.h > 0 && rect.size.w > 0);
-                // merge overlapping rectangles
-                acc_damage = acc_damage
-                    .into_iter()
-                    .fold(Vec::new(), |new_damage, mut rect| {
-                        // replace with drain_filter, when that becomes stable to reuse the original Vec's memory
-                        let (overlapping, mut new_damage): (Vec<_>, Vec<_>) = new_damage
-                            .into_iter()
-                            .partition(|other| other.overlaps(rect));
-
-                        for overlap in overlapping {
-                            rect = rect.merge(overlap);
-                        }
-                        new_damage.push(rect);
-                        new_damage
-                    });
-                Some(acc_damage)
-            };
-            let should_render = cur_damage.as_ref().map(|d| !d.is_empty()).unwrap_or(true);
-
-            if should_render {
-                let damage = Self::damage_for_buffer(
-                    cur_damage,
-                    &mut self.w_accumulated_damage,
-                    self.egl_surface.as_ref().unwrap(),
-                    self.full_clear,
-                );
-
-                let damage = damage.unwrap_or_default();
-                renderer
-                    .render(
-                        self.dimensions.to_physical(1),
-                        smithay::utils::Transform::Flipped180,
-                        |renderer: &mut Gles2Renderer, frame| {
-                            if damage.is_empty() {
-                                let actual_length = self.actual_length;
-                                let (layer_length, layer_height) = if self.config.is_horizontal() {
-                                    (self.dimensions.w, self.dimensions.h)
-                                } else {
-                                    (self.dimensions.h, self.dimensions.w)
-                                };
-                                if self.config.expand_to_edges
-                                    || actual_length > layer_length as u32
-                                {
-                                    frame
-                                        .clear(
-                                            clear_color,
-                                            &[Rectangle::from_loc_and_size(
-                                                (0, 0),
-                                                self.dimensions.to_physical(1),
-                                            )],
-                                        )
-                                        .expect("Failed to clear frame.");
-                                } else {
-                                    let side = (layer_length as u32 - actual_length) / 2;
-                                    // clear side 1
-                                    frame
-                                        .clear(
-                                            [0.0, 0.0, 0.0, 0.0],
-                                            &[Rectangle::from_loc_and_size(
-                                                (0, 0),
-                                                (side as i32, layer_height),
-                                            )],
-                                        )
-                                        .expect("Failed to clear frame.");
-
-                                    // clear center
-                                    let loc = if self.config.is_horizontal() {
-                                        (side as i32, 0)
-                                    } else {
-                                        (0, side as i32)
-                                    };
-                                    frame
-                                        .clear(
-                                            clear_color,
-                                            &[Rectangle::from_loc_and_size(
-                                                loc,
-                                                (actual_length as i32, layer_height),
-                                            )],
-                                        )
-                                        .expect("Failed to clear frame.");
-
-                                    // clear side 2
-                                    let loc = if self.config.is_horizontal() {
-                                        ((layer_length - side as i32), 0)
-                                    } else {
-                                        (0, (layer_length - side as i32))
-                                    };
-                                    frame
-                                        .clear(
-                                            [0.0, 0.0, 0.0, 0.0],
-                                            &[Rectangle::from_loc_and_size(
-                                                loc,
-                                                (side as i32, layer_height),
-                                            )],
-                                        )
-                                        .expect("Failed to clear frame.");
-                                }
-                            } else {
-                                frame
-                                    .clear(
-                                        clear_color,
-                                        damage.iter().cloned().collect_vec().as_slice(),
-                                    )
-                                    .expect("Failed to clear frame.");
-                            }
-                            for w in self.space.windows() {
-                                let w_loc = self
-                                    .space
-                                    .window_location(w)
-                                    .unwrap_or_else(|| (0, 0).into());
-                                let mut bbox = w.bbox();
-                                bbox.loc += w_loc;
-                                let w_damage = if damage.is_empty() {
-                                    vec![bbox.to_physical(1)]
-                                } else {
-                                    let mut w_damage = damage
-                                        .iter()
-                                        .filter_map(|r| r.intersection(bbox.to_physical(1)))
-                                        .collect_vec();
-                                    w_damage.dedup();
-                                    w_damage
-                                };
-
-                                if w_damage.is_empty() {
-                                    continue;
-                                }
-
-                                let _ = draw_window(
-                                    renderer,
-                                    frame,
-                                    w,
-                                    1.0,
-                                    w_loc.to_physical(1).to_f64(),
-                                    w_damage.as_slice(),
-                                    &log_clone,
-                                );
-                            }
-                        },
+                        .element_location(w)
+                        .unwrap_or_default()
+                        .to_physical(1);
+                    render_elements_from_surface_tree(
+                        renderer,
+                        w.toplevel().wl_surface(),
+                        loc,
+                        1.0,
+                        self.log.clone(),
                     )
-                    .expect("render error...");
+                })
+                .flatten()
+                .collect_vec();
 
-                let mut damage = damage
-                    .iter()
-                    .map(|rect| {
-                        Rectangle::from_loc_and_size(
-                            (rect.loc.x, self.dimensions.h - rect.loc.y - rect.size.h),
-                            rect.size,
-                        )
-                    })
-                    .collect::<Vec<_>>();
+            // let elements = &self.space.render_elements_for_output(renderer, o).unwrap_or_default()
+            my_renderer
+                .render_output(
+                    renderer,
+                    self.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .buffer_age()
+                        .unwrap_or_default() as usize,
+                    &elements,
+                    self.bg_color,
+                    self.log.clone(),
+                )
+                .unwrap();
 
-                self.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .swap_buffers(if damage.is_empty() {
-                        None
-                    } else {
-                        // FIXME: swapping buffers in nvidia seems to be broken
-                        None
-                        // Some(&mut damage)
-                    })?;
-            }
+            // TODO draw the rectangle properly
+            let dock_rectangle: Rectangle<i32, Physical> = match self.config.anchor() {
+                PanelAnchor::Left | PanelAnchor::Right => Rectangle::from_loc_and_size(
+                    (0, (self.dimensions.h - self.actual_length as i32) / 2),
+                    (self.dimensions.w, self.actual_length as i32),
+                ),
+                PanelAnchor::Top | PanelAnchor::Bottom => Rectangle::from_loc_and_size(
+                    ((self.dimensions.w - self.actual_length as i32) / 2, 0),
+                    (self.actual_length as i32, self.dimensions.h),
+                ),
+            };
 
-            // Popup rendering
-            let clear_color = [0.0, 0.0, 0.0, 0.0];
+            self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+            let _ = renderer.unbind();
+
+            // TODO Popup rendering optimization
             for p in self
                 .popups
                 .iter_mut()
@@ -665,138 +540,47 @@ impl PanelSpace {
             {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
-                let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-                let cur_damage = if p.full_clear > 0 {
-                    None
-                } else {
-                    Some(damage_from_surface_tree(
-                        p.s_surface.wl_surface(),
-                        (0.0, 0.0),
-                        1.0,
-                        Some((&self.space, o)),
-                    ))
-                };
 
-                if cur_damage.as_ref().map(|d| d.is_empty()).unwrap_or(false) {
-                    continue;
+                let elements: Vec<WaylandSurfaceRenderElement<_>> =
+                    render_elements_from_surface_tree(
+                        renderer,
+                        p.s_surface.wl_surface(),
+                        (0, 0),
+                        1.0,
+                        self.log.clone(),
+                    );
+                if let Ok(mut frame) = renderer.render(
+                    p.rectangle.size.to_physical(1),
+                    smithay::utils::Transform::Flipped180,
+                ) {
+                    let _ = frame.clear(clear_color, &[p.rectangle.to_physical(1)]);
+                    for element in elements {
+                        let _ = element.draw(
+                            &mut frame,
+                            p.rectangle.loc.to_physical(1),
+                            1.0.into(),
+                            &[p.rectangle.to_physical(1)],
+                            &self.log,
+                        );
+                    }
+                    let _ = frame.finish();
                 }
 
-                let damage = match Self::damage_for_buffer(
-                    cur_damage,
-                    &mut p.accumulated_damage,
-                    &p.egl_surface.as_ref().unwrap().clone(),
-                    p.full_clear,
-                ) {
-                    None => vec![],
-                    Some(d) if d.is_empty() => continue,
-                    Some(d) => d,
-                };
-
-                let _ = renderer.render(
-                    p_bbox.size.to_physical(1),
-                    smithay::utils::Transform::Flipped180,
-                    |renderer: &mut Gles2Renderer, frame| {
-                        let p_damage = if damage.is_empty() {
-                            let mut d = p_bbox.to_physical(1);
-                            d.loc = (0, 0).into();
-                            vec![d]
-                        } else {
-                            damage.clone()
-                        };
-
-                        frame
-                            .clear(
-                                clear_color,
-                                p_damage.iter().cloned().collect_vec().as_slice(),
-                            )
-                            .expect("Failed to clear frame.");
-
-                        let _ = draw_surface_tree(
-                            renderer,
-                            frame,
-                            p.s_surface.wl_surface(),
-                            1.0,
-                            p_bbox.loc.to_f64().to_physical(1.0),
-                            &p_damage,
-                            &log_clone,
-                        );
-                    },
-                );
-                let mut damage = damage
-                    .iter()
-                    .map(|rect| {
-                        Rectangle::from_loc_and_size(
-                            (rect.loc.x, p_bbox.size.h - rect.loc.y - rect.size.h),
-                            rect.size,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                p.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .swap_buffers(if damage.is_empty() {
-                        None
-                    } else {
-                        None
-                        // Some(&mut damage)
-                    })?;
+                p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                 p.dirty = false;
                 p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
             }
+
+            for window in self.space.elements() {
+                let output = o.clone();
+                window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
+                    Some(output.clone())
+                });
+            }
         }
 
-        let _ = renderer.unbind();
-        self.space.send_frames(time);
         self.full_clear = self.full_clear.checked_sub(1).unwrap_or_default();
         Ok(())
-    }
-
-    pub(crate) fn damage_for_buffer(
-        cur_damage: Option<Vec<Rectangle<i32, Physical>>>,
-        acc_damage: &mut Vec<Vec<Rectangle<i32, Physical>>>,
-        egl_surface: &Rc<EGLSurface>,
-        full_clear: u8,
-    ) -> Option<Vec<Rectangle<i32, Physical>>> {
-        let mut age: usize = egl_surface
-            .buffer_age()
-            .unwrap()
-            .try_into()
-            .unwrap_or_default();
-
-        // reset accumulated damage when applying full clear for the first time
-        if full_clear == 4 {
-            acc_damage.drain(..);
-        }
-        let cur_damage = cur_damage.unwrap_or_default();
-
-        let dmg_counts = acc_damage.len();
-        // buffer contents undefined, treat as a full clear
-        let ret = if age == 0 {
-            acc_damage.drain(..);
-            None
-            // buffer older than we keep track of, full clear, but don't reset accumulated damage, instead add to acc damage
-        } else if age >= dmg_counts {
-            acc_damage.push(cur_damage);
-            None
-            // use get the accumulated damage for the last [age] renders, and add to acc damage
-        } else {
-            acc_damage.push(cur_damage);
-            age += 1;
-            let mut d = acc_damage.clone();
-            d.reverse();
-            let d = d[..age + 1]
-                .iter()
-                .flat_map(|v| v.iter().cloned())
-                .collect_vec();
-            Some(d)
-        };
-
-        // acc damage should only ever be length 4
-        if acc_damage.len() > 4 {
-            acc_damage.drain(..acc_damage.len() - 4);
-        }
-
-        ret
     }
 
     pub(crate) fn update_window_locations(&mut self) -> anyhow::Result<()> {
@@ -824,14 +608,14 @@ impl PanelSpace {
 
         let mut windows_right = self
             .space
-            .windows()
+            .elements()
             .cloned()
             .filter_map(|w| {
                 self.clients_right
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {
                             None
@@ -843,14 +627,14 @@ impl PanelSpace {
 
         let mut windows_center = self
             .space
-            .windows()
+            .elements()
             .cloned()
             .filter_map(|w| {
                 self.clients_center
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {
                             None
@@ -862,14 +646,14 @@ impl PanelSpace {
 
         let mut windows_left = self
             .space
-            .windows()
+            .elements()
             .cloned()
             .filter_map(|w| {
                 self.clients_left
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client_id() {
+                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {
                             None
@@ -975,6 +759,7 @@ impl PanelSpace {
         self.actual_length = new_list_length as u32;
         new_dim = self.constrain_dim(new_dim);
 
+        // new_dim.h = 400;
         let (new_list_length, new_list_thickness) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
             PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
@@ -1010,7 +795,6 @@ impl PanelSpace {
 
         let mut prev: u32 = padding;
 
-        let z = self.z_index().map(|z| z as u8);
         for (i, w) in &mut windows_left.iter_mut() {
             let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
             let cur: u32 = prev + spacing * *i as u32;
@@ -1022,7 +806,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -1031,10 +815,9 @@ impl PanelSpace {
                     );
                     prev += size.x as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
             };
-            self.space.commit(w.toplevel().wl_surface());
         }
 
         let mut prev: u32 = center_offset as u32;
@@ -1049,7 +832,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -1058,10 +841,9 @@ impl PanelSpace {
                     );
                     prev += size.x as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
             };
-            self.space.commit(w.toplevel().wl_surface());
         }
 
         // twice padding is subtracted
@@ -1078,7 +860,7 @@ impl PanelSpace {
                     );
                     prev += size.y as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
@@ -1087,11 +869,12 @@ impl PanelSpace {
                     );
                     prev += size.x as u32;
                     self.space
-                        .map_window(w, (cur.0 as i32, cur.1 as i32), z, false);
+                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
             };
-            self.space.commit(w.toplevel().wl_surface());
         }
+        self.space.refresh();
+
         Ok(())
     }
 
@@ -1103,7 +886,7 @@ impl PanelSpace {
         renderer: Option<&mut Gles2Renderer>,
         egl_display: Option<&mut EGLDisplay>,
     ) -> Instant {
-        self.space.refresh(dh);
+        self.space.refresh();
         popup_manager.cleanup();
 
         self.handle_focus();
@@ -1204,7 +987,7 @@ impl PanelSpace {
 
     pub fn configure_panel_layer(
         &mut self,
-        _layer: &LayerSurface,
+        layer: &LayerSurface,
         configure: sctk::shell::layer::LayerSurfaceConfigure,
         renderer: &mut Option<Gles2Renderer>,
         egl_display: &mut Option<EGLDisplay>,
@@ -1312,7 +1095,6 @@ impl PanelSpace {
                     } else if self.dimensions != (width as i32, height as i32).into()
                         && self.pending_dimensions.is_none()
                     {
-                        self.w_accumulated_damage.clear();
                         self.egl_surface.as_ref().unwrap().resize(
                             width as i32,
                             height as i32,
@@ -1354,7 +1136,7 @@ impl PanelSpace {
                     .resize(width as i32, height as i32, 0, 0);
                 self.dimensions = (width as i32, height as i32).into();
                 self.layer.as_ref().unwrap().wl_surface().commit();
-                self.w_accumulated_damage.clear();
+                // self.w_accumulated_damage.clear();
                 self.full_clear = 4;
             }
         }
@@ -1374,12 +1156,14 @@ impl PanelSpace {
                 return;
             };
 
+        let pos = config.position;
         let (width, height) = (config.width, config.height);
         if let Some(p) = self
             .popups
             .iter_mut()
             .find(|p| popup.wl_surface() == p.c_popup.wl_surface())
         {
+            p.wrapper_rectangle = Rectangle::from_loc_and_size(pos, (width, height));
             p.state.take();
             let _ = p.s_surface.send_configure();
             match config.kind {
@@ -1419,8 +1203,6 @@ impl PanelSpace {
                 }
                 _ => {}
             };
-            // TODO is this needed?
-            // popup_manager.commit(p.s_surface.wl_surface());
             p.dirty = true;
             p.full_clear = 4;
         }
