@@ -101,6 +101,7 @@ pub(crate) struct PanelSpace {
     pub(crate) suggested_length: Option<u32>,
     pub(crate) actual_length: u32,
     pub(crate) full_clear: u8,
+    pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
@@ -189,6 +190,7 @@ impl PanelSpace {
             actual_length: 0,
             input_region: None,
             damage_tracked_renderer: Default::default(),
+            is_dirty: false,
         }
     }
 
@@ -472,65 +474,92 @@ impl PanelSpace {
         if self.space_event.get() != None {
             return Ok(());
         }
-
-        let my_renderer = match self.damage_tracked_renderer.as_mut() {
-            Some(r) => r,
-            None => return Ok(()),
-        };
-        let _ = renderer.unbind();
-        renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
-        let clear_color = [0.0, 0.0, 0.0, 0.0];
-
-        if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-            let elements: Vec<WaylandSurfaceRenderElement<_>> = self
-                .space
-                .elements()
-                .map(|w| {
-                    let loc = self
-                        .space
-                        .element_location(w)
-                        .unwrap_or_default()
-                        .to_physical(1);
-                    render_elements_from_surface_tree(
-                        renderer,
-                        w.toplevel().wl_surface(),
-                        loc,
-                        1.0,
-                        self.log.clone(),
-                    )
-                })
-                .flatten()
-                .collect_vec();
-
-            // let elements = &self.space.render_elements_for_output(renderer, o).unwrap_or_default()
-            my_renderer
-                .render_output(
-                    renderer,
-                    self.egl_surface
-                        .as_ref()
-                        .unwrap()
-                        .buffer_age()
-                        .unwrap_or_default() as usize,
-                    &elements,
-                    self.bg_color,
-                    self.log.clone(),
-                )
-                .unwrap();
-
-            // TODO draw the rectangle properly
-            let dock_rectangle: Rectangle<i32, Physical> = match self.config.anchor() {
-                PanelAnchor::Left | PanelAnchor::Right => Rectangle::from_loc_and_size(
-                    (0, (self.dimensions.h - self.actual_length as i32) / 2),
-                    (self.dimensions.w, self.actual_length as i32),
-                ),
-                PanelAnchor::Top | PanelAnchor::Bottom => Rectangle::from_loc_and_size(
-                    ((self.dimensions.w - self.actual_length as i32) / 2, 0),
-                    (self.actual_length as i32, self.dimensions.h),
-                ),
+        if self.is_dirty {
+            let my_renderer = match self.damage_tracked_renderer.as_mut() {
+                Some(r) => r,
+                None => return Ok(()),
             };
-
-            self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
             let _ = renderer.unbind();
+            renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
+            let clear_color = [0.0, 0.0, 0.0, 0.0];
+
+            if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
+                let elements: Vec<WaylandSurfaceRenderElement<_>> = self
+                    .space
+                    .elements()
+                    .map(|w| {
+                        let loc = self
+                            .space
+                            .element_location(w)
+                            .unwrap_or_default()
+                            .to_physical(1);
+                        render_elements_from_surface_tree(
+                            renderer,
+                            w.toplevel().wl_surface(),
+                            loc,
+                            1.0,
+                            self.log.clone(),
+                        )
+                    })
+                    .flatten()
+                    .collect_vec();
+                if let Ok(mut frame) = renderer.render(
+                    self.dimensions.to_physical(1),
+                    smithay::utils::Transform::Flipped180,
+                ) {
+                    let _ = frame.clear(
+                        clear_color,
+                        &[Rectangle::from_loc_and_size((0, 0), self.dimensions).to_physical(1)],
+                    );
+                    for element in elements {
+                        let _ = element.draw(
+                            &mut frame,
+                            element.location(1.0.into()).into(),
+                            1.0.into(),
+                            &element.damage_since(1.0.into(), None),
+                            &self.log,
+                        );
+                    }
+                    let _ = frame.finish();
+                }
+
+                // let elements = &self.space.render_elements_for_output(renderer, o).unwrap_or_default()
+                // my_renderer
+                //     .render_output(
+                //         renderer,
+                //         self.egl_surface
+                //             .as_ref()
+                //             .unwrap()
+                //             .buffer_age()
+                //             .unwrap_or_default() as usize,
+                //         &elements,
+                //         self.bg_color,
+                //         self.log.clone(),
+                //     )
+                //     .unwrap();
+
+                // TODO draw the rectangle properly
+                let dock_rectangle: Rectangle<i32, Physical> = match self.config.anchor() {
+                    PanelAnchor::Left | PanelAnchor::Right => Rectangle::from_loc_and_size(
+                        (0, (self.dimensions.h - self.actual_length as i32) / 2),
+                        (self.dimensions.w, self.actual_length as i32),
+                    ),
+                    PanelAnchor::Top | PanelAnchor::Bottom => Rectangle::from_loc_and_size(
+                        ((self.dimensions.w - self.actual_length as i32) / 2, 0),
+                        (self.actual_length as i32, self.dimensions.h),
+                    ),
+                };
+
+                self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+                let _ = renderer.unbind();
+                
+                for window in self.space.elements() {
+                    let output = o.clone();
+                    window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
+                        Some(output.clone())
+                    });
+                }
+            }
 
             // TODO Popup rendering optimization
             for p in self
@@ -570,15 +599,9 @@ impl PanelSpace {
                 p.dirty = false;
                 p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
             }
-
-            for window in self.space.elements() {
-                let output = o.clone();
-                window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
-                    Some(output.clone())
-                });
-            }
         }
 
+        self.is_dirty = false;
         self.full_clear = self.full_clear.checked_sub(1).unwrap_or_default();
         Ok(())
     }

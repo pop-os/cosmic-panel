@@ -399,6 +399,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
+        self.is_dirty = true;
         self.last_dirty = Some(Instant::now());
 
         if let Some(w) = self
@@ -416,7 +417,8 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn dirty_popup(&mut self, dh: &DisplayHandle, s: &s_WlSurface) {
+    fn dirty_popup(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
+        self.is_dirty = true;
         self.space.refresh();
 
         if let Some(p) = self
