@@ -946,6 +946,11 @@ impl PanelSpace {
                                 .as_ref()
                                 .unwrap()
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
+                        } else {
+                            self.layer
+                                .as_ref()
+                                .unwrap()
+                                .set_exclusive_zone(-1);
                         }
                         let target = match (&self.visibility, self.config.anchor()) {
                             (Visibility::Hidden, PanelAnchor::Left | PanelAnchor::Right) => -size.w,
