@@ -484,31 +484,18 @@ impl PanelSpace {
             let clear_color = [0.0, 0.0, 0.0, 0.0];
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let elements: Vec<WaylandSurfaceRenderElement<_>> = self
+                let elements = &self
                     .space
-                    .elements()
-                    .map(|w| {
-                        let loc = self
-                            .space
-                            .element_location(w)
-                            .unwrap_or_default()
-                            .to_physical(1);
-                        render_elements_from_surface_tree(
-                            renderer,
-                            w.toplevel().wl_surface(),
-                            loc,
-                            1.0,
-                            self.log.clone(),
-                        )
-                    })
-                    .flatten()
-                    .collect_vec();
+                    .render_elements_for_output(renderer, o)
+                    .unwrap_or_default();
+
+                /*
                 if let Ok(mut frame) = renderer.render(
                     self.dimensions.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                 ) {
                     let _ = frame.clear(
-                        clear_color,
+                        self.bg_color,
                         &[Rectangle::from_loc_and_size((0, 0), self.dimensions).to_physical(1)],
                     );
                     for element in elements {
@@ -522,21 +509,21 @@ impl PanelSpace {
                     }
                     let _ = frame.finish();
                 }
+                */
 
-                // let elements = &self.space.render_elements_for_output(renderer, o).unwrap_or_default()
-                // my_renderer
-                //     .render_output(
-                //         renderer,
-                //         self.egl_surface
-                //             .as_ref()
-                //             .unwrap()
-                //             .buffer_age()
-                //             .unwrap_or_default() as usize,
-                //         &elements,
-                //         self.bg_color,
-                //         self.log.clone(),
-                //     )
-                //     .unwrap();
+                let mut res = my_renderer
+                    .render_output(
+                        renderer,
+                        self.egl_surface
+                            .as_ref()
+                            .unwrap()
+                            .buffer_age()
+                            .unwrap_or_default() as usize,
+                        &elements,
+                        self.bg_color,
+                        self.log.clone(),
+                    )
+                    .unwrap();
 
                 // TODO draw the rectangle properly
                 let dock_rectangle: Rectangle<i32, Physical> = match self.config.anchor() {
@@ -550,9 +537,12 @@ impl PanelSpace {
                     ),
                 };
 
-                self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .swap_buffers(res.0.as_deref_mut())?;
                 let _ = renderer.unbind();
-                
+
                 for window in self.space.elements() {
                     let output = o.clone();
                     window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
@@ -947,10 +937,7 @@ impl PanelSpace {
                                 .unwrap()
                                 .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
                         } else {
-                            self.layer
-                                .as_ref()
-                                .unwrap()
-                                .set_exclusive_zone(-1);
+                            self.layer.as_ref().unwrap().set_exclusive_zone(-1);
                         }
                         let target = match (&self.visibility, self.config.anchor()) {
                             (Visibility::Hidden, PanelAnchor::Left | PanelAnchor::Right) => -size.w,
@@ -1131,6 +1118,12 @@ impl PanelSpace {
                         );
                     }
                     self.dimensions = (w as i32, h as i32).into();
+                    self.damage_tracked_renderer
+                        .replace(DamageTrackedRenderer::new(
+                            self.dimensions.to_physical(1),
+                            1.0,
+                            smithay::utils::Transform::Flipped180,
+                        ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
                     self.full_clear = 4;
                 }
@@ -1163,6 +1156,12 @@ impl PanelSpace {
                     .unwrap()
                     .resize(width as i32, height as i32, 0, 0);
                 self.dimensions = (width as i32, height as i32).into();
+                self.damage_tracked_renderer
+                    .replace(DamageTrackedRenderer::new(
+                        self.dimensions.to_physical(1),
+                        1.0,
+                        smithay::utils::Transform::Flipped180,
+                    ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
                 // self.w_accumulated_damage.clear();
                 self.full_clear = 4;

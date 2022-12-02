@@ -699,10 +699,6 @@ impl WrapperSpace for PanelSpace {
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }
-        self.damage_tracked_renderer
-            .replace(DamageTrackedRenderer::from_output(
-                s_output.as_ref().unwrap(),
-            ));
         let c_surface = compositor_state.create_surface(qh);
         let dimensions: Size<i32, Logical> = self.constrain_dim((0, 0).into());
 
@@ -771,6 +767,12 @@ impl WrapperSpace for PanelSpace {
         )
         .next();
         self.layer.replace(layer_surface);
+        self.damage_tracked_renderer
+            .replace(DamageTrackedRenderer::new(
+                dimensions.to_physical(1),
+                1.0,
+                smithay::utils::Transform::Flipped180,
+            ));
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.full_clear = 4;
