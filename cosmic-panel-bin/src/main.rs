@@ -5,7 +5,6 @@ use std::os::unix::net::UnixStream;
 use anyhow::Result;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
 use launch_pad::ProcessManager;
-use notify::Watcher;
 use slog::{o, warn, Drain};
 use smithay::reexports::{
     calloop,
@@ -91,7 +90,7 @@ fn main() -> Result<()> {
     {
         space.set_theme_window_color([0.5, 0.5, 0.5, 0.5]);
 
-        // TODO
+        // TODO load theme once theme colors are supported in cosmic apps
         // let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
         //     .ok()
         //     .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))

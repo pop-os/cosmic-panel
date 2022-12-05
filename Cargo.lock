@@ -2125,7 +2125,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=space-refactor#5487d33cdda0f7f2dc12706194ef7a49e8821788"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=space-refactor#737b1043a1be34d1e56832f51f2a2b084926a356"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2145,7 +2145,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=space-refactor#5487d33cdda0f7f2dc12706194ef7a49e8821788"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=space-refactor#737b1043a1be34d1e56832f51f2a2b084926a356"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
