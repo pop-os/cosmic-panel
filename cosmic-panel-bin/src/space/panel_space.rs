@@ -484,32 +484,25 @@ impl PanelSpace {
             let clear_color = [0.0, 0.0, 0.0, 0.0];
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let elements = &self
+                let elements: Vec<WaylandSurfaceRenderElement<_>> = self
                     .space
-                    .render_elements_for_output(renderer, o)
-                    .unwrap_or_default();
-
-                /*
-                if let Ok(mut frame) = renderer.render(
-                    self.dimensions.to_physical(1),
-                    smithay::utils::Transform::Flipped180,
-                ) {
-                    let _ = frame.clear(
-                        self.bg_color,
-                        &[Rectangle::from_loc_and_size((0, 0), self.dimensions).to_physical(1)],
-                    );
-                    for element in elements {
-                        let _ = element.draw(
-                            &mut frame,
-                            element.location(1.0.into()).into(),
-                            1.0.into(),
-                            &element.damage_since(1.0.into(), None),
-                            &self.log,
-                        );
-                    }
-                    let _ = frame.finish();
-                }
-                */
+                    .elements()
+                    .map(|w| {
+                        let loc = self
+                            .space
+                            .element_location(w)
+                            .unwrap_or_default()
+                            .to_physical(1);
+                        render_elements_from_surface_tree(
+                            renderer,
+                            w.toplevel().wl_surface(),
+                            loc,
+                            1.0,
+                            self.log.clone(),
+                        )
+                    })
+                    .flatten()
+                    .collect_vec();
 
                 let mut res = my_renderer
                     .render_output(
