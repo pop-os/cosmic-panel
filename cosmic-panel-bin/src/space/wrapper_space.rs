@@ -391,7 +391,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn visibility(&self) -> Visibility {
-        Visibility::Visible
+        self.visibility
     }
 
     fn raise_window(&mut self, w: &Window, activate: bool) {
