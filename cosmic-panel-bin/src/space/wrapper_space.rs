@@ -34,9 +34,7 @@ use slog::{trace, Logger};
 use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::renderer::{damage::DamageTrackedRenderer, gles2::Gles2Renderer},
-    desktop::{
-        utils::bbox_from_surface_tree, Kind, PopupKind, PopupManager, Window,
-    },
+    desktop::{utils::bbox_from_surface_tree, Kind, PopupKind, PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
@@ -452,7 +450,8 @@ impl WrapperSpace for PanelSpace {
                     for r in input_regions.rects {
                         p.input_region.add(0, 0, r.1.size.w, r.1.size.h);
                     }
-                    p.c_popup.wl_surface()
+                    p.c_popup
+                        .wl_surface()
                         .set_input_region(Some(p.input_region.wl_region()));
                 }
                 p.state.replace(WrapperPopupState::Rectangle {
@@ -527,7 +526,11 @@ impl WrapperSpace for PanelSpace {
             .find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
-        if let Some(p) = self.popups.iter().find(|p| p.c_popup.wl_surface() == &c_wl_surface) {
+        if let Some(p) = self
+            .popups
+            .iter()
+            .find(|p| p.c_popup.wl_surface() == &c_wl_surface)
+        {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 

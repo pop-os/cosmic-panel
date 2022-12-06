@@ -12,7 +12,7 @@ use sctk::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
-    shell::layer::{LayerShell},
+    shell::layer::LayerShell,
 };
 use smithay::{
     desktop::PopupManager,
