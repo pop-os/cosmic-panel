@@ -122,32 +122,10 @@ impl PanelSpace {
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
-                let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
-                    .ok()
-                    .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
-                    .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
-                let window_bg_color_pattern = "@define-color window_bg_color";
-                if let Some(color) = File::open(path).ok().and_then(|file| {
-                    BufReader::new(file)
-                        .lines()
-                        .filter_map(|l| l.ok())
-                        .find_map(|line| {
-                            line.rfind(window_bg_color_pattern)
-                                .and_then(|i| line.get(i + window_bg_color_pattern.len()..))
-                                .and_then(|color_str| {
-                                    csscolorparser::parse(&color_str.trim().replace(";", "")).ok()
-                                })
-                        })
-                }) {
-                    [
-                        color.r as f32,
-                        color.g as f32,
-                        color.b as f32,
-                        alpha.unwrap_or(color.a as f32),
-                    ]
-                } else {
-                    [0.0, 0.0, 0.0, alpha.unwrap_or(1.0)]
-                }
+                let t = cosmic_theme::Theme::dark_default();
+                let c = [t.bg_color().red, t.bg_color().green, t.bg_color().blue, alpha.unwrap_or(t.bg_color().alpha)];
+                dbg!(&c);
+                c
             }
             CosmicPanelBackground::Color(c) => c,
         };
@@ -1377,7 +1355,6 @@ impl PanelSpace {
             if let Some(alpha) = alpha {
                 color[3] = alpha;
             }
-            self.bg_color = color;
         }
         self.bg_color = color;
         self.full_clear = 4;

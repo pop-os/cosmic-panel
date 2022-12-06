@@ -10,7 +10,6 @@ Build-Depends:
   libxkbcommon-dev,
   pkg-config,
   desktop-file-utils,
-  libgtk-4-dev,
   libadwaita-1-dev,
 Standards-Version: 4.3.0
 Homepage: https://github.com/pop-os/cosmic-panel

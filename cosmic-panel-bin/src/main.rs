@@ -88,7 +88,8 @@ fn main() -> Result<()> {
         .iter()
         .any(|c| matches!(c.background, CosmicPanelBackground::ThemeDefault(_)))
     {
-        space.set_theme_window_color([0.5, 0.5, 0.5, 0.5]);
+        let t = cosmic_theme::Theme::dark_default();
+        space.set_theme_window_color([t.bg_color().red, t.bg_color().green, t.bg_color().blue, t.bg_color().alpha]);
 
         // TODO load theme once theme colors are supported in cosmic apps
         // let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
