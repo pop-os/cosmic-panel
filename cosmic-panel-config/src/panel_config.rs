@@ -5,8 +5,6 @@
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::{bail, Ok};
-#[cfg(feature = "gtk4")]
-use gtk4::Orientation;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -95,16 +93,6 @@ impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
             }
         };
         anchor
-    }
-}
-
-#[cfg(feature = "gtk4")]
-impl Into<Orientation> for PanelAnchor {
-    fn into(self) -> Orientation {
-        match self {
-            Self::Left | Self::Right => Orientation::Vertical,
-            Self::Top | Self::Bottom => Orientation::Horizontal,
-        }
     }
 }
 
@@ -255,6 +243,7 @@ pub struct CosmicPanelConfig {
     pub padding: u32,
     /// space between panel plugins
     pub spacing: u32,
+    pub border_radius: u32,
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
@@ -285,6 +274,7 @@ impl Default for CosmicPanelConfig {
                 transition_time: 200,
                 handle_size: 4,
             }),
+            border_radius: 8,
         }
     }
 }
@@ -388,11 +378,11 @@ impl CosmicPanelConfig {
         suggested_length: Option<u32>,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let mut bar_thickness = match &self.size {
-            PanelSize::XS => (8..61),
-            PanelSize::S => (8..81),
-            PanelSize::M => (8..101),
-            PanelSize::L => (8..121),
-            PanelSize::XL => (8..141),
+            PanelSize::XS => 8..61,
+            PanelSize::S => 8..81,
+            PanelSize::M => 8..101,
+            PanelSize::L => 8..121,
+            PanelSize::XL => 8..141,
         };
         assert!(2 * self.padding < bar_thickness.end);
         bar_thickness.end -= 2 * self.padding;

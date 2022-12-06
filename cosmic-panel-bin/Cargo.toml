@@ -10,22 +10,21 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "76a878698ea1910607e866519b0f5999f1e66caa"}
-# smithay = { path = "../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
-sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", branch = "dev" }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "2de946cf9e1fcd264c7896831f1934243806d3db"}
+# smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", rev = "638ca60e3ae8277d645991cc986be3df5981fbb6", features = ["calloop", "xkbcommon"] }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master_jammy" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "space-refactor" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "space-refactor" }
 
 launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "on-exit-before-restart" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
-wayland-egl = { version = "=0.30.0-beta.10" }
-wayland-protocols-wlr = { version = "=0.1.0-beta.10", features = ["client"] }# for watching theme
-# for watching theme
-adw-user-colors-lib = { git = "https://github.com/pop-os/user-color-editor" }
-
+wayland-egl = { version = "=0.30.0-beta.13" }
+wayland-protocols-wlr = { version = "=0.1.0-beta.13", features = ["client"] }
+cosmic-theme = { git = "https://github.com/pop-os/cosmic-theme.git" }
+transpose = "0.2.2"
 anyhow = "1.0.63"
 shlex = "1.1.0"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }

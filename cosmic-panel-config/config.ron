@@ -32,6 +32,7 @@
             spacing: 2,
             exclusive_zone: true,
             autohide: None,
+            border_radius: 0,
         ),
         (
             name: "dock",
@@ -55,6 +56,7 @@
                 transition_time: 200,
                 handle_size: 2,
             )),
+            border_radius: 12,
         ),
     ],
 )

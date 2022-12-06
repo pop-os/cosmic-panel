@@ -34,7 +34,7 @@ impl SpaceContainer {
     ) -> Self {
         Self {
             config,
-            log,
+            log: log.clone(),
             space_list: vec![],
             renderer: None,
             egl_display: None,
@@ -67,19 +67,22 @@ impl SpaceContainer {
                 // cleanup leftover windows
                 let w = {
                     s.space
-                        .windows()
-                        .find(|w| w.toplevel().wl_surface().client_id() == Some(s_client.id()))
+                        .elements()
+                        .find(|w| {
+                            w.toplevel().wl_surface().client().map(|c| c.id())
+                                == Some(s_client.id())
+                        })
                         .cloned()
                 };
                 if let Some(w) = w {
-                    s.space.unmap_window(&w);
+                    s.space.unmap_elem(&w);
                 }
                 // TODO Popups?
 
                 *s_client = client;
                 *s_socket = socket;
                 s.full_clear = 4;
-                s.w_accumulated_damage.clear();
+                // s.w_accumulated_damage.clear();
                 break;
             }
         }

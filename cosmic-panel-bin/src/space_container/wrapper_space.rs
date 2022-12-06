@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Instant};
 
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
@@ -8,10 +8,11 @@ use sctk::{
     compositor::CompositorState,
     output::OutputInfo,
     reexports::client::{
+        backend::ObjectId,
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
-    shell::layer::LayerState,
+    shell::layer::LayerShell,
 };
 use smithay::{
     desktop::PopupManager,
@@ -19,8 +20,10 @@ use smithay::{
     reexports::wayland_server::{self, protocol::wl_surface, Resource},
 };
 use xdg_shell_wrapper::{
-    client_state::ClientFocus, server_state::ServerPointerFocus, shared_state::GlobalState,
-    space::WrapperSpace,
+    client_state::{ClientFocus, FocusStatus},
+    server_state::ServerPointerFocus,
+    shared_state::GlobalState,
+    space::{Visibility, WrapperSpace},
 };
 
 use crate::space::PanelSpace;
@@ -49,7 +52,7 @@ impl WrapperSpace for SpaceContainer {
     fn setup<W: WrapperSpace>(
         &mut self,
         compositor_state: &CompositorState,
-        layer_state: &mut LayerState,
+        layer_state: &mut LayerShell,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
     ) {
@@ -86,7 +89,7 @@ impl WrapperSpace for SpaceContainer {
     fn new_output<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
-        layer_state: &mut LayerState,
+        layer_state: &mut LayerShell,
         conn: &sctk::reexports::client::Connection,
         qh: &QueueHandle<GlobalState<W>>,
         c_output: Option<WlOutput>,
@@ -209,7 +212,7 @@ impl WrapperSpace for SpaceContainer {
 
     fn add_window(&mut self, s_top_level: smithay::desktop::Window) {
         // add window to the space with a client that matches the window
-        let w_client = s_top_level.toplevel().wl_surface().client_id();
+        let w_client = s_top_level.toplevel().wl_surface().client().map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -234,7 +237,7 @@ impl WrapperSpace for SpaceContainer {
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
     ) -> anyhow::Result<()> {
         // add popup to the space with a client that matches the window
-        let p_client = s_surface.wl_surface().client_id();
+        let p_client = s_surface.wl_surface().client().map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -266,7 +269,7 @@ impl WrapperSpace for SpaceContainer {
         token: u32,
     ) -> anyhow::Result<()> {
         // add popup to the space with a client that matches the window
-        let p_client = popup.wl_surface().client_id();
+        let p_client = popup.wl_surface().client().map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -281,11 +284,13 @@ impl WrapperSpace for SpaceContainer {
         anyhow::bail!("Failed to find popup with matching client id")
     }
 
-    fn handle_events(
+    fn handle_events<W: WrapperSpace>(
         &mut self,
         dh: &smithay::reexports::wayland_server::DisplayHandle,
+        _qh: &QueueHandle<GlobalState<W>>,
         popup_manager: &mut PopupManager,
         time: u32,
+        _received_frame: &HashSet<ObjectId>,
     ) -> std::time::Instant {
         self.space_list
             .iter_mut()
@@ -330,7 +335,7 @@ impl WrapperSpace for SpaceContainer {
         w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         // add window to the space with a client that matches the window
-        let w_client = w.client_id();
+        let w_client = w.client().map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -350,7 +355,7 @@ impl WrapperSpace for SpaceContainer {
         w: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         // add window to the space with a client that matches the window
-        let p_client = w.client_id();
+        let p_client = w.client().map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -543,8 +548,27 @@ impl WrapperSpace for SpaceContainer {
     }
 
     // TODO check if any panels are visible
-    fn visibility(&self) -> xdg_shell_wrapper::space::Visibility {
-        xdg_shell_wrapper::space::Visibility::Visible
+    fn visibility(&self) -> Visibility {
+        let visible = self
+            .space_list
+            .iter()
+            .any(|s| !matches!(s.visibility(), Visibility::Hidden))
+            || self
+                .c_focused_surface
+                .borrow()
+                .iter()
+                .any(|f| matches!(f.2, FocusStatus::Focused))
+            || self
+                .c_hovered_surface
+                .borrow()
+                .iter()
+                .any(|f| matches!(f.2, FocusStatus::Focused));
+
+        if visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        }
     }
 
     fn raise_window(&mut self, _: &smithay::desktop::Window, _: bool) {}
