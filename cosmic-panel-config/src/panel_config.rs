@@ -5,8 +5,6 @@
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::{bail, Ok};
-#[cfg(feature = "gtk4")]
-use gtk4::Orientation;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -95,16 +93,6 @@ impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
             }
         };
         anchor
-    }
-}
-
-#[cfg(feature = "gtk4")]
-impl Into<Orientation> for PanelAnchor {
-    fn into(self) -> Orientation {
-        match self {
-            Self::Left | Self::Right => Orientation::Vertical,
-            Self::Top | Self::Bottom => Orientation::Horizontal,
-        }
     }
 }
 
