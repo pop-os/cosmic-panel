@@ -2,8 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    fs::File,
-    io::{BufRead, BufReader},
     os::unix::net::UnixStream,
     rc::Rc,
     time::{Duration, Instant},
