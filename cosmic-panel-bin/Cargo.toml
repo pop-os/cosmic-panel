@@ -24,7 +24,7 @@ cosmic-panel-config = { path = "../cosmic-panel-config" }
 wayland-egl = { version = "=0.30.0-beta.13" }
 wayland-protocols-wlr = { version = "=0.1.0-beta.13", features = ["client"] }
 cosmic-theme = { git = "https://github.com/pop-os/cosmic-theme.git" }
-
+transpose = "0.2.2"
 anyhow = "1.0.63"
 shlex = "1.1.0"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }

@@ -255,6 +255,7 @@ pub struct CosmicPanelConfig {
     pub padding: u32,
     /// space between panel plugins
     pub spacing: u32,
+    pub border_radius: u32,
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
@@ -285,6 +286,7 @@ impl Default for CosmicPanelConfig {
                 transition_time: 200,
                 handle_size: 4,
             }),
+            border_radius: 8,
         }
     }
 }
