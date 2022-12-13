@@ -89,7 +89,12 @@ fn main() -> Result<()> {
         .any(|c| matches!(c.background, CosmicPanelBackground::ThemeDefault(_)))
     {
         let t = cosmic_theme::Theme::dark_default();
-        space.set_theme_window_color([t.bg_color().red, t.bg_color().green, t.bg_color().blue, t.bg_color().alpha]);
+        space.set_theme_window_color([
+            t.bg_color().red,
+            t.bg_color().green,
+            t.bg_color().blue,
+            t.bg_color().alpha,
+        ]);
 
         // TODO load theme once theme colors are supported in cosmic apps
         // let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
@@ -140,7 +145,7 @@ fn main() -> Result<()> {
                 .build()?;
             rt.block_on(async {
                 let process_manager = ProcessManager::new().await;
-                let _ = process_manager.set_max_restarts(10);
+                let _ = process_manager.set_max_restarts(100);
                 while let Some(msg) = applet_rx.recv().await {
                     match msg {
                         space::AppletMsg::NewProcess(process) => {

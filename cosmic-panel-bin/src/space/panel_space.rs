@@ -121,8 +121,12 @@ impl PanelSpace {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault(alpha) => {
                 let t = cosmic_theme::Theme::dark_default();
-                let c = [t.bg_color().red, t.bg_color().green, t.bg_color().blue, alpha.unwrap_or(t.bg_color().alpha)];
-                dbg!(&c);
+                let c = [
+                    t.bg_color().red,
+                    t.bg_color().green,
+                    t.bg_color().blue,
+                    alpha.unwrap_or(t.bg_color().alpha),
+                ];
                 c
             }
             CosmicPanelBackground::Color(c) => c,

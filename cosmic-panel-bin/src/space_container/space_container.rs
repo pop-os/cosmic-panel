@@ -62,6 +62,8 @@ impl SpaceContainer {
             if let Some((_, s_client, s_socket)) = s
                 .clients_left
                 .iter_mut()
+                .chain(s.clients_center.iter_mut())
+                .chain(s.clients_right.iter_mut())
                 .find(|(c_id, old_client, _)| c_id == &id && old_client_id == old_client.id())
             {
                 // cleanup leftover windows

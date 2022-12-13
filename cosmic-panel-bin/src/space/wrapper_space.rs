@@ -355,6 +355,7 @@ impl WrapperSpace for PanelSpace {
                                             }
                                             return;
                                         }
+
                                         let fd = s.as_raw_fd().to_string();
                                         let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
                                         let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
@@ -364,7 +365,7 @@ impl WrapperSpace for PanelSpace {
                                 // TODO error handling
                                 match self.applet_tx.try_send(AppletMsg::NewProcess(process)) {
                                     Ok(_) => {}
-                                    Err(e) => eprintln!("{e}"),
+                                    Err(e) => slog::error!(self.log.clone(), "{e}"),
                                 };
                             }
                         }
