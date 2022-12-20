@@ -579,8 +579,8 @@ impl PanelSpace {
                     for element in elements {
                         let _ = element.draw(
                             &mut frame,
-                            p.rectangle.loc.to_physical(1),
-                            1.0.into(),
+                            p.rectangle.to_buffer(1, Transform::Normal, &p.rectangle.size).to_f64(),
+                            p.rectangle.to_physical(1),
                             &[p.rectangle.to_physical(1)],
                             &self.log,
                         );
