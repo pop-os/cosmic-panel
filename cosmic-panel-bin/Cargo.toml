@@ -10,19 +10,19 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "bcc4ee38b8936f57907c844a5e92cf6c0d7325e3"}
-# smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
-sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", rev = "73346019952f82ec7e4d4d15f5d66841b54e8b61", features = ["calloop", "xkbcommon"] }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "c85e1e5"}
+# smithay = { path = "../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "a257bf7" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "master" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "proxy-layer_shell" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "proxy-layer_shell" }
 
 launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "on-exit-before-restart" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
-wayland-egl = "0.30.0-beta.14"
-wayland-protocols-wlr = { version = "=0.1.0-beta.14", features = ["client"] }
+wayland-egl = "0.30.0"
+wayland-protocols-wlr = { version = "0.1.0", features = ["client"] }
 cosmic-theme = { git = "https://github.com/pop-os/cosmic-theme.git" }
 transpose = "0.2.2"
 anyhow = "1.0.63"

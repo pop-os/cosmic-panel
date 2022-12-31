@@ -51,7 +51,9 @@ use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
-    space::{ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace},
+    space::{
+        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
+    },
     util::smootherstep,
 };
 
@@ -579,7 +581,9 @@ impl PanelSpace {
                     for element in elements {
                         let _ = element.draw(
                             &mut frame,
-                            p.rectangle.to_buffer(1, Transform::Normal, &p.rectangle.size).to_f64(),
+                            p.rectangle
+                                .to_buffer(1, Transform::Normal, &p.rectangle.size)
+                                .to_f64(),
                             p.rectangle.to_physical(1),
                             &[p.rectangle.to_physical(1)],
                             &self.log,
@@ -1161,14 +1165,16 @@ impl PanelSpace {
                                     height,
                                 )
                                 .unwrap(), // TODO remove unwrap
-                                self.c_display.as_ref().unwrap().clone(),
                                 self.layer.as_ref().unwrap().wl_surface().clone(),
                             )
                         };
                         let new_egl_display = if let Some(egl_display) = egl_display.take() {
                             egl_display
                         } else {
-                            unsafe { EGLDisplay::new(&client_egl_surface, log.clone()) }
+                            let client_egl_display = ClientEglDisplay {
+                                display: self.c_display.as_ref().unwrap().clone(),
+                            };
+                            EGLDisplay::new(client_egl_display, log.clone())
                                 .expect("Failed to create EGL display")
                         };
 
@@ -1318,11 +1324,7 @@ impl PanelSpace {
                             Err(_) => return,
                         };
                     let client_egl_surface = unsafe {
-                        ClientEglSurface::new(
-                            wl_egl_surface,
-                            self.c_display.as_ref().unwrap().clone(),
-                            p.c_popup.wl_surface().clone(),
-                        )
+                        ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
                     };
                     let egl_context = renderer.egl_context();
                     let egl_surface = Rc::new(
