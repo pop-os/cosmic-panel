@@ -8,11 +8,11 @@ license = "MPL-2.0"
 default = ["wayland-rs"]
 wayland-rs = ["wayland-protocols-wlr", "xdg-shell-wrapper-config"]
 [dependencies]
-anyhow = "1.0.63"
+anyhow = "1.0.68"
 ron = "0.8.0"
-serde = { version = "1.0.144", features = ["derive"] }
+serde = { version = "1.0.152", features = ["derive"] }
 xdg = "2.4.1"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
-wayland-protocols-wlr = { version = "=0.1.0-beta.14", features = ["server"], optional = true}
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true, branch = "master" }
+wayland-protocols-wlr = { version = "0.1.0", features = ["server"], optional = true}
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true, branch = "proxy-layer_shell" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config", optional = true }
