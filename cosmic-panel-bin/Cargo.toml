@@ -15,8 +15,8 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "3776d4a" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "proxy-layer_shell" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "proxy-layer_shell" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 
 launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "on-exit-before-restart" }
 # launch-pad = { path = "../../launch-pad" }

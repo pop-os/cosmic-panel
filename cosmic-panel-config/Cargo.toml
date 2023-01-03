@@ -14,5 +14,5 @@ serde = { version = "1.0.152", features = ["derive"] }
 xdg = "2.4.1"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
 wayland-protocols-wlr = { version = "0.1.0", features = ["server"], optional = true}
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true, branch = "proxy-layer_shell" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config", optional = true }
