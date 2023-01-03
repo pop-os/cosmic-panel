@@ -43,9 +43,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.5.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
+checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
 name = "atty"
@@ -723,9 +723,9 @@ dependencies = [
 
 [[package]]
 name = "nom"
-version = "7.1.1"
+version = "7.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
+checksum = "e5507769c4919c998e69e49c839d9dc6e693ede4cc4290d6ad8b41d4f09c548c"
 dependencies = [
  "memchr",
  "minimal-lexical",
@@ -1195,7 +1195,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.16.0"
-source = "git+https://github.com/smithay/client-toolkit?rev=a257bf7#a257bf7f9560dfa890e51801c5afe138c83a3a44"
+source = "git+https://github.com/smithay/client-toolkit?rev=3776d4a#3776d4aecf5bf94bbe0dc3bae3e64d5a07db7fd6"
 dependencies = [
  "bitflags",
  "calloop",
@@ -1664,7 +1664,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=proxy-layer_shell#d3f96262a96f06f0ad7e92f7f82376150b1c41b0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=proxy-layer_shell#82ce268c9c560be3728190a2255c849d3bae77e7"
 dependencies = [
  "anyhow",
  "itertools",
@@ -1684,7 +1684,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=proxy-layer_shell#d3f96262a96f06f0ad7e92f7f82376150b1c41b0"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=proxy-layer_shell#82ce268c9c560be3728190a2255c849d3bae77e7"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
