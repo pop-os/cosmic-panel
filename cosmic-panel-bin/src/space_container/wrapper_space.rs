@@ -233,7 +233,7 @@ impl WrapperSpace for SpaceContainer {
         qh: &QueueHandle<GlobalState<W>>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: &sctk::shell::xdg::XdgPositioner,
+        positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
     ) -> anyhow::Result<()> {
         // add popup to the space with a client that matches the window
@@ -264,7 +264,6 @@ impl WrapperSpace for SpaceContainer {
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
-        positioner: &sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
@@ -279,7 +278,7 @@ impl WrapperSpace for SpaceContainer {
                 .chain(space.clients_right.iter())
                 .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
-            space.reposition_popup(popup, positioner, positioner_state, token)?
+            space.reposition_popup(popup, positioner_state, token)?
         }
         anyhow::bail!("Failed to find popup with matching client id")
     }

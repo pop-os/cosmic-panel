@@ -16,7 +16,10 @@ use sctk::{
         protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
         Proxy,
     },
-    shell::{layer::LayerSurface, xdg::popup},
+    shell::{
+        layer::LayerSurface,
+        xdg::{popup, XdgPositioner},
+    },
 };
 use slog::{info, Logger};
 use smithay::{
@@ -32,10 +35,15 @@ use smithay::{
             Bind, Frame, ImportAll, ImportMem, Renderer, Unbind,
         },
     },
+    desktop::Kind,
     output::Output,
-    reexports::wayland_server::{backend::ClientId, DisplayHandle},
+    reexports::{
+        wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
+        wayland_server::{backend::ClientId, DisplayHandle},
+    },
     render_elements,
     utils::Transform,
+    wayland::shell::xdg::{PopupSurface, PositionerState},
 };
 use smithay::{
     backend::{
@@ -577,7 +585,7 @@ impl PanelSpace {
                     p.rectangle.size.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                 ) {
-                    let _ = frame.clear(clear_color, &[p.rectangle.to_physical(1)]);
+                    let _ = frame.clear(clear_color, &[]);
                     for element in elements {
                         let _ = element.draw(
                             &mut frame,
@@ -594,7 +602,6 @@ impl PanelSpace {
 
                 p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                 p.dirty = false;
-                p.full_clear = p.full_clear.checked_sub(1).unwrap_or_default();
             }
         }
 
@@ -1345,12 +1352,15 @@ impl PanelSpace {
                     // TODO
                 }
                 popup::ConfigureKind::Reposition { token: _token } => {
-                    // TODO
+                    p.rectangle.size.w = width;
+                    p.rectangle.size.h = height;
+                    if let Some(egl_surface) = p.egl_surface.as_mut() {
+                        egl_surface.resize(width, height, 0, 0);
+                    }
                 }
                 _ => {}
             };
             p.dirty = true;
-            p.full_clear = 4;
         }
     }
 
@@ -1362,5 +1372,57 @@ impl PanelSpace {
         }
         self.bg_color = color;
         self.full_clear = 4;
+    }
+
+    pub fn apply_positioner_state(
+        &self,
+        positioner: &XdgPositioner,
+        pos_state: PositionerState,
+        s_surface: &PopupSurface,
+    ) {
+        let PositionerState {
+            rect_size,
+            anchor_rect,
+            anchor_edges,
+            gravity,
+            constraint_adjustment,
+            offset,
+            reactive,
+            parent_size,
+            parent_configure: _,
+        } = pos_state;
+        let parent_window = if let Some(s) = self.space.elements().find(|w| match w.toplevel() {
+            Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
+        }) {
+            s
+        } else {
+            return;
+        };
+
+        let p_offset = self
+            .space
+            .element_location(parent_window)
+            .unwrap_or_else(|| (0, 0).into());
+
+        positioner.set_size(rect_size.w, rect_size.h);
+        positioner.set_anchor_rect(
+            anchor_rect.loc.x + p_offset.x,
+            anchor_rect.loc.y + p_offset.y,
+            anchor_rect.size.w,
+            anchor_rect.size.h,
+        );
+        positioner.set_anchor(Anchor::try_from(anchor_edges as u32).unwrap_or(Anchor::None));
+        positioner.set_gravity(Gravity::try_from(gravity as u32).unwrap_or(Gravity::None));
+
+        positioner.set_constraint_adjustment(u32::from(constraint_adjustment));
+        positioner.set_offset(offset.x, offset.y);
+        if positioner.version() >= 3 {
+            if reactive {
+                positioner.set_reactive();
+            }
+            if let Some(parent_size) = parent_size {
+                positioner.set_parent_size(parent_size.w, parent_size.h);
+            }
+        }
     }
 }

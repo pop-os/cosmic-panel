@@ -17,12 +17,9 @@ use launch_pad::process::Process;
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
-    reexports::{
-        client::{
-            protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
-            Connection, Proxy, QueueHandle,
-        },
-        protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
+    reexports::client::{
+        protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
+        Connection, QueueHandle,
     },
     shell::{
         layer::{self, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
@@ -34,7 +31,7 @@ use slog::{trace, Logger};
 use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::renderer::{damage::DamageTrackedRenderer, gles2::Gles2Renderer},
-    desktop::{utils::bbox_from_surface_tree, Kind, PopupKind, PopupManager, Window},
+    desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
@@ -92,64 +89,21 @@ impl WrapperSpace for PanelSpace {
         qh: &QueueHandle<GlobalState<W>>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
         s_surface: PopupSurface,
-        positioner: &sctk::shell::xdg::XdgPositioner,
+        positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
     ) -> anyhow::Result<()> {
-        let PositionerState {
-            rect_size,
-            anchor_rect,
-            anchor_edges,
-            gravity,
-            constraint_adjustment,
-            offset,
-            reactive,
-            parent_size,
-            parent_configure: _,
-        } = positioner_state;
+        self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         // TODO handle popups not on main surface
         if !self.popups.is_empty() {
             self.popups.clear();
             return Ok(());
         }
 
-        let parent_window = if let Some(s) = self.space.elements().find(|w| match w.toplevel() {
-            Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
-        }) {
-            s
-        } else {
-            bail!("Could not find parent window");
-        };
-
         let c_wl_surface = compositor_state.create_surface(qh);
 
-        let p_offset = self
-            .space
-            .element_location(parent_window)
-            .unwrap_or_else(|| (0, 0).into());
-
-        positioner.set_size(rect_size.w, rect_size.h);
-        positioner.set_anchor_rect(
-            anchor_rect.loc.x + p_offset.x,
-            anchor_rect.loc.y + p_offset.y,
-            anchor_rect.size.w,
-            anchor_rect.size.h,
-        );
-        positioner.set_anchor(Anchor::try_from(anchor_edges as u32).unwrap_or(Anchor::None));
-        positioner.set_gravity(Gravity::try_from(gravity as u32).unwrap_or(Gravity::None));
-
-        positioner.set_constraint_adjustment(u32::from(constraint_adjustment));
-        positioner.set_offset(offset.x, offset.y);
-        if positioner.version() >= 3 {
-            if reactive {
-                positioner.set_reactive();
-            }
-            if let Some(parent_size) = parent_size {
-                positioner.set_parent_size(parent_size.w, parent_size.h);
-            }
-        }
         let c_popup = popup::Popup::from_surface(
             None,
-            positioner,
+            &positioner,
             qh,
             c_wl_surface.clone(),
             xdg_shell_state,
@@ -196,11 +150,10 @@ impl WrapperSpace for PanelSpace {
             egl_surface: None,
             dirty: false,
             rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
-            accumulated_damage: Default::default(),
-            full_clear: 4,
             state: cur_popup_state,
             input_region,
             wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
+            positioner,
         });
 
         Ok(())
@@ -209,10 +162,25 @@ impl WrapperSpace for PanelSpace {
     fn reposition_popup(
         &mut self,
         popup: PopupSurface,
-        _positioner: &sctk::shell::xdg::XdgPositioner,
-        _positioner_state: PositionerState,
+        pos_state: PositionerState,
         token: u32,
     ) -> anyhow::Result<()> {
+        popup.with_pending_state(|pending| {
+            pending.geometry = Rectangle::from_loc_and_size((0, 0), pos_state.rect_size);
+        });
+        if let Some(p) = self.popups.iter().find(|wp| &wp.s_surface == &popup) {
+            let positioner = &p.positioner;
+            p.c_popup.xdg_surface().set_window_geometry(
+                0,
+                0,
+                pos_state.rect_size.w,
+                pos_state.rect_size.h,
+            );
+            self.apply_positioner_state(&positioner, pos_state, &p.s_surface);
+
+            p.c_popup.reposition(&positioner, token);
+            p.c_popup.wl_surface().commit();
+        }
         popup.send_repositioned(token);
         popup.send_configure()?;
         Ok(())
