@@ -28,10 +28,12 @@ transpose = "0.2.2"
 anyhow = "1.0.63"
 shlex = "1.1.0"
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
+slog-journald = "2.2.0"
 slog-term = "2.9.0"
 slog-async = "2.7.0"
 slog-stdlog = "4.1.1"
 slog-scope = "4.4.0"
+log-panics = { version = "2", features = ["with-backtrace"] }
 libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
