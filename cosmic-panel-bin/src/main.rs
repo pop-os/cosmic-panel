@@ -22,13 +22,14 @@ pub enum PanelCalloopMsg {
 }
 
 fn main() -> Result<()> {
-    let log = slog::Logger::root(
-        slog_async::Async::default(slog_term::term_full().fuse()).fuse(),
-        o!(),
-    );
+    let term_drain = slog_term::term_full().ignore_res();
+    let journald_drain = slog_journald::JournaldDrain.ignore_res();
+    let drain = slog::Duplicate::new(term_drain, journald_drain);
+    let log = slog::Logger::root(slog_async::Async::default(drain.fuse()).fuse(), o!());
 
     let _guard = slog_scope::set_global_logger(log.clone());
     slog_stdlog::init().expect("Could not setup log backend");
+    log_panics::init();
 
     let arg = std::env::args().nth(1);
     let usage = "USAGE: cosmic-panel";
