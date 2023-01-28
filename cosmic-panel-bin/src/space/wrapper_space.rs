@@ -19,7 +19,7 @@ use sctk::{
     output::OutputInfo,
     reexports::client::{
         protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
-        Connection, QueueHandle,
+        Connection, Proxy, QueueHandle,
     },
     shell::{
         layer::{self, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
@@ -77,9 +77,9 @@ impl WrapperSpace for PanelSpace {
     fn add_window(&mut self, w: Window) {
         self.full_clear = 4;
         self.space.map_element(w.clone(), (0, 0), false);
-        for w in self.space.elements() {
-            w.configure();
-        }
+        // for w in self.space.elements() {
+        //     w.on_commit();
+        // }
     }
 
     fn add_popup<W: WrapperSpace>(
@@ -154,6 +154,7 @@ impl WrapperSpace for PanelSpace {
             input_region,
             wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
             positioner,
+            has_frame: true,
         });
 
         Ok(())
@@ -331,7 +332,11 @@ impl WrapperSpace for PanelSpace {
                                 });
 
                                 // TODO error handling
-                                match self.applet_tx.try_send(AppletMsg::NewProcess(process)) {
+                                let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
+                                match self
+                                    .applet_tx
+                                    .try_send(AppletMsg::NewProcess(panel_id, process))
+                                {
                                     Ok(_) => {}
                                     Err(e) => slog::error!(self.log.clone(), "{e}"),
                                 };
@@ -632,11 +637,11 @@ impl WrapperSpace for PanelSpace {
         c_output: c_wl_output::WlOutput,
         s_output: Output,
         info: OutputInfo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         self.output.replace((c_output, s_output, info));
         self.dimensions = self.constrain_dim(self.dimensions.clone());
         self.full_clear = 4;
-        Ok(())
+        Ok(true)
     }
 
     fn new_output<W: WrapperSpace>(
@@ -756,8 +761,19 @@ impl WrapperSpace for PanelSpace {
         _qh: &QueueHandle<GlobalState<W>>,
         _popup_manager: &mut PopupManager,
         _time: u32,
-        _received_frame: &std::collections::HashSet<sctk::reexports::client::backend::ObjectId>,
     ) -> Instant {
-        todo!()
+        unimplemented!()
+    }
+
+    fn frame(&mut self, surface: &c_wl_surface::WlSurface, _time: u32) {
+        if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
+            self.has_frame = true;
+        } else if let Some(p) = self
+            .popups
+            .iter_mut()
+            .find(|p| surface == p.c_popup.wl_surface())
+        {
+            p.has_frame = true;
+        }
     }
 }
