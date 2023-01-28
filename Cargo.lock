@@ -374,25 +374,25 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "drm"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01406fcc6bf5180bf107c2922c8f37a875440c56a4d436b4c4cc8c09f433cc2d"
+checksum = "98d190a8cb219483212f462d9e34abebe24a13cdb7f0c9a64c5b59175ccd62d2"
 dependencies = [
  "bitflags",
  "bytemuck",
  "drm-ffi",
  "drm-fourcc",
- "nix 0.24.3",
+ "nix 0.26.1",
 ]
 
 [[package]]
 name = "drm-ffi"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e538131f5ca07f76483b6bcdb18f540fdfe4bb0c95742f64e7d2c5649c61bca5"
+checksum = "48310b65d262ac1140f63e2bbc605c73a417c7e46452ea8c20a3cad698af96d0"
 dependencies = [
  "drm-sys",
- "nix 0.24.3",
+ "nix 0.26.1",
 ]
 
 [[package]]
@@ -403,9 +403,9 @@ checksum = "0aafbcdb8afc29c1a7ee5fbe53b5d62f4565b35a042a662ca9fecd0b54dae6f4"
 
 [[package]]
 name = "drm-sys"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abe573f73b81a2127a5d5989e12a4ea4a4dab7800e53c73c663494d6c342a338"
+checksum = "52ecd1ca96a64fd7444a58a2ce3aa8be79cea3c1c7f7f69a4b89624018b46377"
 dependencies = [
  "libc",
 ]
@@ -829,18 +829,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa52e972a9a719cecb6864fb88568781eb706bac2cd1d4f04a648542dbf78069"
-dependencies = [
- "bitflags",
- "cfg-if",
- "libc",
- "memoffset 0.6.5",
-]
-
-[[package]]
-name = "nix"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f346ff70e7dbfd675fe90590b92d59ef2de15a8779ae305ebcbfd3f0caf59be4"
@@ -862,6 +850,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset 0.7.1",
+ "pin-utils",
  "static_assertions",
 ]
 
@@ -1053,6 +1042,12 @@ name = "pin-project-lite"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0a7ae3ac2f1173085d398531c705756c94a4c56843785df85a60c1a0afac116"
+
+[[package]]
+name = "pin-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkg-config"
@@ -1348,7 +1343,7 @@ checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay?rev=c85e1e5#c85e1e520d14aaaadff1369bcbf88ea8204c0827"
+source = "git+https://github.com/smithay/smithay?rev=85c9470#85c94705966255063cc7899d1bdd86b701b9a380"
 dependencies = [
  "appendlist",
  "bitflags",
@@ -1363,7 +1358,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "libloading",
- "nix 0.24.3",
+ "nix 0.26.1",
  "once_cell",
  "rand",
  "scan_fmt",
@@ -1383,7 +1378,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.16.0"
-source = "git+https://github.com/smithay/client-toolkit?rev=3776d4a#3776d4aecf5bf94bbe0dc3bae3e64d5a07db7fd6"
+source = "git+https://github.com/smithay/client-toolkit?rev=beefe0a#beefe0a7078727654af48484e03bdfd19dfff8f3"
 dependencies = [
  "bitflags",
  "calloop",
@@ -1391,7 +1386,7 @@ dependencies = [
  "lazy_static",
  "log",
  "memmap2",
- "nix 0.25.1",
+ "nix 0.26.1",
  "pkg-config",
  "thiserror",
  "wayland-backend",
@@ -1660,6 +1655,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a925bd68c8b652af4e6f11a32410bd31bf84061c5ef279ed081520c60f203b4"
 dependencies = [
  "bitflags",
+ "calloop",
+ "log",
  "nix 0.26.1",
  "wayland-backend",
  "wayland-scanner",
@@ -1873,7 +1870,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#95f6a663e383d3f6f13f689f9e9d7e691b9fe28b"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f6ed0ba88ecdbcf23cbdea4d2a3e206506e55a2f"
 dependencies = [
  "anyhow",
  "itertools",
@@ -1893,7 +1890,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#95f6a663e383d3f6f13f689f9e9d7e691b9fe28b"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f6ed0ba88ecdbcf23cbdea4d2a3e206506e55a2f"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",

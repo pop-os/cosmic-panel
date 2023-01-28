@@ -13,8 +13,9 @@ use sctk::{
     compositor::Region,
     output::OutputInfo,
     reexports::client::{
+        backend::ObjectId,
         protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
-        Proxy,
+        Proxy, QueueHandle,
     },
     shell::{
         layer::LayerSurface,
@@ -24,7 +25,7 @@ use sctk::{
 use slog::{info, Logger};
 use smithay::{
     backend::{
-        egl::{context::GlAttributes, EGLContext},
+        egl::{context::GlAttributes, ffi::egl::SwapInterval, EGLContext},
         renderer::{
             damage::DamageTrackedRenderer,
             element::{
@@ -35,7 +36,6 @@ use smithay::{
             Bind, Frame, ImportAll, ImportMem, Renderer, Unbind,
         },
     },
-    desktop::Kind,
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
@@ -43,7 +43,10 @@ use smithay::{
     },
     render_elements,
     utils::Transform,
-    wayland::shell::xdg::{PopupSurface, PositionerState},
+    wayland::{
+        seat::WaylandFocus,
+        shell::xdg::{PopupSurface, PositionerState},
+    },
 };
 use smithay::{
     backend::{
@@ -59,6 +62,7 @@ use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
+    shared_state::GlobalState,
     space::{
         ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
     },
@@ -70,8 +74,9 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 use crate::space::Alignment;
 
 pub enum AppletMsg {
-    NewProcess(Process),
+    NewProcess(ObjectId, Process),
     ClientSocketPair(String, ClientId, Client, UnixStream),
+    Cleanup(ObjectId),
 }
 
 render_elements! {
@@ -117,6 +122,7 @@ pub(crate) struct PanelSpace {
     old_buff: Option<MemoryRenderBuffer>,
     buffer: Option<MemoryRenderBuffer>,
     buffer_changed: bool,
+    pub(crate) has_frame: bool,
 }
 
 impl PanelSpace {
@@ -176,6 +182,7 @@ impl PanelSpace {
             old_buff: Default::default(),
             buffer: Default::default(),
             buffer_changed: false,
+            has_frame: true,
         }
     }
 
@@ -458,11 +465,16 @@ impl PanelSpace {
         (w as i32, h as i32).into()
     }
 
-    pub(crate) fn render(&mut self, renderer: &mut Gles2Renderer, time: u32) -> anyhow::Result<()> {
+    pub(crate) fn render<W: WrapperSpace>(
+        &mut self,
+        renderer: &mut Gles2Renderer,
+        time: u32,
+        qh: &QueueHandle<GlobalState<W>>,
+    ) -> anyhow::Result<()> {
         if self.space_event.get() != None {
             return Ok(());
         }
-        if self.is_dirty {
+        if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
                 None => return Ok(()),
@@ -545,7 +557,6 @@ impl PanelSpace {
                         self.log.clone(),
                     )
                     .unwrap();
-
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                 // FIXME: damage tracking issues on integrated graphics but not nvidia
                 // self.egl_surface
@@ -560,6 +571,12 @@ impl PanelSpace {
                         Some(output.clone())
                     });
                 }
+                let wl_surface = self.layer.as_ref().unwrap().wl_surface().clone();
+                wl_surface.frame(qh, wl_surface.clone());
+                wl_surface.commit();
+
+                self.is_dirty = false;
+                self.has_frame = false;
             }
 
             let clear_color = [0.0, 0.0, 0.0, 0.0];
@@ -569,6 +586,7 @@ impl PanelSpace {
                     && p.state.is_none()
                     && p.s_surface.alive()
                     && p.c_popup.wl_surface().is_alive()
+                    && p.has_frame
             }) {
                 let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
@@ -601,12 +619,16 @@ impl PanelSpace {
                 }
 
                 p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+
+                let wl_surface = p.c_popup.wl_surface().clone();
+                wl_surface.frame(qh, wl_surface.clone());
+                wl_surface.commit();
                 p.dirty = false;
+                p.has_frame = false;
             }
         }
 
         let _ = renderer.unbind();
-        self.is_dirty = false;
         self.full_clear = self.full_clear.checked_sub(1).unwrap_or_default();
         Ok(())
     }
@@ -1024,13 +1046,13 @@ impl PanelSpace {
         Ok(())
     }
 
-    pub(crate) fn handle_events(
+    pub(crate) fn handle_events<W: WrapperSpace>(
         &mut self,
         _dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
         renderer: Option<&mut Gles2Renderer>,
-        _egl_display: Option<&mut EGLDisplay>,
+        qh: &QueueHandle<GlobalState<W>>,
     ) -> Instant {
         self.space.refresh();
         popup_manager.cleanup();
@@ -1116,7 +1138,9 @@ impl PanelSpace {
                 .retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
 
             if prev == self.popups.len() && should_render {
-                let _ = self.render(renderer, time);
+                if let Err(e) = self.render(renderer, time, qh) {
+                    slog::error!(self.log, "Failed to render error: {:?}", e);
+                }
             }
             if let Some(egl_surface) = self.egl_surface.as_ref() {
                 if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
@@ -1211,7 +1235,7 @@ impl PanelSpace {
                             .expect("Failed to create EGL context")
                         });
 
-                        let new_renderer = if let Some(renderer) = renderer.take() {
+                        let mut new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
                         } else {
                             unsafe {
@@ -1233,6 +1257,15 @@ impl PanelSpace {
                             )
                             .expect("Failed to create EGL Surface"),
                         );
+
+                        // bind before setting swap interval
+                        let _ = new_renderer.bind(egl_surface.clone());
+                        let swap_success =
+                            unsafe { SwapInterval(new_egl_display.get_display_handle().handle, 0) }
+                                == 1;
+                        if !swap_success {
+                            slog::error!(log, "Failed to set swap interval");
+                        }
 
                         renderer.replace(new_renderer);
                         egl_display.replace(new_egl_display);
@@ -1391,9 +1424,11 @@ impl PanelSpace {
             parent_size,
             parent_configure: _,
         } = pos_state;
-        let parent_window = if let Some(s) = self.space.elements().find(|w| match w.toplevel() {
-            Kind::Xdg(wl_s) => Some(wl_s.wl_surface()) == s_surface.get_parent_surface().as_ref(),
-        }) {
+        let parent_window = if let Some(s) = self
+            .space
+            .elements()
+            .find(|w| w.wl_surface() == s_surface.get_parent_surface().as_ref().cloned())
+        {
             s
         } else {
             return;
@@ -1424,5 +1459,14 @@ impl PanelSpace {
                 positioner.set_parent_size(parent_size.w, parent_size.h);
             }
         }
+    }
+}
+
+impl Drop for PanelSpace {
+    fn drop(&mut self) {
+        // request processes to stop
+        let _ = self.applet_tx.try_send(AppletMsg::Cleanup(
+            self.layer.as_ref().unwrap().wl_surface().id(),
+        ));
     }
 }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::os::unix::net::UnixStream;
+use std::{collections::HashMap, os::unix::net::UnixStream};
 
 use anyhow::Result;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
-use launch_pad::ProcessManager;
+use launch_pad::{ProcessKey, ProcessManager};
+use sctk::reexports::client::backend::ObjectId;
 use slog::{o, warn, Drain};
 use smithay::reexports::{
     calloop,
@@ -144,13 +145,17 @@ fn main() -> Result<()> {
             let rt = runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?;
+            let mut process_ids: HashMap<ObjectId, Vec<ProcessKey>> = HashMap::new();
             rt.block_on(async {
                 let process_manager = ProcessManager::new().await;
                 let _ = process_manager.set_max_restarts(100);
                 while let Some(msg) = applet_rx.recv().await {
                     match msg {
-                        space::AppletMsg::NewProcess(process) => {
-                            let _ = process_manager.start(process).await;
+                        space::AppletMsg::NewProcess(id, process) => {
+                            if let Ok(key) = process_manager.start(process).await {
+                                let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
+                                entry.push(key);
+                            }
                         }
                         space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
                             let _ = calloop_tx
@@ -158,6 +163,11 @@ fn main() -> Result<()> {
                             // XXX This is done to avoid a possible race,
                             // the client & socket need to be update in the panel_space state before the process starts again
                             let _ = unpause_launchpad_rx.recv();
+                        }
+                        space::AppletMsg::Cleanup(id) => {
+                            for id in process_ids.remove(&id).unwrap_or_default() {
+                                let _ = process_manager.stop_process(id).await;
+                            }
                         }
                     };
                 }

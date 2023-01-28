@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
@@ -8,7 +8,6 @@ use sctk::{
     compositor::CompositorState,
     output::OutputInfo,
     reexports::client::{
-        backend::ObjectId,
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
@@ -286,22 +285,23 @@ impl WrapperSpace for SpaceContainer {
     fn handle_events<W: WrapperSpace>(
         &mut self,
         dh: &smithay::reexports::wayland_server::DisplayHandle,
-        _qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState<W>>,
         popup_manager: &mut PopupManager,
         time: u32,
-        _received_frame: &HashSet<ObjectId>,
     ) -> std::time::Instant {
         self.space_list
             .iter_mut()
-            .fold(None, |acc, s| {
-                let last_dirtied = s.handle_events(
-                    dh,
-                    popup_manager,
-                    time,
-                    self.renderer.as_mut(),
-                    self.egl_display.as_mut(),
-                );
-                acc.map(|i| last_dirtied.max(i))
+            .fold(None, |mut acc, s| {
+                let last_dirtied =
+                    s.handle_events(dh, popup_manager, time, self.renderer.as_mut(), qh);
+                if let Some(last_dirty) = acc {
+                    if last_dirty < last_dirtied {
+                        acc = Some(last_dirtied);
+                    }
+                } else {
+                    acc = Some(last_dirtied);
+                }
+                acc
             })
             .unwrap_or_else(Instant::now)
     }
@@ -621,12 +621,20 @@ impl WrapperSpace for SpaceContainer {
         c_output: WlOutput,
         s_output: Output,
         info: OutputInfo,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
+        let mut found = false;
         for s in &mut self.space_list {
             if s.output.as_ref().map(|o| &o.1) == Some(&s_output) {
                 let _ = s.update_output(c_output.clone(), s_output.clone(), info.clone());
+                found = true;
             }
         }
-        Ok(())
+        Ok(found)
+    }
+
+    fn frame(&mut self, surface: &c_wl_surface::WlSurface, time: u32) {
+        for s in self.space_list.iter_mut() {
+            s.frame(surface, time);
+        }
     }
 }
