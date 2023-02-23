@@ -10,15 +10,18 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"], rev = "85c9470"}
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"], rev = "17db1be"}
 # smithay = { path = "../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl", "slog-stdlog"] }
-sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "beefe0a" }
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "fd916d8" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-
-launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "on-exit-before-restart" }
+tracing = "0.1.37"
+tracing-subscriber = {version = "0.3.16", features = ["fmt", "env-filter", "ansi"]}
+tracing-journald = "0.3.0"
+tracing-futures = "0.2.5"
+launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 wayland-egl = "0.30.0"
@@ -27,12 +30,6 @@ cosmic-theme = { git = "https://github.com/pop-os/cosmic-theme.git" }
 transpose = "0.2.2"
 anyhow = "1.0.63"
 shlex = "1.1.0"
-slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_warn"] }
-slog-journald = "2.2.0"
-slog-term = "2.9.0"
-slog-async = "2.7.0"
-slog-stdlog = "4.1.1"
-slog-scope = "4.4.0"
 log-panics = { version = "2", features = ["with-backtrace"] }
 libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"

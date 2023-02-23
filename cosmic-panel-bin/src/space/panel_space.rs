@@ -18,11 +18,11 @@ use sctk::{
         Proxy, QueueHandle,
     },
     shell::{
-        layer::LayerSurface,
+        wlr_layer::{LayerSurface, LayerSurfaceConfigure},
         xdg::{popup, XdgPositioner},
+        WaylandSurface,
     },
 };
-use slog::{info, Logger};
 use smithay::{
     backend::{
         egl::{context::GlAttributes, ffi::egl::SwapInterval, EGLContext},
@@ -58,6 +58,7 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use tokio::sync::mpsc;
+use tracing::{error, info};
 use wayland_egl::WlEglSurface;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
@@ -92,7 +93,6 @@ pub(crate) struct PanelSpace {
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
-    pub log: Logger,
     pub(crate) space: Space<Window>,
     pub(crate) damage_tracked_renderer: Option<DamageTrackedRenderer>,
     pub(crate) clients_left: Vec<(String, Client, UnixStream)>,
@@ -129,7 +129,6 @@ impl PanelSpace {
     /// create a new space for the cosmic panel
     pub fn new(
         config: CosmicPanelConfig,
-        log: Logger,
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
@@ -150,8 +149,7 @@ impl PanelSpace {
 
         Self {
             config,
-            space: Space::new(log.clone()),
-            log,
+            space: Space::default(),
             full_clear: 0,
             clients_left: Default::default(),
             clients_center: Default::default(),
@@ -507,7 +505,6 @@ impl PanelSpace {
                             w.toplevel().wl_surface(),
                             loc,
                             1.0,
-                            self.log.clone(),
                         )
                         .into_iter()
                         .map(|r| MyRenderElements::WaylandSurface(r))
@@ -538,7 +535,7 @@ impl PanelSpace {
                     };
                     drop(render_context);
                     if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer, loc, &buff, None, None, None, None,
+                        renderer, loc, &buff, None, None, None,
                     ) {
                         elements.push(MyRenderElements::Memory(render_element));
                     }
@@ -554,7 +551,6 @@ impl PanelSpace {
                             .unwrap_or_default() as usize,
                         &elements,
                         *clear_color,
-                        self.log.clone(),
                     )
                     .unwrap();
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
@@ -597,7 +593,6 @@ impl PanelSpace {
                         p.s_surface.wl_surface(),
                         (0, 0),
                         1.0,
-                        self.log.clone(),
                     );
                 if let Ok(mut frame) = renderer.render(
                     p.rectangle.size.to_physical(1),
@@ -612,7 +607,6 @@ impl PanelSpace {
                                 .to_f64(),
                             p.rectangle.to_physical(1),
                             &[p.rectangle.to_physical(1)],
-                            &self.log,
                         );
                     }
                     let _ = frame.finish();
@@ -1061,7 +1055,7 @@ impl PanelSpace {
         let mut should_render = false;
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
-                info!(self.log, "root layer shell surface removed.");
+                info!("root layer shell surface removed.");
             }
             Some(SpaceEvent::WaitConfigure {
                 first,
@@ -1139,7 +1133,7 @@ impl PanelSpace {
 
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
-                    slog::error!(self.log, "Failed to render error: {:?}", e);
+                    error!("Failed to render error: {:?}", e);
                 }
             }
             if let Some(egl_surface) = self.egl_surface.as_ref() {
@@ -1155,7 +1149,7 @@ impl PanelSpace {
     pub fn configure_panel_layer(
         &mut self,
         _layer: &LayerSurface,
-        configure: sctk::shell::layer::LayerSurfaceConfigure,
+        configure: LayerSurfaceConfigure,
         renderer: &mut Option<Gles2Renderer>,
         egl_display: &mut Option<EGLDisplay>,
     ) {
@@ -1187,7 +1181,6 @@ impl PanelSpace {
                         height = 1;
                     }
                     if first {
-                        let log = self.log.clone();
                         let client_egl_surface = unsafe {
                             ClientEglSurface::new(
                                 WlEglSurface::new(
@@ -1205,7 +1198,7 @@ impl PanelSpace {
                             let client_egl_display = ClientEglDisplay {
                                 display: self.c_display.as_ref().unwrap().clone(),
                             };
-                            EGLDisplay::new(client_egl_display, log.clone())
+                            EGLDisplay::new(client_egl_display)
                                 .expect("Failed to create EGL display")
                         };
 
@@ -1218,7 +1211,6 @@ impl PanelSpace {
                                 vsync: false,
                             },
                             Default::default(),
-                            log.clone(),
                         )
                         .unwrap_or_else(|_| {
                             EGLContext::new_with_config(
@@ -1230,7 +1222,6 @@ impl PanelSpace {
                                     vsync: false,
                                 },
                                 Default::default(),
-                                log.clone(),
                             )
                             .expect("Failed to create EGL context")
                         });
@@ -1239,7 +1230,7 @@ impl PanelSpace {
                             renderer
                         } else {
                             unsafe {
-                                Gles2Renderer::new(egl_context, log.clone())
+                                Gles2Renderer::new(egl_context)
                                     .expect("Failed to create EGL Surface")
                             }
                         };
@@ -1253,7 +1244,6 @@ impl PanelSpace {
                                     .expect("Failed to get pixel format from EGL context "),
                                 new_renderer.egl_context().config_id(),
                                 client_egl_surface,
-                                log.clone(),
                             )
                             .expect("Failed to create EGL Surface"),
                         );
@@ -1264,7 +1254,7 @@ impl PanelSpace {
                             unsafe { SwapInterval(new_egl_display.get_display_handle().handle, 0) }
                                 == 1;
                         if !swap_success {
-                            slog::error!(log, "Failed to set swap interval");
+                            error!("Failed to set swap interval");
                         }
 
                         renderer.replace(new_renderer);
@@ -1375,7 +1365,6 @@ impl PanelSpace {
                                 .expect("Failed to get pixel format from EGL context "),
                             egl_context.config_id(),
                             client_egl_surface,
-                            None,
                         )
                         .expect("Failed to initialize EGL Surface"),
                     );

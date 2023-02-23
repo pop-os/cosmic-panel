@@ -4,7 +4,6 @@ use std::{cell::RefCell, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
 use cosmic_panel_config::CosmicPanelContainerConfig;
-use slog::Logger;
 use smithay::{
     backend::{egl::EGLDisplay, renderer::gles2::Gles2Renderer},
     reexports::wayland_server::{self, backend::ClientId, Client},
@@ -22,19 +21,13 @@ pub struct SpaceContainer {
     pub(crate) s_display: Option<wayland_server::DisplayHandle>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
-    pub log: Logger,
     pub applet_tx: mpsc::Sender<AppletMsg>,
 }
 
 impl SpaceContainer {
-    pub fn new(
-        config: CosmicPanelContainerConfig,
-        log: Logger,
-        tx: mpsc::Sender<AppletMsg>,
-    ) -> Self {
+    pub fn new(config: CosmicPanelContainerConfig, tx: mpsc::Sender<AppletMsg>) -> Self {
         Self {
             config,
-            log: log.clone(),
             space_list: vec![],
             renderer: None,
             egl_display: None,

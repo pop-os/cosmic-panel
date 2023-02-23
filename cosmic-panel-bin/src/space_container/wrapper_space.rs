@@ -11,7 +11,10 @@ use sctk::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
-    shell::layer::LayerShell,
+    shell::{
+        wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
+        WaylandSurface,
+    },
 };
 use smithay::{
     desktop::PopupManager,
@@ -65,7 +68,6 @@ impl WrapperSpace for SpaceContainer {
                     if matches!(config.output, CosmicPanelOuput::Active) {
                         let mut s = PanelSpace::new(
                             config.clone(),
-                            self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
@@ -133,7 +135,6 @@ impl WrapperSpace for SpaceContainer {
                     } else {
                         let mut s = PanelSpace::new(
                             config,
-                            self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
@@ -169,7 +170,6 @@ impl WrapperSpace for SpaceContainer {
                     } else {
                         let mut s = PanelSpace::new(
                             config.clone(),
-                            self.log.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
@@ -230,7 +230,7 @@ impl WrapperSpace for SpaceContainer {
         compositor_state: &CompositorState,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
-        xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
+        xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
@@ -316,10 +316,6 @@ impl WrapperSpace for SpaceContainer {
     ) -> anyhow::Result<()> {
         // spaces spawn their clients when they are created
         Ok(())
-    }
-
-    fn log(&self) -> Option<slog::Logger> {
-        Some(self.log.clone())
     }
 
     fn destroy(&mut self) {
@@ -582,11 +578,7 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn configure_layer(
-        &mut self,
-        layer: &sctk::shell::layer::LayerSurface,
-        configure: sctk::shell::layer::LayerSurfaceConfigure,
-    ) {
+    fn configure_layer(&mut self, layer: &LayerSurface, configure: LayerSurfaceConfigure) {
         if let Some(space) = self
             .space_list
             .iter_mut()
@@ -601,7 +593,7 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn close_layer(&mut self, layer: &sctk::shell::layer::LayerSurface) {
+    fn close_layer(&mut self, layer: &LayerSurface) {
         self.space_list
             .retain(|s| s.layer.as_ref().map(|s| s.wl_surface()) != Some(layer.wl_surface()));
     }

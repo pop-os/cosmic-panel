@@ -22,12 +22,14 @@ use sctk::{
         Connection, Proxy, QueueHandle,
     },
     shell::{
-        layer::{self, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
+        },
         xdg::popup,
+        WaylandSurface,
     },
 };
 use shlex::Shlex;
-use slog::{trace, Logger};
 use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::renderer::{damage::DamageTrackedRenderer, gles2::Gles2Renderer},
@@ -43,6 +45,7 @@ use smithay::{
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
 };
+use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
     client_state::ClientFocus,
@@ -87,7 +90,7 @@ impl WrapperSpace for PanelSpace {
         compositor_state: &sctk::compositor::CompositorState,
         _conn: &sctk::reexports::client::Connection,
         qh: &QueueHandle<GlobalState<W>>,
-        xdg_shell_state: &mut sctk::shell::xdg::XdgShellState,
+        xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
@@ -270,7 +273,7 @@ impl WrapperSpace for PanelSpace {
 
                                 let mut args = Vec::new();
                                 for arg in exec_iter {
-                                    trace!(self.log.clone(), "child argument: {}", &arg);
+                                    trace!("child argument: {}", &arg);
                                     args.push(arg);
                                 }
                                 let mut applet_env = Vec::new();
@@ -282,35 +285,43 @@ impl WrapperSpace for PanelSpace {
                                 }
                                 let fd = socket.as_raw_fd().to_string();
                                 applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
-                                trace!(
-                                    self.log.clone(),
-                                    "child: {}, {:?} {:?}",
-                                    &exec,
-                                    args,
-                                    applet_env
-                                );
+                                trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
 
-                                let log_clone = self.log.clone();
-                                let log_clone_err = self.log.clone();
-                                let log_clone_out = self.log.clone();
                                 let display_handle = display.clone();
                                 let applet_tx_clone = self.applet_tx.clone();
                                 let id_clone = id.clone();
+                                let id_clone_info = id.clone();
+                                let id_clone_err = id.clone();
                                 let client_id = client.id();
+                                let client_id_info = client.id();
+                                let client_id_err = client.id();
+
                                 let process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
                                 .with_env(applet_env)
                                 .with_on_stderr(move |_, _, out| {
-                                    let log_clone = log_clone_err.clone();
-                                    async move { slog::error!(log_clone, "{}", out); }
+                                    // TODO why is span not included in logs to journald
+                                    let id_clone = id_clone_err.clone();
+                                    let client_id = client_id_err.clone();
+
+                                    async move {
+                                        error_span!("stderr", client = ?client_id).in_scope(|| {
+                                            error!("{}: {}", id_clone, out);
+                                        });
+                                     }
                                 })
                                 .with_on_stdout(move |_, _, out| {
-                                    let log_clone = log_clone_out.clone();
-                                    async move { slog::error!(log_clone, "{}", out); }
+                                    let id_clone = id_clone_info.clone();
+                                    let client_id = client_id_info.clone();
+                                    // TODO why is span not included in logs to journald
+                                    async move {
+                                        info_span!("stdout", client = ?client_id).in_scope(|| {
+                                            info!("{}: {}", id_clone, out);
+                                        });
+                                     }
                                 })
                                 .with_on_exit(move |mut pman, key, err_code, is_restarting| {
-                                    let log_clone = log_clone.clone();
                                     let mut display_handle = display_handle.clone();
                                     let id_clone = id_clone.clone();
                                     let client_id_clone = client_id.clone();
@@ -320,7 +331,7 @@ impl WrapperSpace for PanelSpace {
                                     async move {
                                         if !is_restarting {
                                             if let Some(err_code) = err_code {
-                                                slog::error!(log_clone, "Exited with error code and will not restart! {}", err_code);
+                                                error!("Exited with error code and will not restart! {}", err_code);
                                             }
                                             return;
                                         }
@@ -338,7 +349,7 @@ impl WrapperSpace for PanelSpace {
                                     .try_send(AppletMsg::NewProcess(panel_id, process))
                                 {
                                     Ok(_) => {}
-                                    Err(e) => slog::error!(self.log.clone(), "{e}"),
+                                    Err(e) => error!("{e}"),
                                 };
                             }
                         }
@@ -349,10 +360,6 @@ impl WrapperSpace for PanelSpace {
         } else {
             bail!("Clients have already been spawned!");
         }
-    }
-
-    fn log(&self) -> Option<Logger> {
-        Some(self.log.clone())
     }
 
     fn destroy(&mut self) {
@@ -618,7 +625,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     // handled by custom method with access to renderer instead
-    fn configure_layer(&mut self, _: &LayerSurface, _: sctk::shell::layer::LayerSurfaceConfigure) {}
+    fn configure_layer(&mut self, _: &LayerSurface, _: LayerSurfaceConfigure) {}
 
     // handled by the container
     fn close_layer(&mut self, _: &LayerSurface) {}
@@ -675,7 +682,6 @@ impl WrapperSpace for PanelSpace {
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }
-        let c_surface = compositor_state.create_surface(qh);
         let dimensions: Size<i32, Logical> = self.constrain_dim((0, 0).into());
 
         let layer = match self.config().layer() {
@@ -686,50 +692,45 @@ impl WrapperSpace for PanelSpace {
             _ => bail!("Invalid layer"),
         };
 
-        let mut layer_surface_builder = LayerSurface::builder()
-            .keyboard_interactivity(match self.config.keyboard_interactivity {
-                xdg_shell_wrapper_config::KeyboardInteractivity::None => {
-                    KeyboardInteractivity::None
-                }
-                xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
-                    KeyboardInteractivity::Exclusive
-                }
-                xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
-                    KeyboardInteractivity::OnDemand
-                }
-            })
-            .size((
-                dimensions.w.try_into().unwrap(),
-                dimensions.h.try_into().unwrap(),
-            ))
-            .anchor(match self.config.anchor {
-                cosmic_panel_config::PanelAnchor::Left => {
-                    layer::Anchor::all().difference(layer::Anchor::RIGHT)
-                }
-                cosmic_panel_config::PanelAnchor::Right => {
-                    layer::Anchor::all().difference(layer::Anchor::LEFT)
-                }
-                cosmic_panel_config::PanelAnchor::Top => {
-                    layer::Anchor::all().difference(layer::Anchor::BOTTOM)
-                }
-                cosmic_panel_config::PanelAnchor::Bottom => {
-                    layer::Anchor::all().difference(layer::Anchor::TOP)
-                }
-            });
-        if let Some(output) = c_output.as_ref() {
-            layer_surface_builder = layer_surface_builder.output(output);
-        }
-        let layer_surface = layer_surface_builder.map(qh, layer_state, c_surface.clone(), layer)?;
+        // TODO set margin and exclusive zone here too
+
+        let surface = compositor_state.create_surface(&qh);
+        let client_surface =
+            layer_state.create_layer_surface(&qh, surface, layer, Some("Panel"), c_output.as_ref());
+        // client_surface.set_margin(margin.top, margin.right, margin.bottom, margin.left);
+        client_surface.set_keyboard_interactivity(match self.config.keyboard_interactivity {
+            xdg_shell_wrapper_config::KeyboardInteractivity::None => KeyboardInteractivity::None,
+            xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
+                KeyboardInteractivity::Exclusive
+            }
+            xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
+                KeyboardInteractivity::OnDemand
+            }
+        });
+        client_surface.set_size(
+            dimensions.w.try_into().unwrap(),
+            dimensions.h.try_into().unwrap(),
+        );
+
+        // client_surface.set_exclusive_zone(exclusive_zone);
+        client_surface.set_anchor(match self.config.anchor {
+            cosmic_panel_config::PanelAnchor::Left => Anchor::all().difference(Anchor::RIGHT),
+            cosmic_panel_config::PanelAnchor::Right => Anchor::all().difference(Anchor::LEFT),
+            cosmic_panel_config::PanelAnchor::Top => Anchor::all().difference(Anchor::BOTTOM),
+            cosmic_panel_config::PanelAnchor::Bottom => Anchor::all().difference(Anchor::TOP),
+        });
 
         if !self.config.expand_to_edges {
             let input_region = Region::new(compositor_state)?;
-            layer_surface
+            client_surface
                 .wl_surface()
                 .set_input_region(Some(input_region.wl_region()));
             self.input_region.replace(input_region);
         }
 
-        c_surface.commit();
+        client_surface.commit();
+
+        dbg!(client_surface.wl_surface());
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,
             width: dimensions.w,
@@ -742,7 +743,7 @@ impl WrapperSpace for PanelSpace {
             output_info.as_ref().cloned()
         )
         .next();
-        self.layer.replace(layer_surface);
+        self.layer.replace(client_surface);
         self.damage_tracked_renderer
             .replace(DamageTrackedRenderer::new(
                 dimensions.to_physical(1),
