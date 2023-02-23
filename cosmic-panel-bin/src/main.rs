@@ -6,12 +6,13 @@ use anyhow::Result;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
 use launch_pad::{ProcessKey, ProcessManager};
 use sctk::reexports::client::backend::ObjectId;
-use slog::{o, warn, Drain};
 use smithay::reexports::{
     calloop,
     wayland_server::{backend::ClientId, Client},
 };
 use tokio::{runtime, sync::mpsc};
+use tracing::warn;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
 
 mod space;
@@ -23,13 +24,23 @@ pub enum PanelCalloopMsg {
 }
 
 fn main() -> Result<()> {
-    let term_drain = slog_term::term_full().ignore_res();
-    let journald_drain = slog_journald::JournaldDrain.ignore_res();
-    let drain = slog::Duplicate::new(term_drain, journald_drain);
-    let log = slog::Logger::root(slog_async::Async::default(drain.fuse()).fuse(), o!());
+    let fmt_layer = fmt::layer().with_target(false);
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+    if let Ok(journal_layer) = tracing_journald::layer() {
+        tracing_subscriber::registry()
+            .with(fmt_layer)
+            .with(journal_layer)
+            .with(filter_layer)
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(fmt_layer)
+            .with(filter_layer)
+            .init();
+    }
 
-    let _guard = slog_scope::set_global_logger(log.clone());
-    slog_stdlog::init().expect("Could not setup log backend");
     log_panics::init();
 
     let arg = std::env::args().nth(1);
@@ -42,10 +53,7 @@ fn main() -> Result<()> {
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
             Ok(c) => c,
             Err(e) => {
-                warn!(
-                    log.clone(),
-                    "Falling back to default panel configuration: {}", e
-                );
+                warn!("Falling back to default panel configuration: {}", e);
                 CosmicPanelContainerConfig::default()
             }
         },
@@ -58,7 +66,7 @@ fn main() -> Result<()> {
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
 
-    let mut space = space_container::SpaceContainer::new(config, log, applet_tx);
+    let mut space = space_container::SpaceContainer::new(config, applet_tx);
 
     let (calloop_tx, calloop_rx) = calloop::channel::sync_channel(100);
     let event_loop = calloop::EventLoop::try_new()?;
