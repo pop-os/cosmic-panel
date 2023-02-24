@@ -210,8 +210,19 @@ impl PanelSpace {
         let cur_focus = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
-            // always visible if not configured for autohide
+            // no transition if not configured for autohide
             if self.config.autohide().is_none() {
+                if c_focused_surface
+                    .iter()
+                    .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
+                    && c_hovered_surface
+                        .iter()
+                        .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
+                {
+                    self.visibility = Visibility::Hidden;
+                } else {
+                    self.visibility = Visibility::Visible;
+                }
                 return;
             }
 
