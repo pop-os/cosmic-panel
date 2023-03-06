@@ -249,6 +249,8 @@ pub struct CosmicPanelConfig {
     pub exclusive_zone: bool,
     /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
     pub autohide: Option<AutoHide>,
+    /// margin between the panel and the edge of the output
+    pub margin: Option<u16>,
 }
 
 #[cfg(feature = "wayland-rs")]
@@ -275,6 +277,7 @@ impl Default for CosmicPanelConfig {
                 handle_size: 4,
             }),
             border_radius: 8,
+            margin: None,
         }
     }
 }
@@ -290,6 +293,11 @@ impl CosmicPanelConfig {
             PanelSize::L => 48,
             PanelSize::XL => 64,
         }
+    }
+
+    /// get margin between the panel and the edge of the output
+    pub fn get_margin(&self) -> u16 {
+        self.margin.unwrap_or(0)
     }
 
     /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
