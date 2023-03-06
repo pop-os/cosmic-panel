@@ -331,18 +331,14 @@ impl PanelSpace {
                     let target = -panel_size + handle;
 
                     let cur_pix = (progress_norm * target as f32) as i32;
+                    let margin = self.config.get_margin() as i32;
 
                     if progress > total_t {
                         // XXX needs testing, but docs say that the margin value is only applied to anchored edge
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(handle);
                         }
-                        match self.config.anchor {
-                            PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, target),
-                            PanelAnchor::Right => layer_surface.set_margin(0, target, 0, 0),
-                            PanelAnchor::Top => layer_surface.set_margin(target, 0, 0, 0),
-                            PanelAnchor::Bottom => layer_surface.set_margin(0, 0, target, 0),
-                        };
+                        Self::set_margin(self.config.anchor, margin, target, layer_surface);
                         layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Hidden;
                     } else {
@@ -350,12 +346,8 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            match self.config.anchor {
-                                PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, cur_pix),
-                                PanelAnchor::Right => layer_surface.set_margin(0, cur_pix, 0, 0),
-                                PanelAnchor::Top => layer_surface.set_margin(cur_pix, 0, 0, 0),
-                                PanelAnchor::Bottom => layer_surface.set_margin(0, 0, cur_pix, 0),
-                            };
+                            Self::set_margin(self.config.anchor, margin, cur_pix, layer_surface);
+
                             layer_shell_wl_surface.commit();
                         }
                         self.close_popups();
@@ -417,12 +409,9 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            match self.config.anchor {
-                                PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, cur_pix),
-                                PanelAnchor::Right => layer_surface.set_margin(0, cur_pix, 0, 0),
-                                PanelAnchor::Top => layer_surface.set_margin(cur_pix, 0, 0, 0),
-                                PanelAnchor::Bottom => layer_surface.set_margin(0, 0, cur_pix, 0),
-                            };
+                            let margin = self.config.get_margin() as i32;
+                            Self::set_margin(self.config.anchor, margin, cur_pix, layer_surface);
+
                             layer_shell_wl_surface.commit();
                         }
                         self.visibility = Visibility::TransitionToVisible {
@@ -434,6 +423,15 @@ impl PanelSpace {
                 }
             }
         }
+    }
+
+    fn set_margin(anchor: PanelAnchor, margin: i32, target: i32, layer_surface: &LayerSurface) {
+        match anchor {
+            PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, target + margin),
+            PanelAnchor::Right => layer_surface.set_margin(margin, target + margin, margin, 0),
+            PanelAnchor::Top => layer_surface.set_margin(target + margin, margin, 0, margin),
+            PanelAnchor::Bottom => layer_surface.set_margin(0, margin, target + margin, margin),
+        };
     }
 
     pub(crate) fn constrain_dim(&self, size: Size<i32, Logical>) -> Size<i32, Logical> {
@@ -490,8 +488,8 @@ impl PanelSpace {
             };
             let _ = renderer.unbind();
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
-            let is_dock = self.config.plugins_wings.is_some() || self.config.expand_to_edges;
-            let clear_color = if is_dock {
+            let is_dock = self.config.plugins_wings.is_none() && !self.config.expand_to_edges;
+            let clear_color = if self.buffer.is_none() {
                 &self.bg_color
             } else {
                 &[0.0, 0.0, 0.0, 0.0]
@@ -524,11 +522,23 @@ impl PanelSpace {
                     .collect_vec();
                 if let Some(buff) = self.buffer.as_mut() {
                     let mut render_context = buff.render();
+                    let (panel_size, loc) = if is_dock {
+                        (
+                            self.actual_size,
+                            if self.config.is_horizontal() {
+                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0, 0.0)
+                            } else {
+                                (0.0, (self.dimensions.h - self.actual_size.h) as f64 / 2.0)
+                            },
+                        )
+                    } else {
+                        (self.dimensions.to_physical(1), (0.0, 0.0))
+                    };
                     let _ = render_context.draw(|_| {
                         if self.buffer_changed {
                             Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
                                 Point::default(),
-                                (self.actual_size.w, self.actual_size.h),
+                                (panel_size.w, panel_size.h),
                             )])
                         } else {
                             Result::<_, ()>::Ok(Default::default())
@@ -536,14 +546,6 @@ impl PanelSpace {
                     });
                     self.buffer_changed = false;
 
-                    let loc = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => {
-                            (0.0, (self.dimensions.h - self.actual_size.h) as f64 / 2.0)
-                        }
-                        PanelAnchor::Top | PanelAnchor::Bottom => {
-                            ((self.dimensions.w - self.actual_size.w) as f64 / 2.0, 0.0)
-                        }
-                    };
                     drop(render_context);
                     if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer, loc, &buff, None, None, None,
@@ -822,7 +824,6 @@ impl PanelSpace {
         .into();
         new_dim = self.constrain_dim(new_dim);
 
-        // new_dim.h = 400;
         let (new_list_length, new_list_thickness) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
             PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
@@ -938,17 +939,20 @@ impl PanelSpace {
         }
         self.space.refresh();
 
-        if is_dock
-            && !self.config.expand_to_edges
-            && self.actual_size.w > 0
+        if self.actual_size.w > 0
             && self.actual_size.h > 0
+            && self.config.border_radius > 0
+            && actual_length > 0
+            && self.config.border_radius > 0
         {
-            let mut buff = MemoryRenderBuffer::new(
-                (self.actual_size.w, self.actual_size.h),
-                1,
-                Transform::Normal,
-                None,
-            );
+            // corners calculation with border_radius
+            let panel_size = if is_dock {
+                self.actual_size
+            } else {
+                self.dimensions.to_physical(1)
+            };
+            let mut buff =
+                MemoryRenderBuffer::new((panel_size.w, panel_size.h), 1, Transform::Normal, None);
             let mut render_context = buff.render();
             let bg_color = self
                 .bg_color
@@ -960,86 +964,83 @@ impl PanelSpace {
                     chunk.copy_from_slice(&bg_color);
                 });
 
-                // corners calculation with border_radius
-                if self.config.border_radius > 0 {
-                    let radius = self
-                        .config
-                        .border_radius
-                        .min(self.actual_size.w as u32 / 2)
-                        .min(self.actual_size.h as u32 / 2);
-                    let r2 = radius as f64 * radius as f64;
-                    let grid = (0..((radius + 1) * (radius + 1)))
-                        .into_iter()
-                        .map(|i| {
-                            let (x, y) = (i as u32 % (radius + 1), i as u32 / (radius + 1));
-                            r2 - (x as f64 * x as f64 + y as f64 * y as f64)
-                        })
-                        .collect_vec();
-                    let top_right_corner = (0..(radius * radius))
-                        .into_iter()
-                        .map(|i| {
-                            let (x, y) = (i as u32 / radius, i as u32 % radius);
-                            let bottom_left = grid[(y * (radius + 1) + x) as usize];
-                            let bottom_right = grid[(y * (radius + 1) + x + 1) as usize];
-                            let top_left = grid[((y + 1) * (radius + 1) + x) as usize];
-                            let top_right = grid[((y + 1) * (radius + 1) + x + 1) as usize];
-                            if bottom_left >= 0.0
-                                && bottom_right >= 0.0
-                                && top_left >= 0.0
-                                && top_right >= 0.0
-                            {
-                                self.bg_color.clone()
-                            } else if bottom_left < 0.0
-                                && bottom_right < 0.0
-                                && top_left < 0.0
-                                && top_right < 0.0
-                            {
-                                [0.0, 0.0, 0.0, 0.0]
-                            } else {
-                                let avg: f64 = [bottom_left.abs()
-                                    + bottom_right.abs()
-                                    + top_left.abs()
-                                    + top_right.abs()]
-                                .into_iter()
-                                .map(|v| if v > 0.0 { r2 } else { v.abs() })
-                                .sum();
-                                let normalized: f64 = (r2 - avg / 4.0) / r2;
-                                self.bg_color
-                                    .iter()
-                                    .map(|v| *v * normalized as f32)
-                                    .collect_vec()
-                                    .try_into()
-                                    .unwrap()
-                            }
-                        })
-                        .map(|color| {
-                            color
+                let radius = self
+                    .config
+                    .border_radius
+                    .min(panel_size.w as u32 / 2)
+                    .min(panel_size.h as u32 / 2);
+                let r2 = radius as f64 * radius as f64;
+                let grid = (0..((radius + 1) * (radius + 1)))
+                    .into_iter()
+                    .map(|i| {
+                        let (x, y) = (i as u32 % (radius + 1), i as u32 / (radius + 1));
+                        r2 - (x as f64 * x as f64 + y as f64 * y as f64)
+                    })
+                    .collect_vec();
+                let top_right_corner = (0..(radius * radius))
+                    .into_iter()
+                    .map(|i| {
+                        let (x, y) = (i as u32 / radius, i as u32 % radius);
+                        let bottom_left = grid[(y * (radius + 1) + x) as usize];
+                        let bottom_right = grid[(y * (radius + 1) + x + 1) as usize];
+                        let top_left = grid[((y + 1) * (radius + 1) + x) as usize];
+                        let top_right = grid[((y + 1) * (radius + 1) + x + 1) as usize];
+                        if bottom_left >= 0.0
+                            && bottom_right >= 0.0
+                            && top_left >= 0.0
+                            && top_right >= 0.0
+                        {
+                            self.bg_color.clone()
+                        } else if bottom_left < 0.0
+                            && bottom_right < 0.0
+                            && top_left < 0.0
+                            && top_right < 0.0
+                        {
+                            [0.0, 0.0, 0.0, 0.0]
+                        } else {
+                            let avg: f64 = [bottom_left.abs()
+                                + bottom_right.abs()
+                                + top_left.abs()
+                                + top_right.abs()]
+                            .into_iter()
+                            .map(|v| if v > 0.0 { r2 } else { v.abs() })
+                            .sum();
+                            let normalized: f64 = (r2 - avg / 4.0) / r2;
+                            self.bg_color
                                 .iter()
-                                .map(|c| ((c * 255.0) as u8).clamp(0, 255))
+                                .map(|v| *v * normalized as f32)
                                 .collect_vec()
-                        })
-                        .collect_vec();
-                    for (i, color) in top_right_corner.into_iter().enumerate() {
-                        let (x, y) = (i as u32 % radius, i as u32 / radius);
-                        let top_left = (radius - 1 - x, radius - 1 - y);
-                        let top_right = (self.actual_size.w as u32 - radius + x, radius - 1 - y);
-                        let bottom_left = (radius - 1 - x, self.actual_size.h as u32 - radius + y);
-                        let bottom_right = (
-                            self.actual_size.w as u32 - radius + x,
-                            self.actual_size.h as u32 - radius + y,
-                        );
-                        for (c_x, c_y) in [top_left, top_right, bottom_left, bottom_right] {
-                            let b_i = (c_y * self.actual_size.w as u32 + c_x) as usize * 4;
-                            let c = buffer.get_mut(b_i..b_i + 4).unwrap();
-                            c.copy_from_slice(&color);
+                                .try_into()
+                                .unwrap()
                         }
+                    })
+                    .map(|color| {
+                        color
+                            .iter()
+                            .map(|c| ((c * 255.0) as u8).clamp(0, 255))
+                            .collect_vec()
+                    })
+                    .collect_vec();
+                for (i, color) in top_right_corner.into_iter().enumerate() {
+                    let (x, y) = (i as u32 % radius, i as u32 / radius);
+                    let top_left = (radius - 1 - x, radius - 1 - y);
+                    let top_right = (panel_size.w as u32 - radius + x, radius - 1 - y);
+                    let bottom_left = (radius - 1 - x, panel_size.h as u32 - radius + y);
+                    let bottom_right = (
+                        panel_size.w as u32 - radius + x,
+                        panel_size.h as u32 - radius + y,
+                    );
+                    for (c_x, c_y) in [top_left, top_right, bottom_left, bottom_right] {
+                        let b_i = (c_y * panel_size.w as u32 + c_x) as usize * 4;
+                        let c = buffer.get_mut(b_i..b_i + 4).unwrap();
+                        c.copy_from_slice(&color);
                     }
                 }
 
                 // Return the whole buffer as damage
                 Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
                     Point::default(),
-                    (self.actual_size.w, self.actual_size.h),
+                    (panel_size.w, panel_size.h),
                 )])
             });
             drop(render_context);
@@ -1104,12 +1105,12 @@ impl PanelSpace {
                             (Visibility::Hidden, PanelAnchor::Top | PanelAnchor::Bottom) => -size.h,
                             _ => 0,
                         } + self.config.get_hide_handle().unwrap() as i32;
-                        match self.config.anchor {
-                            PanelAnchor::Left => layer_surface.set_margin(0, 0, 0, target),
-                            PanelAnchor::Right => layer_surface.set_margin(0, target, 0, 0),
-                            PanelAnchor::Top => layer_surface.set_margin(target, 0, 0, 0),
-                            PanelAnchor::Bottom => layer_surface.set_margin(0, 0, target, 0),
-                        };
+                        Self::set_margin(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            target,
+                            layer_surface,
+                        );
                     } else if self.config.exclusive_zone() {
                         let list_thickness = match self.config.anchor() {
                             PanelAnchor::Left | PanelAnchor::Right => width,
@@ -1119,6 +1120,9 @@ impl PanelSpace {
                             .as_ref()
                             .unwrap()
                             .set_exclusive_zone(list_thickness as i32);
+                        if let Some(margin) = self.config.margin {
+                            Self::set_margin(self.config.anchor, margin as i32, 0, layer_surface);
+                        }
                     }
                     layer_surface.wl_surface().commit();
                     self.space_event.replace(Some(SpaceEvent::WaitConfigure {
@@ -1185,19 +1189,21 @@ impl PanelSpace {
                             self.suggested_length.replace(h);
                         }
                     }
-                    if width == 0 {
+
+                    if width <= 0 {
                         width = 1;
                     }
-                    if height == 0 {
+                    if height <= 0 {
                         height = 1;
                     }
+                    let dim = self.constrain_dim((width as i32, height as i32).into());
                     if first {
                         let client_egl_surface = unsafe {
                             ClientEglSurface::new(
                                 WlEglSurface::new(
                                     self.layer.as_ref().unwrap().wl_surface().id(),
-                                    width,
-                                    height,
+                                    dim.w,
+                                    dim.h,
                                 )
                                 .unwrap(), // TODO remove unwrap
                                 self.layer.as_ref().unwrap().wl_surface().clone(),
@@ -1271,17 +1277,16 @@ impl PanelSpace {
                         renderer.replace(new_renderer);
                         egl_display.replace(new_egl_display);
                         self.egl_surface.replace(egl_surface);
-                    } else if self.dimensions != (width as i32, height as i32).into()
+                    } else if self.dimensions != (dim.w, dim.h).into()
                         && self.pending_dimensions.is_none()
                     {
-                        self.egl_surface.as_ref().unwrap().resize(
-                            width as i32,
-                            height as i32,
-                            0,
-                            0,
-                        );
+                        self.egl_surface
+                            .as_ref()
+                            .unwrap()
+                            .resize(dim.w, dim.h, 0, 0);
                     }
-                    self.dimensions = (w as i32, h as i32).into();
+
+                    self.dimensions = (dim.w, dim.h).into();
                     self.damage_tracked_renderer
                         .replace(DamageTrackedRenderer::new(
                             self.dimensions.to_physical(1),
@@ -1314,6 +1319,12 @@ impl PanelSpace {
                 if height == 0 {
                     height = 1;
                 }
+                let dim = self.constrain_dim((width as i32, height as i32).into());
+
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .resize(dim.w as i32, dim.h as i32, 0, 0);
 
                 self.egl_surface
                     .as_ref()
