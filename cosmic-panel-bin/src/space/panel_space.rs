@@ -1450,7 +1450,7 @@ impl PanelSpace {
             .element_location(parent_window)
             .unwrap_or_else(|| (0, 0).into());
 
-        positioner.set_size(rect_size.w, rect_size.h);
+        positioner.set_size(rect_size.w.max(1), rect_size.h.max(1));
         positioner.set_anchor_rect(
             anchor_rect.loc.x + p_offset.x,
             anchor_rect.loc.y + p_offset.y,

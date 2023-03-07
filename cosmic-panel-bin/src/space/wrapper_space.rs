@@ -130,8 +130,8 @@ impl WrapperSpace for PanelSpace {
             c_popup.xdg_surface().set_window_geometry(
                 s_window_geometry.loc.x,
                 s_window_geometry.loc.y,
-                s_window_geometry.size.w,
-                s_window_geometry.size.h,
+                s_window_geometry.size.w.max(1),
+                s_window_geometry.size.h.max(1),
             );
             for r in input_regions.rects {
                 input_region.add(0, 0, r.1.size.w, r.1.size.h);
@@ -177,15 +177,20 @@ impl WrapperSpace for PanelSpace {
             p.c_popup.xdg_surface().set_window_geometry(
                 0,
                 0,
-                pos_state.rect_size.w,
-                pos_state.rect_size.h,
+                pos_state.rect_size.w.max(1),
+                pos_state.rect_size.h.max(1),
             );
             self.apply_positioner_state(&positioner, pos_state, &p.s_surface);
 
-            p.c_popup.reposition(&positioner, token);
+            if positioner.version() >= 3 {
+                p.c_popup.reposition(&positioner, token);
+            }
             p.c_popup.wl_surface().commit();
+            if positioner.version() >= 3 {
+                popup.send_repositioned(token);
+            }
         }
-        popup.send_repositioned(token);
+        
         popup.send_configure()?;
         Ok(())
     }
@@ -411,8 +416,8 @@ impl WrapperSpace for PanelSpace {
                 p.c_popup.xdg_surface().set_window_geometry(
                     p_geo.loc.x,
                     p_geo.loc.y,
-                    p_geo.size.w,
-                    p_geo.size.h,
+                    p_geo.size.w.max(1),
+                    p_geo.size.h.max(1),
                 );
                 if let Some(input_regions) = with_states(p.s_surface.wl_surface(), |states| {
                     states
@@ -730,7 +735,6 @@ impl WrapperSpace for PanelSpace {
 
         client_surface.commit();
 
-        dbg!(client_surface.wl_surface());
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,
             width: dimensions.w,
