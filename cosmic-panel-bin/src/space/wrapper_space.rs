@@ -190,7 +190,7 @@ impl WrapperSpace for PanelSpace {
                 popup.send_repositioned(token);
             }
         }
-        
+
         popup.send_configure()?;
         Ok(())
     }
