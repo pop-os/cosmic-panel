@@ -7,6 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use image::RgbaImage;
 use itertools::{chain, Itertools};
 use launch_pad::process::Process;
 use sctk::{
@@ -969,59 +970,50 @@ impl PanelSpace {
                     .border_radius
                     .min(panel_size.w as u32 / 2)
                     .min(panel_size.h as u32 / 2);
-                let r2 = radius as f64 * radius as f64;
-                let grid = (0..((radius + 1) * (radius + 1)))
+                let drawn_radius = 128;
+                let drawn_radius2 = drawn_radius as f64 * drawn_radius as f64;
+                let grid = (0..((drawn_radius + 1) * (drawn_radius + 1)))
                     .into_iter()
                     .map(|i| {
-                        let (x, y) = (i as u32 % (radius + 1), i as u32 / (radius + 1));
-                        r2 - (x as f64 * x as f64 + y as f64 * y as f64)
+                        let (x, y) = (i as u32 % (drawn_radius + 1), i as u32 / (drawn_radius + 1));
+                        drawn_radius2 - (x as f64 * x as f64 + y as f64 * y as f64)
                     })
                     .collect_vec();
-                let top_right_corner = (0..(radius * radius))
-                    .into_iter()
-                    .map(|i| {
-                        let (x, y) = (i as u32 / radius, i as u32 % radius);
-                        let bottom_left = grid[(y * (radius + 1) + x) as usize];
-                        let bottom_right = grid[(y * (radius + 1) + x + 1) as usize];
-                        let top_left = grid[((y + 1) * (radius + 1) + x) as usize];
-                        let top_right = grid[((y + 1) * (radius + 1) + x + 1) as usize];
-                        if bottom_left >= 0.0
-                            && bottom_right >= 0.0
-                            && top_left >= 0.0
-                            && top_right >= 0.0
-                        {
-                            self.bg_color.clone()
-                        } else if bottom_left < 0.0
-                            && bottom_right < 0.0
-                            && top_left < 0.0
-                            && top_right < 0.0
-                        {
-                            [0.0, 0.0, 0.0, 0.0]
-                        } else {
-                            let avg: f64 = [bottom_left.abs()
-                                + bottom_right.abs()
-                                + top_left.abs()
-                                + top_right.abs()]
-                            .into_iter()
-                            .map(|v| if v > 0.0 { r2 } else { v.abs() })
-                            .sum();
-                            let normalized: f64 = (r2 - avg / 4.0) / r2;
-                            self.bg_color
-                                .iter()
-                                .map(|v| *v * normalized as f32)
-                                .collect_vec()
-                                .try_into()
-                                .unwrap()
-                        }
-                    })
-                    .map(|color| {
-                        color
-                            .iter()
-                            .map(|c| ((c * 255.0) as u8).clamp(0, 255))
-                            .collect_vec()
-                    })
-                    .collect_vec();
-                for (i, color) in top_right_corner.into_iter().enumerate() {
+
+                let bg_color: [u8; 4] = self
+                    .bg_color
+                    .iter()
+                    .map(|c| ((c * 255.0) as u8).clamp(0, 255))
+                    .collect_vec()
+                    .try_into()
+                    .unwrap();
+                let empty = [0, 0, 0, 0];
+
+                let mut corner_image = RgbaImage::new(drawn_radius, drawn_radius);
+                for i in 0..(drawn_radius * drawn_radius) {
+                    let (x, y) = (i as u32 / drawn_radius, i as u32 % drawn_radius);
+                    let bottom_left = grid[(y * (drawn_radius + 1) + x) as usize];
+                    let bottom_right = grid[(y * (drawn_radius + 1) + x + 1) as usize];
+                    let top_left = grid[((y + 1) * (drawn_radius + 1) + x) as usize];
+                    let top_right = grid[((y + 1) * (drawn_radius + 1) + x + 1) as usize];
+                    let color = if bottom_left >= 0.0
+                        && bottom_right >= 0.0
+                        && top_left >= 0.0
+                        && top_right >= 0.0
+                    {
+                        bg_color.clone()
+                    } else {
+                        empty
+                    };
+                    corner_image.put_pixel(x, y, image::Rgba(color));
+                }
+                let corner_image = image::imageops::resize(
+                    &corner_image,
+                    radius as u32,
+                    radius as u32,
+                    image::imageops::FilterType::CatmullRom,
+                );
+                for (i, color) in corner_image.pixels().enumerate() {
                     let (x, y) = (i as u32 % radius, i as u32 / radius);
                     let top_left = (radius - 1 - x, radius - 1 - y);
                     let top_right = (panel_size.w as u32 - radius + x, radius - 1 - y);
@@ -1033,7 +1025,7 @@ impl PanelSpace {
                     for (c_x, c_y) in [top_left, top_right, bottom_left, bottom_right] {
                         let b_i = (c_y * panel_size.w as u32 + c_x) as usize * 4;
                         let c = buffer.get_mut(b_i..b_i + 4).unwrap();
-                        c.copy_from_slice(&color);
+                        c.copy_from_slice(&color.0);
                     }
                 }
 
