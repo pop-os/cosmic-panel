@@ -1,6 +1,7 @@
 use std::fs::File;
 
 use crate::CosmicPanelConfig;
+use cosmic_config::{Config, ConfigGet, ConfigSet};
 use serde::{Deserialize, Serialize};
 use xdg::BaseDirectories;
 use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
@@ -34,38 +35,43 @@ impl WrapperConfig for CosmicPanelContainerConfig {
     }
 }
 
+pub const NAME: &str = "com.system76.CosmicPanel";
+pub const VERSION: u64 = 1;
+
 static CONFIG_PATH: &str = "cosmic-panel/config.ron";
 
 impl CosmicPanelContainerConfig {
     /// load config with the provided name
-    pub fn load() -> anyhow::Result<Self> {
-        let config_path =
-            match BaseDirectories::new().map(|dirs| dirs.find_config_file(CONFIG_PATH)) {
-                Ok(Some(path)) => path,
-                _ => anyhow::bail!("Failed to get find config file"),
-            };
+    pub fn load() -> Result<(Self, Vec<cosmic_config::Error>), cosmic_config::Error> {
+        let config = Self::cosmic_panel_config()?;
+        let entry_names = config.get::<Vec<String>>("entries")?;
+        let mut config_list = Vec::new();
+        let mut entry_errors = Vec::new();
 
-        let file = match File::open(&config_path) {
-            Ok(file) => file,
-            Err(err) => {
-                anyhow::bail!("Failed to open '{}': {}", config_path.display(), err);
-            }
-        };
-
-        match ron::de::from_reader::<_, Self>(file) {
-            Ok(config) => Ok(config),
-            Err(err) => {
-                anyhow::bail!("Failed to parse '{}': {}", config_path.display(), err);
-            }
+        for name in entry_names {
+            let config = Config::new(format!("{}.{}", NAME, name).as_str(), VERSION)?;
+            let (entry, mut errors) = CosmicPanelConfig::get_entry(&config);
+            config_list.push(entry);
+            entry_errors.append(&mut errors);
         }
+        Ok((Self { config_list }, entry_errors))
     }
 
-    /// write config to config file
-    pub fn write(&self) -> anyhow::Result<()> {
-        let xdg = BaseDirectories::new()?;
-        let f = xdg.place_config_file(CONFIG_PATH).unwrap();
-        let f = File::create(f)?;
-        ron::ser::to_writer_pretty(&f, self, ron::ser::PrettyConfig::default())?;
+    pub fn cosmic_panel_config() -> Result<Config, cosmic_config::Error> {
+        Config::new(NAME, VERSION)
+    }
+
+    pub fn write_entries(&self) -> Result<(), cosmic_config::Error> {
+        let config = Self::cosmic_panel_config()?;
+        let entry_names = self
+            .config_list
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>();
+        config.set("entries", entry_names)?;
+        for entry in &self.config_list {
+            entry.write_entry()?;
+        }
         Ok(())
     }
 }

@@ -4,12 +4,15 @@
 
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
-use anyhow::{bail, Ok};
+use anyhow::bail;
+use cosmic_config::{Config, ConfigGet, ConfigSet};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 #[cfg(feature = "wayland-rs")]
 use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, WrapperOutput};
+
+use crate::{NAME, VERSION};
 
 /// Edge to which the panel is anchored
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
@@ -250,7 +253,7 @@ pub struct CosmicPanelConfig {
     /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
     pub autohide: Option<AutoHide>,
     /// margin between the panel and the edge of the output
-    pub margin: Option<u16>,
+    pub margin: u16,
 }
 
 #[cfg(feature = "wayland-rs")]
@@ -271,13 +274,9 @@ impl Default for CosmicPanelConfig {
             padding: 4,
             spacing: 4,
             exclusive_zone: true,
-            autohide: Some(AutoHide {
-                wait_time: 1000,
-                transition_time: 200,
-                handle_size: 4,
-            }),
+            autohide: None,
             border_radius: 8,
-            margin: None,
+            margin: 4,
         }
     }
 }
@@ -297,7 +296,7 @@ impl CosmicPanelConfig {
 
     /// get margin between the panel and the edge of the output
     pub fn get_margin(&self) -> u16 {
-        self.margin.unwrap_or(0)
+        self.margin
     }
 
     /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
@@ -401,6 +400,121 @@ impl CosmicPanelConfig {
             PanelAnchor::Left | PanelAnchor::Right => (Some(bar_thickness), Some(o_h..o_h + 1)),
             PanelAnchor::Top | PanelAnchor::Bottom => (Some(o_w..o_w + 1), Some(bar_thickness)),
         }
+    }
+
+    pub fn write_entry(&self) -> Result<(), cosmic_config::Error> {
+        let entry_name = format!("{NAME}.{}", self.name);
+        let config = Config::new(&entry_name, VERSION)?;
+        config.set("name", &self.name)?;
+        config.set("anchor", self.anchor)?;
+        config.set("anchor_gap", self.anchor_gap)?;
+        config.set("layer", self.layer)?;
+        config.set("keyboard_interactivity", self.keyboard_interactivity)?;
+        config.set("size", &self.size)?;
+        config.set("output", &self.output)?;
+        config.set("background", &self.background)?;
+        config.set("plugins_wings", &self.plugins_wings)?;
+        config.set("plugins_center", &self.plugins_center)?;
+        config.set("expand_to_edges", self.expand_to_edges)?;
+        config.set("padding", self.padding)?;
+        config.set("spacing", self.spacing)?;
+        config.set("exclusive_zone", self.exclusive_zone)?;
+        config.set("autohide", &self.autohide)?;
+        config.set("border_radius", self.border_radius)?;
+        config.set("margin", self.margin)?;
+        Ok(())
+    }
+
+    pub fn get_entry(config: &Config) -> (Self, Vec<cosmic_config::Error>) {
+        let mut default = Self::default();
+        let mut errors = Vec::new();
+
+        match config.get::<String>("name") {
+            Ok(name) => default.name = name,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<PanelAnchor>("anchor") {
+            Ok(anchor) => default.anchor = anchor,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<bool>("anchor_gap") {
+            Ok(anchor_gap) => default.anchor_gap = anchor_gap,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<Layer>("layer") {
+            Ok(layer) => default.layer = layer,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<KeyboardInteractivity>("keyboard_interactivity") {
+            Ok(keyboard_interactivity) => default.keyboard_interactivity = keyboard_interactivity,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<PanelSize>("size") {
+            Ok(size) => default.size = size,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<CosmicPanelOuput>("output") {
+            Ok(output) => default.output = output,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<CosmicPanelBackground>("background") {
+            Ok(background) => default.background = background,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<Option<(Vec<String>, Vec<String>)>>("plugins_wings") {
+            Ok(plugins_wings) => default.plugins_wings = plugins_wings,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<Option<Vec<String>>>("plugins_center") {
+            Ok(plugins_center) => default.plugins_center = plugins_center,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<bool>("expand_to_edges") {
+            Ok(expand_to_edges) => default.expand_to_edges = expand_to_edges,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<u32>("padding") {
+            Ok(padding) => default.padding = padding,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<u32>("spacing") {
+            Ok(spacing) => default.spacing = spacing,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<bool>("exclusive_zone") {
+            Ok(exclusive_zone) => default.exclusive_zone = exclusive_zone,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<Option<AutoHide>>("autohide") {
+            Ok(autohide) => default.autohide = autohide,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<u32>("border_radius") {
+            Ok(border_radius) => default.border_radius = border_radius,
+            Err(e) => errors.push(e),
+        }
+
+        match config.get::<u16>("margin") {
+            Ok(margin) => default.margin = margin,
+            Err(e) => errors.push(e),
+        }
+
+        (default, errors)
     }
 }
 
