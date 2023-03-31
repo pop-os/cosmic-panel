@@ -5,6 +5,7 @@ Maintainer: System76 <info@system76.com>
 Build-Depends:
   debhelper (>= 11),
   debhelper-compat (= 11),
+  just,
   cargo,
   libwayland-dev,
   libxkbcommon-dev,
@@ -18,4 +19,4 @@ Architecture: amd64 arm64
 Depends:
   ${misc:Depends},
   ${shlibs:Depends}
-Description: XDG Shell Wrapper
+Description: XDG Shell Wrapper Panel for COSMIC
