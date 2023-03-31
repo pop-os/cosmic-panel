@@ -1,9 +1,6 @@
-use std::fs::File;
-
 use crate::CosmicPanelConfig;
 use cosmic_config::{Config, ConfigGet, ConfigSet};
 use serde::{Deserialize, Serialize};
-use xdg::BaseDirectories;
 use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
 
 /// Config structure for the cosmic panel
@@ -37,8 +34,6 @@ impl WrapperConfig for CosmicPanelContainerConfig {
 
 pub const NAME: &str = "com.system76.CosmicPanel";
 pub const VERSION: u64 = 1;
-
-static CONFIG_PATH: &str = "cosmic-panel/config.ron";
 
 impl CosmicPanelContainerConfig {
     /// load config with the provided name
