@@ -1112,8 +1112,13 @@ impl PanelSpace {
                             .as_ref()
                             .unwrap()
                             .set_exclusive_zone(list_thickness as i32);
-                        if let Some(margin) = self.config.margin {
-                            Self::set_margin(self.config.anchor, margin as i32, 0, layer_surface);
+                        if self.config.margin > 0 {
+                            Self::set_margin(
+                                self.config.anchor,
+                                self.config.margin as i32,
+                                0,
+                                layer_surface,
+                            );
                         }
                     }
                     layer_surface.wl_surface().commit();

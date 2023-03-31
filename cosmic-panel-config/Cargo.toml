@@ -15,4 +15,6 @@ xdg = "2.4.1"
 tracing = "0.1.37"
 wayland-protocols-wlr = { version = "0.1.0", features = ["server"], optional = true}
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
+
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config", optional = true }

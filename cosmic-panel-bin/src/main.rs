@@ -51,9 +51,14 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
-            Ok(c) => c,
+            Ok((c, errors)) => {
+                for e in errors {
+                    warn!("Panel Entry Error: {:?}", e);
+                }
+                c
+            }
             Err(e) => {
-                warn!("Falling back to default panel configuration: {}", e);
+                warn!("Falling back to default panel configuration: {:?}", e);
                 CosmicPanelContainerConfig::default()
             }
         },
