@@ -1,19 +1,30 @@
 // SPDX-License-Identifier: MPL-2.0-only
 
-use std::{cell::RefCell, os::unix::net::UnixStream, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
-use cosmic_panel_config::CosmicPanelContainerConfig;
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput};
+use notify::RecommendedWatcher;
+use sctk::{
+    output::OutputInfo,
+    reexports::client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
+    shell::wlr_layer::LayerShell,
+};
 use smithay::{
     backend::{egl::EGLDisplay, renderer::gles2::Gles2Renderer},
+    output::Output,
     reexports::wayland_server::{self, backend::ClientId, Client},
 };
 use tokio::sync::mpsc;
+use tracing::{error, info};
 use wayland_server::Resource;
-use xdg_shell_wrapper::client_state::ClientFocus;
+use xdg_shell_wrapper::{
+    client_state::ClientFocus, shared_state::GlobalState, space::WrapperSpace,
+};
 
 #[derive(Debug)]
 pub struct SpaceContainer {
+    pub(crate) connection: Option<Connection>,
     pub(crate) config: CosmicPanelContainerConfig,
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<Gles2Renderer>,
@@ -22,11 +33,14 @@ pub struct SpaceContainer {
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
+    pub(crate) watchers: HashMap<String, RecommendedWatcher>,
 }
 
 impl SpaceContainer {
     pub fn new(config: CosmicPanelContainerConfig, tx: mpsc::Sender<AppletMsg>) -> Self {
         Self {
+            connection: None,
             config,
             space_list: vec![],
             renderer: None,
@@ -35,6 +49,8 @@ impl SpaceContainer {
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
             applet_tx: tx,
+            outputs: vec![],
+            watchers: HashMap::new(),
         }
     }
 
@@ -79,6 +95,126 @@ impl SpaceContainer {
                 s.full_clear = 4;
                 // s.w_accumulated_damage.clear();
                 break;
+            }
+        }
+    }
+
+    /// apply a removed entry to the space list
+    pub fn remove_space(&mut self, name: String) {
+        self.space_list.retain(|s| s.config.name != name);
+        self.config.config_list.retain(|c| c.name != name);
+        self.watchers.remove(&name);
+    }
+
+    /// apply a new or updated entry to the space list
+    pub fn update_space<W: WrapperSpace>(
+        &mut self,
+        entry: CosmicPanelConfig,
+        compositor_state: &sctk::compositor::CompositorState,
+        layer_state: &mut LayerShell,
+        qh: &QueueHandle<GlobalState<W>>,
+    ) {
+        // exit early if the config hasn't actually changed
+        if self.space_list.iter_mut().any(|s| s.config == entry) {
+            info!("config unchanged, skipping");
+            return;
+        }
+
+        if let Some(config) = self
+            .config
+            .config_list
+            .iter_mut()
+            .find(|c| c.name == entry.name)
+        {
+            *config = entry.clone();
+        } else {
+            self.config.config_list.push(entry.clone());
+        }
+
+        let connection = match self.connection.as_ref() {
+            Some(c) => c,
+            None => return,
+        };
+
+        // remove old one if it exists
+        self.space_list.retain(|s| s.config.name != entry.name);
+
+        match &entry.output {
+            CosmicPanelOuput::All => {
+                for (wl_output, output, info) in &self.outputs {
+                    let mut space = PanelSpace::new(
+                        entry.clone(),
+                        self.c_focused_surface.clone(),
+                        self.c_hovered_surface.clone(),
+                        self.applet_tx.clone(),
+                    );
+                    if let Some(s_display) = self.s_display.as_ref() {
+                        space.set_display_handle(s_display.clone());
+                    }
+                    if let Err(err) = space.new_output(
+                        compositor_state,
+                        layer_state,
+                        connection,
+                        qh,
+                        Some(wl_output.clone()),
+                        Some(output.clone()),
+                        Some(info.clone()),
+                    ) {
+                        error!("Failed to create space for output: {}", err);
+                    } else {
+                        self.space_list.push(space);
+                    }
+                }
+            }
+            CosmicPanelOuput::Active => {
+                let mut space = PanelSpace::new(
+                    entry.clone(),
+                    self.c_focused_surface.clone(),
+                    self.c_hovered_surface.clone(),
+                    self.applet_tx.clone(),
+                );
+                if let Some(s_display) = self.s_display.as_ref() {
+                    space.set_display_handle(s_display.clone());
+                }
+                if let Err(err) = space.new_output(
+                    compositor_state,
+                    layer_state,
+                    connection,
+                    qh,
+                    None,
+                    None,
+                    None,
+                ) {
+                    error!("Failed to create space for active output: {}", err);
+                } else {
+                    self.space_list.push(space);
+                }
+            }
+            CosmicPanelOuput::Name(name) => {
+                for (wl_output, output, info) in &self.outputs {
+                    if &output.name() == name {
+                        let mut space = PanelSpace::new(
+                            entry.clone(),
+                            self.c_focused_surface.clone(),
+                            self.c_hovered_surface.clone(),
+                            self.applet_tx.clone(),
+                        );
+                        if let Err(err) = space.new_output(
+                            compositor_state,
+                            layer_state,
+                            connection,
+                            qh,
+                            Some(wl_output.clone()),
+                            Some(output.clone()),
+                            Some(info.clone()),
+                        ) {
+                            error!("Failed to create space for output {}: {}", name, err);
+                        } else {
+                            self.space_list.push(space);
+                        }
+                        break;
+                    }
+                }
             }
         }
     }
