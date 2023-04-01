@@ -251,11 +251,16 @@ impl WrapperSpace for PanelSpace {
                 .collect_vec();
 
             let config_size = self.config.size.to_string();
-            let config_output = self.config.output.to_string();
+            let active_output = CosmicPanelOuput::Name(
+                self.output
+                    .as_ref()
+                    .and_then(|o| o.2.name.clone())
+                    .unwrap_or_default(),
+            ).to_string();
             let config_anchor = self.config.anchor.to_string();
             let env_vars = vec![
                 ("COSMIC_PANEL_SIZE", config_size.as_str()),
-                ("COSMIC_PANEL_OUTPUT", config_output.as_str()),
+                ("COSMIC_PANEL_OUTPUT", active_output.as_str()),
                 ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
             ];
 
@@ -666,12 +671,15 @@ impl WrapperSpace for PanelSpace {
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
     ) -> anyhow::Result<()> {
+        if self.output.is_some() {
+            bail!("output already setup for this panel");
+        }
         if let (Some(_c_output), Some(s_output), Some(output_info)) =
             (c_output.as_ref(), s_output.as_ref(), output_info.as_ref())
         {
             self.space.map_output(s_output, output_info.location);
             match &self.config.output {
-                CosmicPanelOuput::All | CosmicPanelOuput::Active => {
+                CosmicPanelOuput::Active => {
                     bail!("output does not match config")
                 }
                 CosmicPanelOuput::Name(config_name)

@@ -3,6 +3,7 @@
 use std::{collections::HashMap, os::unix::net::UnixStream};
 
 use anyhow::Result;
+use config_watching::watch_config;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
 use launch_pad::{ProcessKey, ProcessManager};
 use sctk::reexports::client::backend::ObjectId;
@@ -17,6 +18,7 @@ use xdg_shell_wrapper::{run, shared_state::GlobalState};
 
 mod space;
 mod space_container;
+mod config_watching;
 
 pub enum PanelCalloopMsg {
     Color([f32; 4]),
@@ -75,6 +77,14 @@ fn main() -> Result<()> {
 
     let (calloop_tx, calloop_rx) = calloop::channel::sync_channel(100);
     let event_loop = calloop::EventLoop::try_new()?;
+
+    let handle = event_loop.handle();
+    match watch_config(&space.config, handle) {
+        Ok(watchers) => {
+            space.watchers = watchers;
+        }
+        Err(e) => warn!("Failed to watch config: {:?}", e),
+    };
 
     event_loop
         .handle()
@@ -189,7 +199,6 @@ fn main() -> Result<()> {
             Ok(())
         });
     }
-
     run(space, event_loop)?;
     Ok(())
 }

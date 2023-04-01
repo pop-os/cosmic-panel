@@ -58,6 +58,7 @@ impl WrapperSpace for SpaceContainer {
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
     ) {
+        self.connection = Some(conn.clone());
         // create a space for each config profile which is configured for Active output and call setup on each
         self.space_list.append(
             &mut self
@@ -116,6 +117,7 @@ impl WrapperSpace for SpaceContainer {
             Some(n) => n,
             None => anyhow::bail!("Output missing name"),
         };
+        self.outputs.push((c_output.clone(), s_output.clone(), output_info.clone()));
 
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
@@ -125,16 +127,13 @@ impl WrapperSpace for SpaceContainer {
             .iter()
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
-                    let mut config = config.clone();
-                    config.output = CosmicPanelOuput::Name(output_name.clone());
-
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
-                        s.config.name == config.name && config.output == s.config.output
+                        s.config.name == config.name && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
                     }) {
                         self.space_list.remove(s)
                     } else {
                         let mut s = PanelSpace::new(
-                            config,
+                            config.clone(),
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
@@ -600,11 +599,12 @@ impl WrapperSpace for SpaceContainer {
 
     fn output_leave(
         &mut self,
-        _c_output: sctk::reexports::client::protocol::wl_output::WlOutput,
-        s_output: Output,
+        c_output: sctk::reexports::client::protocol::wl_output::WlOutput,
+        _s_output: Output,
     ) -> anyhow::Result<()> {
+        self.outputs.retain(|o| o.0 != c_output);
         self.space_list
-            .retain(|s| s.output.as_ref().map(|o| &o.1) != Some(&s_output));
+            .retain(|s| s.output.as_ref().map(|o| &o.0) != Some(&c_output));
         Ok(())
     }
 
@@ -614,9 +614,11 @@ impl WrapperSpace for SpaceContainer {
         s_output: Output,
         info: OutputInfo,
     ) -> anyhow::Result<bool> {
+        self.outputs.retain(|o| o.0 != c_output);
+        self.outputs.push((c_output.clone(), s_output.clone(), info.clone()));
         let mut found = false;
         for s in &mut self.space_list {
-            if s.output.as_ref().map(|o| &o.1) == Some(&s_output) {
+            if s.output.as_ref().map(|o| &o.0) == Some(&c_output) {
                 let _ = s.update_output(c_output.clone(), s_output.clone(), info.clone());
                 found = true;
             }

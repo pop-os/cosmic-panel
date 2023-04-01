@@ -1473,8 +1473,8 @@ impl PanelSpace {
 impl Drop for PanelSpace {
     fn drop(&mut self) {
         // request processes to stop
-        let _ = self.applet_tx.try_send(AppletMsg::Cleanup(
-            self.layer.as_ref().unwrap().wl_surface().id(),
-        ));
+        if let Some(id) = self.layer.as_ref().map(|l| l.wl_surface().id()) {
+            let _ = self.applet_tx.try_send(AppletMsg::Cleanup(id));
+        }
     }
 }

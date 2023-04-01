@@ -15,7 +15,7 @@ use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, Wrap
 use crate::{NAME, VERSION};
 
 /// Edge to which the panel is anchored
-#[derive(Debug, Deserialize, Serialize, Copy, Clone)]
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum PanelAnchor {
     /// anchored to left edge
@@ -100,7 +100,7 @@ impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 }
 
 /// Configurable size for the cosmic panel
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum PanelSize {
     /// XS
@@ -143,7 +143,7 @@ impl FromStr for PanelSize {
 }
 
 /// configurable backgrounds for the cosmic panel
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum CosmicPanelBackground {
     /// theme default color with optional transparency
@@ -154,7 +154,7 @@ pub enum CosmicPanelBackground {
 
 // TODO configurable interpolation type?
 /// configurable autohide behavior
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AutoHide {
     /// time without pointer focus before hiding
@@ -217,7 +217,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
 #[cfg(feature = "wayland-rs")]
 // TODO refactor to have separate dock mode config & panel mode config
 /// Config structure for the cosmic panel
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CosmicPanelConfig {
     /// profile name for this config, should be unique
@@ -402,9 +402,13 @@ impl CosmicPanelConfig {
         }
     }
 
+    pub fn cosmic_config(name: &str) -> Result<Config, cosmic_config::Error> {
+        let entry_name = format!("{NAME}.{}", name);
+        Config::new(&entry_name, VERSION)
+    }
+
     pub fn write_entry(&self) -> Result<(), cosmic_config::Error> {
-        let entry_name = format!("{NAME}.{}", self.name);
-        let config = Config::new(&entry_name, VERSION)?;
+        let config = Self::cosmic_config(&self.name)?;
         config.set("name", &self.name)?;
         config.set("anchor", self.anchor)?;
         config.set("anchor_gap", self.anchor_gap)?;

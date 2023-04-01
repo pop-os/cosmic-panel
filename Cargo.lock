@@ -208,6 +208,7 @@ name = "cosmic-panel-bin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cosmic-config",
  "cosmic-panel-config",
  "cosmic-theme",
  "csscolorparser",
@@ -2216,7 +2217,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#c1af8996077de8ad11ff9c3a9eae6aae839b757f"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#05cbbd4f873cea4cb377a447354718a478958ce3"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2236,7 +2237,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#c1af8996077de8ad11ff9c3a9eae6aae839b757f"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#05cbbd4f873cea4cb377a447354718a478958ce3"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",

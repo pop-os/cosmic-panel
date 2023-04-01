@@ -38,7 +38,7 @@ pub const VERSION: u64 = 1;
 impl CosmicPanelContainerConfig {
     /// load config with the provided name
     pub fn load() -> Result<(Self, Vec<cosmic_config::Error>), cosmic_config::Error> {
-        let config = Self::cosmic_panel_config()?;
+        let config = Self::cosmic_config()?;
         let entry_names = config.get::<Vec<String>>("entries")?;
         let mut config_list = Vec::new();
         let mut entry_errors = Vec::new();
@@ -52,12 +52,12 @@ impl CosmicPanelContainerConfig {
         Ok((Self { config_list }, entry_errors))
     }
 
-    pub fn cosmic_panel_config() -> Result<Config, cosmic_config::Error> {
+    pub fn cosmic_config() -> Result<Config, cosmic_config::Error> {
         Config::new(NAME, VERSION)
     }
 
     pub fn write_entries(&self) -> Result<(), cosmic_config::Error> {
-        let config = Self::cosmic_panel_config()?;
+        let config = Self::cosmic_config()?;
         let entry_names = self
             .config_list
             .iter()
