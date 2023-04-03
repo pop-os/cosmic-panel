@@ -40,3 +40,5 @@ tokio = { version = "1", features = ["process", "sync", "rt", "rt-multi-thread",
 csscolorparser = "0.6.2"
 image = "0.24"
 cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
+zbus = "3.11"
+rand = "0.8" 
