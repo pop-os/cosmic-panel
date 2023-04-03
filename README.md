@@ -7,7 +7,12 @@
 `sudo dpkg -i cosmic-panel_0.1.0_amd64.deb`  
 
 ### Configuring the panel / dock  
-See the provided config.ron for an example configuration for a panel and dock. It can be placed in `~/.config/cosmic-panel/config.ron` or any xdg config directory for cosmic-panel
+See the provided configs for the panel and dock in `data/`. 
+The `com.system76.CosmicPanel` directory contains a key called entries, which is a list of profiles to be loaded. 
+Each profile then has its own directory, for example, `com.system76.CosmicPanel.Panel`. 
+You can make changes to the keys in this directory to alter the config. 
+After making changes to copies of the provided config in data `data/`, you may install each to `$HOME/.config/cosmic/`
+`find data/default-schema-copy -type f -exec install -Dm0644 {} {{$HOME/.config/cosmic}}/{} \;`
 
 ### Usage  
 cosmic-panel
