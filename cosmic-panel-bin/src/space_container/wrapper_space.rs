@@ -117,7 +117,8 @@ impl WrapperSpace for SpaceContainer {
             Some(n) => n,
             None => anyhow::bail!("Output missing name"),
         };
-        self.outputs.push((c_output.clone(), s_output.clone(), output_info.clone()));
+        self.outputs
+            .push((c_output.clone(), s_output.clone(), output_info.clone()));
 
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
@@ -128,7 +129,8 @@ impl WrapperSpace for SpaceContainer {
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
-                        s.config.name == config.name && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
+                        s.config.name == config.name
+                            && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
                     }) {
                         self.space_list.remove(s)
                     } else {
@@ -615,7 +617,8 @@ impl WrapperSpace for SpaceContainer {
         info: OutputInfo,
     ) -> anyhow::Result<bool> {
         self.outputs.retain(|o| o.0 != c_output);
-        self.outputs.push((c_output.clone(), s_output.clone(), info.clone()));
+        self.outputs
+            .push((c_output.clone(), s_output.clone(), info.clone()));
         let mut found = false;
         for s in &mut self.space_list {
             if s.output.as_ref().map(|o| &o.0) == Some(&c_output) {

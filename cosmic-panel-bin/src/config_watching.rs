@@ -28,7 +28,7 @@ pub fn watch_config(
                     .iter()
                     .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c))
                     .map(|c| c.clone())
-                    .collect::<Vec<String>>(); 
+                    .collect::<Vec<String>>();
 
                 for entry in to_update {
                     let cosmic_config = match CosmicPanelConfig::cosmic_config(&entry) {

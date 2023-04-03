@@ -14,6 +14,7 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use launch_pad::process::Process;
+use rand::distributions::{Alphanumeric, DistString};
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
@@ -256,13 +257,17 @@ impl WrapperSpace for PanelSpace {
                     .as_ref()
                     .and_then(|o| o.2.name.clone())
                     .unwrap_or_default(),
-            ).to_string();
+            )
+            .to_string();
             let config_anchor = self.config.anchor.to_string();
             let env_vars = vec![
                 ("COSMIC_PANEL_SIZE", config_size.as_str()),
                 ("COSMIC_PANEL_OUTPUT", active_output.as_str()),
                 ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
             ];
+
+            // each output should have a single notification applet
+            let notification_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
                 if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _)| {
@@ -276,6 +281,7 @@ impl WrapperSpace for PanelSpace {
                             if let Some(exec) = entry.exec() {
                                 let requests_wayland_display =
                                     entry.desktop_entry("X-HostWaylandDisplay").is_some();
+
                                 let mut exec_iter = Shlex::new(exec);
                                 let exec = exec_iter
                                     .next()
@@ -296,7 +302,24 @@ impl WrapperSpace for PanelSpace {
                                 let fd = socket.as_raw_fd().to_string();
                                 applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
                                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
+                                let is_notification_applet =
+                                    entry.desktop_entry("X-NotificationsApplet").is_some();
 
+                                if is_notification_applet {
+                                    if let Some(output) = self.output.as_ref().map(|o| o.0.id()) {
+                                        match self
+                                            .applet_tx
+                                            .try_send(AppletMsg::NotificationId(output, id.clone()))
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => error!("{e}"),
+                                        };
+                                    }
+                                    applet_env.push((
+                                        "COSMIC_PANEL_NOTIFICATIONS_ID",
+                                        notification_id.as_str(),
+                                    ));
+                                }
                                 let display_handle = display.clone();
                                 let applet_tx_clone = self.applet_tx.clone();
                                 let id_clone = id.clone();
@@ -305,6 +328,7 @@ impl WrapperSpace for PanelSpace {
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
+                                let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
 
                                 let process = Process::new()
                                 .with_executable(&exec)
@@ -336,6 +360,7 @@ impl WrapperSpace for PanelSpace {
                                     let id_clone = id_clone.clone();
                                     let client_id_clone = client_id.clone();
                                     let applet_tx_clone = applet_tx_clone.clone();
+                                    let output_id = output_id.clone();
 
                                     let (c, s) = get_client_sock(&mut display_handle);
                                     async move {
@@ -349,6 +374,13 @@ impl WrapperSpace for PanelSpace {
                                         let fd = s.as_raw_fd().to_string();
                                         let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
                                         let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
+                                        let notification_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
+                                        if is_notification_applet {
+                                            if let Some(output_id) = output_id {
+                                                let _ = applet_tx_clone.send(AppletMsg::NotificationId(output_id, notification_id.clone())).await;
+                                                let _ = pman.update_process_env(&key, vec![("COSMIC_PANEL_NOTIFICATIONS_ID", notification_id.as_str())]).await;
+                                            }
+                                        }
                                     }
                                 });
 
@@ -366,6 +398,7 @@ impl WrapperSpace for PanelSpace {
                     }
                 }
             }
+
             Ok(())
         } else {
             bail!("Clients have already been spawned!");

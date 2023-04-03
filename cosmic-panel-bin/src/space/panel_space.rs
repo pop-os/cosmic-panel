@@ -79,6 +79,7 @@ pub enum AppletMsg {
     NewProcess(ObjectId, Process),
     ClientSocketPair(String, ClientId, Client, UnixStream),
     Cleanup(ObjectId),
+    NotificationId(ObjectId, String),
 }
 
 render_elements! {
