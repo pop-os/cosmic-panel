@@ -329,8 +329,12 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
-                        PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
+                        PanelAnchor::Left | PanelAnchor::Right => {
+                            self.dimensions.w + self.config.margin as i32
+                        }
+                        PanelAnchor::Top | PanelAnchor::Bottom => {
+                            self.dimensions.h + self.config.margin as i32
+                        }
                     };
                     let target = -panel_size + handle;
 
@@ -338,9 +342,8 @@ impl PanelSpace {
                     let margin = self.config.get_margin() as i32;
 
                     if progress > total_t {
-                        // XXX needs testing, but docs say that the margin value is only applied to anchored edge
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(handle);
+                            layer_surface.set_exclusive_zone(panel_size + handle);
                         }
                         Self::set_margin(self.config.anchor, margin, target, layer_surface);
                         layer_shell_wl_surface.commit();
@@ -393,8 +396,12 @@ impl PanelSpace {
                     }
                 } else {
                     let panel_size = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
-                        PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
+                        PanelAnchor::Left | PanelAnchor::Right => {
+                            self.dimensions.w + self.config.margin as i32
+                        }
+                        PanelAnchor::Top | PanelAnchor::Bottom => {
+                            self.dimensions.h + self.config.margin as i32
+                        }
                     };
                     let start = -panel_size + handle;
 
@@ -405,7 +412,12 @@ impl PanelSpace {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
-                        layer_surface.set_margin(0, 0, 0, 0);
+                        Self::set_margin(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            0,
+                            layer_surface,
+                        );
                         layer_shell_wl_surface.commit();
                         self.visibility = Visibility::Visible;
                     } else {
@@ -431,10 +443,10 @@ impl PanelSpace {
 
     fn set_margin(anchor: PanelAnchor, margin: i32, target: i32, layer_surface: &LayerSurface) {
         match anchor {
-            PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, target + margin),
-            PanelAnchor::Right => layer_surface.set_margin(margin, target + margin, margin, 0),
-            PanelAnchor::Top => layer_surface.set_margin(target + margin, margin, 0, margin),
-            PanelAnchor::Bottom => layer_surface.set_margin(0, margin, target + margin, margin),
+            PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, target),
+            PanelAnchor::Right => layer_surface.set_margin(margin, target, margin, 0),
+            PanelAnchor::Top => layer_surface.set_margin(target, margin, 0, margin),
+            PanelAnchor::Bottom => layer_surface.set_margin(0, margin, target, margin),
         };
     }
 
@@ -526,17 +538,34 @@ impl PanelSpace {
                     .collect_vec();
                 if let Some(buff) = self.buffer.as_mut() {
                     let mut render_context = buff.render();
+                    let margin_offset = match self.config.anchor {
+                        PanelAnchor::Top | PanelAnchor::Left => self.config.margin as f64,
+                        PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
+                    };
                     let (panel_size, loc) = if is_dock {
                         (
                             self.actual_size,
                             if self.config.is_horizontal() {
-                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0, 0.0)
+                                (
+                                    (self.dimensions.w - self.actual_size.w) as f64 / 2.0,
+                                    margin_offset,
+                                )
                             } else {
-                                (0.0, (self.dimensions.h - self.actual_size.h) as f64 / 2.0)
+                                (
+                                    margin_offset,
+                                    (self.dimensions.h - self.actual_size.h) as f64 / 2.0,
+                                )
                             },
                         )
                     } else {
-                        (self.dimensions.to_physical(1), (0.0, 0.0))
+                        (
+                            self.dimensions.to_physical(1),
+                            if self.config.is_horizontal() {
+                                (0.0, margin_offset)
+                            } else {
+                                (margin_offset, 0.0)
+                            },
+                        )
                     };
                     let _ = render_context.draw(|_| {
                         if self.buffer_changed {
@@ -783,12 +812,13 @@ impl PanelSpace {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
             };
-            input_region.subtract(
-                0,
-                0,
-                self.dimensions.w.max(new_dim.w),
-                self.dimensions.h.max(new_dim.h),
-            );
+            let margin = self.config.margin as i32;
+            let (w, h) = if self.config.is_horizontal() {
+                (new_dim.w, new_dim.h + margin)
+            } else {
+                (new_dim.w + margin, new_dim.h)
+            };
+            input_region.subtract(0, 0, self.dimensions.w.max(w), self.dimensions.h.max(h));
 
             let (layer_length, _) = if self.config.is_horizontal() {
                 (self.dimensions.w, self.dimensions.h)
@@ -806,14 +836,9 @@ impl PanelSpace {
                     (0, side as i32)
                 };
 
-                input_region.add(loc.0, loc.1, new_dim.w, new_dim.h);
+                input_region.add(loc.0, loc.1, w, h);
             } else {
-                input_region.add(
-                    0,
-                    0,
-                    self.dimensions.w.max(new_dim.w),
-                    self.dimensions.h.max(new_dim.h),
-                );
+                input_region.add(0, 0, self.dimensions.w.max(w), self.dimensions.h.max(h));
             }
             layer
                 .wl_surface()
@@ -863,13 +888,20 @@ impl PanelSpace {
 
         let mut prev: u32 = padding;
 
+        // offset for centering
+        let margin_offset = match anchor {
+            PanelAnchor::Top | PanelAnchor::Left => self.config.margin,
+            PanelAnchor::Bottom | PanelAnchor::Right => 0,
+        } as i32;
+
         for (i, w) in &mut windows_left.iter_mut() {
             let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
             let cur: u32 = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
-                        center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -879,7 +911,8 @@ impl PanelSpace {
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
                         cur,
-                        center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -895,7 +928,8 @@ impl PanelSpace {
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
-                        center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -905,7 +939,8 @@ impl PanelSpace {
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
                         cur,
-                        center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -923,7 +958,8 @@ impl PanelSpace {
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
-                        center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -933,7 +969,8 @@ impl PanelSpace {
                 PanelAnchor::Top | PanelAnchor::Bottom => {
                     let cur = (
                         cur,
-                        center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                        margin_offset
+                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -945,9 +982,8 @@ impl PanelSpace {
 
         if self.actual_size.w > 0
             && self.actual_size.h > 0
-            && self.config.border_radius > 0
             && actual_length > 0
-            && self.config.border_radius > 0
+            && (self.config.border_radius > 0 || self.config.margin > 0)
         {
             // corners calculation with border_radius
             let panel_size = if is_dock {
@@ -973,6 +1009,14 @@ impl PanelSpace {
                     .border_radius
                     .min(panel_size.w as u32 / 2)
                     .min(panel_size.h as u32 / 2);
+
+                // early return if no radius
+                if radius == 0 {
+                    return Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
+                        Point::default(),
+                        (panel_size.w, panel_size.h),
+                    )]);
+                }
                 let drawn_radius = 128;
                 let drawn_radius2 = drawn_radius as f64 * drawn_radius as f64;
                 let grid = (0..((drawn_radius + 1) * (drawn_radius + 1)))
@@ -1079,27 +1123,30 @@ impl PanelSpace {
                 if let (Some(size), Some(layer_surface)) =
                     (self.pending_dimensions.take(), self.layer.as_ref())
                 {
-                    let width = size.w.try_into().unwrap();
-                    let height = size.h.try_into().unwrap();
+                    let width: u32 = size.w.try_into().unwrap();
+                    let height: u32 = size.h.try_into().unwrap();
+                    let margin = self.config.margin as u32;
                     if self.config.is_horizontal() {
-                        layer_surface.set_size(0, height);
+                        layer_surface.set_size(0, height + margin);
                     } else {
-                        layer_surface.set_size(width, 0);
+                        layer_surface.set_size(width + margin, 0);
                     }
+                    let list_thickness = match self.config.anchor() {
+                        PanelAnchor::Left | PanelAnchor::Right => width + margin,
+                        PanelAnchor::Top | PanelAnchor::Bottom => height + margin,
+                    };
+
                     if self.config().autohide.is_some() {
                         if self.config.exclusive_zone() {
-                            self.layer
-                                .as_ref()
-                                .unwrap()
-                                .set_exclusive_zone(self.config.get_hide_handle().unwrap() as i32);
+                            self.layer.as_ref().unwrap().set_exclusive_zone(
+                                list_thickness as i32
+                                    + self.config.get_hide_handle().unwrap() as i32,
+                            );
                         } else {
                             self.layer.as_ref().unwrap().set_exclusive_zone(-1);
                         }
-                        let target = match (&self.visibility, self.config.anchor()) {
-                            (Visibility::Hidden, PanelAnchor::Left | PanelAnchor::Right) => -size.w,
-                            (Visibility::Hidden, PanelAnchor::Top | PanelAnchor::Bottom) => -size.h,
-                            _ => 0,
-                        } + self.config.get_hide_handle().unwrap() as i32;
+                        let target =
+                            self.config.get_hide_handle().unwrap() as i32 - list_thickness as i32;
                         Self::set_margin(
                             self.config.anchor,
                             self.config.get_margin() as i32,
@@ -1107,10 +1154,6 @@ impl PanelSpace {
                             layer_surface,
                         );
                     } else if self.config.exclusive_zone() {
-                        let list_thickness = match self.config.anchor() {
-                            PanelAnchor::Left | PanelAnchor::Right => width,
-                            PanelAnchor::Top | PanelAnchor::Bottom => height,
-                        };
                         self.layer
                             .as_ref()
                             .unwrap()
@@ -1151,11 +1194,11 @@ impl PanelSpace {
                     error!("Failed to render error: {:?}", e);
                 }
             }
-            if let Some(egl_surface) = self.egl_surface.as_ref() {
-                if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
-                    self.full_clear = 4;
-                }
-            }
+            // if let Some(egl_surface) = self.egl_surface.as_ref() {
+            //     if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
+            //         self.full_clear = 4;
+            //     }
+            // }
         }
 
         self.last_dirty.unwrap_or_else(Instant::now)
@@ -1197,6 +1240,12 @@ impl PanelSpace {
                         height = 1;
                     }
                     let dim = self.constrain_dim((width as i32, height as i32).into());
+                    let (panel_width, panel_height) = if self.config.is_horizontal() {
+                        (width, height - self.config.margin as i32)
+                    } else {
+                        (width - self.config.margin as i32, height)
+                    };
+
                     if first {
                         let client_egl_surface = unsafe {
                             ClientEglSurface::new(
@@ -1301,7 +1350,7 @@ impl PanelSpace {
                         renderer.replace(new_renderer);
                         egl_display.replace(new_egl_display);
                         self.egl_surface.replace(egl_surface);
-                    } else if self.dimensions != (dim.w, dim.h).into()
+                    } else if self.dimensions != (panel_width, panel_height).into()
                         && self.pending_dimensions.is_none()
                     {
                         self.egl_surface
@@ -1310,10 +1359,10 @@ impl PanelSpace {
                             .resize(dim.w, dim.h, 0, 0);
                     }
 
-                    self.dimensions = (dim.w, dim.h).into();
+                    self.dimensions = (panel_width, panel_height).into();
                     self.damage_tracked_renderer
                         .replace(OutputDamageTracker::new(
-                            self.dimensions.to_physical(1),
+                            dim.to_physical(1),
                             1.0,
                             smithay::utils::Transform::Flipped180,
                         ));
@@ -1344,6 +1393,11 @@ impl PanelSpace {
                     height = 1;
                 }
                 let dim = self.constrain_dim((width as i32, height as i32).into());
+                let (panel_width, panel_height) = if self.config.is_horizontal() {
+                    (width, height - self.config.margin as i32)
+                } else {
+                    (height - self.config.margin as i32, width)
+                };
 
                 self.egl_surface
                     .as_ref()
@@ -1354,15 +1408,14 @@ impl PanelSpace {
                     .as_ref()
                     .unwrap()
                     .resize(width as i32, height as i32, 0, 0);
-                self.dimensions = (width as i32, height as i32).into();
+                self.dimensions = (panel_width, panel_height).into();
                 self.damage_tracked_renderer
                     .replace(OutputDamageTracker::new(
-                        self.dimensions.to_physical(1),
+                        dim.to_physical(1),
                         1.0,
                         smithay::utils::Transform::Flipped180,
                     ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
-                // self.w_accumulated_damage.clear();
                 self.full_clear = 4;
             }
         }
