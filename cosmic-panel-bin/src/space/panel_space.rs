@@ -26,9 +26,13 @@ use sctk::{
 };
 use smithay::{
     backend::{
-        egl::{context::GlAttributes, ffi::egl::SwapInterval, EGLContext},
+        egl::{
+            context::{GlAttributes, PixelFormatRequirements},
+            ffi::egl::SwapInterval,
+            EGLContext,
+        },
         renderer::{
-            damage::DamageTrackedRenderer,
+            damage::OutputDamageTracker,
             element::{
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
@@ -96,7 +100,7 @@ pub(crate) struct PanelSpace {
     pub(crate) c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
     pub(crate) space: Space<Window>,
-    pub(crate) damage_tracked_renderer: Option<DamageTrackedRenderer>,
+    pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
     pub(crate) clients_left: Vec<(String, Client, UnixStream)>,
     pub(crate) clients_center: Vec<(String, Client, UnixStream)>,
     pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
@@ -1225,20 +1229,44 @@ impl PanelSpace {
                                 debug: cfg!(debug_assertions),
                                 vsync: false,
                             },
-                            Default::default(),
+                            PixelFormatRequirements::_10_bit(),
                         )
                         .unwrap_or_else(|_| {
                             EGLContext::new_with_config(
                                 &new_egl_display,
                                 GlAttributes {
-                                    version: (2, 0),
+                                    version: (3, 0),
                                     profile: None,
                                     debug: cfg!(debug_assertions),
                                     vsync: false,
                                 },
-                                Default::default(),
+                                PixelFormatRequirements::_8_bit(),
                             )
-                            .expect("Failed to create EGL context")
+                            .unwrap_or_else(|_| {
+                                EGLContext::new_with_config(
+                                    &new_egl_display,
+                                    GlAttributes {
+                                        version: (2, 0),
+                                        profile: None,
+                                        debug: cfg!(debug_assertions),
+                                        vsync: false,
+                                    },
+                                    PixelFormatRequirements::_10_bit(),
+                                )
+                                .unwrap_or_else(|_| {
+                                    EGLContext::new_with_config(
+                                        &new_egl_display,
+                                        GlAttributes {
+                                            version: (2, 0),
+                                            profile: None,
+                                            debug: cfg!(debug_assertions),
+                                            vsync: false,
+                                        },
+                                        PixelFormatRequirements::_8_bit(),
+                                    )
+                                    .expect("Failed to create EGL context")
+                                })
+                            })
                         });
 
                         let mut new_renderer = if let Some(renderer) = renderer.take() {
@@ -1286,7 +1314,7 @@ impl PanelSpace {
 
                     self.dimensions = (dim.w, dim.h).into();
                     self.damage_tracked_renderer
-                        .replace(DamageTrackedRenderer::new(
+                        .replace(OutputDamageTracker::new(
                             self.dimensions.to_physical(1),
                             1.0,
                             smithay::utils::Transform::Flipped180,
@@ -1330,7 +1358,7 @@ impl PanelSpace {
                     .resize(width as i32, height as i32, 0, 0);
                 self.dimensions = (width as i32, height as i32).into();
                 self.damage_tracked_renderer
-                    .replace(DamageTrackedRenderer::new(
+                    .replace(OutputDamageTracker::new(
                         self.dimensions.to_physical(1),
                         1.0,
                         smithay::utils::Transform::Flipped180,
