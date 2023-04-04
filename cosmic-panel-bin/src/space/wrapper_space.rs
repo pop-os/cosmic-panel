@@ -33,7 +33,7 @@ use sctk::{
 use shlex::Shlex;
 use smithay::desktop::space::SpaceElement;
 use smithay::{
-    backend::renderer::{damage::DamageTrackedRenderer, gles2::Gles2Renderer},
+    backend::renderer::{damage::OutputDamageTracker, gles2::Gles2Renderer},
     desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
@@ -790,7 +790,7 @@ impl WrapperSpace for PanelSpace {
         .next();
         self.layer.replace(client_surface);
         self.damage_tracked_renderer
-            .replace(DamageTrackedRenderer::new(
+            .replace(OutputDamageTracker::new(
                 dimensions.to_physical(1),
                 1.0,
                 smithay::utils::Transform::Flipped180,
