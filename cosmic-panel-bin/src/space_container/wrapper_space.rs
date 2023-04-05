@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0-only
-
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};

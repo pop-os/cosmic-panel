@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0-only
-
 use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
