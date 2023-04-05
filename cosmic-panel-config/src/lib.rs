@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0-only
-
 //! Config for cosmic-panel
 #[cfg(feature = "wayland-rs")]
 mod container_config;

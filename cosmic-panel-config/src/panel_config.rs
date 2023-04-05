@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0-only
-
 //! Config for cosmic-panel
 
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};

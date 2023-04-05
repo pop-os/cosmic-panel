@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0-only
-
 use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
