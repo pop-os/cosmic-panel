@@ -542,18 +542,19 @@ impl PanelSpace {
                         PanelAnchor::Top | PanelAnchor::Left => self.config.margin as f64,
                         PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
                     };
+
                     let (panel_size, loc) = if is_dock {
                         (
                             self.actual_size,
                             if self.config.is_horizontal() {
                                 (
-                                    (self.dimensions.w - self.actual_size.w) as f64 / 2.0,
+                                    ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).floor(),
                                     margin_offset,
                                 )
                             } else {
                                 (
                                     margin_offset,
-                                    (self.dimensions.h - self.actual_size.h) as f64 / 2.0,
+                                    ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).floor(),
                                 )
                             },
                         )
@@ -853,12 +854,12 @@ impl PanelSpace {
         .into();
         new_dim = self.constrain_dim(new_dim);
 
-        let (new_list_length, new_list_thickness) = match anchor {
+        let (new_list_dim_length, new_list_thickness_dim) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
             PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
         };
 
-        if new_list_length != list_length as i32 || new_list_thickness != list_thickness {
+        if new_list_dim_length != list_length as i32 || new_list_thickness_dim != list_thickness {
             self.pending_dimensions = Some(new_dim);
             self.full_clear = 4;
             anyhow::bail!("resizing list");
@@ -870,7 +871,7 @@ impl PanelSpace {
 
         let requested_eq_length: i32 = list_length / num_lists;
         let (right_sum, center_offset) = if is_dock {
-            (0, padding as i32 + (list_length - center_sum) / 2)
+            (0, padding as i32 + (list_length - new_list_length) / 2)
         } else if left_sum <= requested_eq_length
             && center_sum <= requested_eq_length
             && right_sum <= requested_eq_length
