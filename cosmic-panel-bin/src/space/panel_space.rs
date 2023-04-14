@@ -24,6 +24,7 @@ use sctk::{
 };
 use smithay::{
     backend::{
+        allocator::Fourcc,
         egl::{
             context::{GlAttributes, PixelFormatRequirements},
             ffi::egl::SwapInterval,
@@ -54,7 +55,7 @@ use smithay::{
 use smithay::{
     backend::{
         egl::{display::EGLDisplay, surface::EGLSurface},
-        renderer::gles2::Gles2Renderer,
+        renderer::gles::GlesRenderer,
     },
     desktop::{PopupKind, PopupManager, Space, Window},
     reexports::wayland_server::{Client, Resource},
@@ -106,7 +107,6 @@ pub(crate) struct PanelSpace {
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) suggested_length: Option<u32>,
     pub(crate) actual_size: Size<i32, Physical>,
-    pub(crate) full_clear: u8,
     pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
@@ -154,7 +154,6 @@ impl PanelSpace {
         Self {
             config,
             space: Space::default(),
-            full_clear: 0,
             clients_left: Default::default(),
             clients_center: Default::default(),
             clients_right: Default::default(),
@@ -490,7 +489,7 @@ impl PanelSpace {
 
     pub(crate) fn render<W: WrapperSpace>(
         &mut self,
-        renderer: &mut Gles2Renderer,
+        renderer: &mut GlesRenderer,
         time: u32,
         qh: &QueueHandle<GlobalState<W>>,
     ) -> anyhow::Result<()> {
@@ -512,10 +511,6 @@ impl PanelSpace {
             };
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                // let elements = &self
-                //     .space
-                //     .render_elements_for_output(renderer, o)
-                //     .unwrap_or_default().collect_vec();
                 let mut elements: Vec<MyRenderElements<_>> = self
                     .space
                     .elements()
@@ -670,7 +665,6 @@ impl PanelSpace {
         }
 
         let _ = renderer.unbind();
-        self.full_clear = self.full_clear.checked_sub(1).unwrap_or_default();
         Ok(())
     }
 
@@ -861,7 +855,7 @@ impl PanelSpace {
 
         if new_list_dim_length != list_length as i32 || new_list_thickness_dim != list_thickness {
             self.pending_dimensions = Some(new_dim);
-            self.full_clear = 4;
+            self.is_dirty = true;
             anyhow::bail!("resizing list");
         }
 
@@ -992,8 +986,14 @@ impl PanelSpace {
             } else {
                 self.dimensions.to_physical(1)
             };
-            let mut buff =
-                MemoryRenderBuffer::new((panel_size.w, panel_size.h), 1, Transform::Normal, None);
+
+            let mut buff = MemoryRenderBuffer::new(
+                Fourcc::Abgr8888,
+                (panel_size.w, panel_size.h),
+                1,
+                Transform::Normal,
+                None,
+            );
             let mut render_context = buff.render();
             let bg_color = self
                 .bg_color
@@ -1097,7 +1097,7 @@ impl PanelSpace {
         _dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
-        renderer: Option<&mut Gles2Renderer>,
+        mut renderer: Option<&mut GlesRenderer>,
         qh: &QueueHandle<GlobalState<W>>,
     ) -> Instant {
         self.space.refresh();
@@ -1175,7 +1175,7 @@ impl PanelSpace {
                         height: size.h,
                     }));
                 } else if self.layer.is_some() {
-                    should_render = if self.full_clear == 4 {
+                    should_render = if self.is_dirty {
                         let update_res = self.update_window_locations();
                         update_res.is_ok()
                     } else {
@@ -1185,21 +1185,16 @@ impl PanelSpace {
             }
         }
 
-        if let Some(renderer) = renderer {
+        if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
             self.popups
                 .retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
 
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
-                    error!("Failed to render error: {:?}", e);
+                    error!("Failed to render, error: {:?}", e);
                 }
             }
-            // if let Some(egl_surface) = self.egl_surface.as_ref() {
-            //     if egl_surface.get_size() != Some(self.dimensions.to_physical(1)) {
-            //         self.full_clear = 4;
-            //     }
-            // }
         }
 
         self.last_dirty.unwrap_or_else(Instant::now)
@@ -1209,7 +1204,7 @@ impl PanelSpace {
         &mut self,
         _layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
-        renderer: &mut Option<Gles2Renderer>,
+        renderer: &mut Option<GlesRenderer>,
         egl_display: &mut Option<EGLDisplay>,
     ) {
         let (w, h) = configure.new_size;
@@ -1316,12 +1311,23 @@ impl PanelSpace {
                                 })
                             })
                         });
+                        let egl_context = EGLContext::new_with_config(
+                            &new_egl_display,
+                            GlAttributes {
+                                version: (2, 0),
+                                profile: None,
+                                debug: cfg!(debug_assertions),
+                                vsync: false,
+                            },
+                            PixelFormatRequirements::_8_bit(),
+                        )
+                        .expect("Failed to create EGL context");
 
                         let mut new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
                         } else {
                             unsafe {
-                                Gles2Renderer::new(egl_context)
+                                GlesRenderer::new(egl_context)
                                     .expect("Failed to create EGL Surface")
                             }
                         };
@@ -1354,10 +1360,13 @@ impl PanelSpace {
                     } else if self.dimensions != (panel_width, panel_height).into()
                         && self.pending_dimensions.is_none()
                     {
-                        self.egl_surface
-                            .as_ref()
-                            .unwrap()
-                            .resize(dim.w, dim.h, 0, 0);
+                        if let (Some(renderer), Some(egl_surface)) =
+                            (renderer.as_mut(), self.egl_surface.as_ref())
+                        {
+                            let _ = renderer.bind(egl_surface.clone());
+                            egl_surface.resize(dim.w, dim.h, 0, 0);
+                            let _ = renderer.unbind();
+                        }
                     }
 
                     self.dimensions = (panel_width, panel_height).into();
@@ -1368,7 +1377,7 @@ impl PanelSpace {
                             smithay::utils::Transform::Flipped180,
                         ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
-                    self.full_clear = 4;
+                    self.is_dirty = true;
                 }
                 SpaceEvent::Quit => (),
             },
@@ -1399,16 +1408,13 @@ impl PanelSpace {
                 } else {
                     (height - self.config.margin as i32, width)
                 };
-
-                self.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .resize(dim.w as i32, dim.h as i32, 0, 0);
-
-                self.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .resize(width as i32, height as i32, 0, 0);
+                if let (Some(renderer), Some(egl_surface)) =
+                    (renderer.as_mut(), self.egl_surface.as_ref())
+                {
+                    let _ = renderer.bind(egl_surface.clone());
+                    egl_surface.resize(width as i32, height as i32, 0, 0);
+                    let _ = renderer.unbind();
+                }
                 self.dimensions = (panel_width, panel_height).into();
                 self.damage_tracked_renderer
                     .replace(OutputDamageTracker::new(
@@ -1417,7 +1423,7 @@ impl PanelSpace {
                         smithay::utils::Transform::Flipped180,
                     ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
-                self.full_clear = 4;
+                self.is_dirty = true;
             }
         }
     }
@@ -1426,7 +1432,7 @@ impl PanelSpace {
         &mut self,
         popup: &sctk::shell::xdg::popup::Popup,
         config: sctk::shell::xdg::popup::PopupConfigure,
-        renderer: Option<&mut Gles2Renderer>,
+        renderer: Option<&mut GlesRenderer>,
         egl_display: Option<&mut EGLDisplay>,
     ) {
         let (renderer, egl_display) =
@@ -1476,9 +1482,6 @@ impl PanelSpace {
                 popup::ConfigureKind::Reposition { token: _token } => {
                     p.rectangle.size.w = width;
                     p.rectangle.size.h = height;
-                    if let Some(egl_surface) = p.egl_surface.as_mut() {
-                        egl_surface.resize(width, height, 0, 0);
-                    }
                 }
                 _ => {}
             };
@@ -1493,7 +1496,7 @@ impl PanelSpace {
             }
         }
         self.bg_color = color;
-        self.full_clear = 4;
+        self.is_dirty = true;
     }
 
     pub fn apply_positioner_state(

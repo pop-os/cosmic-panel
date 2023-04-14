@@ -31,7 +31,7 @@ use sctk::{
 use shlex::Shlex;
 use smithay::desktop::space::SpaceElement;
 use smithay::{
-    backend::renderer::{damage::OutputDamageTracker, gles2::Gles2Renderer},
+    backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
     desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
@@ -77,11 +77,8 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn add_window(&mut self, w: Window) {
-        self.full_clear = 4;
+        self.is_dirty = true;
         self.space.map_element(w.clone(), (0, 0), false);
-        // for w in self.space.elements() {
-        //     w.on_commit();
-        // }
     }
 
     fn add_popup<W: WrapperSpace>(
@@ -362,6 +359,7 @@ impl WrapperSpace for PanelSpace {
 
                                     let (c, s) = get_client_sock(&mut display_handle);
                                     async move {
+                                        error!("Exited with error code {:?}", err_code);
                                         if !is_restarting {
                                             if let Some(err_code) = err_code {
                                                 error!("Exited with error code and will not restart! {}", err_code);
@@ -420,19 +418,13 @@ impl WrapperSpace for PanelSpace {
     fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
         self.is_dirty = true;
         self.last_dirty = Some(Instant::now());
-
         if let Some(w) = self
             .space
             .elements()
             .find(|w| w.wl_surface().as_ref() == Some(s))
         {
-            let old_bbox = w.bbox();
             w.on_commit();
             w.refresh();
-            let new_bbox = w.bbox();
-            if old_bbox.size != new_bbox.size {
-                self.full_clear = 4;
-            }
         }
     }
 
@@ -488,7 +480,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     // XXX the renderer is provided by the container, not tracked by the PanelSpace
-    fn renderer(&mut self) -> Option<&mut Gles2Renderer> {
+    fn renderer(&mut self) -> Option<&mut GlesRenderer> {
         None
     }
 
@@ -688,7 +680,7 @@ impl WrapperSpace for PanelSpace {
     ) -> anyhow::Result<bool> {
         self.output.replace((c_output, s_output, info));
         self.dimensions = self.constrain_dim(self.dimensions.clone());
-        self.full_clear = 4;
+        self.is_dirty = true;
         Ok(true)
     }
 
@@ -795,7 +787,7 @@ impl WrapperSpace for PanelSpace {
             ));
         self.dimensions = dimensions;
         self.space_event = next_render_event;
-        self.full_clear = 4;
+        self.is_dirty = true;
         Ok(())
     }
 

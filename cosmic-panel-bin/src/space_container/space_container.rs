@@ -9,7 +9,7 @@ use sctk::{
     shell::wlr_layer::LayerShell,
 };
 use smithay::{
-    backend::{egl::EGLDisplay, renderer::gles2::Gles2Renderer},
+    backend::{egl::EGLDisplay, renderer::gles::GlesRenderer},
     output::Output,
     reexports::wayland_server::{self, backend::ClientId, Client},
 };
@@ -25,7 +25,7 @@ pub struct SpaceContainer {
     pub(crate) connection: Option<Connection>,
     pub(crate) config: CosmicPanelContainerConfig,
     pub(crate) space_list: Vec<PanelSpace>,
-    pub(crate) renderer: Option<Gles2Renderer>,
+    pub(crate) renderer: Option<GlesRenderer>,
     pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) s_display: Option<wayland_server::DisplayHandle>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
@@ -90,7 +90,7 @@ impl SpaceContainer {
 
                 *s_client = client;
                 *s_socket = socket;
-                s.full_clear = 4;
+                s.is_dirty = true;
                 // s.w_accumulated_damage.clear();
                 break;
             }
