@@ -363,7 +363,7 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles2::Gles2Renderer> {
+    fn renderer(&mut self) -> Option<&mut smithay::backend::renderer::gles::GlesRenderer> {
         self.renderer.as_mut()
     }
 
