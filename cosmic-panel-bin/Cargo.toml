@@ -10,10 +10,10 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"], rev = "b1549d3"}
-sctk = { git = "https://github.com/wash2/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "ad81742" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "data-device" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "data-device" }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"], rev = "dd36639"}
+sctk = { git = "https://github.com/pop-os/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "6cd6095" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "ebe1021" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "ebe1021" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"] }

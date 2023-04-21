@@ -1272,57 +1272,22 @@ impl PanelSpace {
                                 debug: cfg!(debug_assertions),
                                 vsync: false,
                             },
-                            PixelFormatRequirements::_10_bit(),
+                            PixelFormatRequirements::_8_bit(),
                         )
                         .unwrap_or_else(|_| {
                             EGLContext::new_with_config(
                                 &new_egl_display,
                                 GlAttributes {
-                                    version: (3, 0),
+                                    version: (2, 0),
                                     profile: None,
                                     debug: cfg!(debug_assertions),
                                     vsync: false,
                                 },
                                 PixelFormatRequirements::_8_bit(),
                             )
-                            .unwrap_or_else(|_| {
-                                EGLContext::new_with_config(
-                                    &new_egl_display,
-                                    GlAttributes {
-                                        version: (2, 0),
-                                        profile: None,
-                                        debug: cfg!(debug_assertions),
-                                        vsync: false,
-                                    },
-                                    PixelFormatRequirements::_10_bit(),
-                                )
-                                .unwrap_or_else(|_| {
-                                    EGLContext::new_with_config(
-                                        &new_egl_display,
-                                        GlAttributes {
-                                            version: (2, 0),
-                                            profile: None,
-                                            debug: cfg!(debug_assertions),
-                                            vsync: false,
-                                        },
-                                        PixelFormatRequirements::_8_bit(),
-                                    )
-                                    .expect("Failed to create EGL context")
-                                })
-                            })
+                            .expect("Failed to create EGL context")
                         });
-                        let egl_context = EGLContext::new_with_config(
-                            &new_egl_display,
-                            GlAttributes {
-                                version: (2, 0),
-                                profile: None,
-                                debug: cfg!(debug_assertions),
-                                vsync: false,
-                            },
-                            PixelFormatRequirements::_8_bit(),
-                        )
-                        .expect("Failed to create EGL context");
-
+                        
                         let mut new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
                         } else {
