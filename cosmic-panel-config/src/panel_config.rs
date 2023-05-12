@@ -518,6 +518,10 @@ impl CosmicPanelConfig {
 
         (default, errors)
     }
+
+    pub fn is_dock(&self) -> bool {
+        !self.expand_to_edges && self.plugins_wings.is_none()
+    }
 }
 
 #[cfg(feature = "wayland-rs")]

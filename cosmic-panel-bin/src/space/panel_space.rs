@@ -682,16 +682,13 @@ impl PanelSpace {
                 (self.dimensions.w, self.dimensions.h, self.actual_size.w)
             }
         };
+        let is_dock = self.config.is_dock();
 
         let mut num_lists = 0;
         if self.config.plugins_wings.is_some() {
             num_lists += 2;
         }
-        let mut is_dock = false;
         if self.config.plugins_center.is_some() {
-            if num_lists == 0 {
-                is_dock = true;
-            }
             num_lists += 1;
         }
 
@@ -802,7 +799,7 @@ impl PanelSpace {
         .into();
 
         // update input region of panel when list length changes
-        if actual_length != new_list_length && !self.config.expand_to_edges {
+        if actual_length != new_list_length && !is_dock {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
@@ -866,6 +863,8 @@ impl PanelSpace {
         let requested_eq_length: i32 = list_length / num_lists;
         let (right_sum, center_offset) = if is_dock {
             (0, padding as i32 + (list_length - new_list_length) / 2)
+        } else if num_lists == 1 {
+            (0, (requested_eq_length - center_sum) / 2)
         } else if left_sum <= requested_eq_length
             && center_sum <= requested_eq_length
             && right_sum <= requested_eq_length
@@ -1287,7 +1286,7 @@ impl PanelSpace {
                             )
                             .expect("Failed to create EGL context")
                         });
-                        
+
                         let mut new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
                         } else {
