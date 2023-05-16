@@ -756,7 +756,7 @@ impl WrapperSpace for PanelSpace {
             cosmic_panel_config::PanelAnchor::Bottom => Anchor::all().difference(Anchor::TOP),
         });
 
-        if !self.config.is_dock() {
+        if self.config.is_dock() {
             let input_region = Region::new(compositor_state)?;
             client_surface
                 .wl_surface()
