@@ -799,7 +799,7 @@ impl PanelSpace {
         .into();
 
         // update input region of panel when list length changes
-        if actual_length != new_list_length && !is_dock {
+        if actual_length != new_list_length && is_dock {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
