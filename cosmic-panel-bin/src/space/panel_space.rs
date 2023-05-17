@@ -335,10 +335,10 @@ impl PanelSpace {
                 } else {
                     let panel_size = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => {
-                            self.dimensions.w + self.config.margin as i32
+                            self.dimensions.w + self.config.get_effective_anchor_gap() as i32
                         }
                         PanelAnchor::Top | PanelAnchor::Bottom => {
-                            self.dimensions.h + self.config.margin as i32
+                            self.dimensions.h + self.config.get_effective_anchor_gap() as i32
                         }
                     };
                     let target = -panel_size + handle;
@@ -402,10 +402,10 @@ impl PanelSpace {
                 } else {
                     let panel_size = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => {
-                            self.dimensions.w + self.config.margin as i32
+                            self.dimensions.w + self.config.get_effective_anchor_gap() as i32
                         }
                         PanelAnchor::Top | PanelAnchor::Bottom => {
-                            self.dimensions.h + self.config.margin as i32
+                            self.dimensions.h + self.config.get_effective_anchor_gap() as i32
                         }
                     };
                     let start = -panel_size + handle;
@@ -541,7 +541,9 @@ impl PanelSpace {
                 if let Some(buff) = self.buffer.as_mut() {
                     let mut render_context = buff.render();
                     let margin_offset = match self.config.anchor {
-                        PanelAnchor::Top | PanelAnchor::Left => self.config.margin as f64,
+                        PanelAnchor::Top | PanelAnchor::Left => {
+                            self.config.get_effective_anchor_gap() as f64
+                        }
                         PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
                     };
 
@@ -810,7 +812,7 @@ impl PanelSpace {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
             };
-            let margin = self.config.margin as i32;
+            let margin = self.config.get_effective_anchor_gap() as i32;
             let (w, h) = if self.config.is_horizontal() {
                 (new_dim.w, new_dim.h + margin)
             } else {
@@ -890,7 +892,7 @@ impl PanelSpace {
 
         // offset for centering
         let margin_offset = match anchor {
-            PanelAnchor::Top | PanelAnchor::Left => self.config.margin,
+            PanelAnchor::Top | PanelAnchor::Left => self.config.get_effective_anchor_gap(),
             PanelAnchor::Bottom | PanelAnchor::Right => 0,
         } as i32;
 
@@ -983,7 +985,7 @@ impl PanelSpace {
         if self.actual_size.w > 0
             && self.actual_size.h > 0
             && actual_length > 0
-            && (self.config.border_radius > 0 || self.config.margin > 0)
+            && (self.config.border_radius > 0 || self.config.get_effective_anchor_gap() > 0)
         {
             // corners calculation with border_radius
             let panel_size = if is_dock {
@@ -1066,6 +1068,7 @@ impl PanelSpace {
                     radius as u32,
                     image::imageops::FilterType::CatmullRom,
                 );
+
                 for (i, color) in corner_image.pixels().enumerate() {
                     let (x, y) = (i as u32 % radius, i as u32 / radius);
                     let top_left = (radius - 1 - x, radius - 1 - y);
@@ -1075,7 +1078,13 @@ impl PanelSpace {
                         panel_size.w as u32 - radius + x,
                         panel_size.h as u32 - radius + y,
                     );
-                    for (c_x, c_y) in [top_left, top_right, bottom_left, bottom_right] {
+                    for (c_x, c_y) in match (self.config.anchor, self.config.anchor_gap) {
+                        (PanelAnchor::Left, false) => vec![top_right, bottom_right],
+                        (PanelAnchor::Right, false) => vec![top_left, bottom_left],
+                        (PanelAnchor::Top, false) => vec![bottom_left, bottom_right],
+                        (PanelAnchor::Bottom, false) => vec![top_left, top_right],
+                        _ => vec![top_left, top_right, bottom_left, bottom_right],
+                    } {
                         let b_i = (c_y * panel_size.w as u32 + c_x) as usize * 4;
                         let c = buffer.get_mut(b_i..b_i + 4).unwrap();
                         c.copy_from_slice(&color.0);
@@ -1131,7 +1140,7 @@ impl PanelSpace {
                 {
                     let width: u32 = size.w.try_into().unwrap();
                     let height: u32 = size.h.try_into().unwrap();
-                    let margin = self.config.margin as u32;
+                    let margin = self.config.get_effective_anchor_gap() as u32;
                     if self.config.is_horizontal() {
                         layer_surface.set_size(0, height + margin);
                     } else {
@@ -1241,9 +1250,15 @@ impl PanelSpace {
                     }
                     let dim = self.constrain_dim((width as i32, height as i32).into());
                     let (panel_width, panel_height) = if self.config.is_horizontal() {
-                        (width, height - self.config.margin as i32)
+                        (
+                            width,
+                            height - self.config.get_effective_anchor_gap() as i32,
+                        )
                     } else {
-                        (width - self.config.margin as i32, height)
+                        (
+                            width - self.config.get_effective_anchor_gap() as i32,
+                            height,
+                        )
                     };
 
                     if first {
@@ -1373,9 +1388,15 @@ impl PanelSpace {
                 }
                 let dim = self.constrain_dim((width as i32, height as i32).into());
                 let (panel_width, panel_height) = if self.config.is_horizontal() {
-                    (width, height - self.config.margin as i32)
+                    (
+                        width,
+                        height - self.config.get_effective_anchor_gap() as i32,
+                    )
                 } else {
-                    (height - self.config.margin as i32, width)
+                    (
+                        height - self.config.get_effective_anchor_gap() as i32,
+                        width,
+                    )
                 };
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
