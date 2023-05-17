@@ -122,49 +122,6 @@ fn main() -> Result<()> {
             t.bg_color().alpha,
         ]);
 
-        // TODO load theme once theme colors are supported in cosmic apps
-        // let path = xdg::BaseDirectories::with_prefix("gtk-4.0")
-        //     .ok()
-        //     .and_then(|xdg_dirs| xdg_dirs.find_config_file("cosmic.css"))
-        //     .unwrap_or_else(|| "~/.config/gtk-4.0/cosmic.css".into());
-        // if let Ok(xdg_dirs) = xdg::BaseDirectories::with_prefix(NAME) {
-        //     // initital send of color
-        //     space.set_theme_window_color(get_color(&path).unwrap_or([0.5, 0.5, 0.5, 0.5]));
-        //     // Automatically select the best implementation for your platform.
-        //     // You can also access each implementation directly e.g. INotifyWatcher.
-        //     let color_tx_clone = calloop_tx.clone();
-        //     if let Ok(mut watcher) = RecommendedWatcher::new(
-        //         move |res: Result<notify::Event, notify::Error>| {
-        //             if let Ok(e) = res {
-        //                 let color_tx = color_tx_clone.clone();
-        //                 match e.kind {
-        //                     // TODO only notify for changed data file if it is the active file
-        //                     notify::EventKind::Create(_)
-        //                     | notify::EventKind::Modify(_)
-        //                     | notify::EventKind::Remove(_) => {
-        //                         let _ = color_tx.send(PanelCalloopMsg::Color(
-        //                             get_color(&path).unwrap_or([0.5, 0.5, 0.5, 0.5]),
-        //                         ));
-        //                     }
-        //                     _ => {}
-        //                 }
-        //             }
-        //         },
-        //         notify::Config::default(),
-        //     ) {
-        //         for config_dir in xdg_dirs.get_config_dirs() {
-        //             let _ = watcher.watch(&config_dir, RecursiveMode::Recursive);
-        //         }
-        //         for data_dir in xdg_dirs.get_data_dirs() {
-        //             let _ = watcher.watch(data_dir.as_ref(), RecursiveMode::Recursive);
-        //         }
-
-        //         for data_dir in xdg_dirs.get_data_dirs() {
-        //             let _ = watcher.watch(data_dir.as_ref(), RecursiveMode::Recursive);
-        //         }
-        //     }
-        // }
-
         std::thread::spawn(move || -> anyhow::Result<()> {
             let rt = runtime::Builder::new_current_thread()
                 .enable_all()

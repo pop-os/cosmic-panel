@@ -122,8 +122,8 @@ impl WrapperSpace for SpaceContainer {
         // create the spaces that are configured to use this output, including spaces configured for All
         let mut new_spaces = self
             .config
-            .config_list
-            .iter()
+            .configs_for_output(&output_name)
+            .into_iter()
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {

@@ -728,8 +728,6 @@ impl WrapperSpace for PanelSpace {
             _ => bail!("Invalid layer"),
         };
 
-        // TODO set margin and exclusive zone here too
-
         let surface = compositor_state.create_surface(&qh);
         let client_surface =
             layer_state.create_layer_surface(&qh, surface, layer, Some("Panel"), c_output.as_ref());
@@ -748,7 +746,6 @@ impl WrapperSpace for PanelSpace {
             dimensions.h.try_into().unwrap(),
         );
 
-        // client_surface.set_exclusive_zone(exclusive_zone);
         client_surface.set_anchor(match self.config.anchor {
             cosmic_panel_config::PanelAnchor::Left => Anchor::all().difference(Anchor::RIGHT),
             cosmic_panel_config::PanelAnchor::Right => Anchor::all().difference(Anchor::LEFT),
@@ -756,7 +753,7 @@ impl WrapperSpace for PanelSpace {
             cosmic_panel_config::PanelAnchor::Bottom => Anchor::all().difference(Anchor::TOP),
         });
 
-        if self.config.is_dock() {
+        if self.config.effectively_extends() {
             let input_region = Region::new(compositor_state)?;
             client_surface
                 .wl_surface()

@@ -682,7 +682,7 @@ impl PanelSpace {
                 (self.dimensions.w, self.dimensions.h, self.actual_size.w)
             }
         };
-        let is_dock = self.config.is_dock();
+        let is_dock = self.config.effectively_extends();
 
         let mut num_lists = 0;
         if self.config.plugins_wings.is_some() {
@@ -1142,9 +1142,8 @@ impl PanelSpace {
                                 list_thickness as i32
                                     + self.config.get_hide_handle().unwrap() as i32,
                             );
-                        } else {
-                            self.layer.as_ref().unwrap().set_exclusive_zone(-1);
                         }
+
                         let target =
                             self.config.get_hide_handle().unwrap() as i32 - list_thickness as i32;
                         Self::set_margin(

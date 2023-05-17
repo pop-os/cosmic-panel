@@ -118,6 +118,8 @@ impl SpaceContainer {
             return;
         }
 
+        // TODO: Lower priority panel surfaces are recreated on the same output as well after updating the config
+
         if let Some(config) = self
             .config
             .config_list
@@ -137,33 +139,8 @@ impl SpaceContainer {
         // remove old one if it exists
         self.space_list.retain(|s| s.config.name != entry.name);
 
-        match &entry.output {
-            CosmicPanelOuput::All => {
-                for (wl_output, output, info) in &self.outputs {
-                    let mut space = PanelSpace::new(
-                        entry.clone(),
-                        self.c_focused_surface.clone(),
-                        self.c_hovered_surface.clone(),
-                        self.applet_tx.clone(),
-                    );
-                    if let Some(s_display) = self.s_display.as_ref() {
-                        space.set_display_handle(s_display.clone());
-                    }
-                    if let Err(err) = space.new_output(
-                        compositor_state,
-                        layer_state,
-                        connection,
-                        qh,
-                        Some(wl_output.clone()),
-                        Some(output.clone()),
-                        Some(info.clone()),
-                    ) {
-                        error!("Failed to create space for output: {}", err);
-                    } else {
-                        self.space_list.push(space);
-                    }
-                }
-            }
+        // TODO cleanup
+        let outputs: Vec<_> = match &entry.output {
             CosmicPanelOuput::Active => {
                 let mut space = PanelSpace::new(
                     entry.clone(),
@@ -187,30 +164,70 @@ impl SpaceContainer {
                 } else {
                     self.space_list.push(space);
                 }
+                vec![]
             }
-            CosmicPanelOuput::Name(name) => {
-                for (wl_output, output, info) in &self.outputs {
-                    if &output.name() == name {
-                        let mut space = PanelSpace::new(
-                            entry.clone(),
-                            self.c_focused_surface.clone(),
-                            self.c_hovered_surface.clone(),
-                            self.applet_tx.clone(),
-                        );
-                        if let Err(err) = space.new_output(
-                            compositor_state,
-                            layer_state,
-                            connection,
-                            qh,
-                            Some(wl_output.clone()),
-                            Some(output.clone()),
-                            Some(info.clone()),
-                        ) {
-                            error!("Failed to create space for output {}: {}", name, err);
-                        } else {
-                            self.space_list.push(space);
-                        }
-                        break;
+            CosmicPanelOuput::All => self.outputs.iter().collect(),
+            CosmicPanelOuput::Name(name) => self
+                .outputs
+                .iter()
+                .filter(|(_, output, _)| &output.name() == name)
+                .collect(),
+        };
+
+        for (wl_output, output, info) in outputs {
+            let output_name = output.name();
+
+            let mut space = PanelSpace::new(
+                entry.clone(),
+                self.c_focused_surface.clone(),
+                self.c_hovered_surface.clone(),
+                self.applet_tx.clone(),
+            );
+            if let Some(s_display) = self.s_display.as_ref() {
+                space.set_display_handle(s_display.clone());
+            }
+            if let Err(err) = space.new_output(
+                compositor_state,
+                layer_state,
+                connection,
+                qh,
+                Some(wl_output.clone()),
+                Some(output.clone()),
+                Some(info.clone()),
+            ) {
+                error!("Failed to create space for output: {}", err);
+            } else {
+                self.space_list.push(space);
+            }
+
+            // recreate the lower priority panels on the same output
+            for c in self.config.configs_for_output(&output_name) {
+                if c.get_priority() < entry.get_priority() {
+                    self.space_list.retain(|s| {
+                        s.config.name != c.name
+                            || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
+                    });
+                    let mut space = PanelSpace::new(
+                        c.clone(),
+                        self.c_focused_surface.clone(),
+                        self.c_hovered_surface.clone(),
+                        self.applet_tx.clone(),
+                    );
+                    if let Some(s_display) = self.s_display.as_ref() {
+                        space.set_display_handle(s_display.clone());
+                    }
+                    if let Err(err) = space.new_output(
+                        compositor_state,
+                        layer_state,
+                        connection,
+                        qh,
+                        Some(wl_output.clone()),
+                        Some(output.clone()),
+                        Some(info.clone()),
+                    ) {
+                        error!("Failed to create space for output: {}", err);
+                    } else {
+                        self.space_list.push(space);
                     }
                 }
             }

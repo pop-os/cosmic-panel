@@ -292,6 +292,16 @@ impl CosmicPanelConfig {
         }
     }
 
+    /// get the priority of the panel
+    /// higher priority panels will be created first and given more space when competing for space
+    pub fn get_priority(&self) -> u32 {
+        let mut priority = if self.effectively_extends() { 100 } else { 0 };
+        if self.name.to_lowercase().contains("panel") {
+            priority += 10;
+        }
+        priority
+    }
+
     /// get margin between the panel and the edge of the output
     pub fn get_margin(&self) -> u16 {
         self.margin
@@ -519,7 +529,7 @@ impl CosmicPanelConfig {
         (default, errors)
     }
 
-    pub fn is_dock(&self) -> bool {
+    pub fn effectively_extends(&self) -> bool {
         !self.expand_to_edges && self.plugins_wings.is_none()
     }
 }
