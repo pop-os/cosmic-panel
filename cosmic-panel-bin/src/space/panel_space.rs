@@ -151,6 +151,12 @@ impl PanelSpace {
             CosmicPanelBackground::Color(c) => c,
         };
 
+        let visibility = if config.autohide.is_none() {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+
         Self {
             config,
             space: Space::default(),
@@ -168,7 +174,7 @@ impl PanelSpace {
             layer: Default::default(),
             egl_surface: Default::default(),
             popups: Default::default(),
-            visibility: Visibility::Visible,
+            visibility,
             start_instant: Instant::now(),
             c_focused_surface,
             c_hovered_surface,
