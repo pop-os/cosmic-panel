@@ -1,4 +1,4 @@
-use crate::CosmicPanelConfig;
+use crate::{CosmicPanelConfig, CosmicPanelOuput};
 use cosmic_config::{Config, ConfigGet, ConfigSet};
 use serde::{Deserialize, Serialize};
 use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
@@ -50,6 +50,20 @@ impl CosmicPanelContainerConfig {
             entry_errors.append(&mut errors);
         }
         Ok((Self { config_list }, entry_errors))
+    }
+
+    pub fn configs_for_output(&self, output_name: &str) -> Vec<&CosmicPanelConfig> {
+        let mut configs: Vec<_> = self
+            .config_list
+            .iter()
+            .filter(|c| match &c.output {
+                CosmicPanelOuput::All => true,
+                CosmicPanelOuput::Name(n) => n == output_name,
+                _ => false,
+            })
+            .collect();
+        configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
+        configs
     }
 
     pub fn cosmic_config() -> Result<Config, cosmic_config::Error> {
