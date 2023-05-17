@@ -307,6 +307,15 @@ impl CosmicPanelConfig {
         self.margin
     }
 
+    /// get the effective anchor gap margin
+    pub fn get_effective_anchor_gap(&self) -> u32 {
+        if self.anchor_gap {
+            self.margin as u32
+        } else {
+            0
+        }
+    }
+
     /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
     pub fn get_hide_wait(&self) -> Option<Duration> {
         self.autohide
