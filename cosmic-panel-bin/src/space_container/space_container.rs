@@ -139,7 +139,6 @@ impl SpaceContainer {
         // remove old one if it exists
         self.space_list.retain(|s| s.config.name != entry.name);
 
-        // TODO cleanup
         let outputs: Vec<_> = match &entry.output {
             CosmicPanelOuput::Active => {
                 let mut space = PanelSpace::new(
