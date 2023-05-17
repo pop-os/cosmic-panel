@@ -525,6 +525,7 @@ impl PanelSpace {
                             w.toplevel().wl_surface(),
                             loc,
                             1.0,
+                            1.0,
                         )
                         .into_iter()
                         .map(|r| MyRenderElements::WaylandSurface(r))
@@ -583,7 +584,7 @@ impl PanelSpace {
                     }
                 }
 
-                let _ = my_renderer
+                let mut res = my_renderer
                     .render_output(
                         renderer,
                         self.egl_surface
@@ -595,12 +596,10 @@ impl PanelSpace {
                         *clear_color,
                     )
                     .unwrap();
-                self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
-                // FIXME: damage tracking issues on integrated graphics but not nvidia
-                // self.egl_surface
-                //     .as_ref()
-                //     .unwrap()
-                //     .swap_buffers(res.0.as_deref_mut())?;
+                self.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .swap_buffers(res.0.as_deref_mut())?;
 
                 let _ = renderer.unbind();
                 for window in self.space.elements() {
@@ -635,12 +634,13 @@ impl PanelSpace {
                         p.s_surface.wl_surface(),
                         (0, 0),
                         1.0,
+                        1.0,
                     );
                 if let Ok(mut frame) = renderer.render(
                     p.rectangle.size.to_physical(1),
                     smithay::utils::Transform::Flipped180,
                 ) {
-                    let _ = frame.clear(clear_color, &[]);
+                    let _ = frame.clear(clear_color, &[p.rectangle.to_physical(1)]);
                     for element in elements {
                         let _ = element.draw(
                             &mut frame,
@@ -1446,6 +1446,9 @@ impl PanelSpace {
                 popup::ConfigureKind::Reposition { token: _token } => {
                     p.rectangle.size.w = width;
                     p.rectangle.size.h = height;
+                    if let Some(egl_surface) = p.egl_surface.as_mut() {
+                        egl_surface.resize(width, height, 0, 0);
+                    }
                 }
                 _ => {}
             };
