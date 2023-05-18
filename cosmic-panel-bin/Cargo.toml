@@ -12,8 +12,8 @@ path = "src/main.rs"
 [dependencies]
 smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"], rev = "0a288b1"}
 sctk = { git = "https://github.com/pop-os/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "6cd6095" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "5dce1cf" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "5dce1cf" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "a5bf783" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "a5bf783" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"] }
