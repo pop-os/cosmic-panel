@@ -236,9 +236,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.2.1"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24a6904aef64d73cf10ab17ebace7befb918b82164785cb89907993be7f83813"
+checksum = "6776fc96284a0bb647b615056fc496d1fe1644a7ab01829818a6d91cae888b84"
 
 [[package]]
 name = "block"
@@ -1627,9 +1627,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.57"
+version = "1.0.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4ec6d5fe0b140acb27c9a0444118cf55bfbb4e0b259739429abb4521dd67c16"
+checksum = "fa1fb82fc0c281dd9671101b66b771ebbe1eaf967b96ac8740dcba4b70005ca8"
 dependencies = [
  "unicode-ident",
 ]
@@ -1950,7 +1950,7 @@ version = "0.3.0"
 source = "git+https://github.com/smithay/smithay?rev=0a288b1#0a288b1a94e699a02eb1ddf3d3891378f0b6e1b2"
 dependencies = [
  "appendlist",
- "bitflags 2.2.1",
+ "bitflags 2.3.1",
  "calloop",
  "cgmath",
  "downcast-rs",
@@ -2167,9 +2167,9 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ab8ed2edee10b50132aed5f331333428b011c99402b5a534154ed15746f9622"
+checksum = "5a76a9312f5ba4c2dec6b9161fdf25d87ad8a09256ccea5a556fef03c706a10f"
 
 [[package]]
 name = "toml_edit"
@@ -2727,7 +2727,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?rev=5dce1cf#5dce1cf6f68587f88307bc1de6ec9cb9b0736dca"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?rev=a5bf783#a5bf7832fc091a0fcb685cd297bfa3cddcd72974"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2747,7 +2747,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?rev=5dce1cf#5dce1cf6f68587f88307bc1de6ec9cb9b0736dca"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper?rev=a5bf783#a5bf7832fc091a0fcb685cd297bfa3cddcd72974"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
