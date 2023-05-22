@@ -1,6 +1,7 @@
 use crate::{CosmicPanelConfig, CosmicPanelOuput};
-use cosmic_config::{Config, ConfigGet, ConfigSet};
+use cosmic_config::{Config, ConfigGet, ConfigSet, CosmicConfigEntry};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
 
 /// Config structure for the cosmic panel
@@ -37,19 +38,47 @@ pub const VERSION: u64 = 1;
 
 impl CosmicPanelContainerConfig {
     /// load config with the provided name
-    pub fn load() -> Result<(Self, Vec<cosmic_config::Error>), cosmic_config::Error> {
-        let config = Self::cosmic_config()?;
-        let entry_names = config.get::<Vec<String>>("entries")?;
+    pub fn load() -> Result<Self, (Vec<cosmic_config::Error>, Self)> {
+        let config = match Self::cosmic_config() {
+            Ok(config) => config,
+            Err(e) => {
+                warn!("Falling back to default panel configuration");
+                return Err((vec![e], Self::default()));
+            }
+        };
+        let entry_names = match config.get::<Vec<String>>("entries") {
+            Ok(names) => names,
+            Err(e) => {
+                warn!("Falling back to default panel configuration");
+                return Err((vec![e], Self::default()));
+            }
+        };
         let mut config_list = Vec::new();
         let mut entry_errors = Vec::new();
 
         for name in entry_names {
-            let config = Config::new(format!("{}.{}", NAME, name).as_str(), VERSION)?;
-            let (entry, mut errors) = CosmicPanelConfig::get_entry(&config);
-            config_list.push(entry);
-            entry_errors.append(&mut errors);
+            let config = match Config::new(format!("{}.{}", NAME, name).as_str(), VERSION) {
+                Ok(config) => config,
+                Err(e) => {
+                    entry_errors.push(e);
+                    continue;
+                }
+            };
+            match CosmicPanelConfig::get_entry(&config) {
+                Ok(entry) => {
+                    config_list.push(entry);
+                }
+                Err((mut errors, entry)) => {
+                    config_list.push(entry);
+                    entry_errors.append(&mut errors);
+                }
+            };
         }
-        Ok((Self { config_list }, entry_errors))
+        if entry_errors.is_empty() {
+            Ok(Self { config_list })
+        } else {
+            Err((entry_errors, Self { config_list }))
+        }
     }
 
     pub fn configs_for_output(&self, output_name: &str) -> Vec<&CosmicPanelConfig> {
@@ -79,7 +108,8 @@ impl CosmicPanelContainerConfig {
             .collect::<Vec<_>>();
         config.set("entries", entry_names)?;
         for entry in &self.config_list {
-            entry.write_entry()?;
+            let config = Config::new(format!("{}.{}", NAME, entry.name).as_str(), VERSION)?;
+            entry.write_entry(&config)?;
         }
         Ok(())
     }

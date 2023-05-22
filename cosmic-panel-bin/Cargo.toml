@@ -36,10 +36,12 @@ libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
 itertools = "0.10.3"
-notify = "5.0"
+notify = "6.0.0"
 tokio = { version = "1", features = ["process", "sync", "rt", "rt-multi-thread", "macros", "io-util", "time"] }
 csscolorparser = "0.6.2"
 image = "0.24"
-cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
 zbus = "3.11"
 rand = "0.8" 
+cosmic-config = { git = "https://github.com/pop-os/libcosmic", tag = "cosmic-config-derive" }
+# cosmic-config = { path = "../../libcosmic/cosmic-config/" }
+

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::space_container::SpaceContainer;
-use cosmic_config::ConfigGet;
+use cosmic_config::{ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
@@ -39,11 +39,16 @@ pub fn watch_config(
                         }
                     };
 
-                    let (entry, errors) = CosmicPanelConfig::get_entry(&cosmic_config);
+                    let entry = match CosmicPanelConfig::get_entry(&cosmic_config) {
+                        Ok(entry) => entry,
+                        Err((err, entry)) => {
+                            for error in err {
+                                error!("Failed to get entry value: {:?}", error);
+                            }
+                            entry
+                        }
+                    };
 
-                    for error in errors {
-                        error!("Failed to get entry value: {:?}", error);
-                    }
                     let entries_tx_clone = entries_tx_clone.clone();
                     let name_clone = entry.name.clone();
                     let helper = CosmicPanelConfig::cosmic_config(&name_clone)
@@ -85,11 +90,15 @@ pub fn watch_config(
                     }
                 };
 
-                let (entry, errors) = CosmicPanelConfig::get_entry(&cosmic_config);
-
-                for error in errors {
-                    error!("Failed to get entry value: {:?}", error);
-                }
+                let entry = match CosmicPanelConfig::get_entry(&cosmic_config) {
+                    Ok(entry) => entry,
+                    Err((err, entry)) => {
+                        for error in err {
+                            error!("Failed to get entry value: {:?}", error);
+                        }
+                        entry
+                    }
+                };
 
                 state.space.update_space(
                     entry,

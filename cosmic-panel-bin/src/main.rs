@@ -2,7 +2,7 @@ use std::{collections::HashMap, os::unix::net::UnixStream};
 
 use anyhow::Result;
 use config_watching::watch_config;
-use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig};
+use cosmic_panel_config::CosmicPanelBackground;
 use launch_pad::{ProcessKey, ProcessManager};
 use panel_dbus::PanelDbus;
 use sctk::reexports::client::backend::ObjectId;
@@ -54,15 +54,12 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
-            Ok((c, errors)) => {
+            Ok(c) => c,
+            Err((errors, c)) => {
                 for e in errors {
                     warn!("Panel Entry Error: {:?}", e);
                 }
                 c
-            }
-            Err(e) => {
-                warn!("Falling back to default panel configuration: {:?}", e);
-                CosmicPanelContainerConfig::default()
             }
         },
         _ => {
