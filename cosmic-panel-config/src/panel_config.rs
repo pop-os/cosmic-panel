@@ -13,7 +13,7 @@ use xdg_shell_wrapper_config::{KeyboardInteractivity, Layer, WrapperConfig, Wrap
 use crate::{NAME, VERSION};
 
 /// Edge to which the panel is anchored
-#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub enum PanelAnchor {
     /// anchored to left edge
@@ -155,13 +155,23 @@ pub enum CosmicPanelBackground {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AutoHide {
-    /// time without pointer focus before hiding
+    /// time in milliseconds without pointer focus before hiding
     pub wait_time: u32,
-    /// time that it should take to transition
+    /// time in milliseconds that it should take to transition
     pub transition_time: u32,
     /// size of the handle in pixels
     /// should be > 0
     pub handle_size: u32,
+}
+
+impl Default for AutoHide {
+    fn default() -> Self {
+        Self {
+            wait_time: 1000,
+            transition_time: 200,
+            handle_size: 4,
+        }
+    }
 }
 
 /// Configuration for the panel's ouput
