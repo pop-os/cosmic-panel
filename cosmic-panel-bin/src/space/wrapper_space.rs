@@ -246,19 +246,20 @@ impl WrapperSpace for PanelSpace {
                 .chain(self.clients_right.iter())
                 .collect_vec();
 
-            let config_size = self.config.size.to_string();
-            let active_output = CosmicPanelOuput::Name(
-                self.output
-                    .as_ref()
-                    .and_then(|o| o.2.name.clone())
-                    .unwrap_or_default(),
-            )
-            .to_string();
-            let config_anchor = self.config.anchor.to_string();
+            let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
+            let active_output = self
+                .output
+                .as_ref()
+                .and_then(|o| o.2.name.clone())
+                .unwrap_or_default();
+
+            let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
+            let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
             let env_vars = vec![
                 ("COSMIC_PANEL_SIZE", config_size.as_str()),
                 ("COSMIC_PANEL_OUTPUT", active_output.as_str()),
                 ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
+                ("COSMIC_PANEL_BACKGROUND", config_bg.as_str()),
             ];
 
             // each output should have a single notification applet
@@ -596,7 +597,7 @@ impl WrapperSpace for PanelSpace {
                         surface: w.wl_surface().unwrap(),
                         seat_name: seat_name.to_string(),
                         c_pos: w.geometry().loc,
-                        s_pos: (x, y).into(),
+                        s_pos: relative_loc,
                     });
                     self.s_hovered_surface.last().cloned()
                 }

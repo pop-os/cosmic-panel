@@ -1,7 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
-use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput};
+use cosmic_panel_config::{
+    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
+};
 use notify::RecommendedWatcher;
 use sctk::{
     output::OutputInfo,
@@ -54,7 +56,20 @@ impl SpaceContainer {
 
     pub fn set_theme_window_color(&mut self, color: [f32; 4]) {
         for space in &mut self.space_list {
-            space.set_theme_window_color(color);
+            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault) {
+                space.set_theme_window_color(color);
+            }
+        }
+    }
+
+    pub fn set_opacity(&mut self, opacity: f32, name: String) {
+        for space in &mut self.space_list {
+            if space.config.name != name {
+                continue;
+            }
+            space.config.opacity = opacity;
+            space.bg_color[3] = opacity;
+            space.clear();
         }
     }
 

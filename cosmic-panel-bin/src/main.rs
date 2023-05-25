@@ -1,8 +1,7 @@
-use std::{collections::HashMap, os::unix::net::UnixStream};
+use std::{collections::HashMap, mem, os::unix::net::UnixStream};
 
 use anyhow::Result;
-use config_watching::watch_config;
-use cosmic_panel_config::CosmicPanelBackground;
+use config_watching::{watch_config, watch_cosmic_theme};
 use launch_pad::{ProcessKey, ProcessManager};
 use panel_dbus::PanelDbus;
 use sctk::reexports::client::backend::ObjectId;
@@ -11,7 +10,7 @@ use smithay::reexports::{
     wayland_server::{backend::ClientId, Client},
 };
 use tokio::{runtime, sync::mpsc};
-use tracing::warn;
+use tracing::{error, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
 use zbus::ConnectionBuilder;
@@ -22,7 +21,6 @@ mod space;
 mod space_container;
 
 pub enum PanelCalloopMsg {
-    Color([f32; 4]),
     ClientSocketPair(String, ClientId, Client, UnixStream),
 }
 
@@ -57,8 +55,9 @@ fn main() -> Result<()> {
             Ok(c) => c,
             Err((errors, c)) => {
                 for e in errors {
-                    warn!("Panel Entry Error: {:?}", e);
+                    error!("Panel Entry Error: {:?}", e);
                 }
+                let _ = c.write_entries();
                 c
             }
         },
@@ -83,6 +82,10 @@ fn main() -> Result<()> {
         }
         Err(e) => warn!("Failed to watch config: {:?}", e),
     };
+    match watch_cosmic_theme(event_loop.handle()) {
+        Ok(w) => mem::forget(w),
+        Err(e) => error!("Error while watching cosmic theme: {:?}", e),
+    };
 
     event_loop
         .handle()
@@ -91,7 +94,6 @@ fn main() -> Result<()> {
             move |e, _, state: &mut GlobalState<space_container::SpaceContainer>| {
                 match e {
                     calloop::channel::Event::Msg(e) => match e {
-                        PanelCalloopMsg::Color(c) => state.space.set_theme_window_color(c),
                         PanelCalloopMsg::ClientSocketPair(id, client_id, c, s) => {
                             state.space.replace_client(id, client_id, c, s);
                             unpause_launchpad_tx
@@ -105,90 +107,75 @@ fn main() -> Result<()> {
         )
         .expect("failed to insert dbus event source");
 
-    if space
-        .config
-        .config_list
-        .iter()
-        .any(|c| matches!(c.background, CosmicPanelBackground::ThemeDefault(_)))
-    {
-        let t = cosmic_theme::Theme::dark_default();
-        space.set_theme_window_color([
-            t.bg_color().red,
-            t.bg_color().green,
-            t.bg_color().blue,
-            t.bg_color().alpha,
-        ]);
+    std::thread::spawn(move || -> anyhow::Result<()> {
+        let rt = runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let mut process_ids: HashMap<ObjectId, Vec<ProcessKey>> = HashMap::new();
 
-        std::thread::spawn(move || -> anyhow::Result<()> {
-            let rt = runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?;
-            let mut process_ids: HashMap<ObjectId, Vec<ProcessKey>> = HashMap::new();
-
-            rt.block_on(async {
-                let process_manager = ProcessManager::new().await;
-                let _ = process_manager.set_max_restarts(100);
-                let conn = ConnectionBuilder::session()
+        rt.block_on(async {
+            let process_manager = ProcessManager::new().await;
+            let _ = process_manager.set_max_restarts(100);
+            let conn = ConnectionBuilder::session()
+                .ok()
+                .and_then(|conn| conn.name("com.system76.CosmicPanel").ok())
+                .and_then(|conn| {
+                    conn.serve_at(
+                        "/com/system76/CosmicPanel",
+                        PanelDbus {
+                            notification_ids: Vec::new(),
+                        },
+                    )
                     .ok()
-                    .and_then(|conn| conn.name("com.system76.CosmicPanel").ok())
-                    .and_then(|conn| {
-                        conn.serve_at(
-                            "/com/system76/CosmicPanel",
-                            PanelDbus {
-                                notification_ids: Vec::new(),
-                            },
-                        )
-                        .ok()
-                    })
-                    .map(|conn| conn.build());
-                let conn = match conn {
-                    Some(conn) => conn.await.ok(),
-                    None => None,
+                })
+                .map(|conn| conn.build());
+            let conn = match conn {
+                Some(conn) => conn.await.ok(),
+                None => None,
+            };
+            let mut id_map = HashMap::new();
+
+            while let Some(msg) = applet_rx.recv().await {
+                match msg {
+                    space::AppletMsg::NewProcess(id, process) => {
+                        if let Ok(key) = process_manager.start(process).await {
+                            let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
+                            entry.push(key);
+                        }
+                    }
+                    space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
+                        let _ =
+                            calloop_tx.send(PanelCalloopMsg::ClientSocketPair(id, client_id, c, s));
+                        // XXX This is done to avoid a possible race,
+                        // the client & socket need to be update in the panel_space state before the process starts again
+                        let _ = unpause_launchpad_rx.recv();
+                    }
+                    space::AppletMsg::Cleanup(id) => {
+                        for id in process_ids.remove(&id).unwrap_or_default() {
+                            let _ = process_manager.stop_process(id).await;
+                        }
+                    }
+                    space::AppletMsg::NotificationId(object, id) => {
+                        id_map.insert(object, id);
+                        if let Some(conn) = &conn {
+                            let object_server = conn.object_server();
+                            let iface_ref = object_server
+                                .interface::<_, PanelDbus>("/com/system76/CosmicPanel")
+                                .await
+                                .expect("Failed to get interface");
+                            let mut iface = iface_ref.get_mut().await;
+                            iface.notification_ids = id_map.values().cloned().collect();
+                            let _ = iface
+                                .notification_ids_changed(iface_ref.signal_context())
+                                .await;
+                        }
+                    }
                 };
-                let mut id_map = HashMap::new();
-
-                while let Some(msg) = applet_rx.recv().await {
-                    match msg {
-                        space::AppletMsg::NewProcess(id, process) => {
-                            if let Ok(key) = process_manager.start(process).await {
-                                let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
-                                entry.push(key);
-                            }
-                        }
-                        space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
-                            let _ = calloop_tx
-                                .send(PanelCalloopMsg::ClientSocketPair(id, client_id, c, s));
-                            // XXX This is done to avoid a possible race,
-                            // the client & socket need to be update in the panel_space state before the process starts again
-                            let _ = unpause_launchpad_rx.recv();
-                        }
-                        space::AppletMsg::Cleanup(id) => {
-                            for id in process_ids.remove(&id).unwrap_or_default() {
-                                let _ = process_manager.stop_process(id).await;
-                            }
-                        }
-                        space::AppletMsg::NotificationId(object, id) => {
-                            id_map.insert(object, id);
-                            if let Some(conn) = &conn {
-                                let object_server = conn.object_server();
-                                let iface_ref = object_server
-                                    .interface::<_, PanelDbus>("/com/system76/CosmicPanel")
-                                    .await
-                                    .expect("Failed to get interface");
-                                let mut iface = iface_ref.get_mut().await;
-                                iface.notification_ids = id_map.values().cloned().collect();
-                                let _ = iface
-                                    .notification_ids_changed(iface_ref.signal_context())
-                                    .await;
-                            }
-                        }
-                    };
-                }
-            });
-
-            Ok(())
+            }
         });
-    }
+
+        Ok(())
+    });
     run(space, event_loop)?;
     Ok(())
 }
