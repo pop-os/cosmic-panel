@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use crate::space_container::SpaceContainer;
-use cosmic_config::{ConfigGet, CosmicConfigEntry};
+use anyhow::anyhow;
+use cosmic_config::{Config, ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
+use cosmic_theme::{palette::Srgba, util::CssColor, Theme};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
 use tracing::error;
@@ -12,6 +14,48 @@ use xdg_shell_wrapper::shared_state::GlobalState;
 enum ConfigUpdate {
     Entries(Vec<String>),
     EntryChanged(String),
+    Opacity(f32, String),
+}
+
+pub fn watch_cosmic_theme(
+    handle: LoopHandle<GlobalState<SpaceContainer>>,
+) -> Result<RecommendedWatcher, Box<dyn std::error::Error>> {
+    let (entries_tx, entries_rx) = channel::sync_channel::<Srgba>(30);
+    let entries_tx_clone = entries_tx.clone();
+    let config_helper =
+        Config::new("com.system76.CosmicTheme", 1).map_err(|e| anyhow!(format!("{:?}", e)))?;
+
+    handle.insert_source(entries_rx, move |event, _, state| {
+        match event {
+            channel::Event::Msg(color) => {
+                state.space.set_theme_window_color([
+                    color.red,
+                    color.green,
+                    color.blue,
+                    color.alpha,
+                ]);
+            }
+            channel::Event::Closed => {}
+        };
+    })?;
+
+    let theme_watcher = config_helper
+        .watch(
+            move |helper, _keys| match Theme::<CssColor>::get_entry(&helper) {
+                Ok(entry) => {
+                    entries_tx_clone.send(entry.bg_color()).unwrap();
+                }
+                Err((err, entry)) => {
+                    for e in err {
+                        error!("Failed to get theme entry value: {:?}", e);
+                    }
+                    entries_tx_clone.send(entry.bg_color()).unwrap();
+                }
+            },
+        )
+        .map_err(|e| anyhow!(format!("{:?}", e)))?;
+
+    Ok(theme_watcher)
 }
 
 pub fn watch_config(
@@ -107,6 +151,9 @@ pub fn watch_config(
                     &state.client_state.queue_handle,
                 );
             }
+            channel::Event::Msg(ConfigUpdate::Opacity(o, name)) => {
+                state.space.set_opacity(o, name);
+            }
             channel::Event::Closed => {}
         };
     })?;
@@ -137,10 +184,18 @@ pub fn watch_config(
         let helper =
             CosmicPanelConfig::cosmic_config(&name_clone).expect("Failed to load cosmic config");
         let watcher = helper
-            .watch(move |_helper, _keys| {
-                entries_tx_clone
-                    .send(ConfigUpdate::EntryChanged(name_clone.clone()))
-                    .expect("Failed to send Config Update");
+            .watch(move |helper, keys| {
+                if keys.len() == 1 && keys[0] == "opacity" {
+                    if let Ok(opacity) = helper.get::<f32>("opacity") {
+                        entries_tx_clone
+                            .send(ConfigUpdate::Opacity(opacity, name_clone.clone()))
+                            .expect("Failed to send Config Update");
+                    }
+                } else {
+                    entries_tx_clone
+                        .send(ConfigUpdate::EntryChanged(name_clone.clone()))
+                        .expect("Failed to send Config Update");
+                }
             })
             .expect("Failed to watch cosmic config");
         watchers.insert(entry.name.clone(), watcher);

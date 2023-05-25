@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use cosmic_config::{Config, CosmicConfigEntry};
 use image::RgbaImage;
 use itertools::{chain, Itertools};
 use launch_pad::process::Process;
@@ -138,17 +139,47 @@ impl PanelSpace {
         applet_tx: mpsc::Sender<AppletMsg>,
     ) -> Self {
         let bg_color = match config.background {
-            CosmicPanelBackground::ThemeDefault(alpha) => {
+            CosmicPanelBackground::ThemeDefault => {
+                let t = Config::new("com.system76.CosmicTheme", 1)
+                    .map(|helper| match cosmic_theme::Theme::get_entry(&helper) {
+                        Ok(c) => c,
+                        Err((err, c)) => {
+                            for e in err {
+                                error!("Error loading cosmic theme for {} {:?}", &config.name, e);
+                            }
+                            c
+                        }
+                    })
+                    .unwrap_or(cosmic_theme::Theme::dark_default());
+                let c = [
+                    t.bg_color().red,
+                    t.bg_color().green,
+                    t.bg_color().blue,
+                    config.opacity,
+                ];
+                c
+            }
+            CosmicPanelBackground::Dark => {
                 let t = cosmic_theme::Theme::dark_default();
                 let c = [
                     t.bg_color().red,
                     t.bg_color().green,
                     t.bg_color().blue,
-                    alpha.unwrap_or(t.bg_color().alpha),
+                    config.opacity,
                 ];
                 c
             }
-            CosmicPanelBackground::Color(c) => c,
+            CosmicPanelBackground::Light => {
+                let t = cosmic_theme::Theme::light_default();
+                let c = [
+                    t.bg_color().red,
+                    t.bg_color().green,
+                    t.bg_color().blue,
+                    config.opacity,
+                ];
+                c
+            }
+            CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], config.opacity],
         };
 
         let visibility = if config.autohide.is_none() {
@@ -1483,13 +1514,23 @@ impl PanelSpace {
     }
 
     pub fn set_theme_window_color(&mut self, mut color: [f32; 4]) {
-        if let CosmicPanelBackground::ThemeDefault(alpha) = self.config.background {
-            if let Some(alpha) = alpha {
-                color[3] = alpha;
-            }
+        if let CosmicPanelBackground::ThemeDefault = self.config.background {
+            color[3] = self.config.opacity;
         }
         self.bg_color = color;
+        self.clear();
+    }
+
+    /// clear the panel
+    pub fn clear(&mut self) {
         self.is_dirty = true;
+        self.popups.clear();
+        self.damage_tracked_renderer
+            .replace(OutputDamageTracker::new(
+                self.dimensions.to_physical(1),
+                1.0,
+                smithay::utils::Transform::Flipped180,
+            ));
     }
 
     pub fn apply_positioner_state(

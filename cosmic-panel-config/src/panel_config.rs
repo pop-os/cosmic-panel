@@ -147,9 +147,13 @@ impl FromStr for PanelSize {
 #[serde(deny_unknown_fields)]
 pub enum CosmicPanelBackground {
     /// theme default color with optional transparency
-    ThemeDefault(Option<f32>),
+    ThemeDefault,
+    /// theme default dark
+    Dark,
+    /// theme default light
+    Light,
     /// RGBA
-    Color([f32; 4]),
+    Color([f32; 3]),
 }
 
 // TODO configurable interpolation type?
@@ -264,6 +268,8 @@ pub struct CosmicPanelConfig {
     pub autohide: Option<AutoHide>,
     /// margin between the panel and the edge of the output
     pub margin: u16,
+    /// opacity of the panel
+    pub opacity: f32,
 }
 
 #[cfg(feature = "wayland-rs")]
@@ -277,7 +283,7 @@ impl Default for CosmicPanelConfig {
             keyboard_interactivity: KeyboardInteractivity::None,
             size: PanelSize::M,
             output: CosmicPanelOuput::All,
-            background: CosmicPanelBackground::ThemeDefault(Some(0.8)),
+            background: CosmicPanelBackground::ThemeDefault,
             plugins_wings: Default::default(),
             plugins_center: Default::default(),
             expand_to_edges: true,
@@ -287,6 +293,7 @@ impl Default for CosmicPanelConfig {
             autohide: None,
             border_radius: 8,
             margin: 4,
+            opacity: 0.8,
         }
     }
 }
