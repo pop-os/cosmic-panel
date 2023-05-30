@@ -13,7 +13,7 @@ ron = "0.8.0"
 serde = { version = "1.0.152", features = ["derive"] }
 tracing = "0.1.37"
 wayland-protocols-wlr = { version = "0.1.0", features = ["server"], optional = true}
-cosmic-config = { git = "https://github.com/pop-os/libcosmic", rev = "e056e8c" }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic", rev = "f06a81c" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config", optional = true }
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true, rev = "99a9cda" }
 
