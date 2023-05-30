@@ -27,7 +27,7 @@ launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 wayland-egl = "0.30.0"
 wayland-protocols-wlr = { version = "0.1.0", features = ["client"] }
-cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme", rev = "f06a81c" }
+cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme", rev = "31f7e97" }
 transpose = "0.2.2"
 anyhow = "1.0.63"
 shlex = "1.1.0"
@@ -40,7 +40,7 @@ notify = "6.0"
 tokio = { version = "1", features = ["process", "sync", "rt", "rt-multi-thread", "macros", "io-util", "time"] }
 csscolorparser = "0.6.2"
 image = "0.24"
-cosmic-config = { git = "https://github.com/pop-os/libcosmic", rev = "f06a81c" }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic", rev = "31f7e97" }
 zbus = "3.11"
 rand = "0.8" 
 ron = "0.8"
