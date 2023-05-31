@@ -8,7 +8,7 @@
             keyboard_interactivity: OnDemand,
             size: XS,
             output: All,
-            background: ThemeDefault(Some(0.8)),
+            background: ThemeDefault,
             plugins_center: Some([
                 "com.system76.CosmicAppletTime",
             ]),
@@ -32,7 +32,8 @@
             exclusive_zone: true,
             autohide: None,
             border_radius: 0,
-            margin: 0
+            margin: 0,
+            opacity: 0.9
         ),
         (
             name: "Dock",
@@ -42,7 +43,7 @@
             keyboard_interactivity: OnDemand,
             size: L,
             output: All,
-            background: ThemeDefault(Some(0.8)),
+            background: ThemeDefault,
             plugins_center: Some([
                 "com.system76.CosmicAppList",
             ]),
@@ -57,7 +58,8 @@
                 handle_size: 2,
             )),
             border_radius: 12,
-            margin: 0
+            margin: 0,
+            opacity: 0.9
         ),
     ],
 )

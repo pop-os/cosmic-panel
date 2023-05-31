@@ -1,8 +1,8 @@
-use crate::{CosmicPanelConfig, CosmicPanelOuput};
+use crate::{CosmicPanelBackground, CosmicPanelConfig, CosmicPanelOuput};
 use cosmic_config::{Config, ConfigGet, ConfigSet, CosmicConfigEntry};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use xdg_shell_wrapper_config::{WrapperConfig, WrapperOutput};
+use xdg_shell_wrapper_config::{Layer, WrapperConfig, WrapperOutput};
 
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -117,6 +117,66 @@ impl CosmicPanelContainerConfig {
 
 impl Default for CosmicPanelContainerConfig {
     fn default() -> Self {
-        ron::de::from_str(include_str!("../config.ron")).unwrap()
+        Self {
+            config_list: vec![
+                CosmicPanelConfig {
+                    name: "Panel".to_string(),
+                    anchor: crate::PanelAnchor::Top,
+                    anchor_gap: false,
+                    layer: Layer::Top,
+                    keyboard_interactivity:
+                        xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand,
+                    size: crate::PanelSize::XS,
+                    output: CosmicPanelOuput::All,
+                    background: CosmicPanelBackground::ThemeDefault,
+                    plugins_wings: Some((
+                        vec!["com.system76.CosmicAppletWorkspaces".to_string()],
+                        vec![
+                            "com.system76.CosmicAppletAudio".to_string(),
+                            "com.system76.CosmicAppletNetwork".to_string(),
+                            "com.system76.CosmicAppletGraphics".to_string(),
+                            "com.system76.CosmicAppletBattery".to_string(),
+                            "com.system76.CosmicAppletNotifications".to_string(),
+                            "com.system76.CosmicAppletPower".to_string(),
+                            "com.system76.CosmicAppletStatusArea".to_string(),
+                        ],
+                    )),
+                    plugins_center: Some(vec!["com.system76.CosmicAppletTime".to_string()]),
+                    expand_to_edges: true,
+                    padding: 2,
+                    spacing: 2,
+                    border_radius: 0,
+                    exclusive_zone: true,
+                    autohide: None,
+                    margin: 0,
+                    opacity: 0.9,
+                },
+                CosmicPanelConfig {
+                    name: "Dock".to_string(),
+                    anchor: crate::PanelAnchor::Bottom,
+                    anchor_gap: false,
+                    layer: Layer::Top,
+                    keyboard_interactivity:
+                        xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand,
+                    size: crate::PanelSize::L,
+                    output: CosmicPanelOuput::All,
+                    background: CosmicPanelBackground::ThemeDefault,
+                    plugins_wings: None,
+                    plugins_center: Some(vec!["com.system76.CosmicAppList".to_string()]),
+                    expand_to_edges: false,
+                    padding: 4,
+                    spacing: 4,
+                    border_radius: 12,
+                    exclusive_zone: false,
+                    autohide: Some(crate::AutoHide {
+                        wait_time: 500,
+                        transition_time: 200,
+                        handle_size: 2,
+                    }),
+                    margin: 0,
+                    opacity: 0.9,
+                },
+            ],
+        }
     }
 }
