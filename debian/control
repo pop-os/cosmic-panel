@@ -6,7 +6,7 @@ Build-Depends:
   debhelper (>= 11),
   debhelper-compat (= 11),
   just,
-  cargo,
+  rust-all,
   libwayland-dev,
   libxkbcommon-dev,
   pkg-config,
