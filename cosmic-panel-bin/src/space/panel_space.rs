@@ -36,9 +36,8 @@ use smithay::{
             element::{
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-                RenderElement,
             },
-            Bind, Frame, ImportAll, ImportMem, Renderer, Unbind,
+            Bind, ImportAll, ImportMem, Unbind,
         },
     },
     output::Output,
@@ -60,11 +59,13 @@ use smithay::{
     },
     desktop::{PopupKind, PopupManager, Space, Window},
     reexports::wayland_server::{Client, Resource},
-    utils::{Logical, Physical, Point, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Size},
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
+use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
@@ -107,7 +108,7 @@ pub(crate) struct PanelSpace {
     pub(crate) last_dirty: Option<Instant>,
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
     pub(crate) suggested_length: Option<u32>,
-    pub(crate) actual_size: Size<i32, Physical>,
+    pub(crate) actual_size: Size<i32, Logical>,
     pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) dimensions: Size<i32, Logical>,
@@ -119,6 +120,8 @@ pub(crate) struct PanelSpace {
     pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
     pub(crate) s_display: Option<DisplayHandle>,
     pub(crate) layer: Option<LayerSurface>,
+    pub(crate) layer_fractional_scale: Option<WpFractionalScaleV1>,
+    pub(crate) layer_viewport: Option<WpViewport>,
     pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
@@ -128,6 +131,7 @@ pub(crate) struct PanelSpace {
     buffer: Option<MemoryRenderBuffer>,
     buffer_changed: bool,
     pub(crate) has_frame: bool,
+    pub(crate) scale: f64,
 }
 
 impl PanelSpace {
@@ -203,6 +207,8 @@ impl PanelSpace {
             s_display: Default::default(),
             c_display: Default::default(),
             layer: Default::default(),
+            layer_fractional_scale: Default::default(),
+            layer_viewport: Default::default(),
             egl_surface: Default::default(),
             popups: Default::default(),
             visibility,
@@ -221,6 +227,7 @@ impl PanelSpace {
             buffer: Default::default(),
             buffer_changed: false,
             has_frame: true,
+            scale: 1.0,
         }
     }
 
@@ -556,7 +563,9 @@ impl PanelSpace {
                             .space
                             .element_location(w)
                             .unwrap_or_default()
-                            .to_physical(1);
+                            .to_f64()
+                            .to_physical(self.scale)
+                            .to_i32_round();
                         render_elements_from_surface_tree(
                             renderer,
                             w.toplevel().wl_surface(),
@@ -579,28 +588,40 @@ impl PanelSpace {
                     };
 
                     let (panel_size, loc) = if is_dock {
+                        let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                            (
+                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).floor(),
+                                margin_offset,
+                            )
+                        } else {
+                            (
+                                margin_offset,
+                                ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).floor(),
+                            )
+                        }
+                        .into();
+
                         (
-                            self.actual_size,
-                            if self.config.is_horizontal() {
-                                (
-                                    ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).floor(),
-                                    margin_offset,
-                                )
-                            } else {
-                                (
-                                    margin_offset,
-                                    ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).floor(),
-                                )
-                            },
+                            self.actual_size
+                                .to_f64()
+                                .to_physical(self.scale)
+                                .to_i32_round(),
+                            loc.to_physical(self.scale).to_i32_round(),
                         )
                     } else {
+                        let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                            (0.0, margin_offset)
+                        } else {
+                            (margin_offset, 0.0)
+                        }
+                        .into();
+
                         (
-                            self.dimensions.to_physical(1),
-                            if self.config.is_horizontal() {
-                                (0.0, margin_offset)
-                            } else {
-                                (margin_offset, 0.0)
-                            },
+                            self.dimensions
+                                .to_f64()
+                                .to_physical(self.scale)
+                                .to_i32_round(),
+                            loc.to_physical(self.scale).to_i32_round(),
                         )
                     };
                     let _ = render_context.draw(|_| {
@@ -617,7 +638,12 @@ impl PanelSpace {
 
                     drop(render_context);
                     if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer, loc, &buff, None, None, None,
+                        renderer,
+                        loc,
+                        &buff,
+                        None,
+                        None,
+                        Some(panel_size.to_f64().to_logical(self.scale).to_i32_round()),
                     ) {
                         elements.push(MyRenderElements::Memory(render_element));
                     }
@@ -659,12 +685,12 @@ impl PanelSpace {
             // TODO Popup rendering optimization
             for p in self.popups.iter_mut().filter(|p| {
                 p.dirty
+                    && p.egl_surface.is_some()
                     && p.state.is_none()
                     && p.s_surface.alive()
                     && p.c_popup.wl_surface().is_alive()
                     && p.has_frame
             }) {
-                let _ = renderer.unbind();
                 renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
 
                 let elements: Vec<WaylandSurfaceRenderElement<_>> =
@@ -675,23 +701,16 @@ impl PanelSpace {
                         1.0,
                         1.0,
                     );
-                if let Ok(mut frame) = renderer.render(
-                    p.rectangle.size.to_physical(1),
-                    smithay::utils::Transform::Flipped180,
-                ) {
-                    let _ = frame.clear(clear_color, &[p.rectangle.to_physical(1)]);
-                    for element in elements {
-                        let _ = element.draw(
-                            &mut frame,
-                            p.rectangle
-                                .to_buffer(1, Transform::Normal, &p.rectangle.size)
-                                .to_f64(),
-                            p.rectangle.to_physical(1),
-                            &[p.rectangle.to_physical(1)],
-                        );
-                    }
-                    let _ = frame.finish();
-                }
+                p.damage_tracked_renderer.render_output(
+                    renderer,
+                    p.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .buffer_age()
+                        .unwrap_or_default() as usize,
+                    &elements,
+                    clear_color,
+                )?;
 
                 p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
@@ -700,6 +719,7 @@ impl PanelSpace {
                 wl_surface.commit();
                 p.dirty = false;
                 p.has_frame = false;
+                let _ = renderer.unbind();
             }
         }
 
@@ -882,6 +902,7 @@ impl PanelSpace {
             PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
         }
         .into();
+
         new_dim = self.constrain_dim(new_dim);
 
         let (new_list_dim_length, new_list_thickness_dim) = match anchor {
@@ -1021,8 +1042,14 @@ impl PanelSpace {
             // corners calculation with border_radius
             let panel_size = if is_dock {
                 self.actual_size
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round()
             } else {
-                self.dimensions.to_physical(1)
+                self.dimensions
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round()
             };
 
             let mut buff = MemoryRenderBuffer::new(
@@ -1043,9 +1070,8 @@ impl PanelSpace {
                     chunk.copy_from_slice(&bg_color);
                 });
 
-                let radius = self
-                    .config
-                    .border_radius
+                let radius = (self.config.border_radius as f64 * self.scale).round() as u32;
+                let radius = radius
                     .min(panel_size.w as u32 / 2)
                     .min(panel_size.h as u32 / 2);
 
@@ -1246,7 +1272,7 @@ impl PanelSpace {
 
     pub fn configure_panel_layer(
         &mut self,
-        _layer: &LayerSurface,
+        layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         renderer: &mut Option<GlesRenderer>,
         egl_display: &mut Option<EGLDisplay>,
@@ -1378,19 +1404,23 @@ impl PanelSpace {
                         if let (Some(renderer), Some(egl_surface)) =
                             (renderer.as_mut(), self.egl_surface.as_ref())
                         {
+                            let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                             let _ = renderer.bind(egl_surface.clone());
-                            egl_surface.resize(dim.w, dim.h, 0, 0);
+                            egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                             let _ = renderer.unbind();
+                            if let Some(viewport) = self.layer_viewport.as_ref() {
+                                viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                                layer.wl_surface().commit();
+                            }
                         }
                     }
 
                     self.dimensions = (panel_width, panel_height).into();
-                    self.damage_tracked_renderer
-                        .replace(OutputDamageTracker::new(
-                            dim.to_physical(1),
-                            1.0,
-                            smithay::utils::Transform::Flipped180,
-                        ));
+                    self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+                        dim.to_f64().to_physical(self.scale).to_i32_round(),
+                        self.scale,
+                        smithay::utils::Transform::Flipped180,
+                    ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
                     self.is_dirty = true;
                 }
@@ -1433,16 +1463,20 @@ impl PanelSpace {
                     (renderer.as_mut(), self.egl_surface.as_ref())
                 {
                     let _ = renderer.bind(egl_surface.clone());
-                    egl_surface.resize(width as i32, height as i32, 0, 0);
+                    let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
+                    egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                     let _ = renderer.unbind();
+                    if let Some(viewport) = self.layer_viewport.as_ref() {
+                        viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                        layer.wl_surface().commit();
+                    }
                 }
                 self.dimensions = (panel_width, panel_height).into();
-                self.damage_tracked_renderer
-                    .replace(OutputDamageTracker::new(
-                        dim.to_physical(1),
-                        1.0,
-                        smithay::utils::Transform::Flipped180,
-                    ));
+                self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+                    dim.to_f64().to_physical(self.scale).to_i32_round(),
+                    self.scale,
+                    smithay::utils::Transform::Flipped180,
+                ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
                 self.is_dirty = true;
             }
@@ -1496,17 +1530,10 @@ impl PanelSpace {
                         .expect("Failed to initialize EGL Surface"),
                     );
                     p.egl_surface.replace(egl_surface);
+                    p.dirty = true;
                 }
-                popup::ConfigureKind::Reactive => {
-                    // TODO
-                }
-                popup::ConfigureKind::Reposition { token: _token } => {
-                    p.rectangle.size.w = width;
-                    p.rectangle.size.h = height;
-                    if let Some(egl_surface) = p.egl_surface.as_mut() {
-                        egl_surface.resize(width, height, 0, 0);
-                    }
-                }
+                popup::ConfigureKind::Reactive => {}
+                popup::ConfigureKind::Reposition { token: _token } => {}
                 _ => {}
             };
             p.dirty = true;
@@ -1525,12 +1552,14 @@ impl PanelSpace {
     pub fn clear(&mut self) {
         self.is_dirty = true;
         self.popups.clear();
-        self.damage_tracked_renderer
-            .replace(OutputDamageTracker::new(
-                self.dimensions.to_physical(1),
-                1.0,
-                smithay::utils::Transform::Flipped180,
-            ));
+        self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+            self.dimensions
+                .to_f64()
+                .to_physical(self.scale)
+                .to_i32_round(),
+            self.scale,
+            smithay::utils::Transform::Flipped180,
+        ));
     }
 
     pub fn apply_positioner_state(

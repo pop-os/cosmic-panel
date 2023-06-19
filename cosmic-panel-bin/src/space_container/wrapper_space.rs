@@ -24,6 +24,8 @@ use xdg_shell_wrapper::{
     server_state::ServerPointerFocus,
     shared_state::GlobalState,
     space::{Visibility, WrapperSpace},
+    wp_fractional_scaling::FractionalScalingManager,
+    wp_viewporter::ViewporterState,
 };
 
 use crate::space::PanelSpace;
@@ -52,6 +54,8 @@ impl WrapperSpace for SpaceContainer {
     fn setup<W: WrapperSpace>(
         &mut self,
         compositor_state: &CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
@@ -71,12 +75,28 @@ impl WrapperSpace for SpaceContainer {
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
                         );
-                        s.setup(compositor_state, layer_state, conn, qh);
+                        s.setup(
+                            compositor_state,
+                            fractional_scale_manager,
+                            viewport,
+                            layer_state,
+                            conn,
+                            qh,
+                        );
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
                         }
-                        let _ =
-                            s.new_output(compositor_state, layer_state, conn, qh, None, None, None);
+                        let _ = s.new_output(
+                            compositor_state,
+                            fractional_scale_manager,
+                            viewport,
+                            layer_state,
+                            conn,
+                            qh,
+                            None,
+                            None,
+                            None,
+                        );
                         Some(s)
                     } else {
                         None
@@ -89,6 +109,8 @@ impl WrapperSpace for SpaceContainer {
     fn new_output<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         conn: &sctk::reexports::client::Connection,
         qh: &QueueHandle<GlobalState<W>>,
@@ -138,7 +160,14 @@ impl WrapperSpace for SpaceContainer {
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
                         );
-                        s.setup(compositor_state, layer_state, conn, qh);
+                        s.setup(
+                            compositor_state,
+                            fractional_scale_manager,
+                            viewport,
+                            layer_state,
+                            conn,
+                            qh,
+                        );
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
                         }
@@ -147,6 +176,8 @@ impl WrapperSpace for SpaceContainer {
 
                     if s.new_output(
                         compositor_state,
+                        fractional_scale_manager,
+                        viewport,
                         layer_state,
                         conn,
                         qh,
@@ -173,7 +204,14 @@ impl WrapperSpace for SpaceContainer {
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
                         );
-                        s.setup(compositor_state, layer_state, conn, qh);
+                        s.setup(
+                            compositor_state,
+                            fractional_scale_manager,
+                            viewport,
+                            layer_state,
+                            conn,
+                            qh,
+                        );
 
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
@@ -182,6 +220,8 @@ impl WrapperSpace for SpaceContainer {
                     };
                     if s.new_output(
                         compositor_state,
+                        fractional_scale_manager,
+                        viewport,
                         layer_state,
                         conn,
                         qh,
@@ -227,6 +267,8 @@ impl WrapperSpace for SpaceContainer {
     fn add_popup<W: WrapperSpace>(
         &mut self,
         compositor_state: &CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
@@ -247,6 +289,8 @@ impl WrapperSpace for SpaceContainer {
         }) {
             space.add_popup(
                 compositor_state,
+                fractional_scale_manager,
+                viewport,
                 conn,
                 qh,
                 xdg_shell_state,
@@ -630,6 +674,31 @@ impl WrapperSpace for SpaceContainer {
     fn frame(&mut self, surface: &c_wl_surface::WlSurface, time: u32) {
         for s in self.space_list.iter_mut() {
             s.frame(surface, time);
+        }
+    }
+
+    fn get_scale_factor(&self, surface: &wl_surface::WlSurface) -> std::option::Option<f64> {
+        for s in &self.space_list {
+            if let Some(scale) = s.get_scale_factor(surface) {
+                return Some(scale);
+            }
+        }
+        None
+    }
+
+    fn scale_factor_changed(
+        &mut self,
+        surface: &c_wl_surface::WlSurface,
+        scale: f64,
+        legacy: bool,
+    ) {
+        for s in &mut self.space_list {
+            if s.layer.as_ref().map(|l| l.wl_surface()) == Some(surface)
+                || s.popups.iter().any(|p| p.c_popup.wl_surface() == surface)
+            {
+                s.scale_factor_changed(surface, scale, legacy);
+                break;
+            }
         }
     }
 }

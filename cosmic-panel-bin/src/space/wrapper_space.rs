@@ -29,13 +29,15 @@ use sctk::{
     },
 };
 use shlex::Shlex;
-use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
     desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
     output::Output,
-    reexports::wayland_server::{
-        self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
+    reexports::{
+        wayland_protocols::wp::fractional_scale,
+        wayland_server::{
+            self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
+        },
     },
     utils::{Logical, Rectangle, Size},
     wayland::{
@@ -44,6 +46,7 @@ use smithay::{
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
 };
+use smithay::{desktop::space::SpaceElement, wayland::fractional_scale::with_fractional_scale};
 use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
@@ -52,6 +55,8 @@ use xdg_shell_wrapper::{
     shared_state::GlobalState,
     space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
     util::get_client_sock,
+    wp_fractional_scaling::FractionalScalingManager,
+    wp_viewporter::ViewporterState,
 };
 
 use crate::space::AppletMsg;
@@ -78,12 +83,21 @@ impl WrapperSpace for PanelSpace {
 
     fn add_window(&mut self, w: Window) {
         self.is_dirty = true;
+        if let Some(s) = w.wl_surface() {
+            with_states(&s, |states| {
+                with_fractional_scale(states, |fractional_scale| {
+                    fractional_scale.set_preferred_scale(self.scale);
+                });
+            });
+        }
         self.space.map_element(w.clone(), (0, 0), false);
     }
 
     fn add_popup<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         _conn: &sctk::reexports::client::Connection,
         qh: &QueueHandle<GlobalState<W>>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
@@ -135,8 +149,27 @@ impl WrapperSpace for PanelSpace {
             c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
 
-        // get_popup is not implemented yet in sctk 0.30
         self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+
+        let fractional_scale =
+            fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, &qh));
+
+        let viewport = viewport.map(|v| {
+            with_states(&s_surface.wl_surface(), |states| {
+                with_fractional_scale(states, |fractional_scale| {
+                    fractional_scale.set_preferred_scale(self.scale);
+                });
+            });
+            let viewport = v.get_viewport(&c_wl_surface, &qh);
+            viewport.set_destination(
+                positioner_state.rect_size.w.max(1),
+                positioner_state.rect_size.h.max(1),
+            );
+            viewport
+        });
+        if fractional_scale.is_none() {
+            c_wl_surface.set_buffer_scale(self.scale as i32);
+        }
 
         // //must be done after role is assigned as popup
         c_wl_surface.commit();
@@ -144,16 +177,28 @@ impl WrapperSpace for PanelSpace {
         let cur_popup_state = Some(WrapperPopupState::WaitConfigure);
 
         self.popups.push(WrapperPopup {
+            damage_tracked_renderer: OutputDamageTracker::new(
+                positioner_state
+                    .rect_size
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round(),
+                self.scale,
+                smithay::utils::Transform::Flipped180,
+            ),
             c_popup,
             s_surface,
             egl_surface: None,
             dirty: false,
-            rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
+            rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
             state: cur_popup_state,
             input_region,
-            wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), (0, 0)),
+            wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
             positioner,
             has_frame: true,
+            fractional_scale,
+            viewport,
+            scale: self.scale,
         });
 
         Ok(())
@@ -440,8 +485,7 @@ impl WrapperSpace for PanelSpace {
         {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
-
-            if p_bbox != p.rectangle {
+            if p_bbox != p.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
                 p.c_popup.xdg_surface().set_window_geometry(
                     p_geo.loc.x,
                     p_geo.loc.y,
@@ -469,11 +513,11 @@ impl WrapperSpace for PanelSpace {
                         .wl_surface()
                         .set_input_region(Some(p.input_region.wl_region()));
                 }
-                p.state.replace(WrapperPopupState::Rectangle {
+                p.state = Some(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
                     y: p_bbox.loc.y,
-                    width: p_bbox.size.w,
-                    height: p_bbox.size.h,
+                    width: p_bbox.size.w.max(1),
+                    height: p_bbox.size.h.max(1),
                 });
             }
             p.dirty = true;
@@ -488,6 +532,8 @@ impl WrapperSpace for PanelSpace {
     fn setup<W: WrapperSpace>(
         &mut self,
         _compositor_state: &CompositorState,
+        _fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        _viewport: Option<&ViewporterState<W>>,
         _layer_state: &mut LayerShell,
         conn: &Connection,
         _qh: &QueueHandle<GlobalState<W>>,
@@ -688,6 +734,8 @@ impl WrapperSpace for PanelSpace {
     fn new_output<W: WrapperSpace>(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         _conn: &sctk::reexports::client::Connection,
         qh: &QueueHandle<GlobalState<W>>,
@@ -762,6 +810,11 @@ impl WrapperSpace for PanelSpace {
             self.input_region.replace(input_region);
         }
 
+        let fractional_scale = fractional_scale_manager
+            .map(|f| f.fractional_scaling(client_surface.wl_surface(), &qh));
+
+        let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), &qh));
+
         client_surface.commit();
 
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
@@ -776,13 +829,14 @@ impl WrapperSpace for PanelSpace {
             output_info.as_ref().cloned()
         )
         .next();
-        self.layer.replace(client_surface);
-        self.damage_tracked_renderer
-            .replace(OutputDamageTracker::new(
-                dimensions.to_physical(1),
-                1.0,
-                smithay::utils::Transform::Flipped180,
-            ));
+        self.layer = Some(client_surface);
+        self.layer_fractional_scale = fractional_scale;
+        self.layer_viewport = viewport;
+        self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+            dimensions.to_f64().to_physical(self.scale).to_i32_round(),
+            self.scale,
+            smithay::utils::Transform::Flipped180,
+        ));
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.is_dirty = true;
@@ -808,6 +862,71 @@ impl WrapperSpace for PanelSpace {
             .find(|p| surface == p.c_popup.wl_surface())
         {
             p.has_frame = true;
+        }
+    }
+
+    fn get_scale_factor(&self, surface: &s_WlSurface) -> std::option::Option<f64> {
+        let client = surface.client();
+        if self
+            .clients_center
+            .iter()
+            .chain(self.clients_left.iter())
+            .chain(self.clients_right.iter())
+            .any(|c| Some(&c.1) == client.as_ref())
+        {
+            Some(self.scale)
+        } else {
+            None
+        }
+    }
+
+    fn scale_factor_changed(
+        &mut self,
+        surface: &c_wl_surface::WlSurface,
+        scale: f64,
+        legacy: bool,
+    ) {
+        if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
+            self.scale = scale;
+            self.is_dirty = true;
+            if legacy && self.layer_fractional_scale.is_none() {
+                surface.set_buffer_scale(scale as i32);
+            } else {
+                surface.set_buffer_scale(1);
+                if let Some(viewport) = self.layer_viewport.as_ref() {
+                    viewport.set_destination(self.actual_size.w.max(1), self.actual_size.h.max(1));
+                }
+
+                for surface in self.space.elements().filter_map(|e| e.wl_surface().clone()) {
+                    println!("scale changed to {}", scale);
+                    with_states(&surface, |states| {
+                        with_fractional_scale(states, |fractional_scale| {
+                            fractional_scale.set_preferred_scale(scale);
+                        });
+                    });
+                }
+            }
+        }
+        for popup in &mut self.popups {
+            if popup.c_popup.wl_surface() != surface {
+                continue;
+            }
+            popup.scale = scale;
+            let Rectangle { loc, size } = popup.rectangle;
+            if popup.state.is_none() {
+                popup.state = Some(WrapperPopupState::Rectangle {
+                    x: loc.x,
+                    y: loc.y,
+                    width: size.w,
+                    height: size.h,
+                });
+            }
+
+            with_states(&popup.s_surface.wl_surface(), |states| {
+                with_fractional_scale(states, |fractional_scale| {
+                    fractional_scale.set_preferred_scale(scale);
+                });
+            });
         }
     }
 }

@@ -20,6 +20,7 @@ use tracing::{error, info};
 use wayland_server::Resource;
 use xdg_shell_wrapper::{
     client_state::ClientFocus, shared_state::GlobalState, space::WrapperSpace,
+    wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
 };
 
 #[derive(Debug)]
@@ -124,6 +125,8 @@ impl SpaceContainer {
         &mut self,
         entry: CosmicPanelConfig,
         compositor_state: &sctk::compositor::CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState<W>>,
     ) {
@@ -167,6 +170,8 @@ impl SpaceContainer {
                 }
                 if let Err(err) = space.new_output(
                     compositor_state,
+                    fractional_scale_manager,
+                    viewport,
                     layer_state,
                     connection,
                     qh,
@@ -202,6 +207,8 @@ impl SpaceContainer {
             }
             if let Err(err) = space.new_output(
                 compositor_state,
+                fractional_scale_manager,
+                viewport,
                 layer_state,
                 connection,
                 qh,
@@ -232,6 +239,8 @@ impl SpaceContainer {
                     }
                     if let Err(err) = space.new_output(
                         compositor_state,
+                        fractional_scale_manager,
+                        viewport,
                         layer_state,
                         connection,
                         qh,
