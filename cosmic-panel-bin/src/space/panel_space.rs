@@ -451,7 +451,6 @@ impl PanelSpace {
                     let cur_pix = ((1.0 - progress_norm) * start as f32) as i32;
 
                     if progress > total_t {
-                        // XXX needs thorough testing, but docs say that the margin value is only applied to anchored edge
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
@@ -837,7 +836,6 @@ impl PanelSpace {
         let right_sum = right.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
 
-        // TODO should the center area in the panel be scrollable? and if there are too many on the sides the rightmost are moved to the center?
         let total_sum = left_sum + center_sum + right_sum;
         let new_list_length =
             total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
@@ -944,6 +942,7 @@ impl PanelSpace {
         } as i32;
 
         for (i, w) in &mut windows_left.iter_mut() {
+            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
             let bbox = w
                 .bbox()
                 .to_f64()
@@ -978,6 +977,7 @@ impl PanelSpace {
 
         let mut prev: u32 = center_offset as u32;
         for (i, w) in &mut windows_center.iter_mut() {
+            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
             let bbox = w
                 .bbox()
                 .to_f64()
@@ -1014,6 +1014,7 @@ impl PanelSpace {
         let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
 
         for (i, w) in &mut windows_right.iter_mut() {
+            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
             let bbox = w
                 .bbox()
                 .to_f64()

@@ -624,6 +624,13 @@ impl WrapperSpace for PanelSpace {
                 return None;
             }
             if let Some((w, relative_loc)) = self.space.element_under((x as f64, y as f64)) {
+                // XXX HACK
+                let geo = w
+                    .bbox()
+                    .to_f64()
+                    .to_physical(1.0)
+                    .to_logical(self.scale)
+                    .to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = w.toplevel().wl_surface().clone();
                 } else {
@@ -632,14 +639,14 @@ impl WrapperSpace for PanelSpace {
                 }
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = relative_loc;
-                    prev_foc.c_pos = w.geometry().loc;
+                    prev_foc.c_pos = geo.loc;
                     prev_foc.surface = w.wl_surface().unwrap();
                     Some(prev_foc.clone())
                 } else {
                     self.s_hovered_surface.push(ServerPointerFocus {
                         surface: w.wl_surface().unwrap(),
                         seat_name: seat_name.to_string(),
-                        c_pos: w.geometry().loc,
+                        c_pos: geo.loc,
                         s_pos: relative_loc,
                     });
                     self.s_hovered_surface.last().cloned()
