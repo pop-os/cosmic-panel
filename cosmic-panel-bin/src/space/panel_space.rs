@@ -802,8 +802,16 @@ impl PanelSpace {
             (i, w): &(usize, Window),
             anchor: PanelAnchor,
             alignment: Alignment,
+            scale: f64,
         ) -> (Alignment, usize, i32, i32) {
-            let bbox = w.geometry();
+            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
+            let bbox = w
+                .bbox()
+                .to_f64()
+                .to_physical(1.0)
+                .to_logical(scale)
+                .to_i32_round();
+
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, bbox.size.h, bbox.size.w),
                 PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, bbox.size.w, bbox.size.h),
@@ -812,19 +820,19 @@ impl PanelSpace {
 
         let left = windows_left
             .iter()
-            .map(|e| map_fn(e, anchor, Alignment::Left));
+            .map(|e| map_fn(e, anchor, Alignment::Left, self.scale));
         let left_sum = left.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_left.len().max(1) as i32 - 1);
 
         let center = windows_center
             .iter()
-            .map(|e| map_fn(e, anchor, Alignment::Center));
+            .map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
         let center_sum = center.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_center.len().max(1) as i32 - 1);
 
         let right = windows_right
             .iter()
-            .map(|e| map_fn(e, anchor, Alignment::Right));
+            .map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
 
         let right_sum = right.clone().map(|(_, _, length, _)| length).sum::<i32>()
             + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
@@ -936,7 +944,13 @@ impl PanelSpace {
         } as i32;
 
         for (i, w) in &mut windows_left.iter_mut() {
-            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
+            let bbox = w
+                .bbox()
+                .to_f64()
+                .to_physical(1.0)
+                .to_logical(self.scale)
+                .to_i32_round();
+            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
             let cur: u32 = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -964,7 +978,13 @@ impl PanelSpace {
 
         let mut prev: u32 = center_offset as u32;
         for (i, w) in &mut windows_center.iter_mut() {
-            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
+            let bbox = w
+                .bbox()
+                .to_f64()
+                .to_physical(1.0)
+                .to_logical(self.scale)
+                .to_i32_round();
+            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -994,7 +1014,13 @@ impl PanelSpace {
         let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
 
         for (i, w) in &mut windows_right.iter_mut() {
-            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
+            let bbox = w
+                .bbox()
+                .to_f64()
+                .to_physical(1.0)
+                .to_logical(self.scale)
+                .to_i32_round();
+            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
