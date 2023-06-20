@@ -11,7 +11,7 @@ use sctk::{
     shell::wlr_layer::LayerShell,
 };
 use smithay::{
-    backend::{egl::EGLDisplay, renderer::gles::GlesRenderer},
+    backend::renderer::gles::GlesRenderer,
     output::Output,
     reexports::wayland_server::{self, backend::ClientId, Client},
 };
@@ -29,7 +29,6 @@ pub struct SpaceContainer {
     pub(crate) config: CosmicPanelContainerConfig,
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<GlesRenderer>,
-    pub(crate) egl_display: Option<EGLDisplay>,
     pub(crate) s_display: Option<wayland_server::DisplayHandle>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
@@ -45,7 +44,6 @@ impl SpaceContainer {
             config,
             space_list: vec![],
             renderer: None,
-            egl_display: None,
             s_display: None,
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),

@@ -576,12 +576,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .any(|p| p.c_popup.wl_surface() == popup.wl_surface())
         }) {
-            space.configure_panel_popup(
-                popup,
-                config,
-                self.renderer.as_mut(),
-                self.egl_display.as_mut(),
-            );
+            space.configure_panel_popup(popup, config, self.renderer.as_mut());
         }
     }
 
@@ -627,12 +622,7 @@ impl WrapperSpace for SpaceContainer {
             .iter_mut()
             .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
-            space.configure_panel_layer(
-                layer,
-                configure,
-                &mut self.renderer,
-                &mut self.egl_display,
-            );
+            space.configure_panel_layer(layer, configure, &mut self.renderer);
         }
     }
 

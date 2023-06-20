@@ -10,8 +10,8 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"], rev = "0a288b1"}
-sctk = { git = "https://github.com/pop-os/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], tag = "themed-pointer" }
+smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"]}
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.30.0", features = [ "staging"]}
 # xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "99a9cda" }
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", rev = "99a9cda" }

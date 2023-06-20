@@ -540,6 +540,7 @@ impl PanelSpace {
         if self.space_event.get() != None {
             return Ok(());
         }
+        unsafe { renderer.egl_context().make_current()? };
         if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
@@ -601,13 +602,7 @@ impl PanelSpace {
                         }
                         .into();
 
-                        (
-                            self.actual_size
-                                .to_f64()
-                                .to_physical(self.scale)
-                                .to_i32_round(),
-                            loc.to_physical(self.scale).to_i32_round(),
-                        )
+                        (self.actual_size, loc)
                     } else {
                         let loc: Point<f64, Logical> = if self.config.is_horizontal() {
                             (0.0, margin_offset)
@@ -616,19 +611,16 @@ impl PanelSpace {
                         }
                         .into();
 
-                        (
-                            self.dimensions
-                                .to_f64()
-                                .to_physical(self.scale)
-                                .to_i32_round(),
-                            loc.to_physical(self.scale).to_i32_round(),
-                        )
+                        (self.dimensions, loc)
                     };
+                    let scaled_panel_size =
+                        panel_size.to_f64().to_physical(self.scale).to_i32_round();
+
                     let _ = render_context.draw(|_| {
                         if self.buffer_changed {
                             Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
                                 Point::default(),
-                                (panel_size.w, panel_size.h),
+                                (scaled_panel_size.w, scaled_panel_size.h),
                             )])
                         } else {
                             Result::<_, ()>::Ok(Default::default())
@@ -639,11 +631,11 @@ impl PanelSpace {
                     drop(render_context);
                     if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer,
-                        loc,
+                        loc.to_physical(self.scale).to_i32_round(),
                         &buff,
                         None,
                         None,
-                        Some(panel_size.to_f64().to_logical(self.scale).to_i32_round()),
+                        None,
                     ) {
                         elements.push(MyRenderElements::Memory(render_element));
                     }
@@ -666,7 +658,6 @@ impl PanelSpace {
                     .unwrap()
                     .swap_buffers(res.0.as_deref_mut())?;
 
-                let _ = renderer.unbind();
                 for window in self.space.elements() {
                     let output = o.clone();
                     window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
@@ -679,51 +670,50 @@ impl PanelSpace {
 
                 self.is_dirty = false;
                 self.has_frame = false;
-            }
-
-            let clear_color = [0.0, 0.0, 0.0, 0.0];
-            // TODO Popup rendering optimization
-            for p in self.popups.iter_mut().filter(|p| {
-                p.dirty
-                    && p.egl_surface.is_some()
-                    && p.state.is_none()
-                    && p.s_surface.alive()
-                    && p.c_popup.wl_surface().is_alive()
-                    && p.has_frame
-            }) {
-                renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
-
-                let elements: Vec<WaylandSurfaceRenderElement<_>> =
-                    render_elements_from_surface_tree(
-                        renderer,
-                        p.s_surface.wl_surface(),
-                        (0, 0),
-                        1.0,
-                        1.0,
-                    );
-                p.damage_tracked_renderer.render_output(
-                    renderer,
-                    p.egl_surface
-                        .as_ref()
-                        .unwrap()
-                        .buffer_age()
-                        .unwrap_or_default() as usize,
-                    &elements,
-                    clear_color,
-                )?;
-
-                p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
-
-                let wl_surface = p.c_popup.wl_surface().clone();
-                wl_surface.frame(qh, wl_surface.clone());
-                wl_surface.commit();
-                p.dirty = false;
-                p.has_frame = false;
                 let _ = renderer.unbind();
             }
         }
 
-        let _ = renderer.unbind();
+        let clear_color = [0.0, 0.0, 0.0, 0.0];
+        // TODO Popup rendering optimization
+        for p in self.popups.iter_mut().filter(|p| {
+            p.dirty
+                && p.egl_surface.is_some()
+                && p.state.is_none()
+                && p.s_surface.alive()
+                && p.c_popup.wl_surface().is_alive()
+                && p.has_frame
+        }) {
+            renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
+
+            let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
+                renderer,
+                p.s_surface.wl_surface(),
+                (0, 0),
+                1.0,
+                1.0,
+            );
+            p.damage_tracked_renderer.render_output(
+                renderer,
+                p.egl_surface
+                    .as_ref()
+                    .unwrap()
+                    .buffer_age()
+                    .unwrap_or_default() as usize,
+                &elements,
+                clear_color,
+            )?;
+
+            p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+
+            let wl_surface = p.c_popup.wl_surface().clone();
+            wl_surface.frame(qh, wl_surface.clone());
+            wl_surface.commit();
+            p.dirty = false;
+            p.has_frame = false;
+            let _ = renderer.unbind();
+        }
+
         Ok(())
     }
 
@@ -813,13 +803,10 @@ impl PanelSpace {
             anchor: PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, i32, i32) {
+            let bbox = w.geometry();
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => {
-                    (alignment, *i, w.bbox().size.h, w.bbox().size.w)
-                }
-                PanelAnchor::Top | PanelAnchor::Bottom => {
-                    (alignment, *i, w.bbox().size.w, w.bbox().size.h)
-                }
+                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, bbox.size.h, bbox.size.w),
+                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, bbox.size.w, bbox.size.h),
             }
         }
 
@@ -949,7 +936,7 @@ impl PanelSpace {
         } as i32;
 
         for (i, w) in &mut windows_left.iter_mut() {
-            let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
+            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
             let cur: u32 = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -977,7 +964,7 @@ impl PanelSpace {
 
         let mut prev: u32 = center_offset as u32;
         for (i, w) in &mut windows_center.iter_mut() {
-            let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
+            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -1007,7 +994,7 @@ impl PanelSpace {
         let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
 
         for (i, w) in &mut windows_right.iter_mut() {
-            let size: Point<_, Logical> = (w.bbox().size.w, w.bbox().size.h).into();
+            let size: Point<i32, Logical> = (w.geometry().size.w, w.geometry().size.h).into();
             let cur = prev + spacing * *i as u32;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
@@ -1275,7 +1262,6 @@ impl PanelSpace {
         layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         renderer: &mut Option<GlesRenderer>,
-        egl_display: &mut Option<EGLDisplay>,
     ) {
         let (w, h) = configure.new_size;
         match self.space_event.take() {
@@ -1306,6 +1292,7 @@ impl PanelSpace {
                         height = 1;
                     }
                     let dim = self.constrain_dim((width as i32, height as i32).into());
+
                     let (panel_width, panel_height) = if self.config.is_horizontal() {
                         (
                             width,
@@ -1330,8 +1317,8 @@ impl PanelSpace {
                                 self.layer.as_ref().unwrap().wl_surface().clone(),
                             )
                         };
-                        let new_egl_display = if let Some(egl_display) = egl_display.take() {
-                            egl_display
+                        let new_egl_display = if let Some(renderer) = renderer.as_ref() {
+                            renderer.egl_context().display().clone()
                         } else {
                             let client_egl_display = ClientEglDisplay {
                                 display: self.c_display.as_ref().unwrap().clone(),
@@ -1373,7 +1360,7 @@ impl PanelSpace {
                             }
                         };
 
-                        let egl_surface = Rc::new(
+                        let egl_surface = Rc::new(unsafe {
                             EGLSurface::new(
                                 &new_egl_display,
                                 new_renderer
@@ -1383,8 +1370,8 @@ impl PanelSpace {
                                 new_renderer.egl_context().config_id(),
                                 client_egl_surface,
                             )
-                            .expect("Failed to create EGL Surface"),
-                        );
+                            .expect("Failed to create EGL Surface")
+                        });
 
                         // bind before setting swap interval
                         let _ = new_renderer.bind(egl_surface.clone());
@@ -1396,7 +1383,6 @@ impl PanelSpace {
                         }
 
                         renderer.replace(new_renderer);
-                        egl_display.replace(new_egl_display);
                         self.egl_surface.replace(egl_surface);
                     } else if self.dimensions != (panel_width, panel_height).into()
                         && self.pending_dimensions.is_none()
@@ -1418,7 +1404,7 @@ impl PanelSpace {
                     self.dimensions = (panel_width, panel_height).into();
                     self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                         dim.to_f64().to_physical(self.scale).to_i32_round(),
-                        self.scale,
+                        1.0,
                         smithay::utils::Transform::Flipped180,
                     ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
@@ -1474,7 +1460,7 @@ impl PanelSpace {
                 self.dimensions = (panel_width, panel_height).into();
                 self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                     dim.to_f64().to_physical(self.scale).to_i32_round(),
-                    self.scale,
+                    1.0,
                     smithay::utils::Transform::Flipped180,
                 ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
@@ -1488,14 +1474,10 @@ impl PanelSpace {
         popup: &sctk::shell::xdg::popup::Popup,
         config: sctk::shell::xdg::popup::PopupConfigure,
         renderer: Option<&mut GlesRenderer>,
-        egl_display: Option<&mut EGLDisplay>,
     ) {
-        let (renderer, egl_display) =
-            if let (Some(renderer), Some(egl_display)) = (renderer, egl_display) {
-                (renderer, egl_display)
-            } else {
-                return;
-            };
+        let Some(renderer)= renderer else {
+            return;
+        };
 
         let pos = config.position;
         let (width, height) = (config.width, config.height);
@@ -1517,18 +1499,18 @@ impl PanelSpace {
                     let client_egl_surface = unsafe {
                         ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
                     };
-                    let egl_context = renderer.egl_context();
-                    let egl_surface = Rc::new(
+                    let egl_surface = Rc::new(unsafe {
                         EGLSurface::new(
-                            egl_display,
-                            egl_context
+                            renderer.egl_context().display(),
+                            renderer
+                                .egl_context()
                                 .pixel_format()
                                 .expect("Failed to get pixel format from EGL context "),
-                            egl_context.config_id(),
+                            renderer.egl_context().config_id(),
                             client_egl_surface,
                         )
-                        .expect("Failed to initialize EGL Surface"),
-                    );
+                        .expect("Failed to initialize EGL Surface")
+                    });
                     p.egl_surface.replace(egl_surface);
                     p.dirty = true;
                 }
@@ -1557,7 +1539,7 @@ impl PanelSpace {
                 .to_f64()
                 .to_physical(self.scale)
                 .to_i32_round(),
-            self.scale,
+            1.0,
             smithay::utils::Transform::Flipped180,
         ));
     }

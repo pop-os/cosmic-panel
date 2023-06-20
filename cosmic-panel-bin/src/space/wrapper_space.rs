@@ -33,11 +33,8 @@ use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
     desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
     output::Output,
-    reexports::{
-        wayland_protocols::wp::fractional_scale,
-        wayland_server::{
-            self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
-        },
+    reexports::wayland_server::{
+        self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
     },
     utils::{Logical, Rectangle, Size},
     wayland::{
@@ -832,11 +829,6 @@ impl WrapperSpace for PanelSpace {
         self.layer = Some(client_surface);
         self.layer_fractional_scale = fractional_scale;
         self.layer_viewport = viewport;
-        self.damage_tracked_renderer = Some(OutputDamageTracker::new(
-            dimensions.to_f64().to_physical(self.scale).to_i32_round(),
-            self.scale,
-            smithay::utils::Transform::Flipped180,
-        ));
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.is_dirty = true;
@@ -898,7 +890,6 @@ impl WrapperSpace for PanelSpace {
                 }
 
                 for surface in self.space.elements().filter_map(|e| e.wl_surface().clone()) {
-                    println!("scale changed to {}", scale);
                     with_states(&surface, |states| {
                         with_fractional_scale(states, |fractional_scale| {
                             fractional_scale.set_preferred_scale(scale);
