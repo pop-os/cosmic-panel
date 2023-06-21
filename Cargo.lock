@@ -2102,12 +2102,13 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.17.0"
-source = "git+https://github.com/smithay/client-toolkit#ee7dc784f41d6c519756976c0f37ffec16218983"
+source = "git+https://github.com/pop-os/client-toolkit?tag=themed-pointer#fd15dd954bc5f0c78d079aeda7b11194a682bbff"
 dependencies = [
  "bitflags 1.3.2",
  "calloop",
  "cursor-icon",
  "dlib",
+ "lazy_static",
  "log",
  "memmap2",
  "nix 0.26.2",
@@ -2115,7 +2116,6 @@ dependencies = [
  "thiserror",
  "wayland-backend",
  "wayland-client",
- "wayland-csd-frame",
  "wayland-cursor",
  "wayland-protocols",
  "wayland-protocols-wlr",
@@ -2567,17 +2567,6 @@ dependencies = [
  "nix 0.26.2",
  "wayland-backend",
  "wayland-scanner",
-]
-
-[[package]]
-name = "wayland-csd-frame"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72191e30290b83491325d32c1327be7f45459c97263d9d48494c81efc9328116"
-dependencies = [
- "bitflags 2.3.2",
- "cursor-icon",
- "wayland-backend",
 ]
 
 [[package]]
