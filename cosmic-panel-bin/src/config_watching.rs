@@ -7,7 +7,7 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use cosmic_theme::{palette::Srgba, util::CssColor, Theme};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
-use tracing::error;
+use tracing::{error, info};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
 #[derive(Debug, Clone)]
@@ -73,7 +73,7 @@ pub fn watch_config(
                     .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c))
                     .map(|c| c.clone())
                     .collect::<Vec<String>>();
-
+                info!("Received entries: {:?}", to_update);
                 for entry in to_update {
                     let cosmic_config = match CosmicPanelConfig::cosmic_config(&entry) {
                         Ok(config) => config,
@@ -115,6 +115,7 @@ pub fn watch_config(
                         &state.client_state.queue_handle,
                     );
                 }
+                info!("Removing entries: {:?}", entries);
                 let to_remove = state
                     .space
                     .config
@@ -145,7 +146,7 @@ pub fn watch_config(
                         entry
                     }
                 };
-
+                info!("Updating entry: {:?}", entry);
                 state.space.update_space(
                     entry,
                     &state.client_state.compositor_state,
@@ -164,6 +165,11 @@ pub fn watch_config(
 
     let cosmic_config_entries =
         CosmicPanelContainerConfig::cosmic_config().expect("Failed to load cosmic config");
+    info!(
+        "Watching panel config entries for changes {:?}",
+        cosmic_config_entries
+    );
+
     let entries_tx_clone = entries_tx.clone();
     let entries_watcher = cosmic_config_entries
         .watch(
@@ -187,15 +193,18 @@ pub fn watch_config(
         let name_clone = entry.name.clone();
         let helper =
             CosmicPanelConfig::cosmic_config(&name_clone).expect("Failed to load cosmic config");
+        info!("Watching panel config entry: {:?}", helper);
         let watcher = helper
             .watch(move |helper, keys| {
                 if keys.len() == 1 && keys[0] == "opacity" {
+                    info!("Opacity changed: {:?}", keys);
                     if let Ok(opacity) = helper.get::<f32>("opacity") {
                         entries_tx_clone
                             .send(ConfigUpdate::Opacity(opacity, name_clone.clone()))
                             .expect("Failed to send Config Update");
                     }
                 } else {
+                    info!("Entry changed: {:?}", keys);
                     entries_tx_clone
                         .send(ConfigUpdate::EntryChanged(name_clone.clone()))
                         .expect("Failed to send Config Update");

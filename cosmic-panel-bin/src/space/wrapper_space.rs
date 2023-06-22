@@ -885,6 +885,14 @@ impl WrapperSpace for PanelSpace {
         scale: f64,
         legacy: bool,
     ) {
+        info!(
+            "Scale factor changed {scale} for {} on {}",
+            self.config.name,
+            self.output
+                .as_ref()
+                .and_then(|o| o.2.name.clone())
+                .unwrap_or_else(|| "None".to_string())
+        );
         if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
             self.scale = scale;
             self.is_dirty = true;
