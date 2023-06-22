@@ -10,11 +10,10 @@ use smithay::reexports::{
     wayland_server::{backend::ClientId, Client},
 };
 use tokio::{runtime, sync::mpsc};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
 use zbus::ConnectionBuilder;
-
 mod config_watching;
 mod panel_dbus;
 mod space;
@@ -78,6 +77,7 @@ fn main() -> Result<()> {
     let handle = event_loop.handle();
     match watch_config(&space.config, handle) {
         Ok(watchers) => {
+            info!("Watching panel config successful");
             space.watchers = watchers;
         }
         Err(e) => warn!("Failed to watch config: {:?}", e),
