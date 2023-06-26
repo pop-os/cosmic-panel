@@ -1,5 +1,4 @@
 [workspace]
-
 members = [
     "cosmic-panel-bin",
     "cosmic-panel-config"
