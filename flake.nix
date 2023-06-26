@@ -20,8 +20,9 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         craneLib = crane.lib.${system}.overrideToolchain fenix.packages.${system}.stable.toolchain;
-
+        crateNameFromCargoToml = craneLib.crateNameFromCargoToml {cargoToml = ./cosmic-panel-bin/Cargo.toml;};
         pkgDef = {
+          inherit (crateNameFromCargoToml) pname version;
           src = nix-filter.lib.filter {
             root = ./.;
             include = [
@@ -29,12 +30,15 @@
               ./Cargo.lock
               ./cosmic-panel-bin
               ./cosmic-panel-config
+              ./justfile
+              ./data
             ];
           };
-          nativeBuildInputs = with pkgs; [ pkg-config autoPatchelfHook ];
+          nativeBuildInputs = with pkgs; [ just pkg-config autoPatchelfHook ];
           buildInputs = with pkgs; [
             wayland
             libxkbcommon
+            stdenv.cc.cc.lib
           ];
           runtimeDependencies = with pkgs; [ libglvnd ]; # For libEGL
         };
@@ -48,7 +52,14 @@
           inherit cosmic-panel;
         };
 
-        packages.default = cosmic-panel;
+        packages.default = cosmic-panel.overrideAttrs (oldAttrs: rec {
+          buildPhase = ''
+            just prefix=$out build-release
+          '';
+          installPhase = ''
+            just prefix=$out install
+          '';
+        });
 
         apps.default = flake-utils.lib.mkApp {
           drv = cosmic-panel;
