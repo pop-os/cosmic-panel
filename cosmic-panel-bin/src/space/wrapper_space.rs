@@ -13,7 +13,6 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use launch_pad::process::Process;
-use rand::distributions::{Alphanumeric, DistString};
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
@@ -352,7 +351,7 @@ impl WrapperSpace for PanelSpace {
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
-                                let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
+                                // let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
 
                                 let mut process = Process::new()
                                 .with_executable(&exec)
