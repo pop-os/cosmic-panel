@@ -6,7 +6,9 @@ use std::{
     },
 };
 
+use crate::{process::mark_as_cloexec, space_container::SpaceContainer};
 use anyhow::{Context, Result};
+use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
 use sendfd::{RecvWithFd, SendWithFd};
 use smithay::reexports::{
     calloop::{
@@ -17,12 +19,10 @@ use smithay::reexports::{
 use tracing::{error, warn};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
-use crate::{process::mark_as_cloexec, space_container::SpaceContainer};
-
 pub fn init(
     loop_handle: &LoopHandle<GlobalState<SpaceContainer>>,
 ) -> Result<SyncSender<(String, UnixStream)>> {
-    let fd_num = std::env::var("COSMIC_SESSION_SOCK")?;
+    let fd_num = std::env::var(PANEL_NOTIFICATIONS_FD)?;
     let fd = fd_num.parse::<RawFd>()?;
     // set CLOEXEC
     let flags = fcntl::fcntl(fd, fcntl::FcntlArg::F_GETFD);

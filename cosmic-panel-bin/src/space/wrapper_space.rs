@@ -5,7 +5,7 @@ use std::{
     os::unix::{net::UnixStream, prelude::AsRawFd},
     rc::Rc,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::Instant, borrow::Cow,
 };
 
 use anyhow::bail;
@@ -452,7 +452,7 @@ impl WrapperSpace for PanelSpace {
                                                     error!("Failed to get socket for notification applet in on start");
                                                     return;
                                                 };
-                                                if let Err(err) = pman.send_message(key, format!("{}\n", socket.as_raw_fd()).into_bytes().into()).await {
+                                                if let Err(err) = pman.send_message(key, Cow::Owned(socket.as_raw_fd().to_ne_bytes().into_iter().collect())).await {
                                                     error!("Failed to send Fd to notification applet stdin: {}", err);
                                                 } 
                                             }
