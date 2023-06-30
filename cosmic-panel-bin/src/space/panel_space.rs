@@ -32,7 +32,7 @@ use smithay::{
             EGLContext,
         },
         renderer::{
-            damage::OutputDamageTracker,
+            damage::{OutputDamageTracker, RenderOutputResult},
             element::{
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
@@ -643,7 +643,7 @@ impl PanelSpace {
                     }
                 }
 
-                let mut res = my_renderer
+                let mut res: RenderOutputResult = my_renderer
                     .render_output(
                         renderer,
                         self.egl_surface

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io::{Read, Write},
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
