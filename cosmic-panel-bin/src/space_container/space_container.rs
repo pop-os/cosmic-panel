@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    os::unix::net::UnixStream,
+    rc::Rc,
+};
 
 use crate::space::{AppletMsg, PanelSpace};
 use cosmic_panel_config::{
@@ -13,7 +18,10 @@ use sctk::{
 use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
-    reexports::wayland_server::{self, backend::ClientId, Client},
+    reexports::{
+        calloop::channel::SyncSender,
+        wayland_server::{self, backend::ClientId, Client},
+    },
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -35,6 +43,11 @@ pub struct SpaceContainer {
     pub applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
+    /// numerical id of the applet pointing to a oneshot channel and the name of its space
+    pub(crate) pending_notification_applet_ids: Vec<(String, UnixStream)>,
+    pub(crate) notification_applet_ids: HashMap<u32, UnixStream>,
+    pub(crate) notification_applet_spaces: HashSet<String>,
+    pub(crate) notification_applet_tx: Option<SyncSender<(String, UnixStream)>>,
 }
 
 impl SpaceContainer {
@@ -42,14 +55,18 @@ impl SpaceContainer {
         Self {
             connection: None,
             config,
-            space_list: vec![],
+            space_list: Vec::with_capacity(1),
             renderer: None,
             s_display: None,
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
             applet_tx: tx,
             outputs: vec![],
-            watchers: HashMap::new(),
+            watchers: HashMap::with_capacity(1),
+            pending_notification_applet_ids: vec![],
+            notification_applet_spaces: HashSet::with_capacity(1),
+            notification_applet_ids: HashMap::with_capacity(1),
+            notification_applet_tx: None,
         }
     }
 
@@ -162,6 +179,7 @@ impl SpaceContainer {
                     self.c_focused_surface.clone(),
                     self.c_hovered_surface.clone(),
                     self.applet_tx.clone(),
+                    self.notification_applet_tx.clone(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
@@ -199,6 +217,7 @@ impl SpaceContainer {
                 self.c_focused_surface.clone(),
                 self.c_hovered_surface.clone(),
                 self.applet_tx.clone(),
+                self.notification_applet_tx.clone(),
             );
             if let Some(s_display) = self.s_display.as_ref() {
                 space.set_display_handle(s_display.clone());
@@ -231,6 +250,7 @@ impl SpaceContainer {
                         self.c_focused_surface.clone(),
                         self.c_hovered_surface.clone(),
                         self.applet_tx.clone(),
+                        self.notification_applet_tx.clone(),
                     );
                     if let Some(s_display) = self.s_display.as_ref() {
                         space.set_display_handle(s_display.clone());

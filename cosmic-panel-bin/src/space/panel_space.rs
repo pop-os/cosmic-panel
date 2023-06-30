@@ -42,6 +42,7 @@ use smithay::{
     },
     output::Output,
     reexports::{
+        calloop::channel::SyncSender,
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, DisplayHandle},
     },
@@ -84,7 +85,6 @@ pub enum AppletMsg {
     NewProcess(ObjectId, Process),
     ClientSocketPair(String, ClientId, Client, UnixStream),
     Cleanup(ObjectId),
-    NotificationId(ObjectId, String),
 }
 
 render_elements! {
@@ -126,6 +126,7 @@ pub(crate) struct PanelSpace {
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub notification_tx: Option<SyncSender<(String, UnixStream)>>,
     pub(crate) input_region: Option<Region>,
     old_buff: Option<MemoryRenderBuffer>,
     buffer: Option<MemoryRenderBuffer>,
@@ -141,6 +142,7 @@ impl PanelSpace {
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
+        notification_tx: Option<SyncSender<(String, UnixStream)>>,
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault => {
@@ -219,6 +221,7 @@ impl PanelSpace {
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
+            notification_tx,
             actual_size: (0, 0).into(),
             input_region: None,
             damage_tracked_renderer: Default::default(),

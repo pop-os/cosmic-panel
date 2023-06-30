@@ -37,12 +37,15 @@ log-panics = { version = "2", features = ["with-backtrace"] }
 libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
-itertools = "0.10.3"
+itertools = "0.11"
 notify = "6.0"
-tokio = { version = "1", features = ["process", "sync", "rt", "rt-multi-thread", "macros", "io-util", "time"] }
+tokio = { version = "1", features = ["process", "sync", "rt", "macros", "io-util", "time"] }
 csscolorparser = "0.6.2"
 image = "0.24"
 cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
-zbus = "3.11"
 rand = "0.8" 
 ron = "0.8"
+sendfd = "0.4"
+cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications" }
+serde = "1.0"
+bytemuck = "1.13"

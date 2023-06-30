@@ -4,6 +4,7 @@ use std::{
     fs,
     os::unix::prelude::AsRawFd,
     rc::Rc,
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -56,7 +57,7 @@ use xdg_shell_wrapper::{
     wp_viewporter::ViewporterState,
 };
 
-use crate::space::AppletMsg;
+use crate::{process::create_socket, space::AppletMsg};
 
 use super::PanelSpace;
 
@@ -343,21 +344,6 @@ impl WrapperSpace for PanelSpace {
                                 let is_notification_applet =
                                     entry.desktop_entry("X-NotificationsApplet").is_some();
 
-                                if is_notification_applet {
-                                    if let Some(output) = self.output.as_ref().map(|o| o.0.id()) {
-                                        match self
-                                            .applet_tx
-                                            .try_send(AppletMsg::NotificationId(output, id.clone()))
-                                        {
-                                            Ok(_) => {}
-                                            Err(e) => error!("{e}"),
-                                        };
-                                    }
-                                    applet_env.push((
-                                        "COSMIC_PANEL_NOTIFICATIONS_ID",
-                                        notification_id.as_str(),
-                                    ));
-                                }
                                 let display_handle = display.clone();
                                 let applet_tx_clone = self.applet_tx.clone();
                                 let id_clone = id.clone();
@@ -368,7 +354,7 @@ impl WrapperSpace for PanelSpace {
                                 let client_id_err = client.id();
                                 let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
 
-                                let process = Process::new()
+                                let mut process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
                                 .with_env(applet_env)
@@ -398,7 +384,6 @@ impl WrapperSpace for PanelSpace {
                                     let id_clone = id_clone.clone();
                                     let client_id_clone = client_id.clone();
                                     let applet_tx_clone = applet_tx_clone.clone();
-                                    let output_id = output_id.clone();
 
                                     let (c, s) = get_client_sock(&mut display_handle);
                                     async move {
@@ -413,15 +398,37 @@ impl WrapperSpace for PanelSpace {
                                         let fd = s.as_raw_fd().to_string();
                                         let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
                                         let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
-                                        let notification_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
-                                        if is_notification_applet {
-                                            if let Some(output_id) = output_id {
-                                                let _ = applet_tx_clone.send(AppletMsg::NotificationId(output_id, notification_id.clone())).await;
-                                                let _ = pman.update_process_env(&key, vec![("COSMIC_PANEL_NOTIFICATIONS_ID", notification_id.as_str())]).await;
-                                            }
-                                        }
                                     }
                                 });
+
+                                if is_notification_applet {
+                                    let notification_tx_pre = self.notification_tx.clone();
+                                    let notification_tx_post = self.notification_tx.clone();
+                                    let space_name = self.config.name.clone();
+                                    let c_socket = Arc::new(Mutex::new(None));
+                                    let c_socket_pre = c_socket.clone();
+                                    let c_socket_post = c_socket;
+
+                                    process = process
+                                        .with_pre_start(|pman, pkey, _first_start| {
+                                            match create_socket() {
+                                                Ok((c, s)) => {
+                                                    let mut c_socket = c_socket_pre.lock().unwrap();
+                                                    *c_socket = Some(c);
+                                                }
+                                                Err(e) => {
+                                                    // send the socket fd over stdin to the process
+                                                    error!("Failed to create socket pair for notification applet: {}", e);
+                                                }
+                                            };
+                                            let space_name = space_name.clone();
+                                            let notification_id = notification_id.clone();
+
+                                            // let output_id = output_id.clone();
+                                            let notification_tx_pre = notification_tx_pre.clone();
+                                        })
+                                        .with_post_start(|_, _, _| {});
+                                }
 
                                 // TODO error handling
                                 let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
