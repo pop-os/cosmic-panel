@@ -404,6 +404,7 @@ impl WrapperSpace for PanelSpace {
                                     is_notification_applet.then_some(0),
                                     self.notification_tx.clone(),
                                 ) {
+                                    info!("Adding callbacks for notification applet...");
                                     let space_name = self.config.name.clone();
                                     let c_socket = Arc::new(Mutex::new(None));
                                     let c_socket_pre = c_socket.clone();
@@ -426,8 +427,7 @@ impl WrapperSpace for PanelSpace {
                                                             error!("Failed to send notification socket to notification applet: {}", e);
                                                         }
                                                     }
-                                                    
-                                                    
+                                                    info!("Created socket pair for notification applet");
                                                 }
                                                 Err(e) => {
                                                     error!("Failed to create socket pair for notification applet: {}", e);
@@ -452,7 +452,8 @@ impl WrapperSpace for PanelSpace {
                                                     error!("Failed to get socket for notification applet in on start");
                                                     return;
                                                 };
-                                                if let Err(err) = pman.send_message(key, Cow::Owned(socket.as_raw_fd().to_ne_bytes().into_iter().collect())).await {
+                                                info!("Sending notification socket to notification applet {}", socket.as_raw_fd());
+                                                if let Err(err) = pman.send_message(key, format!("{}\n", socket.as_raw_fd()).into_bytes().into()).await {
                                                     error!("Failed to send Fd to notification applet stdin: {}", err);
                                                 } 
                                             }

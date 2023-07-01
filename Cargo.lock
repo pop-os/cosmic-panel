@@ -959,9 +959,10 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git?branch=stdin-msg#ac8e2b454a2f602bbe2479b9b75c31293f7e4439"
+source = "git+https://github.com/pop-os/launch-pad.git?branch=stdin-msg#a29643a7e22bff92848e4eeb9de665c1e9c08536"
 dependencies = [
  "log",
+ "rand",
  "slotmap",
  "thiserror",
  "tokio",

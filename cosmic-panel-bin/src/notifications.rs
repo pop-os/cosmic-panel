@@ -16,7 +16,7 @@ use smithay::reexports::{
     },
     nix::{fcntl, unistd},
 };
-use tracing::{error, warn};
+use tracing::{error, info, trace, warn};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
 pub fn init(
@@ -39,6 +39,9 @@ pub fn init(
         }
     };
 
+    daemon_socket
+        .set_nonblocking(true)
+        .expect("Couldn't set nonblocking");
     // read remaining bytes from socket
     {
         let mut buf = [0u8; 128];
@@ -49,18 +52,24 @@ pub fn init(
         }
     }
 
+    info!("Inserting channel into event loop");
+
     // insert channel for spaces to send pending nortification appplet to
     let (tx, rx) = calloop::channel::sync_channel(10);
 
     loop_handle
-        .insert_source(rx, |msg, _, state| match msg {
-            calloop::channel::Event::Msg(msg) => {
-                state.space.pending_notification_applet_ids.push(msg);
-            }
-            calloop::channel::Event::Closed => {
-                warn!("Notification channel closed");
-            }
-        })
+        .insert_source(
+            rx,
+            |msg: calloop::channel::Event<(String, UnixStream)>, _, state| match msg {
+                calloop::channel::Event::Msg(msg) => {
+                    info!("Received pending notification applet for space {}", &msg.0);
+                    state.space.pending_notification_applet_ids.push(msg);
+                }
+                calloop::channel::Event::Closed => {
+                    warn!("Notification channel closed");
+                }
+            },
+        )
         .map_err(|err| {
             anyhow::anyhow!(
                 "Failed to insert notification channel into event loop: {}",
@@ -68,6 +77,7 @@ pub fn init(
             )
         })?;
 
+    info!("Inserting session socket into event loop");
     // insert source for daemon socket
     loop_handle
         .insert_source(
@@ -118,6 +128,7 @@ fn read_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>)
         };
         // send the fd and the applet id to the applet
         let raw = fd.as_raw_fd();
+        info!("Sending fd {} to applet {}", raw, id);
         if let Err(err) = applets_msg_stream.send_with_fd(bytemuck::bytes_of(&id), &[raw]) {
             error!("Failed to send fd to applet: {}", err);
         };
@@ -130,6 +141,7 @@ fn write_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>
         if state.space.notification_applet_spaces.contains(&space) {
             continue;
         }
+        info!("Writing to notification socket for space {}", space);
         let id: u32 = state
             .space
             .notification_applet_ids
@@ -143,10 +155,8 @@ fn write_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>
             .insert(id, applet_stream);
         let mut buf = id.to_ne_bytes();
 
-        if let Err(err) = stream.write(&mut buf) {
-            error!("Failed to send fd to applet: {}", err);
-            return Err(err.into());
-        };
+        stream.write(&mut buf)?;
+        stream.flush()?;
         state.space.notification_applet_spaces.insert(space);
     }
     Ok(())
