@@ -351,8 +351,11 @@ impl WrapperSpace for PanelSpace {
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
-                                // let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
-
+                                let output_name = self
+                                    .output
+                                    .as_ref()
+                                    .map(|o| o.2.name.clone().unwrap_or_default())
+                                    .unwrap_or_default();
                                 let mut process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
@@ -415,7 +418,7 @@ impl WrapperSpace for PanelSpace {
                                         .with_pre_start(move |_, _, _| {
                                             match create_socket() {
                                                 Ok((c, s)) => {
-                                                    match notification_tx.send((space_name.clone(), UnixStream::from(s))) {
+                                                    match notification_tx.send((format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
                                                         Ok(_) => {
                                                             let mut c_socket = c_socket_pre.lock().unwrap();
                                                             if let Err(err) = mark_as_not_cloexec(&c) {

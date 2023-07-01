@@ -4,11 +4,12 @@ use std::{
         fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
         unix::net::UnixStream,
     },
+    sync::Arc,
 };
 
 use crate::{process::mark_as_cloexec, space_container::SpaceContainer};
 use anyhow::{Context, Result};
-use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
+use cosmic_notifications_util::{PanelRequest, PANEL_NOTIFICATIONS_FD};
 use sendfd::{RecvWithFd, SendWithFd};
 use smithay::reexports::{
     calloop::{
@@ -51,7 +52,10 @@ pub fn init(
             }
         }
     }
-
+    let data = ron::ser::to_string(&PanelRequest::Init)?;
+    daemon_socket.write_all(format!("{}\n", data).as_bytes())?;
+    let daemon_socket: Arc<UnixStream> = Arc::new(daemon_socket);
+    let daemon_socket_clone = daemon_socket.clone();
     info!("Inserting channel into event loop");
 
     // insert channel for spaces to send pending nortification appplet to
@@ -60,10 +64,18 @@ pub fn init(
     loop_handle
         .insert_source(
             rx,
-            |msg: calloop::channel::Event<(String, UnixStream)>, _, state| match msg {
+            move |msg: calloop::channel::Event<(String, UnixStream)>, _, state| match msg {
                 calloop::channel::Event::Msg(msg) => {
                     info!("Received pending notification applet for space {}", &msg.0);
-                    state.space.pending_notification_applet_ids.push(msg);
+                    if !state.space.notification_applet_spaces.contains(&msg.0) {
+                        // state.space.pending_notification_applet_ids.push(msg);
+                        if let Err(err) = write_socket(&daemon_socket, state, msg) {
+                            error!(
+                                "Failed to send pending notification applet to daemon: {}",
+                                err
+                            );
+                        }
+                    }
                 }
                 calloop::channel::Event::Closed => {
                     warn!("Notification channel closed");
@@ -81,7 +93,7 @@ pub fn init(
     // insert source for daemon socket
     loop_handle
         .insert_source(
-            Generic::new(daemon_socket, Interest::BOTH, Mode::Level),
+            Generic::new(daemon_socket_clone, Interest::BOTH, Mode::Edge),
             move |interest, stream, state: &mut GlobalState<SpaceContainer>| {
                 if interest.error {
                     error!("Error on session socket");
@@ -91,11 +103,6 @@ pub fn init(
                 if interest.readable {
                     if let Err(err) = read_socket(stream, state) {
                         error!("Error reading from session socket: {}", err);
-                        return Ok(PostAction::Continue);
-                    }
-                } else if interest.writable {
-                    if let Err(err) = write_socket(stream, state) {
-                        error!("Error writing to session socket: {}", err);
                         return Ok(PostAction::Continue);
                     }
                 }
@@ -108,21 +115,20 @@ pub fn init(
     Ok(tx)
 }
 
-fn read_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>) -> Result<()> {
+fn read_socket(stream: &UnixStream, state: &mut GlobalState<SpaceContainer>) -> Result<()> {
     // every message is a u32 id, and a socket fd
-    let mut buf = [0u8; 4];
-    let mut fd_buf = [0i32; 1];
+    info!("Reading from notification daemon socket");
+    let mut buf = [0u8; 128];
+    let mut fd_buf = [0i32; 32];
     while let Ok((msg_cnt, fd_cnt)) = stream.recv_with_fd(&mut buf, &mut fd_buf) {
-        if fd_cnt == 0 {
+        if fd_cnt == 0 || msg_cnt == 0 {
             break;
         }
+        info!("Received {} bytes from notification daemon socket", msg_cnt);
         let fd = unsafe { OwnedFd::from_raw_fd(fd_buf[0]) };
         mark_as_cloexec(&fd)?;
 
-        if msg_cnt == 0 {
-            break;
-        }
-        let id = u32::from_ne_bytes(buf);
+        let id = u32::from_ne_bytes(buf[..4].try_into().unwrap());
         let Some(applets_msg_stream) = state.space.notification_applet_ids.remove(&id) else {
             continue;
         };
@@ -136,28 +142,26 @@ fn read_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>)
     Ok(())
 }
 
-fn write_socket(stream: &mut UnixStream, state: &mut GlobalState<SpaceContainer>) -> Result<()> {
-    for (space, applet_stream) in state.space.pending_notification_applet_ids.drain(..) {
-        if state.space.notification_applet_spaces.contains(&space) {
-            continue;
-        }
-        info!("Writing to notification socket for space {}", space);
-        let id: u32 = state
-            .space
-            .notification_applet_ids
-            .keys()
-            .max()
-            .unwrap_or(&0)
-            + 1;
-        state
-            .space
-            .notification_applet_ids
-            .insert(id, applet_stream);
-        let mut buf = id.to_ne_bytes();
+fn write_socket(
+    mut stream: &UnixStream,
+    state: &mut GlobalState<SpaceContainer>,
+    (space, applet_stream): (String, UnixStream),
+) -> Result<()> {
+    info!("Writing to notification socket for space {}", space);
+    state.space.notification_applet_counter += 1;
+    let id: u32 = state.space.notification_applet_counter;
+    state
+        .space
+        .notification_applet_ids
+        .insert(id, applet_stream);
 
-        stream.write(&mut buf)?;
-        stream.flush()?;
-        state.space.notification_applet_spaces.insert(space);
-    }
+    let data = ron::ser::to_string(&PanelRequest::NewNotificationsClient { id })?;
+    info!(
+        "Writing to notification daemon socket for space {} {}",
+        space, &data
+    );
+
+    stream.write_all(format!("{}\n", data).as_bytes())?;
+    state.space.notification_applet_spaces.insert(space);
     Ok(())
 }

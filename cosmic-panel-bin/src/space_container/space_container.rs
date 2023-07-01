@@ -48,6 +48,7 @@ pub struct SpaceContainer {
     pub(crate) notification_applet_ids: HashMap<u32, UnixStream>,
     pub(crate) notification_applet_spaces: HashSet<String>,
     pub(crate) notification_applet_tx: Option<SyncSender<(String, UnixStream)>>,
+    pub(crate) notification_applet_counter: u32,
 }
 
 impl SpaceContainer {
@@ -67,6 +68,7 @@ impl SpaceContainer {
             notification_applet_spaces: HashSet::with_capacity(1),
             notification_applet_ids: HashMap::with_capacity(1),
             notification_applet_tx: None,
+            notification_applet_counter: 0,
         }
     }
 
