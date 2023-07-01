@@ -5,7 +5,7 @@ use std::{
     os::unix::{net::UnixStream, prelude::AsRawFd},
     rc::Rc,
     sync::{Arc, Mutex},
-    time::Instant, borrow::Cow,
+    time::Instant,
 };
 
 use anyhow::bail;
@@ -57,7 +57,7 @@ use xdg_shell_wrapper::{
 };
 
 use crate::{
-    process::{create_socket, mark_as_cloexec, mark_as_not_cloexec},
+    process::create_socket,
     space::AppletMsg,
 };
 
@@ -411,43 +411,34 @@ impl WrapperSpace for PanelSpace {
                                     let space_name = self.config.name.clone();
                                     let c_socket = Arc::new(Mutex::new(None));
                                     let c_socket_pre = c_socket.clone();
-                                    let c_socket_post = c_socket.clone();
                                     let c_socket_on = c_socket;
 
+                                    // XXX Should be safe to share the Fds with the applet
+                                    // processes are only started by the panel on a single thread via launch-pad
                                     process = process
-                                        .with_pre_start(move |_, _, _| {
+                                        .with_fds(move || {
                                             match create_socket() {
                                                 Ok((c, s)) => {
                                                     match notification_tx.send((format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
                                                         Ok(_) => {
                                                             let mut c_socket = c_socket_pre.lock().unwrap();
-                                                            if let Err(err) = mark_as_not_cloexec(&c) {
-                                                                error!("Failed to mark notification socket as not cloexec: {}", err);
-                                                            }
+                                                            let raw = c.as_raw_fd();
+
                                                             *c_socket = Some(c);
+                                                            return vec![raw];
                                                         }
                                                         Err(e) => {
                                                             error!("Failed to send notification socket to notification applet: {}", e);
                                                         }
                                                     }
-                                                    info!("Created socket pair for notification applet");
                                                 }
                                                 Err(e) => {
                                                     error!("Failed to create socket pair for notification applet: {}", e);
                                                 }
                                             };
+                                            Vec::new()
                                         })
-                                        .with_post_start(move |_, _, _| {
-                                            let c_socket = c_socket_post.lock().unwrap();
-                                            let Some(socket) = c_socket.as_ref() else {
-                                                error!("Failed to get socket for notification applet in post start");
-                                                return;
-                                            };
-                                            if let Err(err) = mark_as_cloexec(&socket) {
-                                                error!("Failed to mark notification socket as cloexec: {}", err);
-                                            }
-
-                                        }).with_on_start(move |pman, key, _| {
+                                        .with_on_start(move |pman, key, _| {
                                             let mut c_socket: std::sync::MutexGuard<'_, Option<std::os::fd::OwnedFd>> = c_socket_on.lock().unwrap();
                                             let c_socket = c_socket.take();
                                             async move { 

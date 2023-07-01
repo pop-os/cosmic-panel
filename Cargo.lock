@@ -224,7 +224,7 @@ dependencies = [
 [[package]]
 name = "cosmic-notifications-util"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-notifications#7e8dc5369f72a2515a4213e9084b1255cbc6c66a"
+source = "git+https://github.com/pop-os/cosmic-notifications#5978b73af0adf79485b1ed13ec942ef8e7d123e0"
 dependencies = [
  "bytemuck",
  "serde",
@@ -959,9 +959,10 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git?branch=stdin-msg#a29643a7e22bff92848e4eeb9de665c1e9c08536"
+source = "git+https://github.com/pop-os/launch-pad.git?branch=stdin-msg#8c3f83c09e4d5d7d62d95dbe0a4ef878a184d90b"
 dependencies = [
  "log",
+ "nix 0.26.2",
  "rand",
  "slotmap",
  "thiserror",
