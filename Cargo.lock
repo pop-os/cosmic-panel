@@ -224,7 +224,7 @@ dependencies = [
 [[package]]
 name = "cosmic-notifications-util"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-notifications#e8bf12c040934b655b42e986c0702277fbfa5d60"
+source = "git+https://github.com/pop-os/cosmic-notifications#bca2352c1fa22c52bff33a46968735909f8f6888"
 dependencies = [
  "bytemuck",
  "serde",
@@ -958,7 +958,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git?branch=stdin-msg#550c7bc3acb93e6ce53d94df40643a606a200a4b"
+source = "git+https://github.com/pop-os/launch-pad.git#702bb0531bcd0aca6c17b85e1b516e46f31ddaa1"
 dependencies = [
  "log",
  "nix 0.26.2",
@@ -1771,9 +1771,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
+checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 
 [[package]]
 name = "smithay"

@@ -3,18 +3,6 @@ use anyhow::{bail, Result};
 use smithay::reexports::nix::fcntl;
 use std::os::unix::{net::UnixStream, prelude::*};
 
-pub(crate) fn mark_as_not_cloexec(file: &impl AsFd) -> Result<()> {
-    let raw_fd = file.as_fd().as_raw_fd();
-    let Some(fd_flags) = fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)?) else {
-        bail!("failed to get fd flags from file");
-    };
-    fcntl::fcntl(
-        raw_fd,
-        fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-    )?;
-    Ok(())
-}
-
 pub(crate) fn mark_as_cloexec(file: &impl AsFd) -> Result<()> {
     let raw_fd = file.as_fd().as_raw_fd();
     let Some(fd_flags) = fcntl::FdFlag::from_bits(fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)?) else {
