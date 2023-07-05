@@ -542,13 +542,13 @@ impl PanelSpace {
         if self.space_event.get() != None {
             return Ok(());
         }
-        unsafe { renderer.egl_context().make_current()? };
+
         if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
                 None => return Ok(()),
             };
-            let _ = renderer.unbind();
+            renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
             let is_dock = self.config.plugins_wings.is_none() && !self.config.expand_to_edges;
             let clear_color = if self.buffer.is_none() {
@@ -672,7 +672,6 @@ impl PanelSpace {
 
                 self.is_dirty = false;
                 self.has_frame = false;
-                let _ = renderer.unbind();
             }
         }
 
@@ -686,6 +685,7 @@ impl PanelSpace {
                 && p.c_popup.wl_surface().is_alive()
                 && p.has_frame
         }) {
+            renderer.unbind()?;
             renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
 
             let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
@@ -713,8 +713,8 @@ impl PanelSpace {
             wl_surface.commit();
             p.dirty = false;
             p.has_frame = false;
-            let _ = renderer.unbind();
         }
+        renderer.unbind()?;
 
         Ok(())
     }
@@ -1404,6 +1404,7 @@ impl PanelSpace {
                         });
 
                         // bind before setting swap interval
+                        let _ = new_renderer.unbind();
                         let _ = new_renderer.bind(egl_surface.clone());
                         let swap_success =
                             unsafe { SwapInterval(new_egl_display.get_display_handle().handle, 0) }
@@ -1411,6 +1412,7 @@ impl PanelSpace {
                         if !swap_success {
                             error!("Failed to set swap interval");
                         }
+                        let _ = new_renderer.unbind();
 
                         renderer.replace(new_renderer);
                         self.egl_surface.replace(egl_surface);
@@ -1420,6 +1422,7 @@ impl PanelSpace {
                         if let (Some(renderer), Some(egl_surface)) =
                             (renderer.as_mut(), self.egl_surface.as_ref())
                         {
+                            let _ = renderer.unbind();
                             let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                             let _ = renderer.bind(egl_surface.clone());
                             egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
@@ -1478,6 +1481,7 @@ impl PanelSpace {
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
                 {
+                    let _ = renderer.unbind();
                     let _ = renderer.bind(egl_surface.clone());
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);

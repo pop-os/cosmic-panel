@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem, os::unix::net::UnixStream};
+use std::{collections::HashMap, mem, os::unix::net::UnixStream, time::Duration};
 
 use anyhow::Result;
 use config_watching::{watch_config, watch_cosmic_theme};
@@ -127,7 +127,12 @@ fn main() -> Result<()> {
 
         rt.block_on(async {
             let process_manager = ProcessManager::new().await;
-            let _ = process_manager.set_max_restarts(100);
+            let _ = process_manager.set_max_restarts(usize::MAX).await;
+            let _ = process_manager
+                .set_restart_mode(launch_pad::RestartMode::ExponentialBackoff(
+                    Duration::from_millis(10),
+                ))
+                .await;
 
             while let Some(msg) = applet_rx.recv().await {
                 match msg {
