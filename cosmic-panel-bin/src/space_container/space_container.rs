@@ -5,7 +5,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::space::{AppletMsg, PanelSpace};
+use crate::{
+    notifications::PendingAppletEvent,
+    space::{AppletMsg, PanelSpace},
+};
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
@@ -47,7 +50,7 @@ pub struct SpaceContainer {
     pub(crate) pending_notification_applet_ids: Vec<(String, UnixStream)>,
     pub(crate) notification_applet_ids: HashMap<u32, UnixStream>,
     pub(crate) notification_applet_spaces: HashSet<String>,
-    pub(crate) notification_applet_tx: Option<SyncSender<(String, UnixStream)>>,
+    pub(crate) notification_applet_tx: Option<SyncSender<PendingAppletEvent>>,
     pub(crate) notification_applet_counter: u32,
 }
 

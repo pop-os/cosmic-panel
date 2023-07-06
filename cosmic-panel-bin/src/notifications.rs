@@ -20,9 +20,15 @@ use smithay::reexports::{
 use tracing::{error, info, trace, warn};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
+#[derive(Debug)]
+pub enum PendingAppletEvent {
+    Add(String, UnixStream),
+    Remove(String),
+}
+
 pub fn init(
     loop_handle: &LoopHandle<GlobalState<SpaceContainer>>,
-) -> Result<SyncSender<(String, UnixStream)>> {
+) -> Result<SyncSender<PendingAppletEvent>> {
     let fd_num = std::env::var(PANEL_NOTIFICATIONS_FD)?;
     let fd = fd_num.parse::<RawFd>()?;
     // set CLOEXEC
@@ -64,19 +70,25 @@ pub fn init(
     loop_handle
         .insert_source(
             rx,
-            move |msg: calloop::channel::Event<(String, UnixStream)>, _, state| match msg {
-                calloop::channel::Event::Msg(msg) => {
-                    info!("Received pending notification applet for space {}", &msg.0);
-                    if !state.space.notification_applet_spaces.contains(&msg.0) {
-                        // state.space.pending_notification_applet_ids.push(msg);
-                        if let Err(err) = write_socket(&daemon_socket, state, msg) {
-                            error!(
-                                "Failed to send pending notification applet to daemon: {}",
-                                err
-                            );
+            move |msg: calloop::channel::Event<PendingAppletEvent>, _, state| match msg {
+                calloop::channel::Event::Msg(msg) => match msg {
+                    PendingAppletEvent::Add(id, stream) => {
+                        info!("Received pending notification applet for space {}", &id);
+                        if !state.space.notification_applet_spaces.contains(&id) {
+                            // state.space.pending_notification_applet_ids.push(msg);
+                            if let Err(err) = write_socket(&daemon_socket, state, (id, stream)) {
+                                error!(
+                                    "Failed to send pending notification applet to daemon: {}",
+                                    err
+                                );
+                            }
                         }
                     }
-                }
+                    PendingAppletEvent::Remove(id) => {
+                        info!("Removing pending notification applet for space {}", &id);
+                        state.space.notification_applet_spaces.remove(&id);
+                    }
+                },
                 calloop::channel::Event::Closed => {
                     warn!("Notification channel closed");
                 }

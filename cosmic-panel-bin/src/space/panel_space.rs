@@ -79,7 +79,7 @@ use xdg_shell_wrapper::{
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
-use crate::space::Alignment;
+use crate::{notifications::PendingAppletEvent, space::Alignment};
 
 pub enum AppletMsg {
     NewProcess(ObjectId, Process),
@@ -126,7 +126,7 @@ pub(crate) struct PanelSpace {
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
-    pub notification_tx: Option<SyncSender<(String, UnixStream)>>,
+    pub notification_tx: Option<SyncSender<PendingAppletEvent>>,
     pub(crate) input_region: Option<Region>,
     old_buff: Option<MemoryRenderBuffer>,
     buffer: Option<MemoryRenderBuffer>,
@@ -142,7 +142,7 @@ impl PanelSpace {
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
-        notification_tx: Option<SyncSender<(String, UnixStream)>>,
+        notification_tx: Option<SyncSender<PendingAppletEvent>>,
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault => {

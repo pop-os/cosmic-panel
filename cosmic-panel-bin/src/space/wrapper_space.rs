@@ -58,7 +58,7 @@ use xdg_shell_wrapper::{
 
 use crate::{
     process::create_socket,
-    space::AppletMsg,
+    space::AppletMsg, notifications::PendingAppletEvent,
 };
 
 use super::PanelSpace;
@@ -356,6 +356,10 @@ impl WrapperSpace for PanelSpace {
                                     .as_ref()
                                     .map(|o| o.2.name.clone().unwrap_or_default())
                                     .unwrap_or_default();
+                                let output_name_clone = output_name.clone();
+                                let space_name = self.config.name.clone();
+
+                                let notification_tx = self.notification_tx.clone();
                                 let mut process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
@@ -386,7 +390,12 @@ impl WrapperSpace for PanelSpace {
                                     let id_clone = id_clone.clone();
                                     let client_id_clone = client_id.clone();
                                     let applet_tx_clone = applet_tx_clone.clone();
-
+                                    
+                                    if is_notification_applet {
+                                        if let Some(notification_tx) = notification_tx.as_ref() {
+                                            let _ = notification_tx.send(PendingAppletEvent::Remove(format!("{}-{}", output_name_clone, space_name)));
+                                        }
+                                    }
                                     let (c, s) = get_client_sock(&mut display_handle);
                                     async move {
                                         error!("Exited with error code {:?}", err_code);
@@ -419,8 +428,9 @@ impl WrapperSpace for PanelSpace {
                                         .with_fds(move || {
                                             match create_socket() {
                                                 Ok((c, s)) => {
-                                                    match notification_tx.send((format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
+                                                    match notification_tx.send(PendingAppletEvent::Add(format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
                                                         Ok(_) => {
+                                                            info!("Sent pending notification socket");
                                                             let mut c_socket = c_socket_pre.lock().unwrap();
                                                             let raw = c.as_raw_fd();
 

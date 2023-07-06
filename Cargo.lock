@@ -958,7 +958,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git#702bb0531bcd0aca6c17b85e1b516e46f31ddaa1"
+source = "git+https://github.com/pop-os/launch-pad.git#79b14cc85331d7d290dc8457a53172ed42140f8f"
 dependencies = [
  "log",
  "nix 0.26.2",
