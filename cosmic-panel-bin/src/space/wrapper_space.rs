@@ -422,8 +422,6 @@ impl WrapperSpace for PanelSpace {
                                     let c_socket_pre = c_socket.clone();
                                     let c_socket_on = c_socket;
 
-                                    // XXX Should be safe to share the Fds with the applet
-                                    // processes are only started by the panel on a single thread via launch-pad
                                     process = process
                                         .with_fds(move || {
                                             match create_socket() {
