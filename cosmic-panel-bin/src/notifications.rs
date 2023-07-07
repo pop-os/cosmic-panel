@@ -17,7 +17,7 @@ use smithay::reexports::{
     },
     nix::{fcntl, unistd},
 };
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, warn};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
 #[derive(Debug)]
@@ -75,7 +75,6 @@ pub fn init(
                     PendingAppletEvent::Add(id, stream) => {
                         info!("Received pending notification applet for space {}", &id);
                         if !state.space.notification_applet_spaces.contains(&id) {
-                            // state.space.pending_notification_applet_ids.push(msg);
                             if let Err(err) = write_socket(&daemon_socket, state, (id, stream)) {
                                 error!(
                                     "Failed to send pending notification applet to daemon: {}",
@@ -105,7 +104,7 @@ pub fn init(
     // insert source for daemon socket
     loop_handle
         .insert_source(
-            Generic::new(daemon_socket_clone, Interest::BOTH, Mode::Edge),
+            Generic::new(daemon_socket_clone, Interest::READ, Mode::Level),
             move |interest, stream, state: &mut GlobalState<SpaceContainer>| {
                 if interest.error {
                     error!("Error on session socket");
@@ -132,25 +131,37 @@ fn read_socket(stream: &UnixStream, state: &mut GlobalState<SpaceContainer>) -> 
     info!("Reading from notification daemon socket");
     let mut buf = [0u8; 128];
     let mut fd_buf = [0i32; 32];
-    while let Ok((msg_cnt, fd_cnt)) = stream.recv_with_fd(&mut buf, &mut fd_buf) {
-        if fd_cnt == 0 || msg_cnt == 0 {
-            break;
-        }
-        info!("Received {} bytes from notification daemon socket", msg_cnt);
-        let fd = unsafe { OwnedFd::from_raw_fd(fd_buf[0]) };
-        mark_as_cloexec(&fd)?;
+    match stream.recv_with_fd(&mut buf, &mut fd_buf) {
+        Ok((msg_cnt, fd_cnt)) => {
+            if fd_cnt == 0 || msg_cnt == 0 {
+                anyhow::bail!("Received empty message from notification daemon socket");
+            }
+            info!("Received {} bytes from notification daemon socket", msg_cnt);
+            let fd = unsafe { OwnedFd::from_raw_fd(fd_buf[0]) };
+            mark_as_cloexec(&fd)?;
 
-        let id = u32::from_ne_bytes(buf[..4].try_into().unwrap());
-        let Some(applets_msg_stream) = state.space.notification_applet_ids.remove(&id) else {
-            continue;
-        };
-        // send the fd and the applet id to the applet
-        let raw = fd.as_raw_fd();
-        info!("Sending fd {} to applet {}", raw, id);
-        if let Err(err) = applets_msg_stream.send_with_fd(bytemuck::bytes_of(&id), &[raw]) {
-            error!("Failed to send fd to applet: {}", err);
-        };
+            let id = u32::from_ne_bytes(buf[..4].try_into().unwrap());
+            let Some(applets_msg_stream) = state.space.notification_applet_ids.remove(&id) else {
+                anyhow::bail!("Received notification applet for unknown space {}", id);
+            };
+            // send the fd and the applet id to the applet
+            let raw = fd.as_raw_fd();
+            info!("Sending fd {} to applet {}", raw, id);
+            if let Err(err) = applets_msg_stream.send_with_fd(bytemuck::bytes_of(&id), &[raw]) {
+                error!("Failed to send fd to applet: {}", err);
+            };
+        }
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::WouldBlock
+                || err.kind() == std::io::ErrorKind::Interrupted
+            {
+                return Ok(());
+            } else {
+                return Err(err).with_context(|| "Failed to read from session socket");
+            }
+        }
     }
+
     Ok(())
 }
 
@@ -160,20 +171,37 @@ fn write_socket(
     (space, applet_stream): (String, UnixStream),
 ) -> Result<()> {
     info!("Writing to notification socket for space {}", space);
+    let Some(retry_tx) = state.space.notification_applet_tx.as_ref() else {
+        anyhow::bail!("No notification applet channel")
+    };
     state.space.notification_applet_counter += 1;
     let id: u32 = state.space.notification_applet_counter;
-    state
-        .space
-        .notification_applet_ids
-        .insert(id, applet_stream);
-
     let data = ron::ser::to_string(&PanelRequest::NewNotificationsClient { id })?;
     info!(
         "Writing to notification daemon socket for space {} {}",
         space, &data
     );
 
-    stream.write_all(format!("{}\n", data).as_bytes())?;
+    match stream.write_all(format!("{}\n", data).as_bytes()) {
+        Ok(_) => {}
+        Err(err)
+            if err.kind() == std::io::ErrorKind::WouldBlock
+                || err.kind() == std::io::ErrorKind::Interrupted =>
+        {
+            // send another event to the channel to try again
+            retry_tx
+                .send(PendingAppletEvent::Add(space, applet_stream))
+                .with_context(|| "Failed to send pending notification applet to channel")?;
+            return Ok(());
+        }
+        Err(err) => {
+            return Err(err).with_context(|| "Failed to write to session socket");
+        }
+    }
+    state
+        .space
+        .notification_applet_ids
+        .insert(id, applet_stream);
     state.space.notification_applet_spaces.insert(space);
     Ok(())
 }
