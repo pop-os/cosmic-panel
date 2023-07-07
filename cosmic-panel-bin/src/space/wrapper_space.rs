@@ -56,10 +56,7 @@ use xdg_shell_wrapper::{
     wp_viewporter::ViewporterState,
 };
 
-use crate::{
-    process::create_socket,
-    space::AppletMsg, notifications::PendingAppletEvent,
-};
+use crate::{notifications::PendingAppletEvent, process::create_socket, space::AppletMsg};
 
 use super::PanelSpace;
 
@@ -301,10 +298,10 @@ impl WrapperSpace for PanelSpace {
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
             let env_vars = vec![
-                ("COSMIC_PANEL_SIZE", config_size.as_str()),
-                ("COSMIC_PANEL_OUTPUT", active_output.as_str()),
-                ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
-                ("COSMIC_PANEL_BACKGROUND", config_bg.as_str()),
+                ("COSMIC_PANEL_SIZE".to_string(), config_size),
+                ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
+                ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
+                ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
             ];
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
@@ -335,10 +332,10 @@ impl WrapperSpace for PanelSpace {
                                     if !requests_wayland_display && *key == "WAYLAND_DISPLAY" {
                                         continue;
                                     }
-                                    applet_env.push((*key, *val));
+                                    applet_env.push((key.clone(), val.clone()));
                                 }
                                 let fd = socket.as_raw_fd().to_string();
-                                applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
+                                applet_env.push(("WAYLAND_SOCKET".to_string(), fd.to_string()));
                                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
                                 let is_notification_applet =
                                     entry.desktop_entry("X-NotificationsApplet").is_some();
@@ -358,12 +355,14 @@ impl WrapperSpace for PanelSpace {
                                     .unwrap_or_default();
                                 let output_name_clone = output_name.clone();
                                 let space_name = self.config.name.clone();
+                                let c_socket: Arc<Mutex<Option<std::os::fd::OwnedFd>>> =
+                                    Arc::new(Mutex::new(None));
+                                let c_socket_exit = c_socket.clone();
 
                                 let notification_tx = self.notification_tx.clone();
                                 let mut process = Process::new()
                                 .with_executable(&exec)
                                 .with_args(args)
-                                .with_env(applet_env)
                                 .with_on_stderr(move |_, _, out| {
                                     // TODO why is span not included in logs to journald
                                     let id_clone = id_clone_err.clone();
@@ -390,14 +389,39 @@ impl WrapperSpace for PanelSpace {
                                     let id_clone = id_clone.clone();
                                     let client_id_clone = client_id.clone();
                                     let applet_tx_clone = applet_tx_clone.clone();
-                                    
-                                    if is_notification_applet {
-                                        if let Some(notification_tx) = notification_tx.as_ref() {
-                                            let _ = notification_tx.send(PendingAppletEvent::Remove(format!("{}-{}", output_name_clone, space_name)));
-                                        }
-                                    }
                                     let (c, s) = get_client_sock(&mut display_handle);
+                                    let notification_tx = notification_tx.clone();
+                                    let c_socket_exit = c_socket_exit.clone();
+                                    let output_name = output_name_clone.clone();
+                                    let space_name = space_name.clone();
+
                                     async move {
+                                        if is_notification_applet {
+                                            if let Some(notification_tx) = notification_tx.as_ref() {
+                                                let _ = notification_tx.send(PendingAppletEvent::Remove(format!("{}-{}", output_name, space_name)));
+                                                if is_restarting {
+                                                    match create_socket() {
+                                                        Ok((c, s)) => {
+                                                            match notification_tx.send(PendingAppletEvent::Add(format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
+                                                                Ok(_) => {
+                                                                    info!("Sent pending notification socket");
+                                                                    let raw = c.as_raw_fd();
+                                                                    let _ = pman.update_process_env(&key, vec![("COSMIC_NOTIFICATIONS", raw)]).await;
+                                                                    let mut c_socket = c_socket_exit.lock().unwrap();
+                                                                    *c_socket = Some(c);
+                                                                }
+                                                                Err(e) => {
+                                                                    error!("Failed to send notification socket to notification applet: {}", e);
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Failed to create socket pair for notification applet: {}", e);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
                                         error!("Exited with error code {:?}", err_code);
                                         if !is_restarting {
                                             if let Some(err_code) = err_code {
@@ -416,51 +440,52 @@ impl WrapperSpace for PanelSpace {
                                     is_notification_applet.then_some(0),
                                     self.notification_tx.clone(),
                                 ) {
-                                    info!("Adding callbacks for notification applet...");
                                     let space_name = self.config.name.clone();
-                                    let c_socket = Arc::new(Mutex::new(None));
-                                    let c_socket_pre = c_socket.clone();
-                                    let c_socket_on = c_socket;
+                                    let c_socket_pre: Arc<Mutex<Option<std::os::fd::OwnedFd>>> =
+                                        c_socket.clone();
 
-                                    process = process
-                                        .with_fds(move || {
-                                            match create_socket() {
-                                                Ok((c, s)) => {
-                                                    match notification_tx.send(PendingAppletEvent::Add(format!("{}-{}", output_name, space_name), UnixStream::from(s))) {
-                                                        Ok(_) => {
-                                                            info!("Sent pending notification socket");
-                                                            let mut c_socket = c_socket_pre.lock().unwrap();
-                                                            let raw = c.as_raw_fd();
+                                    info!("Creating initial socket pair for notification applet");
+                                    match create_socket() {
+                                        Ok((c, s)) => {
+                                            match notification_tx.send(PendingAppletEvent::Add(
+                                                format!("{}-{}", output_name, space_name),
+                                                UnixStream::from(s),
+                                            )) {
+                                                Ok(_) => {
+                                                    info!("Sent pending notification socket");
+                                                    let mut c_socket = c_socket_pre.lock().unwrap();
+                                                    let c_str = c.as_raw_fd().to_string();
+                                                    applet_env.push((
+                                                        "COSMIC_NOTIFICATIONS".to_string(),
+                                                        c_str.to_string(),
+                                                    ));
 
-                                                            *c_socket = Some(c);
-                                                            return vec![raw];
-                                                        }
-                                                        Err(e) => {
-                                                            error!("Failed to send notification socket to notification applet: {}", e);
-                                                        }
-                                                    }
+                                                    *c_socket = Some(c);
                                                 }
                                                 Err(e) => {
-                                                    error!("Failed to create socket pair for notification applet: {}", e);
+                                                    error!("Failed to send notification socket to notification applet: {}", e);
                                                 }
-                                            };
-                                            Vec::new()
-                                        })
-                                        .with_on_start(move |pman, key, _| {
-                                            let mut c_socket: std::sync::MutexGuard<'_, Option<std::os::fd::OwnedFd>> = c_socket_on.lock().unwrap();
-                                            let c_socket = c_socket.take();
-                                            async move { 
-                                                let Some(socket) = c_socket else {
-                                                    error!("Failed to get socket for notification applet in on start");
-                                                    return;
-                                                };
-                                                info!("Sending notification socket to notification applet {}", socket.as_raw_fd());
-                                                if let Err(err) = pman.send_message(key, format!("{}\n", socket.as_raw_fd()).into_bytes().into()).await {
-                                                    error!("Failed to send Fd to notification applet stdin: {}", err);
-                                                } 
                                             }
-                                        });
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to create socket pair for notification applet: {}", e);
+                                        }
+                                    };
+                                    info!("Adding fds to the notifications process...");
+                                    process = process.with_fds(move || {
+                                        let mut c_socket: std::sync::MutexGuard<
+                                            '_,
+                                            Option<std::os::fd::OwnedFd>,
+                                        > = c_socket.lock().unwrap();
+                                        if let Some(c_socket) = c_socket.as_ref() {
+                                            vec![c_socket.as_raw_fd()]
+                                        } else {
+                                            error!("No socket to share with notification applet");
+                                            Vec::new()
+                                        }
+                                    });
                                 }
+                                process = process.with_env(applet_env);
 
                                 // TODO error handling
                                 let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
