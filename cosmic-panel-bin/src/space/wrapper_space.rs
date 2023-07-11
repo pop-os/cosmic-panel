@@ -473,7 +473,7 @@ impl WrapperSpace for PanelSpace {
                                     };
                                     info!("Adding fds to the notifications process...");
                                     process = process.with_fds(move || {
-                                        let mut c_socket: std::sync::MutexGuard<
+                                        let c_socket: std::sync::MutexGuard<
                                             '_,
                                             Option<std::os::fd::OwnedFd>,
                                         > = c_socket.lock().unwrap();

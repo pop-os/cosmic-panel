@@ -138,6 +138,11 @@ impl SpaceContainer {
         self.space_list.retain(|s| s.config.name != name);
         self.config.config_list.retain(|c| c.name != name);
         self.watchers.remove(&name);
+        let prefixed_name = format!("-{name}");
+        self.notification_applet_spaces
+            .retain(|s| !s.ends_with(&prefixed_name));
+        self.pending_notification_applet_ids
+            .retain(|(s, _)| !s.ends_with(&prefixed_name));
     }
 
     /// apply a new or updated entry to the space list
@@ -176,6 +181,12 @@ impl SpaceContainer {
 
         // remove old one if it exists
         self.space_list.retain(|s| s.config.name != entry.name);
+        let prefixed_name = format!("-{}", entry.name);
+
+        self.notification_applet_spaces
+            .retain(|s| !s.ends_with(&prefixed_name));
+        self.pending_notification_applet_ids
+            .retain(|(s, _)| !s.ends_with(&prefixed_name));
 
         let outputs: Vec<_> = match &entry.output {
             CosmicPanelOuput::Active => {
