@@ -1,22 +1,27 @@
-use std::{collections::HashMap, mem, os::unix::net::UnixStream, time::Duration};
+mod config_watching;
+mod notifications;
+mod space;
+mod space_container;
 
 use anyhow::Result;
 use config_watching::{watch_config, watch_cosmic_theme};
 use launch_pad::{ProcessKey, ProcessManager};
+use notifications::notifications_conn;
 use sctk::reexports::client::backend::ObjectId;
 use smithay::reexports::{
     calloop,
     wayland_server::{backend::ClientId, Client},
 };
+use std::{
+    collections::HashMap,
+    mem,
+    os::{fd::IntoRawFd, unix::net::UnixStream},
+    time::Duration,
+};
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use xdg_shell_wrapper::{run, shared_state::GlobalState};
-mod config_watching;
-mod notifications;
-mod process;
-mod space;
-mod space_container;
 
 pub enum PanelCalloopMsg {
     ClientSocketPair(String, ClientId, Client, UnixStream),
@@ -68,7 +73,7 @@ fn main() -> Result<()> {
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
 
-    let mut space = space_container::SpaceContainer::new(config, applet_tx);
+    let mut space = space_container::SpaceContainer::new(config, applet_tx.clone());
 
     let (calloop_tx, calloop_rx) = calloop::channel::sync_channel(100);
     let event_loop = calloop::EventLoop::try_new()?;
@@ -84,19 +89,6 @@ fn main() -> Result<()> {
     match watch_cosmic_theme(event_loop.handle()) {
         Ok(w) => mem::forget(w),
         Err(e) => error!("Error while watching cosmic theme: {:?}", e),
-    };
-
-    match notifications::init(&event_loop.handle()) {
-        Err(err) => {
-            error!(
-                "Failed to initialize notifications for the panel: {:?}",
-                err
-            );
-        }
-        Ok(tx) => {
-            info!("Notifications initialized");
-            space.notification_applet_tx = Some(tx);
-        }
     };
 
     event_loop
@@ -125,18 +117,64 @@ fn main() -> Result<()> {
             .build()?;
         let mut process_ids: HashMap<ObjectId, Vec<ProcessKey>> = HashMap::new();
 
-        rt.block_on(async {
+        rt.block_on(async move {
             let process_manager = ProcessManager::new().await;
-            let _ = process_manager.set_max_restarts(usize::MAX).await;
             let _ = process_manager
                 .set_restart_mode(launch_pad::RestartMode::ExponentialBackoff(
-                    Duration::from_millis(10),
+                    Duration::from_millis(2),
                 ))
                 .await;
+            let _ = process_manager.set_max_restarts(999999).await;
+
+            let mut notifications_proxy =
+                match tokio::time::timeout(Duration::from_secs(1), notifications_conn()).await {
+                    Ok(Ok(p)) => Some(p),
+                    err => {
+                        error!("Failed to connect to the notifications daemon {:?}", err);
+                        None
+                    }
+                };
 
             while let Some(msg) = applet_rx.recv().await {
                 match msg {
                     space::AppletMsg::NewProcess(id, process) => {
+                        if let Ok(key) = process_manager.start(process).await {
+                            let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
+                            entry.push(key);
+                        }
+                    }
+                    space::AppletMsg::NewNotificationsProcess(id, mut process, mut env) => {
+                        let Some(proxy) = notifications_proxy.as_mut() else {
+                            
+                                notifications_proxy = match tokio::time::timeout(Duration::from_secs(1), notifications_conn()).await {
+                                    Ok(Ok(p)) => Some(p),
+                                    err => {
+                                        error!("Failed to connect to the notifications daemon {:?}", err);
+                                        None
+                                    }
+                                };
+                            warn!("Can't start notifications applet without a connection");
+                            continue;
+                        };
+                        info!("Getting fd for notifications applet");
+                        let fd = match tokio::time::timeout(Duration::from_secs(1), proxy.get_fd())
+                            .await
+                        {
+                            Ok(Ok(fd)) => fd,
+                            Ok(Err(err)) => {
+                                error!("Failed to get fd for the notifications applet {}", err);
+                                continue;
+                            }
+                            Err(err) => {
+                                error!("Failed to get fd for the notifications applet {}", err);
+                                continue;
+                            }
+                        };
+                        let fd = fd.into_raw_fd();
+                        env.push(("COSMIC_NOTIFICATIONS".to_string(), fd.to_string()));
+                        process = process.with_fds(move || vec![fd]);
+                        process = process.with_env(env);
+                        info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
                             let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
                             entry.push(key);
@@ -153,6 +191,22 @@ fn main() -> Result<()> {
                         for id in process_ids.remove(&id).unwrap_or_default() {
                             let _ = process_manager.stop_process(id).await;
                         }
+                    }
+                    space::AppletMsg::NeedNewNotificationFd(sender) => {
+                        let Some(proxy) = notifications_proxy.as_mut() else {
+                            warn!("Can't start notifications applet without a connection");
+                            continue;
+                        };
+                        let fd = match proxy.get_fd().await {
+                            Ok(fd) => fd,
+                            Err(err) => {
+                                error!("Failed to get fd for the notifications applet {}", err);
+                                continue;
+                            }
+                        };
+                        let fd = fd.into_raw_fd();
+
+                        _ = sender.send(fd);
                     }
                 };
             }

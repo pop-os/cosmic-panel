@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    os::unix::net::UnixStream,
+    os::{fd::RawFd, unix::net::UnixStream},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -62,7 +62,7 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Point, Rectangle, Size},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
@@ -79,10 +79,12 @@ use xdg_shell_wrapper::{
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
-use crate::{notifications::PendingAppletEvent, space::Alignment};
+use crate::space::Alignment;
 
 pub enum AppletMsg {
     NewProcess(ObjectId, Process),
+    NewNotificationsProcess(ObjectId, Process, Vec<(String, String)>),
+    NeedNewNotificationFd(oneshot::Sender<RawFd>),
     ClientSocketPair(String, ClientId, Client, UnixStream),
     Cleanup(ObjectId),
 }
@@ -126,7 +128,6 @@ pub(crate) struct PanelSpace {
     pub(crate) start_instant: Instant,
     pub(crate) bg_color: [f32; 4],
     pub applet_tx: mpsc::Sender<AppletMsg>,
-    pub notification_tx: Option<SyncSender<PendingAppletEvent>>,
     pub(crate) input_region: Option<Region>,
     old_buff: Option<MemoryRenderBuffer>,
     buffer: Option<MemoryRenderBuffer>,
@@ -142,7 +143,6 @@ impl PanelSpace {
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
-        notification_tx: Option<SyncSender<PendingAppletEvent>>,
     ) -> Self {
         let bg_color = match config.background {
             CosmicPanelBackground::ThemeDefault => {
@@ -221,7 +221,6 @@ impl PanelSpace {
             s_hovered_surface: Default::default(),
             bg_color,
             applet_tx,
-            notification_tx,
             actual_size: (0, 0).into(),
             input_region: None,
             damage_tracked_renderer: Default::default(),

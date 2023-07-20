@@ -45,6 +45,7 @@ image = "0.24"
 cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
 ron = "0.8"
 sendfd = "0.4"
-cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications" }
+cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }
 serde = "1.0"
 bytemuck = "1.13"
+zbus = {version = "3.13.1", features = ["tokio"]}

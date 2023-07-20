@@ -74,7 +74,6 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
-                            self.notification_applet_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -160,7 +159,6 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
-                            self.notification_applet_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -205,7 +203,6 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
-                            self.notification_applet_tx.clone(),
                         );
                         s.setup(
                             compositor_state,

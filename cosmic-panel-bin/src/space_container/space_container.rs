@@ -5,10 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
-    notifications::PendingAppletEvent,
-    space::{AppletMsg, PanelSpace},
-};
+use crate::space::{AppletMsg, PanelSpace};
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
@@ -21,10 +18,7 @@ use sctk::{
 use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
-    reexports::{
-        calloop::channel::SyncSender,
-        wayland_server::{self, backend::ClientId, Client},
-    },
+    reexports::wayland_server::{self, backend::ClientId, Client},
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -46,12 +40,6 @@ pub struct SpaceContainer {
     pub applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
-    /// numerical id of the applet pointing to a oneshot channel and the name of its space
-    pub(crate) pending_notification_applet_ids: Vec<(String, UnixStream)>,
-    pub(crate) notification_applet_ids: HashMap<u32, UnixStream>,
-    pub(crate) notification_applet_spaces: HashSet<String>,
-    pub(crate) notification_applet_tx: Option<SyncSender<PendingAppletEvent>>,
-    pub(crate) notification_applet_counter: u32,
 }
 
 impl SpaceContainer {
@@ -67,11 +55,6 @@ impl SpaceContainer {
             applet_tx: tx,
             outputs: vec![],
             watchers: HashMap::with_capacity(1),
-            pending_notification_applet_ids: vec![],
-            notification_applet_spaces: HashSet::with_capacity(1),
-            notification_applet_ids: HashMap::with_capacity(1),
-            notification_applet_tx: None,
-            notification_applet_counter: 0,
         }
     }
 
@@ -138,11 +121,6 @@ impl SpaceContainer {
         self.space_list.retain(|s| s.config.name != name);
         self.config.config_list.retain(|c| c.name != name);
         self.watchers.remove(&name);
-        let prefixed_name = format!("-{name}");
-        self.notification_applet_spaces
-            .retain(|s| !s.ends_with(&prefixed_name));
-        self.pending_notification_applet_ids
-            .retain(|(s, _)| !s.ends_with(&prefixed_name));
     }
 
     /// apply a new or updated entry to the space list
@@ -181,12 +159,6 @@ impl SpaceContainer {
 
         // remove old one if it exists
         self.space_list.retain(|s| s.config.name != entry.name);
-        let prefixed_name = format!("-{}", entry.name);
-
-        self.notification_applet_spaces
-            .retain(|s| !s.ends_with(&prefixed_name));
-        self.pending_notification_applet_ids
-            .retain(|(s, _)| !s.ends_with(&prefixed_name));
 
         let outputs: Vec<_> = match &entry.output {
             CosmicPanelOuput::Active => {
@@ -195,7 +167,6 @@ impl SpaceContainer {
                     self.c_focused_surface.clone(),
                     self.c_hovered_surface.clone(),
                     self.applet_tx.clone(),
-                    self.notification_applet_tx.clone(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
@@ -233,7 +204,6 @@ impl SpaceContainer {
                 self.c_focused_surface.clone(),
                 self.c_hovered_surface.clone(),
                 self.applet_tx.clone(),
-                self.notification_applet_tx.clone(),
             );
             if let Some(s_display) = self.s_display.as_ref() {
                 space.set_display_handle(s_display.clone());
@@ -266,7 +236,6 @@ impl SpaceContainer {
                         self.c_focused_surface.clone(),
                         self.c_hovered_surface.clone(),
                         self.applet_tx.clone(),
-                        self.notification_applet_tx.clone(),
                     );
                     if let Some(s_display) = self.s_display.as_ref() {
                         space.set_display_handle(s_display.clone());
