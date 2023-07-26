@@ -362,7 +362,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic#a3ab6e93f3e308d75092484fbcf4fca1965ea269"
+source = "git+https://github.com/pop-os/libcosmic#da9b6345d8af4326ba8fb4c268c8670dbba6ff9d"
 dependencies = [
  "atomicwrites",
  "cosmic-config-derive",
@@ -376,7 +376,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config-derive"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic#a3ab6e93f3e308d75092484fbcf4fca1965ea269"
+source = "git+https://github.com/pop-os/libcosmic#da9b6345d8af4326ba8fb4c268c8670dbba6ff9d"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -385,11 +385,12 @@ dependencies = [
 [[package]]
 name = "cosmic-notifications-util"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-notifications#99ed21fd09177ef2ff8fd84211ff447942e0dd2b"
+source = "git+https://github.com/pop-os/cosmic-notifications#35fd49d2b8147859d8b08d68b346096c356a8d15"
 dependencies = [
  "bytemuck",
  "serde",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -447,7 +448,7 @@ dependencies = [
 [[package]]
 name = "cosmic-theme"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic#a3ab6e93f3e308d75092484fbcf4fca1965ea269"
+source = "git+https://github.com/pop-os/libcosmic#da9b6345d8af4326ba8fb4c268c8670dbba6ff9d"
 dependencies = [
  "anyhow",
  "cosmic-config",
@@ -818,6 +819,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "form_urlencoded"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a62bc1cf6f830c2ec14a513a9fb124d0a213a629668a4186f329db21fe045652"
+dependencies = [
+ "percent-encoding",
+]
+
+[[package]]
 name = "freedesktop-desktop-entry"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1073,7 +1083,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "iced_core"
 version = "0.9.0"
-source = "git+https://github.com/pop-os/libcosmic#a3ab6e93f3e308d75092484fbcf4fca1965ea269"
+source = "git+https://github.com/pop-os/libcosmic#da9b6345d8af4326ba8fb4c268c8670dbba6ff9d"
 dependencies = [
  "bitflags 1.3.2",
  "instant",
@@ -1085,13 +1095,23 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.6.0"
-source = "git+https://github.com/pop-os/libcosmic#a3ab6e93f3e308d75092484fbcf4fca1965ea269"
+source = "git+https://github.com/pop-os/libcosmic#da9b6345d8af4326ba8fb4c268c8670dbba6ff9d"
 dependencies = [
  "futures",
  "iced_core",
  "log",
  "wasm-bindgen-futures",
  "wasm-timer",
+]
+
+[[package]]
+name = "idna"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d20d6b07bfbc108882d88ed8e37d39636dcc260e15e30c45e6ba089610b917c"
+dependencies = [
+ "unicode-bidi",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1652,6 +1672,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "percent-encoding"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b2a4787296e9989611394c33f193f676704af1686e70b8f8033ab5ba9a35a94"
+
+[[package]]
 name = "phf"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2114,9 +2140,9 @@ dependencies = [
 
 [[package]]
 name = "simd-adler32"
-version = "0.3.5"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "238abfbb77c1915110ad968465608b68e869e0772622c9656714e73e5a1a522f"
+checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "siphasher"
@@ -2151,7 +2177,7 @@ checksum = "62bb4feee49fdd9f707ef802e22365a35de4b7b299de4763d44bfea899442ff9"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay#ae7fb22315a8cf16c33b5468e9d2faaa4390520d"
+source = "git+https://github.com/smithay/smithay#4067f083dac9c4b56c34001c28512dcd429dc26e"
 dependencies = [
  "appendlist",
  "bitflags 2.3.3",
@@ -2187,13 +2213,12 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.17.0"
-source = "git+https://github.com/pop-os/client-toolkit?tag=themed-pointer#fd15dd954bc5f0c78d079aeda7b11194a682bbff"
+source = "git+https://github.com/smithay/client-toolkit#c9940f4167f0d81cc26f77b7eeef6a34068a90a5"
 dependencies = [
  "bitflags 1.3.2",
  "calloop",
  "cursor-icon",
  "dlib",
- "lazy_static",
  "log",
  "memmap2 0.5.10",
  "nix 0.26.2",
@@ -2201,6 +2226,7 @@ dependencies = [
  "thiserror",
  "wayland-backend",
  "wayland-client",
+ "wayland-csd-frame",
  "wayland-cursor",
  "wayland-protocols",
  "wayland-protocols-wlr",
@@ -2320,6 +2346,21 @@ dependencies = [
  "jpeg-decoder",
  "weezl",
 ]
+
+[[package]]
+name = "tinyvec"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87cc5ceb3875bb20c2890005a4e226a4651264a5c75edb2421b52861a0a0cb50"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
@@ -2501,10 +2542,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "unicode-bidi"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92888ba5573ff080736b3648696b70cafad7d250551175acbaa4e0385b3e1460"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "301abaae475aa91687eb82514b328ab47a211a533026cb25fc3e519b86adfc3c"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
+name = "url"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50bff7831e19200a85b17131d085c25d7811bc4e186efdaf54bbd132994a88cb"
+dependencies = [
+ "form_urlencoded",
+ "idna",
+ "percent-encoding",
+]
 
 [[package]]
 name = "valuable"
@@ -2653,6 +2720,17 @@ dependencies = [
  "nix 0.26.2",
  "wayland-backend",
  "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-csd-frame"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72191e30290b83491325d32c1327be7f45459c97263d9d48494c81efc9328116"
+dependencies = [
+ "bitflags 2.3.3",
+ "cursor-icon",
+ "wayland-backend",
 ]
 
 [[package]]
@@ -2935,9 +3013,9 @@ checksum = "1a515f5799fe4961cb532f983ce2b23082366b898e52ffbce459c86f67c8378a"
 
 [[package]]
 name = "winnow"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81fac9742fd1ad1bd9643b991319f72dd031016d44b77039a26977eb667141e7"
+checksum = "25b5872fa2e10bd067ae946f927e726d7d603eaeb6e02fa6a350e0722d2b8c11"
 dependencies = [
  "memchr",
 ]
@@ -2970,7 +3048,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#8024f9e33fdbf188c34543566102dfb7755adf7a"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f9d961ba961bba88614136a4af163e8eb92d503a"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2983,6 +3061,7 @@ dependencies = [
  "smithay-client-toolkit",
  "tempfile",
  "tracing",
+ "wayland-backend",
  "wayland-egl",
  "wayland-protocols",
  "xdg-shell-wrapper-config",
@@ -2991,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#8024f9e33fdbf188c34543566102dfb7755adf7a"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#f9d961ba961bba88614136a4af163e8eb92d503a"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",

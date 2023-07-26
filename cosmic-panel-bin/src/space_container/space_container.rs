@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    os::unix::net::UnixStream,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
 use cosmic_panel_config::{

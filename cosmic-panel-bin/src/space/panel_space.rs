@@ -42,7 +42,6 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        calloop::channel::SyncSender,
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, DisplayHandle},
     },
@@ -1521,6 +1520,7 @@ impl PanelSpace {
         {
             p.wrapper_rectangle = Rectangle::from_loc_and_size(pos, (width, height));
             p.state.take();
+
             let _ = p.s_surface.send_configure();
             match config.kind {
                 popup::ConfigureKind::Initial => {

@@ -2,9 +2,8 @@ use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
     fs,
-    os::unix::{net::UnixStream, prelude::AsRawFd},
+    os::unix::prelude::AsRawFd,
     rc::Rc,
-    sync::{Arc, Mutex},
     time::Instant,
 };
 
