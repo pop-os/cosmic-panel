@@ -71,7 +71,8 @@ use xdg_shell_wrapper::{
     server_state::{ServerFocus, ServerPtrFocus},
     shared_state::GlobalState,
     space::{
-        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
+        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup,
+        WrapperPopupState, WrapperSpace,
     },
     util::smootherstep,
 };
@@ -1439,7 +1440,6 @@ impl PanelSpace {
                         smithay::utils::Transform::Flipped180,
                     ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
-                    self.is_dirty = true;
                 }
                 SpaceEvent::Quit => (),
             },
@@ -1496,7 +1496,6 @@ impl PanelSpace {
                     smithay::utils::Transform::Flipped180,
                 ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
-                self.is_dirty = true;
             }
         }
     }
@@ -1511,15 +1510,20 @@ impl PanelSpace {
             return;
         };
 
-        let pos = config.position;
-        let (width, height) = (config.width, config.height);
         if let Some(p) = self
             .popups
             .iter_mut()
             .find(|p| popup.wl_surface() == p.c_popup.wl_surface())
         {
-            p.wrapper_rectangle = Rectangle::from_loc_and_size(pos, (width, height));
-            p.state.take();
+            // use the size that we have already
+            p.wrapper_rectangle =
+                Rectangle::from_loc_and_size(config.position, (config.width, config.height));
+
+            let (width, height) = (config.width, config.height);
+            p.state = match p.state {
+                None | Some(WrapperPopupState::WaitConfigure) => None,
+                Some(r) => Some(r),
+            };
 
             let _ = p.s_surface.send_configure();
             match config.kind {
@@ -1551,7 +1555,6 @@ impl PanelSpace {
                 popup::ConfigureKind::Reposition { token: _token } => {}
                 _ => {}
             };
-            p.dirty = true;
         }
     }
 

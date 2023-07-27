@@ -538,6 +538,7 @@ impl WrapperSpace for PanelSpace {
                         .wl_surface()
                         .set_input_region(Some(p.input_region.wl_region()));
                 }
+
                 p.state = Some(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
                     y: p_bbox.loc.y,
