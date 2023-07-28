@@ -614,13 +614,22 @@ impl WrapperSpace for PanelSpace {
                 self.s_hovered_surface.last().cloned()
             }
         } else {
-            // if not on this panel's client surface retun None
+            // if not on this panel's client surface return None
             if self
                 .layer
                 .as_ref()
                 .map(|s| *s.wl_surface() != c_wl_surface)
                 .unwrap_or(true)
             {
+                if self.space.elements().any(|e| {
+                    e.wl_surface()
+                        .zip(prev_hover.as_ref())
+                        .map(|(s, prev_hover)| s == prev_hover.1.surface)
+                        .unwrap_or_default()
+                }) {
+                    let (pos, _) = prev_hover.unwrap();
+                    self.s_hovered_surface.remove(pos);
+                }
                 return None;
             }
             if let Some((w, relative_loc)) = self.space.element_under((x as f64, y as f64)) {
