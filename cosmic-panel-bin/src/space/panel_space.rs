@@ -655,7 +655,7 @@ impl PanelSpace {
                 self.egl_surface
                     .as_ref()
                     .unwrap()
-                    .swap_buffers(res.0.as_deref_mut())?;
+                    .swap_buffers(res.damage.as_deref_mut())?;
 
                 for window in self.space.elements() {
                     let output = o.clone();
