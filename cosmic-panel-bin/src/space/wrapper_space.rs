@@ -12,7 +12,6 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::{izip, Itertools};
 use launch_pad::process::Process;
-use rand::distributions::{Alphanumeric, DistString};
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
@@ -44,6 +43,7 @@ use smithay::{
     },
 };
 use smithay::{desktop::space::SpaceElement, wayland::fractional_scale::with_fractional_scale};
+use tokio::sync::oneshot;
 use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xdg_shell_wrapper::{
@@ -238,6 +238,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn spawn_clients(&mut self, mut display: DisplayHandle) -> anyhow::Result<()> {
+        info!("Spawning applets");
         if self.clients_left.is_empty()
             && self.clients_center.is_empty()
             && self.clients_right.is_empty()
@@ -298,14 +299,12 @@ impl WrapperSpace for PanelSpace {
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
             let env_vars = vec![
-                ("COSMIC_PANEL_SIZE", config_size.as_str()),
-                ("COSMIC_PANEL_OUTPUT", active_output.as_str()),
-                ("COSMIC_PANEL_ANCHOR", config_anchor.as_str()),
-                ("COSMIC_PANEL_BACKGROUND", config_bg.as_str()),
+                ("COSMIC_PANEL_SIZE".to_string(), config_size),
+                ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
+                ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
+                ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
             ];
-
-            // each output should have a single notification applet
-            let notification_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
+            info!("{:?}", &desktop_ids);
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
                 if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _)| {
@@ -314,9 +313,12 @@ impl WrapperSpace for PanelSpace {
                     // This way each applet is at most started once,
                     // even if multiple desktop files in different directories match
                     let (id, client, socket) = desktop_ids.remove(position);
+                    info!(id);
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                             if let Some(exec) = entry.exec() {
+                                info!("Starting: {}", exec);
+
                                 let requests_wayland_display =
                                     entry.desktop_entry("X-HostWaylandDisplay").is_some();
 
@@ -335,29 +337,14 @@ impl WrapperSpace for PanelSpace {
                                     if !requests_wayland_display && *key == "WAYLAND_DISPLAY" {
                                         continue;
                                     }
-                                    applet_env.push((*key, *val));
+                                    applet_env.push((key.clone(), val.clone()));
                                 }
                                 let fd = socket.as_raw_fd().to_string();
-                                applet_env.push(("WAYLAND_SOCKET", fd.as_str()));
+                                applet_env.push(("WAYLAND_SOCKET".to_string(), fd.to_string()));
                                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
                                 let is_notification_applet =
                                     entry.desktop_entry("X-NotificationsApplet").is_some();
 
-                                if is_notification_applet {
-                                    if let Some(output) = self.output.as_ref().map(|o| o.0.id()) {
-                                        match self
-                                            .applet_tx
-                                            .try_send(AppletMsg::NotificationId(output, id.clone()))
-                                        {
-                                            Ok(_) => {}
-                                            Err(e) => error!("{e}"),
-                                        };
-                                    }
-                                    applet_env.push((
-                                        "COSMIC_PANEL_NOTIFICATIONS_ID",
-                                        notification_id.as_str(),
-                                    ));
-                                }
                                 let display_handle = display.clone();
                                 let applet_tx_clone = self.applet_tx.clone();
                                 let id_clone = id.clone();
@@ -366,69 +353,109 @@ impl WrapperSpace for PanelSpace {
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
-                                let output_id = self.output.as_ref().map(|o| o.0.id()).clone();
 
                                 let process = Process::new()
-                                .with_executable(&exec)
-                                .with_args(args)
-                                .with_env(applet_env)
-                                .with_on_stderr(move |_, _, out| {
-                                    // TODO why is span not included in logs to journald
-                                    let id_clone = id_clone_err.clone();
-                                    let client_id = client_id_err.clone();
+                                    .with_executable(&exec)
+                                    .with_args(args)
+                                    .with_on_stderr(move |_, _, out| {
+                                        // TODO why is span not included in logs to journald
+                                        let id_clone = id_clone_err.clone();
+                                        let client_id = client_id_err.clone();
 
-                                    async move {
-                                        error_span!("stderr", client = ?client_id).in_scope(|| {
-                                            error!("{}: {}", id_clone, out);
-                                        });
-                                     }
-                                })
-                                .with_on_stdout(move |_, _, out| {
-                                    let id_clone = id_clone_info.clone();
-                                    let client_id = client_id_info.clone();
-                                    // TODO why is span not included in logs to journald
-                                    async move {
-                                        info_span!("stdout", client = ?client_id).in_scope(|| {
-                                            info!("{}: {}", id_clone, out);
-                                        });
-                                     }
-                                })
-                                .with_on_exit(move |mut pman, key, err_code, is_restarting| {
-                                    let mut display_handle = display_handle.clone();
-                                    let id_clone = id_clone.clone();
-                                    let client_id_clone = client_id.clone();
-                                    let applet_tx_clone = applet_tx_clone.clone();
-                                    let output_id = output_id.clone();
+                                        async move {
+                                            error_span!("stderr", client = ?client_id).in_scope(
+                                                || {
+                                                    error!("{}: {}", id_clone, out);
+                                                },
+                                            );
+                                        }
+                                    })
+                                    .with_on_stdout(move |_, _, out| {
+                                        let id_clone = id_clone_info.clone();
+                                        let client_id = client_id_info.clone();
+                                        // TODO why is span not included in logs to journald
+                                        async move {
+                                            info_span!("stdout", client = ?client_id).in_scope(
+                                                || {
+                                                    info!("{}: {}", id_clone, out);
+                                                },
+                                            );
+                                        }
+                                    })
+                                    .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                                        let mut display_handle = display_handle.clone();
+                                        let id_clone = id_clone.clone();
+                                        let client_id_clone = client_id.clone();
+                                        let applet_tx_clone = applet_tx_clone.clone();
+                                        let (c, s) = get_client_sock(&mut display_handle);
 
-                                    let (c, s) = get_client_sock(&mut display_handle);
-                                    async move {
-                                        error!("Exited with error code {:?}", err_code);
-                                        if !is_restarting {
+                                        async move {
                                             if let Some(err_code) = err_code {
-                                                error!("Exited with error code and will not restart! {}", err_code);
+                                                error!("Exited with error code {}", err_code)
                                             }
-                                            return;
-                                        }
+                                            if !is_restarting {
+                                                return;
+                                            }
 
-                                        let fd = s.as_raw_fd().to_string();
-                                        let _ = applet_tx_clone.send(AppletMsg::ClientSocketPair(id_clone, client_id_clone, c, s)).await;
-                                        let _ = pman.update_process_env(&key, vec![("WAYLAND_SOCKET", fd.as_str())]).await;
-                                        let notification_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
-                                        if is_notification_applet {
-                                            if let Some(output_id) = output_id {
-                                                let _ = applet_tx_clone.send(AppletMsg::NotificationId(output_id, notification_id.clone())).await;
-                                                let _ = pman.update_process_env(&key, vec![("COSMIC_PANEL_NOTIFICATIONS_ID", notification_id.as_str())]).await;
+                                            if is_notification_applet {
+                                                let (tx, rx) = oneshot::channel();
+                                                _ = applet_tx_clone
+                                                    .send(AppletMsg::NeedNewNotificationFd(tx))
+                                                    .await;
+                                                let Ok(fd) = rx.await else {
+                                                error!("Failed to get new fd");
+                                                return;
+                                            };
+                                                if let Err(err) = pman
+                                                    .update_process_env(
+                                                        &key,
+                                                        vec![(
+                                                            "COSMIC_NOTIFICATIONS".to_string(),
+                                                            fd.to_string(),
+                                                        )],
+                                                    )
+                                                    .await
+                                                {
+                                                    error!("Failed to update process env: {}", err);
+                                                    return;
+                                                }
+                                                if let Err(err) = pman
+                                                    .update_process_fds(&key, move || vec![fd])
+                                                    .await
+                                                {
+                                                    error!("Failed to update process fds: {}", err);
+                                                    return;
+                                                }
                                             }
+
+                                            let fd = s.as_raw_fd().to_string();
+                                            let _ = applet_tx_clone
+                                                .send(AppletMsg::ClientSocketPair(
+                                                    id_clone,
+                                                    client_id_clone,
+                                                    c,
+                                                    s,
+                                                ))
+                                                .await;
+                                            let _ = pman
+                                                .update_process_env(
+                                                    &key,
+                                                    vec![("WAYLAND_SOCKET", fd.as_str())],
+                                                )
+                                                .await;
                                         }
-                                    }
-                                });
+                                    });
 
                                 // TODO error handling
                                 let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
-                                match self
-                                    .applet_tx
-                                    .try_send(AppletMsg::NewProcess(panel_id, process))
-                                {
+                                let msg = if is_notification_applet {
+                                    AppletMsg::NewNotificationsProcess(
+                                        panel_id, process, applet_env,
+                                    )
+                                } else {
+                                    AppletMsg::NewProcess(panel_id, process.with_env(applet_env))
+                                };
+                                match self.applet_tx.try_send(msg) {
                                     Ok(_) => {}
                                     Err(e) => error!("{e}"),
                                 };
@@ -438,6 +465,7 @@ impl WrapperSpace for PanelSpace {
                 }
             }
 
+            info!("Done spawning applets");
             Ok(())
         } else {
             bail!("Clients have already been spawned!");
@@ -510,6 +538,7 @@ impl WrapperSpace for PanelSpace {
                         .wl_surface()
                         .set_input_region(Some(p.input_region.wl_region()));
                 }
+
                 p.state = Some(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
                     y: p_bbox.loc.y,
@@ -895,7 +924,7 @@ impl WrapperSpace for PanelSpace {
         legacy: bool,
     ) {
         info!(
-            "Scale factor changed {scale} for {} on {}",
+            "Scale factor changed {scale} for as surface in space \"{}\" on {}",
             self.config.name,
             self.output
                 .as_ref()

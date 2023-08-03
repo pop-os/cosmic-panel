@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    os::unix::net::UnixStream,
+    os::{fd::RawFd, unix::net::UnixStream},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -32,7 +32,7 @@ use smithay::{
             EGLContext,
         },
         renderer::{
-            damage::OutputDamageTracker,
+            damage::{OutputDamageTracker, RenderOutputResult},
             element::{
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
@@ -61,7 +61,7 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Point, Rectangle, Size},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
@@ -71,7 +71,8 @@ use xdg_shell_wrapper::{
     server_state::{ServerFocus, ServerPtrFocus},
     shared_state::GlobalState,
     space::{
-        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
+        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup,
+        WrapperPopupState, WrapperSpace,
     },
     util::smootherstep,
 };
@@ -82,9 +83,10 @@ use crate::space::Alignment;
 
 pub enum AppletMsg {
     NewProcess(ObjectId, Process),
+    NewNotificationsProcess(ObjectId, Process, Vec<(String, String)>),
+    NeedNewNotificationFd(oneshot::Sender<RawFd>),
     ClientSocketPair(String, ClientId, Client, UnixStream),
     Cleanup(ObjectId),
-    NotificationId(ObjectId, String),
 }
 
 render_elements! {
@@ -539,13 +541,13 @@ impl PanelSpace {
         if self.space_event.get() != None {
             return Ok(());
         }
-        unsafe { renderer.egl_context().make_current()? };
+
         if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
                 None => return Ok(()),
             };
-            let _ = renderer.unbind();
+            renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
             let is_dock = self.config.plugins_wings.is_none() && !self.config.expand_to_edges;
             let clear_color = if self.buffer.is_none() {
@@ -640,7 +642,7 @@ impl PanelSpace {
                     }
                 }
 
-                let mut res = my_renderer
+                let mut res: RenderOutputResult = my_renderer
                     .render_output(
                         renderer,
                         self.egl_surface
@@ -669,7 +671,6 @@ impl PanelSpace {
 
                 self.is_dirty = false;
                 self.has_frame = false;
-                let _ = renderer.unbind();
             }
         }
 
@@ -683,6 +684,7 @@ impl PanelSpace {
                 && p.c_popup.wl_surface().is_alive()
                 && p.has_frame
         }) {
+            renderer.unbind()?;
             renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
 
             let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
@@ -710,8 +712,8 @@ impl PanelSpace {
             wl_surface.commit();
             p.dirty = false;
             p.has_frame = false;
-            let _ = renderer.unbind();
         }
+        renderer.unbind()?;
 
         Ok(())
     }
@@ -1401,6 +1403,7 @@ impl PanelSpace {
                         });
 
                         // bind before setting swap interval
+                        let _ = new_renderer.unbind();
                         let _ = new_renderer.bind(egl_surface.clone());
                         let swap_success =
                             unsafe { SwapInterval(new_egl_display.get_display_handle().handle, 0) }
@@ -1408,6 +1411,7 @@ impl PanelSpace {
                         if !swap_success {
                             error!("Failed to set swap interval");
                         }
+                        let _ = new_renderer.unbind();
 
                         renderer.replace(new_renderer);
                         self.egl_surface.replace(egl_surface);
@@ -1417,6 +1421,7 @@ impl PanelSpace {
                         if let (Some(renderer), Some(egl_surface)) =
                             (renderer.as_mut(), self.egl_surface.as_ref())
                         {
+                            let _ = renderer.unbind();
                             let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                             let _ = renderer.bind(egl_surface.clone());
                             egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
@@ -1435,7 +1440,6 @@ impl PanelSpace {
                         smithay::utils::Transform::Flipped180,
                     ));
                     self.layer.as_ref().unwrap().wl_surface().commit();
-                    self.is_dirty = true;
                 }
                 SpaceEvent::Quit => (),
             },
@@ -1475,6 +1479,7 @@ impl PanelSpace {
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
                 {
+                    let _ = renderer.unbind();
                     let _ = renderer.bind(egl_surface.clone());
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
@@ -1491,7 +1496,6 @@ impl PanelSpace {
                     smithay::utils::Transform::Flipped180,
                 ));
                 self.layer.as_ref().unwrap().wl_surface().commit();
-                self.is_dirty = true;
             }
         }
     }
@@ -1506,15 +1510,21 @@ impl PanelSpace {
             return;
         };
 
-        let pos = config.position;
-        let (width, height) = (config.width, config.height);
         if let Some(p) = self
             .popups
             .iter_mut()
             .find(|p| popup.wl_surface() == p.c_popup.wl_surface())
         {
-            p.wrapper_rectangle = Rectangle::from_loc_and_size(pos, (width, height));
-            p.state.take();
+            // use the size that we have already
+            p.wrapper_rectangle =
+                Rectangle::from_loc_and_size(config.position, (config.width, config.height));
+
+            let (width, height) = (config.width, config.height);
+            p.state = match p.state {
+                None | Some(WrapperPopupState::WaitConfigure) => None,
+                Some(r) => Some(r),
+            };
+
             let _ = p.s_surface.send_configure();
             match config.kind {
                 popup::ConfigureKind::Initial => {
@@ -1545,7 +1555,6 @@ impl PanelSpace {
                 popup::ConfigureKind::Reposition { token: _token } => {}
                 _ => {}
             };
-            p.dirty = true;
         }
     }
 

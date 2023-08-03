@@ -42,14 +42,14 @@ impl SpaceContainer {
         Self {
             connection: None,
             config,
-            space_list: vec![],
+            space_list: Vec::with_capacity(1),
             renderer: None,
             s_display: None,
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
             applet_tx: tx,
             outputs: vec![],
-            watchers: HashMap::new(),
+            watchers: HashMap::with_capacity(1),
         }
     }
 
