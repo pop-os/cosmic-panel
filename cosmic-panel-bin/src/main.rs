@@ -21,7 +21,7 @@ use std::{
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use xdg_shell_wrapper::{run, shared_state::GlobalState};
+use xdg_shell_wrapper::{run, shared_state::GlobalState, server_state::ServerState, client_state::ClientState};
 
 pub enum PanelCalloopMsg {
     ClientSocketPair(String, ClientId, Client, UnixStream),
@@ -214,6 +214,15 @@ fn main() -> Result<()> {
 
         Ok(())
     });
-    run(space, event_loop)?;
+
+    let mut server_display = smithay::reexports::wayland_server::Display::new().unwrap();
+    let s_dh = server_display.handle();
+
+    let mut server_state = ServerState::new(s_dh.clone());
+
+    let mut client_state =
+        ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+    client_state.init_toplevel_info_state();
+    run(space, client_state, server_state, event_loop, server_display)?;
     Ok(())
 }
