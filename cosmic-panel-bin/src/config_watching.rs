@@ -41,7 +41,7 @@ pub fn watch_cosmic_theme(
 
     let theme_watcher = config_helper
         .watch(
-            move |helper, _keys| match Theme::<CssColor>::get_entry(&helper) {
+            move |helper, _keys| match Theme::<Srgba>::get_entry(&helper) {
                 Ok(entry) => {
                     entries_tx_clone.send(entry.bg_color()).unwrap();
                 }

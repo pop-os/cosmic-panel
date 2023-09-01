@@ -2,6 +2,7 @@
 //! PanelSpace *partially* implements the WrapperSpace abstraction
 
 mod panel_space;
+mod toplevel;
 mod wrapper_space;
 
 pub(crate) use panel_space::{AppletMsg, PanelSpace};

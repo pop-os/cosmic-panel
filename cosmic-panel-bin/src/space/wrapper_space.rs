@@ -973,4 +973,13 @@ impl WrapperSpace for PanelSpace {
             });
         }
     }
+
+    fn transform_changed(
+        &mut self,
+        conn: &Connection,
+        surface: &c_wl_surface::WlSurface,
+        new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
+    ) {
+        // TODO handle the preferred transform
+    }
 }

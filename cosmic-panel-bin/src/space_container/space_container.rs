@@ -1,6 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
 use crate::space::{AppletMsg, PanelSpace};
+use cctk::{
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+    toplevel_info::ToplevelInfo,
+};
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
@@ -35,6 +39,7 @@ pub struct SpaceContainer {
     pub applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
+    pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
 }
 
 impl SpaceContainer {
@@ -49,7 +54,8 @@ impl SpaceContainer {
             c_hovered_surface: Default::default(),
             applet_tx: tx,
             outputs: vec![],
-            watchers: HashMap::with_capacity(1),
+            watchers: HashMap::new(),
+            maximized_toplevels: Vec::with_capacity(1),
         }
     }
 

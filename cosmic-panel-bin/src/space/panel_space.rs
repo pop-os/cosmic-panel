@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use cctk::cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1;
 use cosmic_config::{Config, CosmicConfigEntry};
 use image::RgbaImage;
 use itertools::{chain, Itertools};

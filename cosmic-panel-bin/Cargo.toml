@@ -14,10 +14,11 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.30.0", features = [ "staging"]}
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper"}
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
-# xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
+# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper"}
+# xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols" }
 # smithay = { path = "../../smithay", default-features = false, features = ["use_system_lib", "desktop", "backend_egl", "backend_drm", "renderer_gl"] }
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
 tracing = "0.1.37"

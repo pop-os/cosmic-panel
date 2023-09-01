@@ -3,6 +3,7 @@
 
 mod space_container;
 mod wrapper_space;
+pub(crate) mod toplevel;
 
 pub use space_container::*;
 pub use wrapper_space::*;
