@@ -1,16 +1,13 @@
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-    toplevel_info::ToplevelInfo, wayland_client::Connection,
+    toplevel_info::ToplevelInfo,
 };
-use xdg_shell_wrapper::space::ToplevelInfoSpace;
-
-use crate::space_container::toplevel;
 
 use super::PanelSpace;
 
 fn _update_toplevel(
     space: &mut PanelSpace,
-    toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+    _toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     info: &ToplevelInfo,
 ) {
     if info.output.is_none() || info.output.as_ref() != space.output.as_ref().map(|o| &o.0) {
@@ -18,7 +15,7 @@ fn _update_toplevel(
     }
 }
 
-fn apply_maximized_state(space: &mut PanelSpace) {
+fn _apply_maximized_state(_space: &mut PanelSpace) {
     if false {
         // TODO un-expand if it is not configured to be expanded
         // re-enable gaps if it is configured to have gaps

@@ -473,9 +473,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn destroy(&mut self) {
-        // self.layer_shell_wl_surface
-        //     .as_mut()
-        //     .map(|wls| wls.destroy());
+        unimplemented!()
     }
 
     fn visibility(&self) -> Visibility {
@@ -552,7 +550,7 @@ impl WrapperSpace for PanelSpace {
 
     // XXX the renderer is provided by the container, not tracked by the PanelSpace
     fn renderer(&mut self) -> Option<&mut GlesRenderer> {
-        None
+        unimplemented!()
     }
 
     fn setup<W: WrapperSpace>(
@@ -976,9 +974,9 @@ impl WrapperSpace for PanelSpace {
 
     fn transform_changed(
         &mut self,
-        conn: &Connection,
-        surface: &c_wl_surface::WlSurface,
-        new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
+        _conn: &Connection,
+        _surface: &c_wl_surface::WlSurface,
+        _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
     }
