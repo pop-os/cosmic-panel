@@ -56,6 +56,7 @@ fn _update_toplevel(
             space
                 .maximized_toplevels
                 .push((toplevel.clone(), info.clone()));
+            println!("Maximized toplevels: {:?}", space.maximized_toplevels);
         }
     } else {
         space.maximized_toplevels.retain(|(t, _)| t != toplevel);
