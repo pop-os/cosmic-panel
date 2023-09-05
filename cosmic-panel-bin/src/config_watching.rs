@@ -4,7 +4,7 @@ use crate::space_container::SpaceContainer;
 use anyhow::anyhow;
 use cosmic_config::{Config, ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
-use cosmic_theme::{palette::Srgba, util::CssColor, Theme};
+use cosmic_theme::{palette::Srgba, Theme};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
 use tracing::{error, info};
