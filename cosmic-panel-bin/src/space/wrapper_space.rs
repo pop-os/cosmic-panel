@@ -844,7 +844,7 @@ impl WrapperSpace for PanelSpace {
             cosmic_panel_config::PanelAnchor::Bottom => Anchor::all().difference(Anchor::TOP),
         });
 
-        if self.config.effectively_extends() {
+        if !self.config.expand_to_edges()  {
             let input_region = Region::new(compositor_state)?;
             client_surface
                 .wl_surface()

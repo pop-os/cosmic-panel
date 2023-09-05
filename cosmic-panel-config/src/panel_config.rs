@@ -314,7 +314,7 @@ impl CosmicPanelConfig {
     /// get the priority of the panel
     /// higher priority panels will be created first and given more space when competing for space
     pub fn get_priority(&self) -> u32 {
-        let mut priority = if self.effectively_extends() { 100 } else { 0 };
+        let mut priority = if self.expand_to_edges() { 100 } else { 0 };
         if self.name.to_lowercase().contains("panel") {
             priority += 10;
         }
@@ -376,19 +376,35 @@ impl CosmicPanelConfig {
 
     /// get whether the panel should expand to cover the edges of the output
     pub fn expand_to_edges(&self) -> bool {
-        self.expand_to_edges || self.plugins_wings.is_some()
+        self.expand_to_edges
     }
 
     pub fn plugins_left(&self) -> Option<Vec<String>> {
-        self.plugins_wings.as_ref().map(|w| w.0.clone())
+        if self.expand_to_edges {
+            self.plugins_wings.as_ref().map(|w| w.0.clone())
+        } else {
+            None
+        }
     }
 
     pub fn plugins_center(&self) -> Option<Vec<String>> {
-        self.plugins_center.clone()
+        if self.expand_to_edges || self.plugins_wings.is_none() {
+            self.plugins_center.clone()
+        } else if let Some(plugins_center) = self.plugins_center.as_ref() {
+            let (left, right) = self.plugins_wings.as_ref().unwrap();
+            Some(left.clone().into_iter().chain(plugins_center.clone().into_iter().chain(right.clone().into_iter())).collect())
+        } else {
+            let (left, right) = self.plugins_wings.as_ref().unwrap();
+            Some(left.clone().into_iter().chain(right.clone().into_iter()).collect())
+        }
     }
 
     pub fn plugins_right(&self) -> Option<Vec<String>> {
-        self.plugins_wings.as_ref().map(|w| w.1.clone())
+        if self.expand_to_edges {
+            self.plugins_wings.as_ref().map(|w| w.1.clone())
+        } else {
+            None
+        }
     }
 
     pub fn anchor(&self) -> PanelAnchor {
@@ -441,10 +457,6 @@ impl CosmicPanelConfig {
     pub fn cosmic_config(name: &str) -> Result<Config, cosmic_config::Error> {
         let entry_name = format!("{NAME}.{}", name);
         Config::new(&entry_name, VERSION)
-    }
-
-    pub fn effectively_extends(&self) -> bool {
-        !self.expand_to_edges && self.plugins_wings.is_none()
     }
 }
 

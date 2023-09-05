@@ -61,6 +61,7 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     utils::{Logical, Point, Rectangle, Size},
 };
+use smithay::utils::IsAlive;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
@@ -549,7 +550,7 @@ impl PanelSpace {
             };
             renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
-            let is_dock = self.config.plugins_wings.is_none() && !self.config.expand_to_edges;
+            let is_dock = !self.config.expand_to_edges();
             let clear_color = if self.buffer.is_none() {
                 &self.bg_color
             } else {
@@ -719,6 +720,7 @@ impl PanelSpace {
     }
 
     pub(crate) fn update_window_locations(&mut self) -> anyhow::Result<()> {
+        self.space.refresh();
         let padding = self.config.padding();
         let anchor = self.config.anchor();
         let spacing = self.config.spacing();
@@ -732,10 +734,10 @@ impl PanelSpace {
                 (self.dimensions.w, self.dimensions.h, self.actual_size.w)
             }
         };
-        let is_dock = self.config.effectively_extends();
+        let is_dock = !self.config.expand_to_edges();
 
         let mut num_lists = 0;
-        if self.config.plugins_wings.is_some() {
+        if !is_dock && self.config.plugins_wings.is_some() {
             num_lists += 2;
         }
         if self.config.plugins_center.is_some() {
@@ -746,6 +748,7 @@ impl PanelSpace {
             .space
             .elements()
             .cloned()
+            .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_right
                     .iter()
@@ -765,6 +768,7 @@ impl PanelSpace {
             .space
             .elements()
             .cloned()
+            .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_center
                     .iter()
@@ -784,6 +788,7 @@ impl PanelSpace {
             .space
             .elements()
             .cloned()
+            .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_left
                     .iter()
@@ -1049,7 +1054,6 @@ impl PanelSpace {
             };
         }
         self.space.refresh();
-
         if self.actual_size.w > 0
             && self.actual_size.h > 0
             && actual_length > 0
