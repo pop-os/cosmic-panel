@@ -694,9 +694,9 @@ impl WrapperSpace for SpaceContainer {
 
     fn transform_changed(
         &mut self,
-        conn: &Connection,
-        surface: &c_wl_surface::WlSurface,
-        new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
+        _conn: &Connection,
+        _surface: &c_wl_surface::WlSurface,
+        _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
     }

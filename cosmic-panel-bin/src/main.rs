@@ -7,7 +7,7 @@ use anyhow::Result;
 use config_watching::{watch_config, watch_cosmic_theme};
 use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
-use sctk::reexports::client::backend::ObjectId;
+use sctk::reexports::{client::backend::ObjectId, calloop::channel::SyncSender};
 use smithay::reexports::{
     calloop,
     wayland_server::{backend::ClientId, Client},
@@ -22,9 +22,12 @@ use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use xdg_shell_wrapper::{run, shared_state::GlobalState, server_state::ServerState, client_state::ClientState};
+use cosmic_panel_config::CosmicPanelConfig;
 
+#[derive(Debug)]
 pub enum PanelCalloopMsg {
     ClientSocketPair(String, ClientId, Client, UnixStream),
+    RestartSpace(CosmicPanelConfig)
 }
 
 fn main() -> Result<()> {
@@ -72,10 +75,10 @@ fn main() -> Result<()> {
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
+    let (calloop_tx, calloop_rx): (SyncSender<PanelCalloopMsg>, _) = calloop::channel::sync_channel(100);
+    
+    let mut space = space_container::SpaceContainer::new(config, applet_tx.clone(), calloop_tx.clone());
 
-    let mut space = space_container::SpaceContainer::new(config, applet_tx.clone());
-
-    let (calloop_tx, calloop_rx) = calloop::channel::sync_channel(100);
     let event_loop = calloop::EventLoop::try_new()?;
 
     let handle = event_loop.handle();
@@ -104,6 +107,9 @@ fn main() -> Result<()> {
                                 .try_send(())
                                 .expect("Failed to unblock launchpad");
                         }
+                        PanelCalloopMsg::RestartSpace(config) => {
+                            state.space.update_space(config, &state.client_state.compositor_state, state.client_state.fractional_scaling_manager.as_ref(), state.client_state.viewporter_state.as_ref(), &mut state.client_state.layer_state, &state.client_state.queue_handle);
+                        },
                     },
                     calloop::channel::Event::Closed => {}
                 };
@@ -215,7 +221,7 @@ fn main() -> Result<()> {
         Ok(())
     });
 
-    let mut server_display = smithay::reexports::wayland_server::Display::new().unwrap();
+    let server_display = smithay::reexports::wayland_server::Display::new().unwrap();
     let s_dh = server_display.handle();
 
     let mut server_state = ServerState::new(s_dh.clone());
