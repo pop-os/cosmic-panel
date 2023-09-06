@@ -1,17 +1,24 @@
 use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
 
-use crate::space::{AppletMsg, PanelSpace};
+use crate::{
+    space::{AppletMsg, PanelSpace},
+    PanelCalloopMsg,
+};
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     toplevel_info::ToplevelInfo,
 };
 use cosmic_panel_config::{
-    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
+    AutoHide, CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig,
+    CosmicPanelOuput,
 };
 use notify::RecommendedWatcher;
 use sctk::{
     output::OutputInfo,
-    reexports::client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
+    reexports::{
+        calloop,
+        client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
+    },
     shell::wlr_layer::LayerShell,
 };
 use smithay::{
@@ -37,13 +44,18 @@ pub struct SpaceContainer {
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
     pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
 }
 
 impl SpaceContainer {
-    pub fn new(config: CosmicPanelContainerConfig, tx: mpsc::Sender<AppletMsg>) -> Self {
+    pub fn new(
+        config: CosmicPanelContainerConfig,
+        tx: mpsc::Sender<AppletMsg>,
+        panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+    ) -> Self {
         Self {
             connection: None,
             config,
@@ -53,6 +65,7 @@ impl SpaceContainer {
             c_focused_surface: Default::default(),
             c_hovered_surface: Default::default(),
             applet_tx: tx,
+            panel_tx,
             outputs: vec![],
             watchers: HashMap::new(),
             maximized_toplevels: Vec::with_capacity(1),
@@ -127,7 +140,7 @@ impl SpaceContainer {
     /// apply a new or updated entry to the space list
     pub fn update_space<W: WrapperSpace>(
         &mut self,
-        entry: CosmicPanelConfig,
+        mut entry: CosmicPanelConfig,
         compositor_state: &sctk::compositor::CompositorState,
         fractional_scale_manager: Option<&FractionalScalingManager<W>>,
         viewport: Option<&ViewporterState<W>>,
@@ -199,6 +212,20 @@ impl SpaceContainer {
 
         for (wl_output, output, info) in outputs {
             let output_name = output.name();
+
+            if self
+                .maximized_toplevels
+                .iter()
+                .any(|(_, info)| info.output.as_ref() == Some(wl_output))
+            {
+                if entry.autohide.is_none() {
+                    entry.autohide = Some(AutoHide {
+                        wait_time: 2000,
+                        transition_time: 200,
+                        handle_size: 4,
+                    });
+                }
+            }
 
             let mut space = PanelSpace::new(
                 entry.clone(),

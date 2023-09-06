@@ -57,7 +57,6 @@ use smithay::{
     reexports::wayland_server::Client,
     utils::{Logical, Size},
 };
-use smithay::utils::IsAlive;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
