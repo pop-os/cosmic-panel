@@ -36,6 +36,7 @@
           };
           nativeBuildInputs = with pkgs; [ just pkg-config autoPatchelfHook ];
           buildInputs = with pkgs; [
+            bashInteractive
             wayland
             libxkbcommon
             stdenv.cc.cc.lib
