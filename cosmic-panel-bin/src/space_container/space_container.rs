@@ -225,6 +225,11 @@ impl SpaceContainer {
                         handle_size: 4,
                     });
                 }
+                entry.expand_to_edges = true;
+                entry.exclusive_zone = false;
+                entry.margin = 0;
+                entry.border_radius = 0;
+                entry.opacity = 1.0;
             }
 
             let mut space = PanelSpace::new(
