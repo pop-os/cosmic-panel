@@ -3009,7 +3009,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=toplevel-info#331550e74822e02761a494c954cdb97508c1c686"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#5acfa50fc458ffc68a800d9b42ce34dea3a7bece"
 dependencies = [
  "anyhow",
  "cosmic-client-toolkit",
@@ -3032,7 +3032,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=toplevel-info#331550e74822e02761a494c954cdb97508c1c686"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#5acfa50fc458ffc68a800d9b42ce34dea3a7bece"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
