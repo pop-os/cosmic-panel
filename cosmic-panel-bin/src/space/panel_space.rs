@@ -101,12 +101,16 @@ pub(crate) struct PanelSpace {
     pub(crate) clients_center: Vec<(String, Client, UnixStream)>,
     pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
     pub(crate) last_dirty: Option<Instant>,
+    // pending size of the panel
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
+    // suggested length of the panel
     pub(crate) suggested_length: Option<u32>,
+    // size of the panel
     pub(crate) actual_size: Size<i32, Logical>,
+    // dimensions of the layer surface
+    pub(crate) dimensions: Size<i32, Logical>,
     pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
-    pub(crate) dimensions: Size<i32, Logical>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) s_focused_surface: ServerFocus,
@@ -299,6 +303,7 @@ impl PanelSpace {
                         PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
                         PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
                     } + self.config.get_hide_handle().unwrap() as i32;
+                    self.is_dirty = true;
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: Instant::now(),
                         progress: Duration::new(0, 0),
@@ -369,6 +374,7 @@ impl PanelSpace {
                         }
                         Self::set_margin(self.config.anchor, margin, target, layer_surface);
                         layer_shell_wl_surface.commit();
+                        self.is_dirty = true;
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
@@ -554,23 +560,7 @@ impl PanelSpace {
                         PanelAnchor::Top | PanelAnchor::Bottom => height + margin,
                     };
 
-                    if self.config().autohide.is_some() {
-                        if self.config.exclusive_zone() {
-                            self.layer.as_ref().unwrap().set_exclusive_zone(
-                                list_thickness as i32
-                                    + self.config.get_hide_handle().unwrap() as i32,
-                            );
-                        }
-
-                        let target =
-                            self.config.get_hide_handle().unwrap() as i32 - list_thickness as i32;
-                        Self::set_margin(
-                            self.config.anchor,
-                            self.config.get_margin() as i32,
-                            target,
-                            layer_surface,
-                        );
-                    } else if self.config.exclusive_zone() {
+                    if self.config.autohide.is_none() && self.config.exclusive_zone() {
                         self.layer
                             .as_ref()
                             .unwrap()
