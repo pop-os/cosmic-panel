@@ -7,13 +7,13 @@ use itertools::Itertools;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
-        damage::RenderOutputResult,
+        damage::{OutputDamageTracker, RenderOutputResult},
         element::{
             memory::MemoryRenderBufferRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
         },
         gles::GlesRenderer,
-        Bind, Unbind,
+        Bind, Frame, Renderer, Unbind,
     },
     utils::{Logical, Point, Rectangle},
 };
@@ -43,6 +43,44 @@ impl PanelSpace {
             } else {
                 &[0.0, 0.0, 0.0, 0.0]
             };
+            // if not visible, just clear and exit early
+            let not_visible = self.config.autohide.is_some()
+                && matches!(
+                    self.visibility,
+                    xdg_shell_wrapper::space::Visibility::Hidden
+                );
+
+            // TODO check to make sure this is not going to cause damage issues
+            if not_visible {
+                let dim = self
+                    .dimensions
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round();
+                if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
+                    _ = frame.clear(
+                        [0.0, 0.0, 0.0, 0.0],
+                        &[Rectangle::from_loc_and_size((0, 0), dim)],
+                    );
+                    if let Ok(sync_point) = frame.finish() {
+                        sync_point.wait();
+                        self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+                    }
+                    let wl_surface = self.layer.as_ref().unwrap().wl_surface();
+                    wl_surface.frame(qh, wl_surface.clone());
+                    wl_surface.commit();
+                    // reset the damage tracker
+                    *my_renderer = OutputDamageTracker::new(
+                        dim,
+                        self.scale,
+                        smithay::utils::Transform::Flipped180,
+                    );
+                    self.is_dirty = false;
+                }
+                renderer.unbind()?;
+                // dbg!("success");
+                return Ok(());
+            }
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
                 let mut elements: Vec<MyRenderElements<_>> = self
