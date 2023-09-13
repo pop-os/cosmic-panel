@@ -5,13 +5,13 @@ use cosmic_panel_config::PanelAnchor;
 use image::RgbaImage;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
+use smithay::utils::IsAlive;
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     desktop::Window,
     reexports::wayland_server::Resource,
-    utils::{Logical, Point, Rectangle, Size, Transform},
+    utils::{Logical, Point, Rectangle, Transform},
 };
-use smithay::utils::IsAlive;
 
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
@@ -146,59 +146,59 @@ impl PanelSpace {
                 .map(|(_, _, _, thickness)| thickness)
                 .max()
                 .unwrap_or(0);
-        let mut new_dim: Size<i32, Logical> = match anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (new_list_thickness, new_list_length),
-            PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
+        self.actual_size = if self.config.is_horizontal() {
+            (new_list_length, new_list_thickness)
+        } else {
+            (new_list_thickness, new_list_length)
         }
         .into();
-
+        let mut new_dim = if self.config.is_horizontal() {
+            let mut dim = self.actual_size;
+            dim.h += self.config.get_effective_anchor_gap() as i32;
+            dim
+        } else {
+            let mut dim = self.actual_size;
+            dim.w += self.config.get_effective_anchor_gap() as i32;
+            dim
+        };
+        new_dim = self.constrain_dim(new_dim);
         // update input region of panel when list length changes
         if actual_length != new_list_length && is_dock {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
             };
-            let margin = self.config.get_effective_anchor_gap() as i32;
-            let (w, h) = if self.config.is_horizontal() {
-                (new_dim.w, new_dim.h + margin)
-            } else {
-                (new_dim.w + margin, new_dim.h)
-            };
-            input_region.subtract(0, 0, self.dimensions.w.max(w), self.dimensions.h.max(h));
 
-            let (layer_length, _) = if self.config.is_horizontal() {
-                (self.dimensions.w, self.dimensions.h)
-            } else {
-                (self.dimensions.h, self.dimensions.w)
-            };
+            input_region.subtract(
+                0,
+                0,
+                self.dimensions.w.max(new_dim.w),
+                self.dimensions.h.max(new_dim.h),
+            );
 
-            if new_list_length < layer_length {
-                let side = (layer_length as u32 - new_list_length as u32) / 2;
-
-                // clear center
-                let loc = if self.config.is_horizontal() {
-                    (side as i32, 0)
+            if is_dock {
+                let (layer_length, actual_length) = if self.config.is_horizontal() {
+                    (new_dim.w, self.actual_size.w)
                 } else {
-                    (0, side as i32)
+                    (new_dim.h, self.actual_size.h)
+                };
+                let side = (layer_length as u32 - actual_length as u32) / 2;
+
+                let (loc, size) = if self.config.is_horizontal() {
+                    ((side as i32, 0), (self.actual_size.w, new_dim.h))
+                } else {
+                    ((0, side as i32), (new_dim.w, self.actual_size.h))
                 };
 
-                input_region.add(loc.0, loc.1, w, h);
+                input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
-                input_region.add(0, 0, self.dimensions.w.max(w), self.dimensions.h.max(h));
+                input_region.add(0, 0, new_dim.w, new_dim.h);
             }
             layer
                 .wl_surface()
                 .set_input_region(Some(input_region.wl_region()));
             layer.wl_surface().commit();
         }
-
-        self.actual_size = match anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (new_list_thickness, new_list_length),
-            PanelAnchor::Top | PanelAnchor::Bottom => (new_list_length, new_list_thickness),
-        }
-        .into();
-
-        new_dim = self.constrain_dim(new_dim);
 
         let (new_list_dim_length, new_list_thickness_dim) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
@@ -257,7 +257,7 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -268,7 +268,7 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -292,7 +292,7 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -303,7 +303,7 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -329,7 +329,7 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
                         cur,
                     );
                     prev += size.y as u32;
@@ -340,7 +340,7 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
                     );
                     prev += size.x as u32;
                     self.space
@@ -355,17 +355,22 @@ impl PanelSpace {
             && (self.config.border_radius > 0 || self.config.get_effective_anchor_gap() > 0)
         {
             // corners calculation with border_radius
-            let panel_size = if is_dock {
-                self.actual_size
-                    .to_f64()
-                    .to_physical(self.scale)
-                    .to_i32_round()
-            } else {
-                self.dimensions
-                    .to_f64()
-                    .to_physical(self.scale)
-                    .to_i32_round()
-            };
+
+            // default to actual size of the panel
+            let mut panel_size = self
+                .actual_size
+                .to_f64()
+                .to_physical(self.scale)
+                .to_i32_round();
+
+            // adjust the length if the panel extends to edges
+            if !is_dock {
+                if self.config.is_horizontal() {
+                    panel_size.w = self.dimensions.w;
+                } else {
+                    panel_size.h = self.dimensions.h;
+                }
+            }
 
             let mut buff = MemoryRenderBuffer::new(
                 Fourcc::Abgr8888,
