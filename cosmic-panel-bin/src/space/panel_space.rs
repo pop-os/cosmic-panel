@@ -237,7 +237,7 @@ impl PanelSpace {
             } else {
                 return;
             };
-        let cur_focus = {
+        let cur_hover = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
             // no transition if not configured for autohide
@@ -256,48 +256,42 @@ impl PanelSpace {
                 return;
             }
 
-            c_focused_surface
-                .iter()
-                .chain(c_hovered_surface.iter())
-                .fold(
-                    FocusStatus::LastFocused(self.start_instant),
-                    |acc, (surface, _, f)| {
-                        if self
-                            .layer
-                            .as_ref()
-                            .map(|s| *s.wl_surface() == *surface)
-                            .unwrap_or(false)
-                            || self.popups.iter().any(|p| {
-                                &p.c_popup.wl_surface() == &surface
-                                    || self
-                                        .popups
-                                        .iter()
-                                        .any(|p| p.c_popup.wl_surface() == surface)
-                            })
-                        {
-                            match (&acc, &f) {
-                                (
-                                    FocusStatus::LastFocused(t_acc),
-                                    FocusStatus::LastFocused(t_cur),
-                                ) => {
-                                    if t_cur > t_acc {
-                                        *f
-                                    } else {
-                                        acc
-                                    }
+            c_hovered_surface.iter().fold(
+                FocusStatus::LastFocused(self.start_instant),
+                |acc, (surface, _, f)| {
+                    if self
+                        .layer
+                        .as_ref()
+                        .map(|s| *s.wl_surface() == *surface)
+                        .unwrap_or(false)
+                        || self.popups.iter().any(|p| {
+                            &p.c_popup.wl_surface() == &surface
+                                || self
+                                    .popups
+                                    .iter()
+                                    .any(|p| p.c_popup.wl_surface() == surface)
+                        })
+                    {
+                        match (&acc, &f) {
+                            (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => {
+                                if t_cur > t_acc {
+                                    *f
+                                } else {
+                                    acc
                                 }
-                                (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
-                                _ => acc,
                             }
-                        } else {
-                            acc
+                            (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
+                            _ => acc,
                         }
-                    },
-                )
+                    } else {
+                        acc
+                    }
+                },
+            )
         };
         match self.visibility {
             Visibility::Hidden => {
-                if let FocusStatus::Focused = cur_focus {
+                if let FocusStatus::Focused = cur_hover {
                     // start transition to visible
                     let margin = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
@@ -312,7 +306,7 @@ impl PanelSpace {
                 }
             }
             Visibility::Visible => {
-                if let FocusStatus::LastFocused(t) = cur_focus {
+                if let FocusStatus::LastFocused(t) = cur_hover {
                     // start transition to hidden
                     let duration_since_last_focus = match Instant::now().checked_duration_since(t) {
                         Some(d) => d,
@@ -347,7 +341,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let FocusStatus::Focused = cur_focus {
+                if let FocusStatus::Focused = cur_hover {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: now,
@@ -355,13 +349,10 @@ impl PanelSpace {
                         prev_margin,
                     }
                 } else {
-                    let panel_size = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => {
-                            self.dimensions.w + self.config.get_effective_anchor_gap() as i32
-                        }
-                        PanelAnchor::Top | PanelAnchor::Bottom => {
-                            self.dimensions.h + self.config.get_effective_anchor_gap() as i32
-                        }
+                    let panel_size = if self.config().is_horizontal() {
+                        self.dimensions.h
+                    } else {
+                        self.dimensions.w
                     };
                     let target = -panel_size + handle;
 
@@ -414,7 +405,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
 
-                if let FocusStatus::LastFocused(_) = cur_focus {
+                if let FocusStatus::LastFocused(_) = cur_hover {
                     // start transition to visible
                     self.close_popups();
                     self.visibility = Visibility::TransitionToHidden {
@@ -423,13 +414,10 @@ impl PanelSpace {
                         prev_margin,
                     }
                 } else {
-                    let panel_size = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => {
-                            self.dimensions.w + self.config.get_effective_anchor_gap() as i32
-                        }
-                        PanelAnchor::Top | PanelAnchor::Bottom => {
-                            self.dimensions.h + self.config.get_effective_anchor_gap() as i32
-                        }
+                    let panel_size = if self.config().is_horizontal() {
+                        self.dimensions.h
+                    } else {
+                        self.dimensions.w
                     };
                     let start = -panel_size + handle;
 
@@ -478,8 +466,8 @@ impl PanelSpace {
     }
 
     pub(crate) fn constrain_dim(&self, size: Size<i32, Logical>) -> Size<i32, Logical> {
-        let mut w = size.w.try_into().unwrap();
-        let mut h = size.h.try_into().unwrap();
+        let mut w: i32 = size.w;
+        let mut h: i32 = size.h;
 
         let output_dims = self
             .output
@@ -491,25 +479,14 @@ impl PanelSpace {
             })
             .map(|(w, h)| (w as u32, h as u32));
 
-        if let (Some(w_range), _) = self
+        let (constrained_w, constrained_h) = self
             .config
-            .get_dimensions(output_dims, self.suggested_length)
-        {
-            if w < w_range.start {
-                w = w_range.start;
-            } else if w >= w_range.end {
-                w = w_range.end - 1;
-            }
+            .get_dimensions(output_dims, self.suggested_length);
+        if let Some(w_range) = constrained_w {
+            w = w.clamp(w_range.start as i32, w_range.end as i32 - 1);
         }
-        if let (_, Some(h_range)) = self
-            .config
-            .get_dimensions(output_dims, self.suggested_length)
-        {
-            if h < h_range.start {
-                h = h_range.start;
-            } else if h >= h_range.end {
-                h = h_range.end - 1;
-            }
+        if let Some(h_range) = constrained_h {
+            h = h.clamp(h_range.start as i32, h_range.end as i32 - 1);
         }
 
         (w as i32, h as i32).into()
@@ -549,15 +526,14 @@ impl PanelSpace {
                 {
                     let width: u32 = size.w.try_into().unwrap();
                     let height: u32 = size.h.try_into().unwrap();
-                    let margin = self.config.get_effective_anchor_gap() as u32;
                     if self.config.is_horizontal() {
-                        layer_surface.set_size(0, height + margin);
+                        layer_surface.set_size(0, height);
                     } else {
-                        layer_surface.set_size(width + margin, 0);
+                        layer_surface.set_size(width, 0);
                     }
                     let list_thickness = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => width + margin,
-                        PanelAnchor::Top | PanelAnchor::Bottom => height + margin,
+                        PanelAnchor::Left | PanelAnchor::Right => width,
+                        PanelAnchor::Top | PanelAnchor::Bottom => height,
                     };
 
                     if self.config.autohide.is_none() && self.config.exclusive_zone() {
@@ -642,18 +618,6 @@ impl PanelSpace {
                     }
                     let dim = self.constrain_dim((width as i32, height as i32).into());
 
-                    let (panel_width, panel_height) = if self.config.is_horizontal() {
-                        (
-                            width,
-                            height - self.config.get_effective_anchor_gap() as i32,
-                        )
-                    } else {
-                        (
-                            width - self.config.get_effective_anchor_gap() as i32,
-                            height,
-                        )
-                    };
-
                     if first {
                         let client_egl_surface = unsafe {
                             ClientEglSurface::new(
@@ -735,25 +699,22 @@ impl PanelSpace {
 
                         renderer.replace(new_renderer);
                         self.egl_surface.replace(egl_surface);
-                    } else if self.dimensions != (panel_width, panel_height).into()
-                        && self.pending_dimensions.is_none()
+                    }
+                    if let (Some(renderer), Some(egl_surface)) =
+                        (renderer.as_mut(), self.egl_surface.as_ref())
                     {
-                        if let (Some(renderer), Some(egl_surface)) =
-                            (renderer.as_mut(), self.egl_surface.as_ref())
-                        {
-                            let _ = renderer.unbind();
-                            let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
-                            let _ = renderer.bind(egl_surface.clone());
-                            egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-                            let _ = renderer.unbind();
-                            if let Some(viewport) = self.layer_viewport.as_ref() {
-                                viewport.set_destination(dim.w.max(1), dim.h.max(1));
-                                layer.wl_surface().commit();
-                            }
+                        let _ = renderer.unbind();
+                        let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
+                        let _ = renderer.bind(egl_surface.clone());
+                        egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
+                        let _ = renderer.unbind();
+                        if let Some(viewport) = self.layer_viewport.as_ref() {
+                            viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                            layer.wl_surface().commit();
                         }
                     }
 
-                    self.dimensions = (panel_width, panel_height).into();
+                    self.dimensions = (dim.w, dim.h).into();
                     self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                         dim.to_f64().to_physical(self.scale).to_i32_round(),
                         1.0,
@@ -785,17 +746,7 @@ impl PanelSpace {
                     height = 1;
                 }
                 let dim = self.constrain_dim((width as i32, height as i32).into());
-                let (panel_width, panel_height) = if self.config.is_horizontal() {
-                    (
-                        width,
-                        height - self.config.get_effective_anchor_gap() as i32,
-                    )
-                } else {
-                    (
-                        height - self.config.get_effective_anchor_gap() as i32,
-                        width,
-                    )
-                };
+
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
                 {
@@ -805,11 +756,11 @@ impl PanelSpace {
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                     let _ = renderer.unbind();
                     if let Some(viewport) = self.layer_viewport.as_ref() {
-                        viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                        viewport.set_destination(dim.w, dim.h);
                         layer.wl_surface().commit();
                     }
                 }
-                self.dimensions = (panel_width, panel_height).into();
+                self.dimensions = (dim.w, dim.h).into();
                 self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                     dim.to_f64().to_physical(self.scale).to_i32_round(),
                     1.0,
@@ -819,6 +770,7 @@ impl PanelSpace {
             }
         }
     }
+
     pub fn set_theme_window_color(&mut self, mut color: [f32; 4]) {
         if let CosmicPanelBackground::ThemeDefault = self.config.background {
             color[3] = self.config.opacity;

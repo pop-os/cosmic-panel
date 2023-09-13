@@ -392,10 +392,25 @@ impl CosmicPanelConfig {
             self.plugins_center.clone()
         } else if let Some(plugins_center) = self.plugins_center.as_ref() {
             let (left, right) = self.plugins_wings.as_ref().unwrap();
-            Some(left.clone().into_iter().chain(plugins_center.clone().into_iter().chain(right.clone().into_iter())).collect())
+            Some(
+                left.clone()
+                    .into_iter()
+                    .chain(
+                        plugins_center
+                            .clone()
+                            .into_iter()
+                            .chain(right.clone().into_iter()),
+                    )
+                    .collect(),
+            )
         } else {
             let (left, right) = self.plugins_wings.as_ref().unwrap();
-            Some(left.clone().into_iter().chain(right.clone().into_iter()).collect())
+            Some(
+                left.clone()
+                    .into_iter()
+                    .chain(right.clone().into_iter())
+                    .collect(),
+            )
         }
     }
 
