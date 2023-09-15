@@ -131,6 +131,7 @@ pub(crate) struct PanelSpace {
     pub(crate) buffer_changed: bool,
     pub(crate) has_frame: bool,
     pub(crate) scale: f64,
+    pub(crate) output_has_toplevel: bool,
 }
 
 impl PanelSpace {
@@ -227,6 +228,7 @@ impl PanelSpace {
             buffer_changed: false,
             has_frame: true,
             scale: 1.0,
+            output_has_toplevel: false,
         }
     }
 
@@ -241,14 +243,14 @@ impl PanelSpace {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
             // no transition if not configured for autohide
-            if self.config.autohide().is_none() {
-                if c_focused_surface
+            let no_hover_focus = c_focused_surface
+                .iter()
+                .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
+                && c_hovered_surface
                     .iter()
-                    .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
-                    && c_hovered_surface
-                        .iter()
-                        .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
-                {
+                    .all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
+            if self.config.autohide().is_none() {
+                if no_hover_focus {
                     self.visibility = Visibility::Hidden;
                 } else {
                     self.visibility = Visibility::Visible;
@@ -257,7 +259,11 @@ impl PanelSpace {
             }
 
             c_hovered_surface.iter().fold(
-                FocusStatus::LastFocused(self.start_instant),
+                if self.output_has_toplevel {
+                    FocusStatus::LastFocused(self.start_instant)
+                } else {
+                    FocusStatus::Focused
+                },
                 |acc, (surface, _, f)| {
                     if self
                         .layer
@@ -454,6 +460,7 @@ impl PanelSpace {
                 }
             }
         }
+        return;
     }
 
     fn set_margin(anchor: PanelAnchor, margin: i32, target: i32, layer_surface: &LayerSurface) {

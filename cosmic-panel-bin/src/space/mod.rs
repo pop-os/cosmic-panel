@@ -5,7 +5,6 @@ mod layout;
 mod panel_space;
 mod popup;
 mod render;
-mod toplevel;
 mod wrapper_space;
 
 pub(crate) use panel_space::{AppletMsg, PanelSpace};
