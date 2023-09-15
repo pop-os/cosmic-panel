@@ -108,7 +108,7 @@ fn main() -> Result<()> {
                                 .expect("Failed to unblock launchpad");
                         }
                         PanelCalloopMsg::RestartSpace(config) => {
-                            state.space.update_space(config, &state.client_state.compositor_state, state.client_state.fractional_scaling_manager.as_ref(), state.client_state.viewporter_state.as_ref(), &mut state.client_state.layer_state, &state.client_state.queue_handle);
+                            state.space.update_space(config, &state.client_state.compositor_state, state.client_state.fractional_scaling_manager.as_ref(), state.client_state.viewporter_state.as_ref(), &mut state.client_state.layer_state, &state.client_state.queue_handle, true);
                         },
                     },
                     calloop::channel::Event::Closed => {}
