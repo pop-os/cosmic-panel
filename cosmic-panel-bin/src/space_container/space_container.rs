@@ -5,7 +5,9 @@ use crate::{
     PanelCalloopMsg,
 };
 use cctk::{
-    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::{
+        self, ZcosmicToplevelHandleV1,
+    },
     toplevel_info::ToplevelInfo,
 };
 use cosmic_panel_config::{
@@ -34,6 +36,8 @@ use xdg_shell_wrapper::{
     wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
 };
 
+use super::toplevel;
+
 #[derive(Debug)]
 pub struct SpaceContainer {
     pub(crate) connection: Option<Connection>,
@@ -48,6 +52,7 @@ pub struct SpaceContainer {
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
     pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
+    pub(crate) toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
 }
 
 impl SpaceContainer {
@@ -69,6 +74,7 @@ impl SpaceContainer {
             outputs: vec![],
             watchers: HashMap::new(),
             maximized_toplevels: Vec::with_capacity(1),
+            toplevels: Vec::new(),
         }
     }
 
@@ -288,6 +294,23 @@ impl SpaceContainer {
                     } else {
                         self.space_list.push(space);
                     }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn apply_toplevel_changes(&mut self) {
+        for output in &self.outputs {
+            let has_toplevel = self.toplevels.iter().any(|(_, info)| {
+                info.output.as_ref() == Some(&output.0)
+                    && !matches!(
+                        toplevel::state(info),
+                        Some(zcosmic_toplevel_handle_v1::State::Minimized)
+                    )
+            });
+            for s in &mut self.space_list {
+                if s.output.as_ref().map(|o| &o.0) == Some(&output.0) {
+                    s.output_has_toplevel = has_toplevel;
                 }
             }
         }

@@ -1,6 +1,7 @@
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-    toplevel_info::ToplevelInfo, wayland_client::Connection,
+    toplevel_info::ToplevelInfo,
+    wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
@@ -14,7 +15,13 @@ impl ToplevelInfoSpace for SpaceContainer {
         toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
-        let is_maximized = is_maximized(info);
+        self.toplevels.push((toplevel.clone(), info.clone()));
+        let state = state(info);
+        self.apply_toplevel_changes();
+
+        let is_maximized = state
+            .map(|s| matches!(s, zcosmic_toplevel_handle_v1::State::Maximized))
+            .unwrap_or_default();
         if is_maximized {
             self.add_maximized(toplevel, info);
         }
@@ -27,7 +34,18 @@ impl ToplevelInfoSpace for SpaceContainer {
         toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
-        let is_maximized = is_maximized(info);
+        if let Some(info_1) =
+            self.toplevels
+                .iter_mut()
+                .find_map(|(t, info_1)| if t == toplevel { Some(info_1) } else { None })
+        {
+            *info_1 = info.clone();
+        }
+        self.apply_toplevel_changes();
+
+        let is_maximized = state(info)
+            .map(|s| matches!(s, zcosmic_toplevel_handle_v1::State::Maximized))
+            .unwrap_or_default();
         let was_maximized = self.maximized_toplevels.iter().any(|(t, _)| t == toplevel);
         if is_maximized && !was_maximized {
             self.add_maximized(toplevel, info);
@@ -42,6 +60,9 @@ impl ToplevelInfoSpace for SpaceContainer {
         _conn: &Connection,
         toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     ) {
+        self.toplevels.retain(|(t, _)| t != toplevel);
+        self.apply_toplevel_changes();
+
         let len = self.maximized_toplevels.len();
         self.maximized_toplevels.retain(|(t, _)| t != toplevel);
         if self.maximized_toplevels.len() != len {
@@ -109,15 +130,15 @@ impl SpaceContainer {
     }
 }
 
-fn is_maximized(info: &ToplevelInfo) -> bool {
+pub(crate) fn state(info: &ToplevelInfo) -> Option<zcosmic_toplevel_handle_v1::State> {
     if info.state.len() < 4 {
-        return false;
+        return None;
     }
     let Some(state_arr) = info.state.chunks_exact(4).next() else {
-        return false;
+        return None;
     };
     let Some(state) = zcosmic_toplevel_handle_v1::State::try_from(u32::from_ne_bytes(state_arr[0..4].try_into().unwrap())).ok() else {
-        return false;
+        return None;
     };
-    matches!(state, zcosmic_toplevel_handle_v1::State::Maximized)
+    Some(state)
 }
