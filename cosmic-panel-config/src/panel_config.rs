@@ -314,7 +314,13 @@ impl CosmicPanelConfig {
     /// get the priority of the panel
     /// higher priority panels will be created first and given more space when competing for space
     pub fn get_priority(&self) -> u32 {
-        let mut priority = if self.expand_to_edges() { 100 } else { 0 };
+        let mut priority = if self.expand_to_edges() { 1000 } else { 0 };
+        if self.margin == 0 {
+            priority += 200;
+        }
+        if !self.anchor_gap {
+            priority += 100;
+        }
         if self.name.to_lowercase().contains("panel") {
             priority += 10;
         }
