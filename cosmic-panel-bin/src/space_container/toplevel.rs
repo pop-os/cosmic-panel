@@ -1,7 +1,6 @@
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-    toplevel_info::ToplevelInfo,
-    wayland_client::{protocol::wl_output::WlOutput, Connection},
+    toplevel_info::ToplevelInfo, wayland_client::Connection,
 };
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
@@ -19,9 +18,7 @@ impl ToplevelInfoSpace for SpaceContainer {
         let state = state(info);
         self.apply_toplevel_changes();
 
-        let is_maximized = state
-            .map(|s| matches!(s, zcosmic_toplevel_handle_v1::State::Maximized))
-            .unwrap_or_default();
+        let is_maximized = matches!(state, Some(zcosmic_toplevel_handle_v1::State::Maximized));
         if is_maximized {
             self.add_maximized(toplevel, info);
         }
@@ -43,9 +40,11 @@ impl ToplevelInfoSpace for SpaceContainer {
         }
         self.apply_toplevel_changes();
 
-        let is_maximized = state(info)
-            .map(|s| matches!(s, zcosmic_toplevel_handle_v1::State::Maximized))
-            .unwrap_or_default();
+        let is_maximized = matches!(
+            state(info),
+            Some(zcosmic_toplevel_handle_v1::State::Maximized)
+        );
+
         let was_maximized = self.maximized_toplevels.iter().any(|(t, _)| t == toplevel);
         if is_maximized && !was_maximized {
             self.add_maximized(toplevel, info);
@@ -127,6 +126,23 @@ impl SpaceContainer {
         _ = self
             .panel_tx
             .send(crate::PanelCalloopMsg::RestartSpace(config.clone()));
+    }
+
+    pub(crate) fn apply_toplevel_changes(&mut self) {
+        for output in &self.outputs {
+            let has_toplevel = self.toplevels.iter().any(|(_, info)| {
+                info.output.as_ref() == Some(&output.0)
+                    && !matches!(
+                        state(info),
+                        Some(zcosmic_toplevel_handle_v1::State::Minimized)
+                    )
+            });
+            for s in &mut self.space_list {
+                if s.output.as_ref().map(|o| &o.0) == Some(&output.0) {
+                    s.output_has_toplevel = has_toplevel;
+                }
+            }
+        }
     }
 }
 

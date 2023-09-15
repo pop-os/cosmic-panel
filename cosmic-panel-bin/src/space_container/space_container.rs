@@ -5,9 +5,7 @@ use crate::{
     PanelCalloopMsg,
 };
 use cctk::{
-    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::{
-        self, ZcosmicToplevelHandleV1,
-    },
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     toplevel_info::ToplevelInfo,
 };
 use cosmic_panel_config::{
@@ -35,8 +33,6 @@ use xdg_shell_wrapper::{
     client_state::ClientFocus, shared_state::GlobalState, space::WrapperSpace,
     wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
 };
-
-use super::toplevel;
 
 #[derive(Debug)]
 pub struct SpaceContainer {
@@ -152,15 +148,15 @@ impl SpaceContainer {
         viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState<W>>,
+        force: bool,
     ) {
         // exit early if the config hasn't actually changed
-        if self.space_list.iter_mut().any(|s| s.config == entry) {
+        if !force && self.space_list.iter_mut().any(|s| s.config == entry) {
             info!("config unchanged, skipping");
             return;
         }
 
         // TODO: Lower priority panel surfaces are recreated on the same output as well after updating the config
-
         if let Some(config) = self
             .config
             .config_list
@@ -218,12 +214,11 @@ impl SpaceContainer {
 
         for (wl_output, output, info) in outputs {
             let output_name = output.name();
-
-            if self
+            let maximized_output = self
                 .maximized_toplevels
                 .iter()
-                .any(|(_, info)| info.output.as_ref() == Some(wl_output))
-            {
+                .any(|(_, info)| info.output.as_ref() == Some(wl_output));
+            if maximized_output {
                 if entry.autohide.is_none() {
                     entry.autohide = Some(AutoHide {
                         wait_time: 2000,
@@ -270,8 +265,23 @@ impl SpaceContainer {
                         s.config.name != c.name
                             || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
                     });
+                    let mut new_config = c.clone();
+                    if maximized_output {
+                        if new_config.autohide.is_none() {
+                            new_config.autohide = Some(AutoHide {
+                                wait_time: 2000,
+                                transition_time: 200,
+                                handle_size: 4,
+                            });
+                        }
+                        new_config.expand_to_edges = true;
+                        new_config.exclusive_zone = false;
+                        new_config.margin = 0;
+                        new_config.border_radius = 0;
+                        new_config.opacity = 1.0;
+                    }
                     let mut space = PanelSpace::new(
-                        c.clone(),
+                        new_config.clone(),
                         self.c_focused_surface.clone(),
                         self.c_hovered_surface.clone(),
                         self.applet_tx.clone(),
@@ -297,22 +307,6 @@ impl SpaceContainer {
                 }
             }
         }
-    }
-
-    pub(crate) fn apply_toplevel_changes(&mut self) {
-        for output in &self.outputs {
-            let has_toplevel = self.toplevels.iter().any(|(_, info)| {
-                info.output.as_ref() == Some(&output.0)
-                    && !matches!(
-                        toplevel::state(info),
-                        Some(zcosmic_toplevel_handle_v1::State::Minimized)
-                    )
-            });
-            for s in &mut self.space_list {
-                if s.output.as_ref().map(|o| &o.0) == Some(&output.0) {
-                    s.output_has_toplevel = has_toplevel;
-                }
-            }
-        }
+        self.apply_toplevel_changes();
     }
 }
