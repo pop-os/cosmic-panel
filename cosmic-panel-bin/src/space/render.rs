@@ -102,6 +102,7 @@ impl PanelSpace {
                             loc,
                             1.0,
                             1.0,
+                            smithay::backend::renderer::element::Kind::Unspecified,
                         )
                         .into_iter()
                         .map(|r| MyRenderElements::WaylandSurface(r))
@@ -165,6 +166,7 @@ impl PanelSpace {
                         None,
                         None,
                         None,
+                        smithay::backend::renderer::element::Kind::Unspecified,
                     ) {
                         elements.push(MyRenderElements::Memory(render_element));
                     }
@@ -221,6 +223,7 @@ impl PanelSpace {
                 (0, 0),
                 1.0,
                 1.0,
+                smithay::backend::renderer::element::Kind::Unspecified,
             );
             p.damage_tracked_renderer.render_output(
                 renderer,

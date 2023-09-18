@@ -4,6 +4,7 @@ mod space;
 mod space_container;
 
 use anyhow::Result;
+use cctk::wayland_client::protocol::wl_output::WlOutput;
 use config_watching::{watch_config, watch_cosmic_theme};
 use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
@@ -27,7 +28,7 @@ use cosmic_panel_config::CosmicPanelConfig;
 #[derive(Debug)]
 pub enum PanelCalloopMsg {
     ClientSocketPair(String, ClientId, Client, UnixStream),
-    RestartSpace(CosmicPanelConfig)
+    RestartSpace(CosmicPanelConfig, WlOutput)
 }
 
 fn main() -> Result<()> {
@@ -107,8 +108,16 @@ fn main() -> Result<()> {
                                 .try_send(())
                                 .expect("Failed to unblock launchpad");
                         }
-                        PanelCalloopMsg::RestartSpace(config) => {
-                            state.space.update_space(config, &state.client_state.compositor_state, state.client_state.fractional_scaling_manager.as_ref(), state.client_state.viewporter_state.as_ref(), &mut state.client_state.layer_state, &state.client_state.queue_handle, true);
+                        PanelCalloopMsg::RestartSpace(config, o) => {
+                            state.space.update_space(
+                                config,
+                                &state.client_state.compositor_state,
+                                state.client_state.fractional_scaling_manager.as_ref(),
+                                state.client_state.viewporter_state.as_ref(),
+                                &mut state.client_state.layer_state,
+                                &state.client_state.queue_handle,
+                                Some(o)
+                            );
                         },
                     },
                     calloop::channel::Event::Closed => {}
@@ -228,7 +237,8 @@ fn main() -> Result<()> {
 
     let mut client_state =
         ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
-    client_state.init_toplevel_info_state();
-    run(space, client_state, server_state, event_loop, server_display)?;
+        client_state.init_workspace_state();
+        client_state.init_toplevel_info_state();
+        run(space, client_state, server_state, event_loop, server_display)?;
     Ok(())
 }

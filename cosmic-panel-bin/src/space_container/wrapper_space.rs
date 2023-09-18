@@ -244,6 +244,8 @@ impl WrapperSpace for SpaceContainer {
         for s in &mut self.space_list {
             s.space.map_output(&s_output, output_info.location);
         }
+        self.apply_maximized(&c_output);
+        self.apply_toplevel_changes();
 
         Ok(())
     }
@@ -658,6 +660,7 @@ impl WrapperSpace for SpaceContainer {
                 found = true;
             }
         }
+
         Ok(found)
     }
 
