@@ -29,7 +29,6 @@ impl PanelSpace {
         }
     }
 
-    
     pub fn configure_panel_popup(
         &mut self,
         popup: &sctk::shell::xdg::popup::Popup,
