@@ -6,9 +6,10 @@ mod space_container;
 use anyhow::Result;
 use cctk::wayland_client::protocol::wl_output::WlOutput;
 use config_watching::{watch_config, watch_cosmic_theme};
+use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
-use sctk::reexports::{client::backend::ObjectId, calloop::channel::SyncSender};
+use sctk::reexports::{calloop::channel::SyncSender, client::backend::ObjectId};
 use smithay::reexports::{
     calloop,
     wayland_server::{backend::ClientId, Client},
@@ -22,13 +23,14 @@ use std::{
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use xdg_shell_wrapper::{run, shared_state::GlobalState, server_state::ServerState, client_state::ClientState};
-use cosmic_panel_config::CosmicPanelConfig;
+use xdg_shell_wrapper::{
+    client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
+};
 
 #[derive(Debug)]
 pub enum PanelCalloopMsg {
     ClientSocketPair(String, ClientId, Client, UnixStream),
-    RestartSpace(CosmicPanelConfig, WlOutput)
+    RestartSpace(CosmicPanelConfig, WlOutput),
 }
 
 fn main() -> Result<()> {
@@ -76,9 +78,11 @@ fn main() -> Result<()> {
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
-    let (calloop_tx, calloop_rx): (SyncSender<PanelCalloopMsg>, _) = calloop::channel::sync_channel(100);
-    
-    let mut space = space_container::SpaceContainer::new(config, applet_tx.clone(), calloop_tx.clone());
+    let (calloop_tx, calloop_rx): (SyncSender<PanelCalloopMsg>, _) =
+        calloop::channel::sync_channel(100);
+
+    let mut space =
+        space_container::SpaceContainer::new(config, applet_tx.clone(), calloop_tx.clone());
 
     let event_loop = calloop::EventLoop::try_new()?;
 
@@ -116,9 +120,9 @@ fn main() -> Result<()> {
                                 state.client_state.viewporter_state.as_ref(),
                                 &mut state.client_state.layer_state,
                                 &state.client_state.queue_handle,
-                                Some(o)
+                                Some(o),
                             );
-                        },
+                        }
                     },
                     calloop::channel::Event::Closed => {}
                 };
@@ -235,10 +239,15 @@ fn main() -> Result<()> {
 
     let mut server_state = ServerState::new(s_dh.clone());
 
-    let mut client_state =
-        ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
-        client_state.init_workspace_state();
-        client_state.init_toplevel_info_state();
-        run(space, client_state, server_state, event_loop, server_display)?;
+    let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+    client_state.init_workspace_state();
+    client_state.init_toplevel_info_state();
+    run(
+        space,
+        client_state,
+        server_state,
+        event_loop,
+        server_display,
+    )?;
     Ok(())
 }
