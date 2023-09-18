@@ -113,7 +113,7 @@ pub fn watch_config(
                         state.client_state.viewporter_state.as_ref(),
                         &mut state.client_state.layer_state,
                         &state.client_state.queue_handle,
-                        false,
+                        None,
                     );
                 }
                 info!("Removing entries: {:?}", entries);
@@ -155,7 +155,7 @@ pub fn watch_config(
                     state.client_state.viewporter_state.as_ref(),
                     &mut state.client_state.layer_state,
                     &state.client_state.queue_handle,
-                    false,
+                    None,
                 );
             }
             channel::Event::Msg(ConfigUpdate::Opacity(o, name)) => {

@@ -6,11 +6,10 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo,
+    toplevel_info::ToplevelInfo, workspace::WorkspaceGroup,
 };
 use cosmic_panel_config::{
-    AutoHide, CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig,
-    CosmicPanelOuput,
+    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
 use notify::RecommendedWatcher;
 use sctk::{
@@ -49,6 +48,7 @@ pub struct SpaceContainer {
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
     pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
     pub(crate) toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
+    pub(crate) workspace_groups: Vec<WorkspaceGroup>,
 }
 
 impl SpaceContainer {
@@ -71,6 +71,7 @@ impl SpaceContainer {
             watchers: HashMap::new(),
             maximized_toplevels: Vec::with_capacity(1),
             toplevels: Vec::new(),
+            workspace_groups: Vec::new(),
         }
     }
 
@@ -142,16 +143,16 @@ impl SpaceContainer {
     /// apply a new or updated entry to the space list
     pub fn update_space<W: WrapperSpace>(
         &mut self,
-        mut entry: CosmicPanelConfig,
+        entry: CosmicPanelConfig,
         compositor_state: &sctk::compositor::CompositorState,
         fractional_scale_manager: Option<&FractionalScalingManager<W>>,
         viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState<W>>,
-        force: bool,
+        force_output: Option<WlOutput>,
     ) {
         // exit early if the config hasn't actually changed
-        if !force && self.space_list.iter_mut().any(|s| s.config == entry) {
+        if !force_output.is_some() && self.space_list.iter_mut().any(|s| s.config == entry) {
             info!("config unchanged, skipping");
             return;
         }
@@ -174,7 +175,13 @@ impl SpaceContainer {
         };
 
         // remove old one if it exists
-        self.space_list.retain(|s| s.config.name != entry.name);
+        self.space_list.retain(|s| {
+            s.config.name != entry.name
+                || s.output
+                    .as_ref()
+                    .map(|(wl_output, _, _)| Some(wl_output) != force_output.as_ref())
+                    .unwrap_or_default()
+        });
 
         let outputs: Vec<_> = match &entry.output {
             CosmicPanelOuput::Active => {
@@ -212,98 +219,50 @@ impl SpaceContainer {
                 .collect(),
         };
 
+        let maximized_outputs = self.maximized_outputs();
         for (wl_output, output, info) in outputs {
+            if force_output.as_ref() != Some(wl_output) && force_output.is_some() {
+                continue;
+            }
+
             let output_name = output.name();
-            let maximized_output = self
-                .maximized_toplevels
-                .iter()
-                .any(|(_, info)| info.output.as_ref() == Some(wl_output));
-            if maximized_output {
-                if entry.autohide.is_none() {
-                    entry.autohide = Some(AutoHide {
-                        wait_time: 2000,
-                        transition_time: 200,
-                        handle_size: 4,
-                    });
+            let maximized_output = maximized_outputs.contains(wl_output);
+            let mut configs = self.config.configs_for_output(&output_name);
+            configs.sort_by(|a, b| a.get_priority().cmp(&b.get_priority()));
+            for c in configs {
+                self.space_list.retain(|s| {
+                    s.config.name != c.name || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
+                });
+                let mut new_config = c.clone();
+                if maximized_output {
+                    new_config.expand_to_edges = true;
+                    new_config.margin = 0;
+                    new_config.border_radius = 0;
+                    new_config.opacity = 1.0;
                 }
-                entry.expand_to_edges = true;
-                entry.exclusive_zone = false;
-                entry.margin = 0;
-                entry.border_radius = 0;
-                entry.opacity = 1.0;
-            }
-
-            let mut space = PanelSpace::new(
-                entry.clone(),
-                self.c_focused_surface.clone(),
-                self.c_hovered_surface.clone(),
-                self.applet_tx.clone(),
-            );
-            if let Some(s_display) = self.s_display.as_ref() {
-                space.set_display_handle(s_display.clone());
-            }
-            if let Err(err) = space.new_output(
-                compositor_state,
-                fractional_scale_manager,
-                viewport,
-                layer_state,
-                connection,
-                qh,
-                Some(wl_output.clone()),
-                Some(output.clone()),
-                Some(info.clone()),
-            ) {
-                error!("Failed to create space for output: {}", err);
-            } else {
-                self.space_list.push(space);
-            }
-
-            // recreate the lower priority panels on the same output
-            for c in self.config.configs_for_output(&output_name) {
-                if c.get_priority() < entry.get_priority() {
-                    self.space_list.retain(|s| {
-                        s.config.name != c.name
-                            || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
-                    });
-                    let mut new_config = c.clone();
-                    if maximized_output {
-                        if new_config.autohide.is_none() {
-                            new_config.autohide = Some(AutoHide {
-                                wait_time: 2000,
-                                transition_time: 200,
-                                handle_size: 4,
-                            });
-                        }
-                        new_config.expand_to_edges = true;
-                        new_config.exclusive_zone = false;
-                        new_config.margin = 0;
-                        new_config.border_radius = 0;
-                        new_config.opacity = 1.0;
-                    }
-                    let mut space = PanelSpace::new(
-                        new_config.clone(),
-                        self.c_focused_surface.clone(),
-                        self.c_hovered_surface.clone(),
-                        self.applet_tx.clone(),
-                    );
-                    if let Some(s_display) = self.s_display.as_ref() {
-                        space.set_display_handle(s_display.clone());
-                    }
-                    if let Err(err) = space.new_output(
-                        compositor_state,
-                        fractional_scale_manager,
-                        viewport,
-                        layer_state,
-                        connection,
-                        qh,
-                        Some(wl_output.clone()),
-                        Some(output.clone()),
-                        Some(info.clone()),
-                    ) {
-                        error!("Failed to create space for output: {}", err);
-                    } else {
-                        self.space_list.push(space);
-                    }
+                let mut space = PanelSpace::new(
+                    new_config.clone(),
+                    self.c_focused_surface.clone(),
+                    self.c_hovered_surface.clone(),
+                    self.applet_tx.clone(),
+                );
+                if let Some(s_display) = self.s_display.as_ref() {
+                    space.set_display_handle(s_display.clone());
+                }
+                if let Err(err) = space.new_output(
+                    compositor_state,
+                    fractional_scale_manager,
+                    viewport,
+                    layer_state,
+                    connection,
+                    qh,
+                    Some(wl_output.clone()),
+                    Some(output.clone()),
+                    Some(info.clone()),
+                ) {
+                    error!("Failed to create space for output: {}", err);
+                } else {
+                    self.space_list.push(space);
                 }
             }
         }

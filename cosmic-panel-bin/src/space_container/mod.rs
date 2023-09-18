@@ -2,8 +2,9 @@
 //! space container implements the WrapperSpace abstraction, calling handle events and other methods of its PanelSpaces as necessary
 
 mod space_container;
-mod wrapper_space;
 pub(crate) mod toplevel;
+pub(crate) mod workspace;
+mod wrapper_space;
 
 pub use space_container::*;
 pub use wrapper_space::*;

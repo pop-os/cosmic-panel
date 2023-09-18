@@ -1,6 +1,7 @@
 use cctk::{
-    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-    toplevel_info::ToplevelInfo, wayland_client::Connection,
+    cosmic_protocols::{toplevel_info::v1::client::zcosmic_toplevel_handle_v1, workspace},
+    toplevel_info::ToplevelInfo,
+    wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
@@ -62,9 +63,7 @@ impl ToplevelInfoSpace for SpaceContainer {
         self.toplevels.retain(|(t, _)| t != toplevel);
         self.apply_toplevel_changes();
 
-        let len = self.maximized_toplevels.len();
-        self.maximized_toplevels.retain(|(t, _)| t != toplevel);
-        if self.maximized_toplevels.len() != len {
+        if self.maximized_toplevels.iter().any(|(h, _)| h == toplevel) {
             self.remove_maximized(toplevel);
         }
     }
@@ -81,21 +80,7 @@ impl SpaceContainer {
         let Some(output) = info.output.as_ref() else {
             return;
         };
-        let Some(config_name) = self.space_list.iter().find_map(|s| {
-            if s.output.as_ref().iter().any(|(o, _, _)| o == output) {
-                Some(s.config.name.clone())
-            } else {
-                None
-            }
-        }) else {
-            return;
-        };
-        let Some(config) = self.config.config_list.iter().find(|c| c.name == config_name) else {
-            return;
-        };
-        _ = self
-            .panel_tx
-            .send(crate::PanelCalloopMsg::RestartSpace(config.clone()));
+        self.apply_maximized(output);
     }
 
     fn remove_maximized(&mut self, toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1) {
@@ -108,9 +93,14 @@ impl SpaceContainer {
         } else {
             return;
         };
+
         let Some(output) = info.output.as_ref() else {
             return;
         };
+        self.apply_maximized(output);
+    }
+
+    pub(crate) fn apply_maximized(&self, output: &WlOutput) {
         let Some(config_name) = self.space_list.iter().find_map(|s| {
             if s.output.as_ref().iter().any(|(o, _, _)| o == output) {
                 Some(s.config.name.clone())
@@ -123,9 +113,10 @@ impl SpaceContainer {
         let Some(config) = self.config.config_list.iter().find(|c| c.name == config_name) else {
             return;
         };
-        _ = self
-            .panel_tx
-            .send(crate::PanelCalloopMsg::RestartSpace(config.clone()));
+        _ = self.panel_tx.send(crate::PanelCalloopMsg::RestartSpace(
+            config.clone(),
+            output.clone(),
+        ));
     }
 
     pub(crate) fn apply_toplevel_changes(&mut self) {
@@ -136,6 +127,13 @@ impl SpaceContainer {
                         state(info),
                         Some(zcosmic_toplevel_handle_v1::State::Minimized)
                     )
+                    && self.workspace_groups.iter().any(|g| {
+                        g.workspaces.iter().any(|w| {
+                            w.state.contains(&cctk::wayland_client::WEnum::Value(
+                                workspace::v1::client::zcosmic_workspace_handle_v1::State::Active,
+                            )) && info.workspace.as_ref() == Some(&w.handle)
+                        })
+                    })
             });
             for s in &mut self.space_list {
                 if s.output.as_ref().map(|o| &o.0) == Some(&output.0) {
@@ -143,6 +141,27 @@ impl SpaceContainer {
                 }
             }
         }
+    }
+
+    pub(crate) fn maximized_outputs(&self) -> Vec<WlOutput> {
+        self.workspace_groups
+            .iter()
+            .filter_map(|g| {
+                if g.workspaces.iter().any(|w| {
+                    w.state.contains(&cctk::wayland_client::WEnum::Value(
+                        workspace::v1::client::zcosmic_workspace_handle_v1::State::Active,
+                    )) && self
+                        .maximized_toplevels
+                        .iter()
+                        .any(|(_, info)| info.workspace.as_ref() == Some(&w.handle))
+                }) {
+                    Some(g.outputs.clone())
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect()
     }
 }
 
