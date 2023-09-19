@@ -57,27 +57,26 @@ impl PanelSpace {
                     .to_f64()
                     .to_physical(self.scale)
                     .to_i32_round();
-                for _ in 0..4 {
-                    if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
-                        _ = frame.clear(
-                            [0.0, 0.0, 0.0, 0.0],
-                            &[Rectangle::from_loc_and_size((0, 0), dim)],
-                        );
-                        if let Ok(sync_point) = frame.finish() {
-                            sync_point.wait();
-                            self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
-                        }
-                        let wl_surface = self.layer.as_ref().unwrap().wl_surface();
-                        wl_surface.frame(qh, wl_surface.clone());
-                        wl_surface.commit();
-                        // reset the damage tracker
-                        *my_renderer = OutputDamageTracker::new(
-                            dim,
-                            self.scale,
-                            smithay::utils::Transform::Flipped180,
-                        );
-                        self.is_dirty = false;
+
+                if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
+                    _ = frame.clear(
+                        [0.0, 0.0, 0.0, 0.0],
+                        &[Rectangle::from_loc_and_size((0, 0), dim)],
+                    );
+                    if let Ok(sync_point) = frame.finish() {
+                        sync_point.wait();
+                        self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                     }
+                    let wl_surface = self.layer.as_ref().unwrap().wl_surface();
+                    wl_surface.frame(qh, wl_surface.clone());
+                    wl_surface.commit();
+                    // reset the damage tracker
+                    *my_renderer = OutputDamageTracker::new(
+                        dim,
+                        self.scale,
+                        smithay::utils::Transform::Flipped180,
+                    );
+                    self.is_dirty = false;
                 }
 
                 renderer.unbind()?;
