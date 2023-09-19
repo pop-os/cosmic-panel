@@ -556,6 +556,19 @@ impl PanelSpace {
                                 layer_surface,
                             );
                         }
+                    } else if self.config.autohide.is_some()
+                        && matches!(self.visibility, Visibility::Hidden)
+                    {
+                        if self.config.exclusive_zone() {
+                            layer_surface.set_exclusive_zone(list_thickness as i32);
+                        }
+                        Self::set_margin(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            -(list_thickness as i32)
+                                + self.config.get_effective_anchor_gap() as i32,
+                            layer_surface,
+                        );
                     }
                     layer_surface.wl_surface().commit();
                     self.space_event.replace(Some(SpaceEvent::WaitConfigure {
