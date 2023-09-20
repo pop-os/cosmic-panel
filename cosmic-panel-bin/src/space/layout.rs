@@ -215,11 +215,12 @@ impl PanelSpace {
             (thickness as i32 - dim as i32) / 2
         }
 
-        let requested_eq_length: i32 = list_length / num_lists;
+        let requested_eq_length: i32 = new_list_dim_length / num_lists;
         let (right_sum, center_offset) = if is_dock {
-            (0, padding as i32 + (list_length - new_list_length) / 2)
-        } else if num_lists == 1 {
-            (0, (requested_eq_length - center_sum) / 2)
+            (
+                0,
+                padding as i32 + (new_list_dim_length - new_list_length) / 2,
+            )
         } else if left_sum <= requested_eq_length
             && center_sum <= requested_eq_length
             && right_sum <= requested_eq_length
@@ -230,7 +231,7 @@ impl PanelSpace {
                 requested_eq_length + padding as i32 + center_padding,
             )
         } else {
-            let center_padding = (list_length as i32 - total_sum) / 2;
+            let center_padding = (new_list_dim_length as i32 - total_sum) / 2;
 
             (right_sum, left_sum + padding as i32 + center_padding)
         };
