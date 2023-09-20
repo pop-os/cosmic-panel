@@ -117,13 +117,13 @@ impl PanelSpace {
                     let (panel_size, loc) = if is_dock {
                         let loc: Point<f64, Logical> = if self.config.is_horizontal() {
                             (
-                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).floor(),
+                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).round(),
                                 margin_offset,
                             )
                         } else {
                             (
                                 margin_offset,
-                                ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).floor(),
+                                ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).round(),
                             )
                         }
                         .into();
@@ -168,18 +168,16 @@ impl PanelSpace {
                     }
                 }
 
-                let mut res: RenderOutputResult = my_renderer
-                    .render_output(
-                        renderer,
-                        self.egl_surface
-                            .as_ref()
-                            .unwrap()
-                            .buffer_age()
-                            .unwrap_or_default() as usize,
-                        &elements,
-                        *clear_color,
-                    )
-                    .unwrap();
+                _ = my_renderer.render_output(
+                    renderer,
+                    self.egl_surface
+                        .as_ref()
+                        .unwrap()
+                        .buffer_age()
+                        .unwrap_or_default() as usize,
+                    &elements,
+                    *clear_color,
+                );
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
                 for window in self.space.elements() {
