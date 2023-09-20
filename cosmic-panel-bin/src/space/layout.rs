@@ -366,9 +366,19 @@ impl PanelSpace {
             // adjust the length if the panel extends to edges
             if !is_dock {
                 if self.config.is_horizontal() {
-                    panel_size.w = self.dimensions.w;
+                    panel_size.w = self
+                        .dimensions
+                        .to_f64()
+                        .to_physical(self.scale)
+                        .to_i32_round()
+                        .w;
                 } else {
-                    panel_size.h = self.dimensions.h;
+                    panel_size.h = self
+                        .dimensions
+                        .to_f64()
+                        .to_physical(self.scale)
+                        .to_i32_round()
+                        .h;
                 }
             }
 
