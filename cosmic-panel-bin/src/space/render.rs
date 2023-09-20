@@ -71,11 +71,8 @@ impl PanelSpace {
                     wl_surface.frame(qh, wl_surface.clone());
                     wl_surface.commit();
                     // reset the damage tracker
-                    *my_renderer = OutputDamageTracker::new(
-                        dim,
-                        self.scale,
-                        smithay::utils::Transform::Flipped180,
-                    );
+                    *my_renderer =
+                        OutputDamageTracker::new(dim, 1.0, smithay::utils::Transform::Flipped180);
                     self.is_dirty = false;
                 }
 
@@ -183,10 +180,7 @@ impl PanelSpace {
                         *clear_color,
                     )
                     .unwrap();
-                self.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .swap_buffers(res.damage.as_deref_mut())?;
+                self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
                 for window in self.space.elements() {
                     let output = o.clone();
