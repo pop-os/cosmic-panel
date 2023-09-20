@@ -566,7 +566,7 @@ impl PanelSpace {
                             self.config.anchor,
                             self.config.get_margin() as i32,
                             -(list_thickness as i32)
-                                + self.config.get_effective_anchor_gap() as i32,
+                                + self.config.get_hide_handle().unwrap_or_default() as i32,
                             layer_surface,
                         );
                     }
