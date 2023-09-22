@@ -228,7 +228,7 @@ impl SpaceContainer {
             let output_name = output.name();
             let maximized_output = maximized_outputs.contains(wl_output);
             let mut configs = self.config.configs_for_output(&output_name);
-            configs.sort_by(|a, b| a.get_priority().cmp(&b.get_priority()));
+            configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
             for c in configs {
                 self.space_list.retain(|s| {
                     s.config.name != c.name || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
