@@ -12,8 +12,8 @@ anyhow = "1.0.68"
 ron = "0.8.0"
 serde = { version = "1.0.152", features = ["derive"] }
 tracing = "0.1.37"
-wayland-protocols-wlr = { version = "0.1.0", features = ["server"], optional = true}
-cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
+wayland-protocols-wlr = { version = "0.2.0", features = ["server"], optional = true}
+cosmic-config = { git = "https://github.com/pop-os/libcosmic" , branch="theme-dark-light-switching" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config", optional = true }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", optional = true, branch = "update-sctk" }
 

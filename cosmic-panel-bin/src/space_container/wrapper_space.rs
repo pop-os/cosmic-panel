@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use cosmic_panel_config::{CosmicPanelContainerConfig, CosmicPanelOuput};
+use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{
     compositor::CompositorState,
@@ -74,6 +74,12 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
+                            match config.background {
+                                CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
+                                CosmicPanelBackground::Dark => self.dark_bg,
+                                CosmicPanelBackground::Light => self.light_bg,
+                                CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                            },
                         );
                         s.setup(
                             compositor_state,
@@ -140,6 +146,9 @@ impl WrapperSpace for SpaceContainer {
         self.outputs
             .push((c_output.clone(), s_output.clone(), output_info.clone()));
 
+        let cur = self.cur_bg_color();
+        let dark = self.dark_bg;
+        let light = self.light_bg;
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces configured for All
         let mut new_spaces = self
@@ -148,6 +157,12 @@ impl WrapperSpace for SpaceContainer {
             .into_iter()
             .filter_map(|config| match &config.output {
                 CosmicPanelOuput::All => {
+                    let c = match config.background {
+                        CosmicPanelBackground::ThemeDefault => cur,
+                        CosmicPanelBackground::Dark => dark,
+                        CosmicPanelBackground::Light => light,
+                        CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                    };
                     let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
                         s.config.name == config.name
                             && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
@@ -159,6 +174,7 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
+                            c,
                         );
                         s.setup(
                             compositor_state,
@@ -203,6 +219,12 @@ impl WrapperSpace for SpaceContainer {
                             self.c_focused_surface.clone(),
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
+                            match config.background {
+                                CosmicPanelBackground::ThemeDefault => cur,
+                                CosmicPanelBackground::Dark => dark,
+                                CosmicPanelBackground::Light => light,
+                                CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                            },
                         );
                         s.setup(
                             compositor_state,
@@ -584,20 +606,12 @@ impl WrapperSpace for SpaceContainer {
 
     // TODO check if any panels are visible
     fn visibility(&self) -> Visibility {
-        let visible = self
-            .space_list
-            .iter()
-            .any(|s| !matches!(s.visibility(), Visibility::Hidden))
-            || self
-                .c_focused_surface
+        let visible = self.space_list.iter().any(|s| {
+            self.c_hovered_surface
                 .borrow()
                 .iter()
                 .any(|f| matches!(f.2, FocusStatus::Focused))
-            || self
-                .c_hovered_surface
-                .borrow()
-                .iter()
-                .any(|f| matches!(f.2, FocusStatus::Focused));
+        });
 
         if visible {
             Visibility::Visible

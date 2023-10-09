@@ -141,51 +141,9 @@ impl PanelSpace {
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
+        mut bg_color: [f32; 4],
     ) -> Self {
-        let bg_color = match config.background {
-            CosmicPanelBackground::ThemeDefault => {
-                let t = Config::new("com.system76.CosmicTheme", 1)
-                    .map(|helper| match cosmic_theme::Theme::get_entry(&helper) {
-                        Ok(c) => c,
-                        Err((err, c)) => {
-                            for e in err {
-                                error!("Error loading cosmic theme for {} {:?}", &config.name, e);
-                            }
-                            c
-                        }
-                    })
-                    .unwrap_or(cosmic_theme::Theme::dark_default());
-                let c = [
-                    t.bg_color().red,
-                    t.bg_color().green,
-                    t.bg_color().blue,
-                    config.opacity,
-                ];
-                c
-            }
-            CosmicPanelBackground::Dark => {
-                let t = cosmic_theme::Theme::dark_default();
-                let c = [
-                    t.bg_color().red,
-                    t.bg_color().green,
-                    t.bg_color().blue,
-                    config.opacity,
-                ];
-                c
-            }
-            CosmicPanelBackground::Light => {
-                let t = cosmic_theme::Theme::light_default();
-                let c = [
-                    t.bg_color().red,
-                    t.bg_color().green,
-                    t.bg_color().blue,
-                    config.opacity,
-                ];
-                c
-            }
-            CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], config.opacity],
-        };
-
+        bg_color[3] = config.opacity;
         let visibility = if config.autohide.is_none() {
             Visibility::Visible
         } else {
