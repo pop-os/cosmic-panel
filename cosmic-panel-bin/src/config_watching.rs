@@ -55,7 +55,6 @@ pub fn watch_cosmic_theme(
                     .space
                     .set_light([color.red, color.green, color.blue, color.alpha]);
             }
-
             channel::Event::Closed => {}
         };
     })?;

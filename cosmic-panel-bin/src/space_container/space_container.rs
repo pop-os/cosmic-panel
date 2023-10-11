@@ -102,14 +102,12 @@ impl SpaceContainer {
 
     pub fn set_dark(&mut self, color: [f32; 4]) {
         self.dark_bg = color;
-        if !self.is_dark {
-            return;
-        }
+
         for space in &mut self.space_list {
-            if matches!(
-                space.config.background,
-                CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Dark
-            ) {
+            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
+                && self.is_dark
+                || matches!(space.config.background, CosmicPanelBackground::Dark)
+            {
                 space.set_theme_window_color(color);
             }
         }
@@ -117,14 +115,12 @@ impl SpaceContainer {
 
     pub fn set_light(&mut self, color: [f32; 4]) {
         self.light_bg = color;
-        if self.is_dark {
-            return;
-        }
+
         for space in &mut self.space_list {
-            if matches!(
-                space.config.background,
-                CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Light
-            ) {
+            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
+                && !self.is_dark
+                || matches!(space.config.background, CosmicPanelBackground::Light)
+            {
                 space.set_theme_window_color(color);
             }
         }
@@ -189,7 +185,7 @@ impl SpaceContainer {
     }
 
     pub(crate) fn set_theme_mode(&mut self, is_dark: bool) {
-        let changed = self.is_dark == is_dark;
+        let changed = self.is_dark != is_dark;
         self.is_dark = is_dark;
         if changed {
             let cur = self.cur_bg_color();

@@ -604,13 +604,14 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    // TODO check if any panels are visible
     fn visibility(&self) -> Visibility {
         let visible = self.space_list.iter().any(|s| {
             self.c_hovered_surface
                 .borrow()
                 .iter()
                 .any(|f| matches!(f.2, FocusStatus::Focused))
+                // transitions should try to be smooth
+                || !matches!(s.visibility, Visibility::Visible | Visibility::Hidden)
         });
 
         if visible {
