@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::space_container::SpaceContainer;
 use anyhow::anyhow;
-use cosmic_config::{Config, ConfigGet, CosmicConfigEntry};
+use cosmic_config::{ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use cosmic_theme::{
     palette::{self, Srgba},
@@ -34,12 +34,11 @@ pub fn watch_cosmic_theme(
     handle: LoopHandle<GlobalState<SpaceContainer>>,
 ) -> Result<Vec<RecommendedWatcher>, Box<dyn std::error::Error>> {
     let (entries_tx, entries_rx) = channel::sync_channel::<ThemeUpdate>(30);
-    let config_mode_helper =
-        Theme::<palette::Srgba>::dark_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
     let config_dark_helper =
+        Theme::<palette::Srgba>::dark_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
+    let config_light_helper =
         Theme::<palette::Srgba>::light_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
-    let config_light_helper = Config::new("com.system76.CosmicTheme.Light", 1)
-        .map_err(|e| anyhow!(format!("{:?}", e)))?;
+    let config_mode_helper = ThemeMode::config().map_err(|e| anyhow!(format!("{:?}", e)))?;
 
     handle.insert_source(entries_rx, move |event, _, state| {
         match event {
