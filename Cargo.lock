@@ -414,7 +414,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=theme-dark-light-switching#0a63eaaff3091796e5f59ed0598f7b0616066e78"
+source = "git+https://github.com/pop-os/libcosmic#7cc791a3f5c0e54e091cce800a638aa5567055ef"
 dependencies = [
  "atomicwrites",
  "cosmic-config-derive",
@@ -428,7 +428,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config-derive"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=theme-dark-light-switching#0a63eaaff3091796e5f59ed0598f7b0616066e78"
+source = "git+https://github.com/pop-os/libcosmic#7cc791a3f5c0e54e091cce800a638aa5567055ef"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -514,7 +514,7 @@ dependencies = [
 [[package]]
 name = "cosmic-theme"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=theme-dark-light-switching#0a63eaaff3091796e5f59ed0598f7b0616066e78"
+source = "git+https://github.com/pop-os/libcosmic#7cc791a3f5c0e54e091cce800a638aa5567055ef"
 dependencies = [
  "almost",
  "cosmic-config",
@@ -1124,7 +1124,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "iced_core"
 version = "0.10.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=theme-dark-light-switching#0a63eaaff3091796e5f59ed0598f7b0616066e78"
+source = "git+https://github.com/pop-os/libcosmic#7cc791a3f5c0e54e091cce800a638aa5567055ef"
 dependencies = [
  "bitflags 1.3.2",
  "instant",
@@ -1136,7 +1136,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.7.0"
-source = "git+https://github.com/pop-os/libcosmic?branch=theme-dark-light-switching#0a63eaaff3091796e5f59ed0598f7b0616066e78"
+source = "git+https://github.com/pop-os/libcosmic#7cc791a3f5c0e54e091cce800a638aa5567055ef"
 dependencies = [
  "futures",
  "iced_core",
@@ -3019,7 +3019,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=update-sctk#e79d3b7a43e671176220aa7f3ebbc8632af407f1"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#fa62a8c865cc5ba391a48fe4753a8687d8ab8ded"
 dependencies = [
  "anyhow",
  "cosmic-client-toolkit",
@@ -3042,7 +3042,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper?branch=update-sctk#e79d3b7a43e671176220aa7f3ebbc8632af407f1"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper#fa62a8c865cc5ba391a48fe4753a8687d8ab8ded"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
