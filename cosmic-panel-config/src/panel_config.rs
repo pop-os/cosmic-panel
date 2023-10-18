@@ -3,9 +3,7 @@
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::bail;
-use cosmic_config::{
-    cosmic_config_derive::CosmicConfigEntry, Config, ConfigGet, ConfigSet, CosmicConfigEntry,
-};
+use cosmic_config::{cosmic_config_derive::CosmicConfigEntry, Config, CosmicConfigEntry};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
