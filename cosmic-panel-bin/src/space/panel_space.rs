@@ -5,7 +5,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cosmic_config::{Config, CosmicConfigEntry};
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,

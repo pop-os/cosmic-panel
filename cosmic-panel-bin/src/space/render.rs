@@ -7,7 +7,7 @@ use itertools::Itertools;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
-        damage::{OutputDamageTracker, RenderOutputResult},
+        damage::OutputDamageTracker,
         element::{
             memory::MemoryRenderBufferRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
