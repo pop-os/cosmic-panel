@@ -8,9 +8,11 @@ use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     toplevel_info::ToplevelInfo, workspace::WorkspaceGroup,
 };
+use cosmic_config::CosmicConfigEntry;
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
+use cosmic_theme::{palette, Theme, ThemeMode};
 use notify::RecommendedWatcher;
 use sctk::{
     output::OutputInfo,
@@ -49,6 +51,9 @@ pub struct SpaceContainer {
     pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
     pub(crate) toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
     pub(crate) workspace_groups: Vec<WorkspaceGroup>,
+    pub(crate) is_dark: bool,
+    pub(crate) light_bg: [f32; 4],
+    pub(crate) dark_bg: [f32; 4],
 }
 
 impl SpaceContainer {
@@ -57,6 +62,23 @@ impl SpaceContainer {
         tx: mpsc::Sender<AppletMsg>,
         panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     ) -> Self {
+        let is_dark = ThemeMode::config()
+            .ok()
+            .and_then(|c| ThemeMode::get_entry(&c).ok())
+            .unwrap_or_default()
+            .is_dark;
+
+        let light = Theme::<palette::Srgba>::light_config()
+            .ok()
+            .and_then(|c| Theme::get_entry(&c).ok())
+            .unwrap_or_else(|| Theme::light_default());
+        let dark = Theme::<palette::Srgba>::dark_config()
+            .ok()
+            .and_then(|c| Theme::get_entry(&c).ok())
+            .unwrap_or_else(|| Theme::dark_default());
+        let light = light.background.base;
+        let dark = dark.background.base;
+
         Self {
             connection: None,
             config,
@@ -72,14 +94,43 @@ impl SpaceContainer {
             maximized_toplevels: Vec::with_capacity(1),
             toplevels: Vec::new(),
             workspace_groups: Vec::new(),
+            is_dark,
+            light_bg: [light.red, light.green, light.blue, light.alpha],
+            dark_bg: [dark.red, dark.green, dark.blue, dark.alpha],
         }
     }
 
-    pub fn set_theme_window_color(&mut self, color: [f32; 4]) {
+    pub fn set_dark(&mut self, color: [f32; 4]) {
+        self.dark_bg = color;
+
         for space in &mut self.space_list {
-            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault) {
+            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
+                && self.is_dark
+                || matches!(space.config.background, CosmicPanelBackground::Dark)
+            {
                 space.set_theme_window_color(color);
             }
+        }
+    }
+
+    pub fn set_light(&mut self, color: [f32; 4]) {
+        self.light_bg = color;
+
+        for space in &mut self.space_list {
+            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
+                && !self.is_dark
+                || matches!(space.config.background, CosmicPanelBackground::Light)
+            {
+                space.set_theme_window_color(color);
+            }
+        }
+    }
+
+    pub fn cur_bg_color(&self) -> [f32; 4] {
+        if self.is_dark {
+            self.dark_bg.clone()
+        } else {
+            self.light_bg.clone()
         }
     }
 
@@ -129,6 +180,19 @@ impl SpaceContainer {
                 s.is_dirty = true;
                 // s.w_accumulated_damage.clear();
                 break;
+            }
+        }
+    }
+
+    pub(crate) fn set_theme_mode(&mut self, is_dark: bool) {
+        let changed = self.is_dark != is_dark;
+        self.is_dark = is_dark;
+        if changed {
+            let cur = self.cur_bg_color();
+            for space in &mut self.space_list {
+                if matches!(space.config.background, CosmicPanelBackground::ThemeDefault) {
+                    space.set_theme_window_color(cur);
+                }
             }
         }
     }
@@ -190,6 +254,12 @@ impl SpaceContainer {
                     self.c_focused_surface.clone(),
                     self.c_hovered_surface.clone(),
                     self.applet_tx.clone(),
+                    match entry.background {
+                        CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
+                        CosmicPanelBackground::Dark => self.dark_bg,
+                        CosmicPanelBackground::Light => self.light_bg,
+                        CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                    },
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
@@ -245,6 +315,12 @@ impl SpaceContainer {
                     self.c_focused_surface.clone(),
                     self.c_hovered_surface.clone(),
                     self.applet_tx.clone(),
+                    match entry.background {
+                        CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
+                        CosmicPanelBackground::Dark => self.dark_bg,
+                        CosmicPanelBackground::Light => self.light_bg,
+                        CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                    },
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());

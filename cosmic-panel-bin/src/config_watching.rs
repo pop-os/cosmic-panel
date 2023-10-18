@@ -2,9 +2,12 @@ use std::collections::HashMap;
 
 use crate::space_container::SpaceContainer;
 use anyhow::anyhow;
-use cosmic_config::{Config, ConfigGet, CosmicConfigEntry};
+use cosmic_config::{ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
-use cosmic_theme::{palette::Srgba, Theme};
+use cosmic_theme::{
+    palette::{self, Srgba},
+    Theme, ThemeMode,
+};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
 use tracing::{error, info};
@@ -17,45 +20,111 @@ enum ConfigUpdate {
     Opacity(f32, String),
 }
 
+#[derive(Debug, Clone)]
+enum ThemeUpdate {
+    /// is the theme light or dark
+    Mode(bool),
+    /// dark theme bg change,
+    Dark(palette::Srgba),
+    /// light theme bg change,
+    Light(palette::Srgba),
+}
+
 pub fn watch_cosmic_theme(
     handle: LoopHandle<GlobalState<SpaceContainer>>,
-) -> Result<RecommendedWatcher, Box<dyn std::error::Error>> {
-    let (entries_tx, entries_rx) = channel::sync_channel::<Srgba>(30);
-    let entries_tx_clone = entries_tx.clone();
-    let config_helper =
-        Config::new("com.system76.CosmicTheme", 1).map_err(|e| anyhow!(format!("{:?}", e)))?;
+) -> Result<Vec<RecommendedWatcher>, Box<dyn std::error::Error>> {
+    let (entries_tx, entries_rx) = channel::sync_channel::<ThemeUpdate>(30);
+    let config_dark_helper =
+        Theme::<palette::Srgba>::dark_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
+    let config_light_helper =
+        Theme::<palette::Srgba>::light_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
+    let config_mode_helper = ThemeMode::config().map_err(|e| anyhow!(format!("{:?}", e)))?;
 
     handle.insert_source(entries_rx, move |event, _, state| {
         match event {
-            channel::Event::Msg(color) => {
-                state.space.set_theme_window_color([
-                    color.red,
-                    color.green,
-                    color.blue,
-                    color.alpha,
-                ]);
+            channel::Event::Msg(ThemeUpdate::Dark(color)) => {
+                state
+                    .space
+                    .set_dark([color.red, color.green, color.blue, color.alpha]);
+            }
+            channel::Event::Msg(ThemeUpdate::Mode(is_dark)) => {
+                state.space.set_theme_mode(is_dark);
+            }
+            channel::Event::Msg(ThemeUpdate::Light(color)) => {
+                state
+                    .space
+                    .set_light([color.red, color.green, color.blue, color.alpha]);
             }
             channel::Event::Closed => {}
         };
     })?;
 
-    let theme_watcher = config_helper
+    let entries_tx_clone = entries_tx.clone();
+    let theme_watcher_mode = config_mode_helper
+        .watch(move |helper, _keys| match ThemeMode::get_entry(&helper) {
+            Ok(entry) => {
+                entries_tx_clone
+                    .send(ThemeUpdate::Mode(entry.is_dark))
+                    .unwrap();
+            }
+            Err((err, entry)) => {
+                for e in err {
+                    error!("Failed to get theme entry value: {:?}", e);
+                }
+                entries_tx_clone
+                    .send(ThemeUpdate::Mode(entry.is_dark))
+                    .unwrap();
+            }
+        })
+        .map_err(|e| anyhow!(format!("{:?}", e)))?;
+
+    let entries_tx_clone = entries_tx.clone();
+    let theme_watcher_light = config_light_helper
         .watch(
             move |helper, _keys| match Theme::<Srgba>::get_entry(&helper) {
                 Ok(entry) => {
-                    entries_tx_clone.send(entry.bg_color()).unwrap();
+                    entries_tx_clone
+                        .send(ThemeUpdate::Light(entry.bg_color()))
+                        .unwrap();
                 }
                 Err((err, entry)) => {
                     for e in err {
                         error!("Failed to get theme entry value: {:?}", e);
                     }
-                    entries_tx_clone.send(entry.bg_color()).unwrap();
+                    entries_tx_clone
+                        .send(ThemeUpdate::Light(entry.bg_color()))
+                        .unwrap();
                 }
             },
         )
         .map_err(|e| anyhow!(format!("{:?}", e)))?;
 
-    Ok(theme_watcher)
+    let entries_tx_clone = entries_tx.clone();
+    let theme_watcher_dark = config_dark_helper
+        .watch(
+            move |helper, _keys| match Theme::<Srgba>::get_entry(&helper) {
+                Ok(entry) => {
+                    entries_tx_clone
+                        .send(ThemeUpdate::Dark(entry.bg_color()))
+                        .unwrap();
+                }
+                Err((err, entry)) => {
+                    for e in err {
+                        error!("Failed to get theme entry value: {:?}", e);
+                    }
+                    entries_tx_clone
+                        .send(ThemeUpdate::Dark(entry.bg_color()))
+                        .unwrap();
+                }
+            },
+        )
+        .map_err(|e| anyhow!(format!("{:?}", e)))?;
+
+    Ok(vec![
+        theme_watcher_dark,
+        theme_watcher_light,
+        theme_watcher_mode,
+    ])
 }
 
 pub fn watch_config(
