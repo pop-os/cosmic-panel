@@ -8,4 +8,4 @@ members = [
 lto = "thin"
 
 [patch."https://github.com/Smithay/client-toolkit"]
-sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
+sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit" }

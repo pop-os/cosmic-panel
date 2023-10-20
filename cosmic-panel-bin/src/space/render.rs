@@ -26,7 +26,9 @@ impl PanelSpace {
         time: u32,
         qh: &QueueHandle<GlobalState<W>>,
     ) -> anyhow::Result<()> {
-        if self.space_event.get() != None {
+        if self.space_event.get() != None
+            || self.first_draw && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
+        {
             return Ok(());
         }
 
@@ -105,66 +107,71 @@ impl PanelSpace {
                     })
                     .flatten()
                     .collect_vec();
-                if let Some(buff) = self.buffer.as_mut() {
-                    let mut render_context = buff.render();
-                    let margin_offset = match self.config.anchor {
-                        PanelAnchor::Top | PanelAnchor::Left => {
-                            self.config.get_effective_anchor_gap() as f64
-                        }
-                        PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
-                    };
 
-                    let (panel_size, loc) = if is_dock {
-                        let loc: Point<f64, Logical> = if self.config.is_horizontal() {
-                            (
-                                ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).round(),
-                                margin_offset,
-                            )
+                // FIXME the first draw is stretched even when not scaled when using a buffer
+                // this is a workaround
+                if !self.first_draw {
+                    if let Some(buff) = self.buffer.as_mut() {
+                        let mut render_context = buff.render();
+                        let margin_offset = match self.config.anchor {
+                            PanelAnchor::Top | PanelAnchor::Left => {
+                                self.config.get_effective_anchor_gap() as f64
+                            }
+                            PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
+                        };
+
+                        let (panel_size, loc) = if is_dock {
+                            let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                                (
+                                    ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).round(),
+                                    margin_offset,
+                                )
+                            } else {
+                                (
+                                    margin_offset,
+                                    ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).round(),
+                                )
+                            }
+                            .into();
+
+                            (self.actual_size, loc)
                         } else {
-                            (
-                                margin_offset,
-                                ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).round(),
-                            )
+                            let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                                (0.0, margin_offset)
+                            } else {
+                                (margin_offset, 0.0)
+                            }
+                            .into();
+
+                            (self.dimensions, loc)
+                        };
+                        let scaled_panel_size =
+                            panel_size.to_f64().to_physical(self.scale).to_i32_round();
+
+                        let _ = render_context.draw(|_| {
+                            if self.buffer_changed {
+                                Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
+                                    Point::default(),
+                                    (scaled_panel_size.w, scaled_panel_size.h),
+                                )])
+                            } else {
+                                Result::<_, ()>::Ok(Default::default())
+                            }
+                        });
+                        self.buffer_changed = false;
+
+                        drop(render_context);
+                        if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            loc.to_physical(self.scale).to_i32_round(),
+                            &buff,
+                            None,
+                            None,
+                            None,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        ) {
+                            elements.push(MyRenderElements::Memory(render_element));
                         }
-                        .into();
-
-                        (self.actual_size, loc)
-                    } else {
-                        let loc: Point<f64, Logical> = if self.config.is_horizontal() {
-                            (0.0, margin_offset)
-                        } else {
-                            (margin_offset, 0.0)
-                        }
-                        .into();
-
-                        (self.dimensions, loc)
-                    };
-                    let scaled_panel_size =
-                        panel_size.to_f64().to_physical(self.scale).to_i32_round();
-
-                    let _ = render_context.draw(|_| {
-                        if self.buffer_changed {
-                            Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
-                                Point::default(),
-                                (scaled_panel_size.w, scaled_panel_size.h),
-                            )])
-                        } else {
-                            Result::<_, ()>::Ok(Default::default())
-                        }
-                    });
-                    self.buffer_changed = false;
-
-                    drop(render_context);
-                    if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer,
-                        loc.to_physical(self.scale).to_i32_round(),
-                        &buff,
-                        None,
-                        None,
-                        None,
-                        smithay::backend::renderer::element::Kind::Unspecified,
-                    ) {
-                        elements.push(MyRenderElements::Memory(render_element));
                     }
                 }
 
@@ -236,6 +243,7 @@ impl PanelSpace {
             p.has_frame = false;
         }
         renderer.unbind()?;
+        self.first_draw = false;
 
         Ok(())
     }
