@@ -180,7 +180,7 @@ impl WrapperSpace for PanelSpace {
                     .to_f64()
                     .to_physical(self.scale)
                     .to_i32_round(),
-                self.scale,
+                1.0,
                 smithay::utils::Transform::Flipped180,
             ),
             c_popup,

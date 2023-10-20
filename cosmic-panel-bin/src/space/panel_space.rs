@@ -131,6 +131,7 @@ pub(crate) struct PanelSpace {
     pub(crate) has_frame: bool,
     pub(crate) scale: f64,
     pub(crate) output_has_toplevel: bool,
+    pub(crate) first_draw: bool,
 }
 
 impl PanelSpace {
@@ -186,6 +187,7 @@ impl PanelSpace {
             has_frame: true,
             scale: 1.0,
             output_has_toplevel: false,
+            first_draw: true,
         }
     }
 
@@ -536,6 +538,7 @@ impl PanelSpace {
                 } else if self.layer.is_some() {
                     should_render = if self.is_dirty {
                         let update_res = self.layout();
+
                         update_res.is_ok()
                     } else {
                         true
@@ -561,7 +564,7 @@ impl PanelSpace {
 
     pub fn configure_panel_layer(
         &mut self,
-        layer: &LayerSurface,
+        _layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         renderer: &mut Option<GlesRenderer>,
     ) {
@@ -687,7 +690,6 @@ impl PanelSpace {
                         let _ = renderer.unbind();
                         if let Some(viewport) = self.layer_viewport.as_ref() {
                             viewport.set_destination(dim.w.max(1), dim.h.max(1));
-                            layer.wl_surface().commit();
                         }
                     }
 
@@ -697,7 +699,6 @@ impl PanelSpace {
                         1.0,
                         smithay::utils::Transform::Flipped180,
                     ));
-                    self.layer.as_ref().unwrap().wl_surface().commit();
                 }
                 SpaceEvent::Quit => (),
             },
@@ -734,7 +735,6 @@ impl PanelSpace {
                     let _ = renderer.unbind();
                     if let Some(viewport) = self.layer_viewport.as_ref() {
                         viewport.set_destination(dim.w, dim.h);
-                        layer.wl_surface().commit();
                     }
                 }
                 self.dimensions = (dim.w, dim.h).into();
@@ -743,7 +743,6 @@ impl PanelSpace {
                     1.0,
                     smithay::utils::Transform::Flipped180,
                 ));
-                self.layer.as_ref().unwrap().wl_surface().commit();
             }
         }
     }

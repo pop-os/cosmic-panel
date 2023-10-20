@@ -5,20 +5,22 @@ use cosmic_panel_config::PanelAnchor;
 use image::RgbaImage;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
-use smithay::utils::IsAlive;
+use smithay::utils::{IsAlive, Physical, Size};
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     desktop::Window,
     reexports::wayland_server::Resource,
-    utils::{Logical, Point, Rectangle, Transform},
+    utils::{Point, Rectangle, Transform},
 };
 
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
         self.space.refresh();
-        let padding = self.config.padding();
+        let padding_u32 = self.config.padding() as u32;
+        let padding_scaled = padding_u32 as f64 * self.scale;
         let anchor = self.config.anchor();
-        let spacing = self.config.spacing();
+        let spacing_u32 = self.config.spacing() as u32;
+        let spacing_scaled = spacing_u32 as f64 * self.scale;
         // First try partitioning the panel evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
         let (list_length, list_thickness, actual_length) = match anchor {
@@ -103,55 +105,60 @@ impl PanelSpace {
             (i, w): &(usize, Window),
             anchor: PanelAnchor,
             alignment: Alignment,
-            scale: f64,
+            _scale: f64,
         ) -> (Alignment, usize, i32, i32) {
-            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
-            let bbox = w
-                .bbox()
-                .to_f64()
-                .to_physical(1.0)
-                .to_logical(scale)
-                .to_i32_round();
+            let bbox = w.bbox().size;
 
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, bbox.size.h, bbox.size.w),
-                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, bbox.size.w, bbox.size.h),
+                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, bbox.h, bbox.w),
+                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, bbox.w, bbox.h),
             }
         }
 
         let left = windows_left
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Left, self.scale));
-        let left_sum = left.clone().map(|(_, _, length, _)| length).sum::<i32>()
-            + spacing as i32 * (windows_left.len().max(1) as i32 - 1);
+        let left_sum_scaled = left.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
+            + spacing_scaled as f64 * (windows_left.len().max(1) as f64 - 1.0);
 
         let center = windows_center
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
-        let center_sum = center.clone().map(|(_, _, length, _)| length).sum::<i32>()
-            + spacing as i32 * (windows_center.len().max(1) as i32 - 1);
+        let center_sum_scaled = center.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
+            + spacing_scaled * (windows_center.len().max(1) as f64 - 1.0);
 
         let right = windows_right
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
 
-        let right_sum = right.clone().map(|(_, _, length, _)| length).sum::<i32>()
-            + spacing as i32 * (windows_right.len().max(1) as i32 - 1);
+        let right_sum_scaled = right.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
+            + spacing_scaled * (windows_right.len().max(1) as f64 - 1.0);
 
-        let total_sum = left_sum + center_sum + right_sum;
-        let new_list_length =
-            total_sum + padding as i32 * 2 + spacing as i32 * (num_lists as i32 - 1);
-        let new_list_thickness: i32 = 2 * padding as i32
+        let total_sum_scaled = left_sum_scaled + center_sum_scaled + right_sum_scaled;
+        let new_list_length = (total_sum_scaled as f64
+            + padding_scaled * 2.0
+            + spacing_scaled * (num_lists as f64 - 1.0)) as i32;
+        let new_list_thickness = (2.0 * padding_scaled
             + chain!(left.clone(), center.clone(), right.clone())
                 .map(|(_, _, _, thickness)| thickness)
                 .max()
-                .unwrap_or(0);
-        self.actual_size = if self.config.is_horizontal() {
+                .unwrap_or(0) as f64) as i32;
+        let old_actual = self.actual_size;
+
+        self.actual_size = Size::<i32, Physical>::from(if self.config.is_horizontal() {
             (new_list_length, new_list_thickness)
         } else {
             (new_list_thickness, new_list_length)
-        }
-        .into();
+        })
+        .to_f64()
+        .to_logical(self.scale)
+        .to_i32_round();
+
+        let (new_logical_length, new_logical_thickness) = if self.config.is_horizontal() {
+            (self.actual_size.w, self.actual_size.h)
+        } else {
+            (self.actual_size.h, self.actual_size.w)
+        };
         let mut new_dim = if self.config.is_horizontal() {
             let mut dim = self.actual_size;
             dim.h += self.config.get_effective_anchor_gap() as i32;
@@ -162,8 +169,8 @@ impl PanelSpace {
             dim
         };
         new_dim = self.constrain_dim(new_dim);
-        // update input region of panel when list length changes
-        if actual_length != new_list_length && is_dock {
+        // update input region of panel when list changes
+        if old_actual != self.actual_size && is_dock {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
@@ -197,7 +204,6 @@ impl PanelSpace {
             layer
                 .wl_surface()
                 .set_input_region(Some(input_region.wl_region()));
-            layer.wl_surface().commit();
         }
 
         let (new_list_dim_length, new_list_thickness_dim) = match anchor {
@@ -211,32 +217,39 @@ impl PanelSpace {
             anyhow::bail!("resizing list");
         }
 
+        // must use logical coordinates for layout here
+
         fn center_in_bar(thickness: u32, dim: u32) -> i32 {
             (thickness as i32 - dim as i32) / 2
         }
 
-        let requested_eq_length: i32 = new_list_dim_length / num_lists;
+        let left_sum = left_sum_scaled / self.scale;
+        let center_sum = center_sum_scaled / self.scale;
+        let right_sum = right_sum_scaled / self.scale;
+        let total_sum = total_sum_scaled / self.scale;
+
+        let requested_eq_length: f64 = new_list_dim_length as f64 / num_lists as f64;
         let (right_sum, center_offset) = if is_dock {
             (
-                0,
-                padding as i32 + (new_list_dim_length - new_list_length) / 2,
+                0.0,
+                padding_u32 as f64 + (new_list_dim_length - new_logical_length) as f64 / 2.0,
             )
-        } else if left_sum <= requested_eq_length
-            && center_sum <= requested_eq_length
-            && right_sum <= requested_eq_length
+        } else if left_sum < requested_eq_length as f64
+            && center_sum < requested_eq_length as f64
+            && right_sum < requested_eq_length as f64
         {
-            let center_padding = (requested_eq_length - center_sum) / 2;
+            let center_padding = (requested_eq_length as f64 - center_sum) / 2.0;
             (
                 right_sum,
-                requested_eq_length + padding as i32 + center_padding,
+                requested_eq_length + padding_u32 as f64 + center_padding,
             )
         } else {
-            let center_padding = (new_list_dim_length as i32 - total_sum) / 2;
+            let center_padding = (new_list_dim_length as f64 - total_sum) / 2.0;
 
-            (right_sum, left_sum + padding as i32 + center_padding)
+            (right_sum, (left_sum + padding_u32 as f64 + center_padding))
         };
 
-        let mut prev: u32 = padding;
+        let mut prev: f64 = padding_u32 as f64;
 
         // offset for centering
         let margin_offset = match anchor {
@@ -245,23 +258,22 @@ impl PanelSpace {
         } as i32;
 
         for (i, w) in &mut windows_left.iter_mut() {
-            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
-            let bbox = w
-                .bbox()
-                .to_f64()
-                .to_physical(1.0)
-                .to_logical(self.scale)
-                .to_i32_round();
-            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
-            let cur: u32 = prev + spacing * *i as u32;
+            // XXX this is a hack to get the logical size of the window
+            // TODO improve how this is done
+            let size = w.bbox().size.to_f64().downscale(self.scale);
+
+            let cur: f64 = prev + spacing_u32 as f64 * *i as f64;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.w as u32,
+                            ),
                         cur,
                     );
-                    prev += size.y as u32;
+                    prev += size.h as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
@@ -269,34 +281,35 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.h as u32,
+                            ),
                     );
-                    prev += size.x as u32;
+                    prev += size.w as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
             };
         }
 
-        let mut prev: u32 = center_offset as u32;
+        let mut prev: f64 = center_offset;
         for (i, w) in &mut windows_center.iter_mut() {
-            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
-            let bbox = w
-                .bbox()
-                .to_f64()
-                .to_physical(1.0)
-                .to_logical(self.scale)
-                .to_i32_round();
-            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
-            let cur = prev + spacing * *i as u32;
+            // XXX this is a hack to get the logical size of the window
+            let size = w.bbox().size.to_f64().downscale(self.scale);
+
+            let cur = prev + spacing_u32 as f64 * *i as f64;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.w as u32,
+                            ),
                         cur,
                     );
-                    prev += size.y as u32;
+                    prev += size.h as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
@@ -304,9 +317,12 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.h as u32,
+                            ),
                     );
-                    prev += size.x as u32;
+                    prev += size.w as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
@@ -314,26 +330,23 @@ impl PanelSpace {
         }
 
         // twice padding is subtracted
-        let mut prev: u32 = list_length as u32 - padding - right_sum as u32;
+        let mut prev: f64 = if is_dock {
+            prev
+        } else {
+            list_length as f64 - padding_u32 as f64 - right_sum
+        };
 
         for (i, w) in &mut windows_right.iter_mut() {
-            // XXX this is a bit of a hack, but it works for now, and I'm not sure how to do it better
-            let bbox = w
-                .bbox()
-                .to_f64()
-                .to_physical(1.0)
-                .to_logical(self.scale)
-                .to_i32_round();
-            let size: Point<i32, Logical> = (bbox.size.w, bbox.size.h).into();
-            let cur = prev + spacing * *i as u32;
+            let size = w.bbox().size.to_f64().downscale(self.scale);
+            let cur = prev + spacing_u32 as f64 * *i as f64;
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.x as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.w as u32),
                         cur,
                     );
-                    prev += size.y as u32;
+                    prev += size.h as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
@@ -341,9 +354,9 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.y as u32),
+                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.h as u32),
                     );
-                    prev += size.x as u32;
+                    prev += size.w as f64;
                     self.space
                         .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
                 }
