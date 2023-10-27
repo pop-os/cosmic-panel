@@ -404,7 +404,7 @@ dependencies = [
 [[package]]
 name = "cosmic-client-toolkit"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols#41792d657a40bb30db9e70b02b5b88f2556c8135"
+source = "git+https://github.com/pop-os/cosmic-protocols#769bccfb1132ac0d7354016c5e938bb6fd911bf1"
 dependencies = [
  "cosmic-protocols",
  "smithay-client-toolkit",
@@ -501,7 +501,7 @@ dependencies = [
 [[package]]
 name = "cosmic-protocols"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols#41792d657a40bb30db9e70b02b5b88f2556c8135"
+source = "git+https://github.com/pop-os/cosmic-protocols#769bccfb1132ac0d7354016c5e938bb6fd911bf1"
 dependencies = [
  "bitflags 2.4.0",
  "wayland-backend",

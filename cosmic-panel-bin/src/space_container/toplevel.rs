@@ -16,10 +16,11 @@ impl ToplevelInfoSpace for SpaceContainer {
         info: &ToplevelInfo,
     ) {
         self.toplevels.push((toplevel.clone(), info.clone()));
-        let state = state(info);
         self.apply_toplevel_changes();
 
-        let is_maximized = matches!(state, Some(zcosmic_toplevel_handle_v1::State::Maximized));
+        let is_maximized = info
+            .state
+            .contains(&zcosmic_toplevel_handle_v1::State::Maximized);
         if is_maximized {
             self.add_maximized(toplevel, info);
         }
@@ -41,10 +42,9 @@ impl ToplevelInfoSpace for SpaceContainer {
         }
         self.apply_toplevel_changes();
 
-        let is_maximized = matches!(
-            state(info),
-            Some(zcosmic_toplevel_handle_v1::State::Maximized)
-        );
+        let is_maximized = info
+            .state
+            .contains(&zcosmic_toplevel_handle_v1::State::Maximized);
 
         let was_maximized = self.maximized_toplevels.iter().any(|(t, _)| t == toplevel);
         if is_maximized && !was_maximized {
@@ -77,10 +77,9 @@ impl SpaceContainer {
     ) {
         self.maximized_toplevels
             .push((toplevel.clone(), info.clone()));
-        let Some(output) = info.output.as_ref() else {
-            return;
-        };
-        self.apply_maximized(output);
+        for output in &info.output {
+            self.apply_maximized(output);
+        }
     }
 
     fn remove_maximized(&mut self, toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1) {
@@ -94,10 +93,9 @@ impl SpaceContainer {
             return;
         };
 
-        let Some(output) = info.output.as_ref() else {
-            return;
-        };
-        self.apply_maximized(output);
+        for output in &info.output {
+            self.apply_maximized(output);
+        }
     }
 
     pub(crate) fn apply_maximized(&self, output: &WlOutput) {
@@ -122,16 +120,15 @@ impl SpaceContainer {
     pub(crate) fn apply_toplevel_changes(&mut self) {
         for output in &self.outputs {
             let has_toplevel = self.toplevels.iter().any(|(_, info)| {
-                info.output.as_ref() == Some(&output.0)
-                    && !matches!(
-                        state(info),
-                        Some(zcosmic_toplevel_handle_v1::State::Minimized)
-                    )
+                info.output.contains(&output.0)
+                    && !info
+                        .state
+                        .contains(&zcosmic_toplevel_handle_v1::State::Minimized)
                     && self.workspace_groups.iter().any(|g| {
                         g.workspaces.iter().any(|w| {
                             w.state.contains(&cctk::wayland_client::WEnum::Value(
                                 workspace::v1::client::zcosmic_workspace_handle_v1::State::Active,
-                            )) && info.workspace.as_ref() == Some(&w.handle)
+                            )) && info.workspace.contains(&w.handle)
                         })
                     })
             });
@@ -153,7 +150,7 @@ impl SpaceContainer {
                     )) && self
                         .maximized_toplevels
                         .iter()
-                        .any(|(_, info)| info.workspace.as_ref() == Some(&w.handle))
+                        .any(|(_, info)| info.workspace.contains(&w.handle))
                 }) {
                     Some(g.outputs.clone())
                 } else {
@@ -163,17 +160,4 @@ impl SpaceContainer {
             .flatten()
             .collect()
     }
-}
-
-pub(crate) fn state(info: &ToplevelInfo) -> Option<zcosmic_toplevel_handle_v1::State> {
-    if info.state.len() < 4 {
-        return None;
-    }
-    let Some(state_arr) = info.state.chunks_exact(4).next() else {
-        return None;
-    };
-    let Some(state) = zcosmic_toplevel_handle_v1::State::try_from(u32::from_ne_bytes(state_arr[0..4].try_into().unwrap())).ok() else {
-        return None;
-    };
-    Some(state)
 }
