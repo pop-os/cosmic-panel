@@ -10,16 +10,8 @@ use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
 use sctk::reexports::{calloop::channel::SyncSender, client::backend::ObjectId};
-use smithay::reexports::{
-    calloop,
-    wayland_server::{backend::ClientId, Client},
-};
-use std::{
-    collections::HashMap,
-    mem,
-    os::{fd::IntoRawFd, unix::net::UnixStream},
-    time::Duration,
-};
+use smithay::reexports::{calloop, wayland_server::backend::ClientId};
+use std::{collections::HashMap, mem, os::fd::IntoRawFd, time::Duration};
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -29,7 +21,7 @@ use xdg_shell_wrapper::{
 
 #[derive(Debug)]
 pub enum PanelCalloopMsg {
-    ClientSocketPair(String, ClientId, Client, UnixStream),
+    ClientSocketPair(ClientId),
     RestartSpace(CosmicPanelConfig, WlOutput),
 }
 
@@ -77,7 +69,6 @@ fn main() -> Result<()> {
     };
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
-    let (unpause_launchpad_tx, unpause_launchpad_rx) = std::sync::mpsc::sync_channel(200);
     let (calloop_tx, calloop_rx): (SyncSender<PanelCalloopMsg>, _) =
         calloop::channel::sync_channel(100);
 
@@ -106,11 +97,8 @@ fn main() -> Result<()> {
             move |e, _, state: &mut GlobalState<space_container::SpaceContainer>| {
                 match e {
                     calloop::channel::Event::Msg(e) => match e {
-                        PanelCalloopMsg::ClientSocketPair(id, client_id, c, s) => {
-                            state.space.replace_client(id, client_id, c, s);
-                            unpause_launchpad_tx
-                                .try_send(())
-                                .expect("Failed to unblock launchpad");
+                        PanelCalloopMsg::ClientSocketPair(client_id) => {
+                            state.space.cleanup_client(client_id);
                         }
                         PanelCalloopMsg::RestartSpace(config, o) => {
                             state.space.update_space(
@@ -162,9 +150,8 @@ fn main() -> Result<()> {
                             entry.push(key);
                         }
                     }
-                    space::AppletMsg::NewNotificationsProcess(id, mut process, mut env) => {
+                    space::AppletMsg::NewNotificationsProcess(id, mut process, mut env, socket_fd) => {
                         let Some(proxy) = notifications_proxy.as_mut() else {
-                            
                                 notifications_proxy = match tokio::time::timeout(Duration::from_secs(1), notifications_conn()).await {
                                     Ok(Ok(p)) => Some(p),
                                     err => {
@@ -189,9 +176,10 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
-                        let fd = fd.into_raw_fd();
-                        env.push(("COSMIC_NOTIFICATIONS".to_string(), fd.to_string()));
-                        process = process.with_fds(move || vec![fd]);
+                        let notif_fd = fd.into_raw_fd();
+                        env.push(("COSMIC_NOTIFICATIONS".to_string(), notif_fd.to_string()));
+                        
+                        process = process.with_fds(move || vec![notif_fd, socket_fd]);
                         process = process.with_env(env);
                         info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
@@ -199,12 +187,9 @@ fn main() -> Result<()> {
                             entry.push(key);
                         }
                     }
-                    space::AppletMsg::ClientSocketPair(id, client_id, c, s) => {
+                    space::AppletMsg::ClientSocketPair( client_id) => {
                         let _ =
-                            calloop_tx.send(PanelCalloopMsg::ClientSocketPair(id, client_id, c, s));
-                        // XXX This is done to avoid a possible race,
-                        // the client & socket need to be update in the panel_space state before the process starts again
-                        let _ = unpause_launchpad_rx.recv();
+                            calloop_tx.send(PanelCalloopMsg::ClientSocketPair(client_id));
                     }
                     space::AppletMsg::Cleanup(id) => {
                         for id in process_ids.remove(&id).unwrap_or_default() {

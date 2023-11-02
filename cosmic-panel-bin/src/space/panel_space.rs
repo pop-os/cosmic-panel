@@ -2,6 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     os::{fd::RawFd, unix::net::UnixStream},
     rc::Rc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -75,9 +76,9 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 pub enum AppletMsg {
     NewProcess(ObjectId, Process),
-    NewNotificationsProcess(ObjectId, Process, Vec<(String, String)>),
+    NewNotificationsProcess(ObjectId, Process, Vec<(String, String)>, RawFd),
     NeedNewNotificationFd(oneshot::Sender<RawFd>),
-    ClientSocketPair(String, ClientId, Client, UnixStream),
+    ClientSocketPair(ClientId),
     Cleanup(ObjectId),
 }
 
@@ -96,9 +97,9 @@ pub(crate) struct PanelSpace {
     pub config: CosmicPanelConfig,
     pub(crate) space: Space<Window>,
     pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
-    pub(crate) clients_left: Vec<(String, Client, UnixStream)>,
-    pub(crate) clients_center: Vec<(String, Client, UnixStream)>,
-    pub(crate) clients_right: Vec<(String, Client, UnixStream)>,
+    pub(crate) clients_left: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
+    pub(crate) clients_center: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
+    pub(crate) clients_right: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
     pub(crate) last_dirty: Option<Instant>,
     // pending size of the panel
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,

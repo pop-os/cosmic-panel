@@ -239,11 +239,11 @@ impl WrapperSpace for PanelSpace {
 
     fn spawn_clients(&mut self, mut display: DisplayHandle) -> anyhow::Result<()> {
         info!("Spawning applets");
-        if self.clients_left.is_empty()
-            && self.clients_center.is_empty()
-            && self.clients_right.is_empty()
-        {
-            self.clients_left = self
+        let mut left_guard = self.clients_left.lock().unwrap();
+        let mut center_guard = self.clients_center.lock().unwrap();
+        let mut right_guard = self.clients_right.lock().unwrap();
+        if left_guard.is_empty() && center_guard.is_empty() && right_guard.is_empty() {
+            *left_guard = self
                 .config
                 .plugins_left()
                 .as_ref()
@@ -256,7 +256,7 @@ impl WrapperSpace for PanelSpace {
                 })
                 .collect();
 
-            self.clients_center = self
+            *center_guard = self
                 .config
                 .plugins_center()
                 .as_ref()
@@ -269,7 +269,7 @@ impl WrapperSpace for PanelSpace {
                 })
                 .collect();
 
-            self.clients_right = self
+            *right_guard = self
                 .config
                 .plugins_right()
                 .as_ref()
@@ -282,11 +282,19 @@ impl WrapperSpace for PanelSpace {
                 })
                 .collect();
 
-            let mut desktop_ids = self
-                .clients_left
+            let mut desktop_ids = left_guard
                 .iter()
-                .chain(self.clients_center.iter())
-                .chain(self.clients_right.iter())
+                .map(|(a, b, c)| (a, b, c, self.clients_left.clone()))
+                .chain(
+                    center_guard
+                        .iter()
+                        .map(|(a, b, c)| (a, b, c, self.clients_center.clone())),
+                )
+                .chain(
+                    right_guard
+                        .iter()
+                        .map(|(a, b, c)| (a, b, c, self.clients_right.clone())),
+                )
                 .collect_vec();
 
             let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
@@ -307,12 +315,12 @@ impl WrapperSpace for PanelSpace {
             info!("{:?}", &desktop_ids);
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
-                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _)| {
+                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _, _)| {
                     Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
                 }) {
                     // This way each applet is at most started once,
                     // even if multiple desktop files in different directories match
-                    let (id, client, socket) = desktop_ids.remove(position);
+                    let (id, client, socket, my_list) = desktop_ids.remove(position);
                     info!(id);
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
@@ -354,7 +362,7 @@ impl WrapperSpace for PanelSpace {
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
 
-                                let process = Process::new()
+                                let mut process = Process::new()
                                     .with_executable(&exec)
                                     .with_args(args)
                                     .with_on_stderr(move |_, _, out| {
@@ -383,11 +391,14 @@ impl WrapperSpace for PanelSpace {
                                         }
                                     })
                                     .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                                        let my_list = my_list.clone();
                                         let mut display_handle = display_handle.clone();
                                         let id_clone = id_clone.clone();
-                                        let client_id_clone = client_id.clone();
                                         let applet_tx_clone = applet_tx_clone.clone();
-                                        let (c, s) = get_client_sock(&mut display_handle);
+                                        let (c, client_socket) =
+                                            get_client_sock(&mut display_handle);
+                                        let raw_client_socket = client_socket.as_raw_fd();
+                                        let client_id_clone = client_id.clone();
 
                                         async move {
                                             if let Some(err_code) = err_code {
@@ -403,9 +414,9 @@ impl WrapperSpace for PanelSpace {
                                                     .send(AppletMsg::NeedNewNotificationFd(tx))
                                                     .await;
                                                 let Ok(fd) = rx.await else {
-                                                error!("Failed to get new fd");
-                                                return;
-                                            };
+                                                    error!("Failed to get new fd");
+                                                    return;
+                                                };
                                                 if let Err(err) = pman
                                                     .update_process_env(
                                                         &key,
@@ -420,7 +431,19 @@ impl WrapperSpace for PanelSpace {
                                                     return;
                                                 }
                                                 if let Err(err) = pman
-                                                    .update_process_fds(&key, move || vec![fd])
+                                                    .update_process_fds(&key, move || {
+                                                        vec![fd, raw_client_socket]
+                                                    })
+                                                    .await
+                                                {
+                                                    error!("Failed to update process fds: {}", err);
+                                                    return;
+                                                }
+                                            } else {
+                                                if let Err(err) = pman
+                                                    .update_process_fds(&key, move || {
+                                                        vec![raw_client_socket]
+                                                    })
                                                     .await
                                                 {
                                                     error!("Failed to update process fds: {}", err);
@@ -428,14 +451,18 @@ impl WrapperSpace for PanelSpace {
                                                 }
                                             }
 
-                                            let fd = s.as_raw_fd().to_string();
+                                            let fd = client_socket.as_raw_fd().to_string();
+                                            if let Some(old_client) = my_list
+                                                .lock()
+                                                .unwrap()
+                                                .iter_mut()
+                                                .find(|(id, _, _)| id == &id_clone)
+                                            {
+                                                old_client.1 = c;
+                                                old_client.2 = client_socket;
+                                            }
                                             let _ = applet_tx_clone
-                                                .send(AppletMsg::ClientSocketPair(
-                                                    id_clone,
-                                                    client_id_clone,
-                                                    c,
-                                                    s,
-                                                ))
+                                                .send(AppletMsg::ClientSocketPair(client_id_clone))
                                                 .await;
                                             let _ = pman
                                                 .update_process_env(
@@ -446,13 +473,16 @@ impl WrapperSpace for PanelSpace {
                                         }
                                     });
 
+                                let socket_fd = socket.as_raw_fd();
                                 // TODO error handling
                                 let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
                                 let msg = if is_notification_applet {
                                     AppletMsg::NewNotificationsProcess(
-                                        panel_id, process, applet_env,
+                                        panel_id, process, applet_env, socket_fd,
                                     )
                                 } else {
+                                    process = process.with_fds(move || vec![socket_fd]);
+
                                     AppletMsg::NewProcess(panel_id, process.with_env(applet_env))
                                 };
                                 match self.applet_tx.try_send(msg) {
@@ -904,9 +934,11 @@ impl WrapperSpace for PanelSpace {
         let client = surface.client();
         if self
             .clients_center
+            .lock()
+            .unwrap()
             .iter()
-            .chain(self.clients_left.iter())
-            .chain(self.clients_right.iter())
+            .chain(self.clients_left.lock().unwrap().iter())
+            .chain(self.clients_right.lock().unwrap().iter())
             .any(|c| Some(&c.1) == client.as_ref())
         {
             Some(self.scale)
