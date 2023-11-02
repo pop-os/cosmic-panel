@@ -279,9 +279,11 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
+                .lock()
+                .unwrap()
                 .iter()
-                .chain(space.clients_left.iter())
-                .chain(space.clients_right.iter())
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
                 .any(|(_, c, _)| Some(c.id()) == w_client)
         }) {
             space.add_window(s_top_level);
@@ -306,9 +308,11 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
+                .lock()
+                .unwrap()
                 .iter()
-                .chain(space.clients_left.iter())
-                .chain(space.clients_right.iter())
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
                 .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.add_popup(
@@ -339,9 +343,11 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
+                .lock()
+                .unwrap()
                 .iter()
-                .chain(space.clients_left.iter())
-                .chain(space.clients_right.iter())
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
                 .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.reposition_popup(popup, positioner_state, token)?
@@ -402,9 +408,11 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
+                .lock()
+                .unwrap()
                 .iter()
-                .chain(space.clients_left.iter())
-                .chain(space.clients_right.iter())
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
                 .any(|(_, c, _)| Some(c.id()) == w_client)
         }) {
             space.dirty_window(dh, w);
@@ -422,9 +430,11 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
+                .lock()
+                .unwrap()
                 .iter()
-                .chain(space.clients_left.iter())
-                .chain(space.clients_right.iter())
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
                 .any(|(_, c, _)| Some(c.id()) == p_client)
         }) {
             space.dirty_popup(dh, w);

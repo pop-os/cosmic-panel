@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, os::unix::net::UnixStream, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     space::{AppletMsg, PanelSpace},
@@ -25,7 +25,7 @@ use sctk::{
 use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
-    reexports::wayland_server::{self, backend::ClientId, Client},
+    reexports::wayland_server::{self, backend::ClientId},
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -145,40 +145,33 @@ impl SpaceContainer {
         }
     }
 
-    pub fn replace_client(
-        &mut self,
-        id: String,
-        old_client_id: ClientId,
-        client: Client,
-        socket: UnixStream,
-    ) {
+    pub fn cleanup_client(&mut self, old_client_id: ClientId) {
         for s in &mut self.space_list {
-            if let Some((_, s_client, s_socket)) = s
-                .clients_left
-                .iter_mut()
-                .chain(s.clients_center.iter_mut())
-                .chain(s.clients_right.iter_mut())
-                .find(|(c_id, old_client, _)| c_id == &id && old_client_id == old_client.id())
-            {
-                // cleanup leftover windows
-                let w = {
-                    s.space
-                        .elements()
-                        .find(|w| {
-                            w.toplevel().wl_surface().client().map(|c| c.id())
-                                == Some(s_client.id())
-                        })
-                        .cloned()
+            // cleanup leftover windows
+            let w = {
+                s.space
+                    .elements()
+                    .find(|w| {
+                        w.toplevel().wl_surface().client().map(|c| c.id()).as_ref()
+                            == Some(&old_client_id)
+                    })
+                    .cloned()
+            };
+            let mut found_window = false;
+            if let Some(w) = w {
+                s.space.unmap_elem(&w);
+                found_window = true;
+            }
+            let len = s.popups.len();
+            // TODO handle cleanup of nested popups
+            s.popups.retain(|p| {
+                let Some(client) = p.s_surface.wl_surface().client() else {
+                    return false;
                 };
-                if let Some(w) = w {
-                    s.space.unmap_elem(&w);
-                }
-                // TODO Popups?
-
-                *s_client = client;
-                *s_socket = socket;
+                client.id() != old_client_id
+            });
+            if found_window || len != s.popups.len() {
                 s.is_dirty = true;
-                // s.w_accumulated_damage.clear();
                 break;
             }
         }

@@ -48,6 +48,8 @@ impl PanelSpace {
             .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_right
+                    .lock()
+                    .unwrap()
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
@@ -68,6 +70,8 @@ impl PanelSpace {
             .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_center
+                    .lock()
+                    .unwrap()
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
@@ -88,6 +92,8 @@ impl PanelSpace {
             .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_left
+                    .lock()
+                    .unwrap()
                     .iter()
                     .enumerate()
                     .find_map(|(i, (_, c, _))| {
