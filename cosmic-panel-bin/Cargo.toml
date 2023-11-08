@@ -15,8 +15,8 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.31.0", features = [ "staging"]}
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper"}
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "feat-security-context"}
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "feat-security-context" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols" }
@@ -27,7 +27,7 @@ tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.16", features = ["fmt", "env-filter", "ansi"]}
 tracing-journald = "0.3.0"
 tracing-futures = "0.2.5"
-launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
+launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "fix-update-fds" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme" }

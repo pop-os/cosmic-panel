@@ -9,7 +9,7 @@ use config_watching::{watch_config, watch_cosmic_theme};
 use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
-use sctk::reexports::{calloop::channel::SyncSender, client::backend::ObjectId};
+use sctk::reexports::calloop::channel::SyncSender;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
 use std::{collections::HashMap, mem, os::fd::IntoRawFd, time::Duration};
 use tokio::{runtime, sync::mpsc};
@@ -122,7 +122,7 @@ fn main() -> Result<()> {
         let rt = runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        let mut process_ids: HashMap<ObjectId, Vec<ProcessKey>> = HashMap::new();
+        let mut process_ids: HashMap<String, Vec<ProcessKey>> = HashMap::new();
 
         rt.block_on(async move {
             let process_manager = ProcessManager::new().await;
@@ -150,15 +150,28 @@ fn main() -> Result<()> {
                             entry.push(key);
                         }
                     }
-                    space::AppletMsg::NewNotificationsProcess(id, mut process, mut env, socket_fd) => {
+                    space::AppletMsg::NewNotificationsProcess(
+                        id,
+                        mut process,
+                        mut env,
+                        mut fds,
+                    ) => {
                         let Some(proxy) = notifications_proxy.as_mut() else {
-                                notifications_proxy = match tokio::time::timeout(Duration::from_secs(1), notifications_conn()).await {
-                                    Ok(Ok(p)) => Some(p),
-                                    err => {
-                                        error!("Failed to connect to the notifications daemon {:?}", err);
-                                        None
-                                    }
-                                };
+                            notifications_proxy = match tokio::time::timeout(
+                                Duration::from_secs(1),
+                                notifications_conn(),
+                            )
+                            .await
+                            {
+                                Ok(Ok(p)) => Some(p),
+                                err => {
+                                    error!(
+                                        "Failed to connect to the notifications daemon {:?}",
+                                        err
+                                    );
+                                    None
+                                }
+                            };
                             warn!("Can't start notifications applet without a connection");
                             continue;
                         };
@@ -178,8 +191,8 @@ fn main() -> Result<()> {
                         };
                         let notif_fd = fd.into_raw_fd();
                         env.push(("COSMIC_NOTIFICATIONS".to_string(), notif_fd.to_string()));
-                        
-                        process = process.with_fds(move || vec![notif_fd, socket_fd]);
+                        fds.push(notif_fd);
+                        process = process.with_fds(move || fds.clone());
                         process = process.with_env(env);
                         info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
@@ -187,9 +200,8 @@ fn main() -> Result<()> {
                             entry.push(key);
                         }
                     }
-                    space::AppletMsg::ClientSocketPair( client_id) => {
-                        let _ =
-                            calloop_tx.send(PanelCalloopMsg::ClientSocketPair(client_id));
+                    space::AppletMsg::ClientSocketPair(client_id) => {
+                        let _ = calloop_tx.send(PanelCalloopMsg::ClientSocketPair(client_id));
                     }
                     space::AppletMsg::Cleanup(id) => {
                         for id in process_ids.remove(&id).unwrap_or_default() {

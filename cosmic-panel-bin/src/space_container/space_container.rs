@@ -32,10 +32,10 @@ use tracing::{error, info};
 use wayland_server::Resource;
 use xdg_shell_wrapper::{
     client_state::ClientFocus, shared_state::GlobalState, space::WrapperSpace,
-    wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
+    wp_fractional_scaling::FractionalScalingManager, wp_security_context::SecurityContextManager,
+    wp_viewporter::ViewporterState,
 };
 
-#[derive(Debug)]
 pub struct SpaceContainer {
     pub(crate) connection: Option<Connection>,
     pub(crate) config: CosmicPanelContainerConfig,
@@ -54,6 +54,7 @@ pub struct SpaceContainer {
     pub(crate) is_dark: bool,
     pub(crate) light_bg: [f32; 4],
     pub(crate) dark_bg: [f32; 4],
+    pub(crate) security_context_manager: Option<SecurityContextManager>,
 }
 
 impl SpaceContainer {
@@ -97,6 +98,7 @@ impl SpaceContainer {
             is_dark,
             light_bg: [light.red, light.green, light.blue, light.alpha],
             dark_bg: [dark.red, dark.green, dark.blue, dark.alpha],
+            security_context_manager: None,
         }
     }
 
@@ -253,10 +255,10 @@ impl SpaceContainer {
                         CosmicPanelBackground::Light => self.light_bg,
                         CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
                     },
+                    self.s_display.clone().unwrap(),
+                    self.security_context_manager.clone(),
+                    self.connection.as_ref().unwrap(),
                 );
-                if let Some(s_display) = self.s_display.as_ref() {
-                    space.set_display_handle(s_display.clone());
-                }
                 if let Err(err) = space.new_output(
                     compositor_state,
                     fractional_scale_manager,
@@ -314,6 +316,9 @@ impl SpaceContainer {
                         CosmicPanelBackground::Light => self.light_bg,
                         CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
                     },
+                    self.s_display.clone().unwrap(),
+                    self.security_context_manager.clone(),
+                    self.connection.as_ref().unwrap(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());

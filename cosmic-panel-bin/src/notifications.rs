@@ -1,12 +1,15 @@
 use anyhow::{Context, Result};
 use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
-use smithay::reexports::nix::{fcntl, unistd};
+use smithay::reexports::rustix::{
+    self,
+    io::{fcntl_getfd, fcntl_setfd, FdFlags},
+};
 use std::os::{
-    fd::{FromRawFd, RawFd},
+    fd::{FromRawFd, OwnedFd, RawFd},
     unix::net::UnixStream,
 };
 use tracing::info;
-use zbus::{dbus_proxy, zvariant::OwnedFd, ConnectionBuilder};
+use zbus::{dbus_proxy, ConnectionBuilder};
 
 #[dbus_proxy(
     default_service = "com.system76.NotificationsSocket",
@@ -15,23 +18,21 @@ use zbus::{dbus_proxy, zvariant::OwnedFd, ConnectionBuilder};
 )]
 trait NotificationsSocket {
     /// get an fd for an applet
-    fn get_fd(&self) -> zbus::Result<OwnedFd>;
+    fn get_fd(&self) -> zbus::Result<zbus::zvariant::OwnedFd>;
 }
 pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
     info!("Connecting to notifications daemon");
     let fd_num = std::env::var(PANEL_NOTIFICATIONS_FD)?;
     let fd = fd_num.parse::<RawFd>()?;
-    // set CLOEXEC
-    let flags = fcntl::fcntl(fd, fcntl::FcntlArg::F_GETFD);
-    let result = flags
-        .map(|f| fcntl::FdFlag::from_bits(f).unwrap() | fcntl::FdFlag::FD_CLOEXEC)
-        .and_then(|f| fcntl::fcntl(fd, fcntl::FcntlArg::F_SETFD(f)));
-    let daemon_stream = match result {
+    let fd = unsafe { rustix::fd::OwnedFd::from_raw_fd(fd) };
+
+    let res = fcntl_getfd(&fd).and_then(|flags| fcntl_setfd(&fd, FdFlags::CLOEXEC.union(flags)));
+
+    let daemon_stream = match res {
         // CLOEXEC worked and we can startup with session IPC
-        Ok(_) => unsafe { UnixStream::from_raw_fd(fd) },
+        Ok(_) => UnixStream::from(OwnedFd::from(fd)),
         // CLOEXEC didn't work, something is wrong with the fd, just close it
         Err(err) => {
-            let _ = unistd::close(fd);
             return Err(err).with_context(|| "Failed to setup session socket");
         }
     };
