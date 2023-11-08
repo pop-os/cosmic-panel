@@ -1286,7 +1286,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git?branch=fix-update-fds#c6dd9fefd7f473ef626ee71d6d4cfb55ccd108c0"
+source = "git+https://github.com/pop-os/launch-pad.git#4707088eb1111946fc5ea91e9b02ff2737552462"
 dependencies = [
  "log",
  "nix 0.26.4",
