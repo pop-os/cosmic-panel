@@ -52,7 +52,7 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _))| {
+                    .find_map(|(i, (_, c, _, _))| {
                         if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {
@@ -74,7 +74,7 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _))| {
+                    .find_map(|(i, (_, c, _, _))| {
                         if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {
@@ -96,7 +96,7 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _))| {
+                    .find_map(|(i, (_, c, _, _))| {
                         if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
                             Some((i, w.clone()))
                         } else {

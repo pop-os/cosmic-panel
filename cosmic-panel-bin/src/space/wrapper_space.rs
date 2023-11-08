@@ -8,9 +8,9 @@ use std::{
 };
 
 use anyhow::bail;
-use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput};
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
-use itertools::{izip, Itertools};
+use itertools::izip;
 use launch_pad::process::Process;
 use sctk::{
     compositor::{CompositorState, Region},
@@ -53,6 +53,7 @@ use xdg_shell_wrapper::{
     space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
     util::get_client_sock,
     wp_fractional_scaling::FractionalScalingManager,
+    wp_security_context::{SecurityContext, SecurityContextManager},
     wp_viewporter::ViewporterState,
 };
 
@@ -237,7 +238,12 @@ impl WrapperSpace for PanelSpace {
         self.config.clone()
     }
 
-    fn spawn_clients(&mut self, mut display: DisplayHandle) -> anyhow::Result<()> {
+    fn spawn_clients<W: WrapperSpace>(
+        &mut self,
+        mut display: DisplayHandle,
+        qh: &QueueHandle<GlobalState<W>>,
+        security_context_manager: Option<SecurityContextManager>,
+    ) -> anyhow::Result<()> {
         info!("Spawning applets");
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
@@ -252,7 +258,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s)
+                    (id, c, s, None)
                 })
                 .collect();
 
@@ -265,7 +271,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s)
+                    (id, c, s, None)
                 })
                 .collect();
 
@@ -278,24 +284,24 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s)
+                    (id, c, s, None)
                 })
                 .collect();
 
-            let mut desktop_ids = left_guard
-                .iter()
-                .map(|(a, b, c)| (a, b, c, self.clients_left.clone()))
+            let mut desktop_ids: Vec<_> = left_guard
+                .iter_mut()
+                .map(|(a, b, c, d)| (a, b, c, d, self.clients_left.clone()))
                 .chain(
                     center_guard
-                        .iter()
-                        .map(|(a, b, c)| (a, b, c, self.clients_center.clone())),
+                        .iter_mut()
+                        .map(|(a, b, c, d)| (a, b, c, d, self.clients_center.clone())),
                 )
                 .chain(
                     right_guard
-                        .iter()
-                        .map(|(a, b, c)| (a, b, c, self.clients_right.clone())),
+                        .iter_mut()
+                        .map(|(a, b, c, d)| (a, b, c, d, self.clients_right.clone())),
                 )
-                .collect_vec();
+                .collect();
 
             let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
             let active_output = self
@@ -311,16 +317,18 @@ impl WrapperSpace for PanelSpace {
                 ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
+                ("RUST_BACKTRACE".to_string(), "1".to_string()),
             ];
             info!("{:?}", &desktop_ids);
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
-                if let Some(position) = desktop_ids.iter().position(|(app_file_name, _, _, _)| {
+                if let Some(position) = desktop_ids.iter().position(|(app_file_name, ..)| {
                     Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
                 }) {
                     // This way each applet is at most started once,
                     // even if multiple desktop files in different directories match
-                    let (id, client, socket, my_list) = desktop_ids.remove(position);
+                    let (id, client, socket, applet_security_context, my_list) =
+                        desktop_ids.remove(position);
                     info!(id);
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
@@ -340,13 +348,50 @@ impl WrapperSpace for PanelSpace {
                                     trace!("child argument: {}", &arg);
                                     args.push(arg);
                                 }
+                                let mut fds = Vec::with_capacity(2);
                                 let mut applet_env = Vec::new();
+
+                                if requests_wayland_display {
+                                    if let Some(security_context_manager) =
+                                        security_context_manager.as_ref()
+                                    {
+                                        match security_context_manager.create_listener::<W>(qh) {
+                                            Ok(security_context) => {
+                                                security_context
+                                                    .set_sandbox_engine(NAME.to_string());
+                                                security_context.commit();
+
+                                                let data = security_context
+                                                    .data::<SecurityContext>()
+                                                    .unwrap();
+                                                let privileged_socket = data
+                                                    .conn
+                                                    .lock()
+                                                    .unwrap()
+                                                    .as_ref()
+                                                    .unwrap()
+                                                    .as_raw_fd();
+                                                applet_env.push((
+                                                    "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
+                                                    privileged_socket.to_string(),
+                                                ));
+                                                fds.push(privileged_socket);
+                                                *applet_security_context = Some(security_context);
+                                            }
+                                            Err(why) => {
+                                                error!(?why, "Failed to create a listener");
+                                            }
+                                        }
+                                    };
+                                }
+
                                 for (key, val) in &env_vars {
                                     if !requests_wayland_display && *key == "WAYLAND_DISPLAY" {
                                         continue;
                                     }
                                     applet_env.push((key.clone(), val.clone()));
                                 }
+                                fds.push(socket.as_raw_fd());
                                 let fd = socket.as_raw_fd().to_string();
                                 applet_env.push(("WAYLAND_SOCKET".to_string(), fd.to_string()));
                                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
@@ -361,6 +406,9 @@ impl WrapperSpace for PanelSpace {
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
+                                let security_context_manager_clone =
+                                    security_context_manager.clone();
+                                let qh_clone = qh.clone();
 
                                 let mut process = Process::new()
                                     .with_executable(&exec)
@@ -399,6 +447,43 @@ impl WrapperSpace for PanelSpace {
                                             get_client_sock(&mut display_handle);
                                         let raw_client_socket = client_socket.as_raw_fd();
                                         let client_id_clone = client_id.clone();
+                                        let mut applet_env = Vec::with_capacity(1);
+                                        let mut fds = Vec::with_capacity(2);
+                                        let security_context = if requests_wayland_display {
+                                            security_context_manager_clone.as_ref().and_then(
+                                                |security_context_manager| {
+                                                    security_context_manager
+                                                        .create_listener(&qh_clone)
+                                                        .ok()
+                                                        .map(|security_context| {
+                                                            security_context.set_sandbox_engine(
+                                                                NAME.to_string(),
+                                                            );
+                                                            security_context.commit();
+
+                                                            let data = security_context
+                                                                .data::<SecurityContext>()
+                                                                .unwrap();
+                                                            let privileged_socket = data
+                                                                .conn
+                                                                .lock()
+                                                                .unwrap()
+                                                                .as_ref()
+                                                                .unwrap()
+                                                                .as_raw_fd();
+                                                            applet_env.push((
+                                                                "X_PRIVILEGED_WAYLAND_SOCKET"
+                                                                    .to_string(),
+                                                                privileged_socket.to_string(),
+                                                            ));
+                                                            fds.push(privileged_socket);
+                                                            security_context
+                                                        })
+                                                },
+                                            )
+                                        } else {
+                                            None
+                                        };
 
                                         async move {
                                             if let Some(err_code) = err_code {
@@ -430,20 +515,19 @@ impl WrapperSpace for PanelSpace {
                                                     error!("Failed to update process env: {}", err);
                                                     return;
                                                 }
+                                                fds.push(fd);
+                                                fds.push(raw_client_socket);
                                                 if let Err(err) = pman
-                                                    .update_process_fds(&key, move || {
-                                                        vec![fd, raw_client_socket]
-                                                    })
+                                                    .update_process_fds(&key, move || fds.clone())
                                                     .await
                                                 {
                                                     error!("Failed to update process fds: {}", err);
                                                     return;
                                                 }
                                             } else {
+                                                fds.push(raw_client_socket);
                                                 if let Err(err) = pman
-                                                    .update_process_fds(&key, move || {
-                                                        vec![raw_client_socket]
-                                                    })
+                                                    .update_process_fds(&key, move || fds.clone())
                                                     .await
                                                 {
                                                     error!("Failed to update process fds: {}", err);
@@ -451,39 +535,44 @@ impl WrapperSpace for PanelSpace {
                                                 }
                                             }
 
-                                            let fd = client_socket.as_raw_fd().to_string();
                                             if let Some(old_client) = my_list
                                                 .lock()
                                                 .unwrap()
                                                 .iter_mut()
-                                                .find(|(id, _, _)| id == &id_clone)
+                                                .find(|(id, _, _, _)| id == &id_clone)
                                             {
                                                 old_client.1 = c;
                                                 old_client.2 = client_socket;
+                                                old_client.3 = security_context;
+                                                info!("Replaced the client socket");
+                                            } else {
+                                                error!(
+                                                    "Failed to find matching client... {}",
+                                                    &id_clone
+                                                )
                                             }
                                             let _ = applet_tx_clone
                                                 .send(AppletMsg::ClientSocketPair(client_id_clone))
                                                 .await;
+                                            applet_env.push((
+                                                "WAYLAND_SOCKET".to_string(),
+                                                raw_client_socket.to_string(),
+                                            ));
                                             let _ = pman
-                                                .update_process_env(
-                                                    &key,
-                                                    vec![("WAYLAND_SOCKET", fd.as_str())],
-                                                )
+                                                .update_process_env(&key, applet_env.clone())
                                                 .await;
                                         }
                                     });
 
-                                let socket_fd = socket.as_raw_fd();
-                                // TODO error handling
-                                let panel_id = self.layer.as_ref().unwrap().wl_surface().id();
+                                let process_id = format!("{}-{}", self.id(), id);
                                 let msg = if is_notification_applet {
                                     AppletMsg::NewNotificationsProcess(
-                                        panel_id, process, applet_env, socket_fd,
+                                        process_id, process, applet_env, fds,
                                     )
                                 } else {
-                                    process = process.with_fds(move || vec![socket_fd]);
+                                    process = process.with_fds(move || fds.clone());
 
-                                    AppletMsg::NewProcess(panel_id, process.with_env(applet_env))
+                                    AppletMsg::NewProcess(process_id, process.with_env(applet_env))
                                 };
                                 match self.applet_tx.try_send(msg) {
                                     Ok(_) => {}
@@ -498,7 +587,7 @@ impl WrapperSpace for PanelSpace {
             info!("Done spawning applets");
             Ok(())
         } else {
-            bail!("Clients have already been spawned!");
+            anyhow::bail!("Clients have already been spawned!");
         }
     }
 
@@ -587,12 +676,12 @@ impl WrapperSpace for PanelSpace {
         &mut self,
         _compositor_state: &CompositorState,
         _fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        _security_context_manager: Option<SecurityContextManager>,
         _viewport: Option<&ViewporterState<W>>,
         _layer_state: &mut LayerShell,
-        conn: &Connection,
+        _conn: &Connection,
         _qh: &QueueHandle<GlobalState<W>>,
     ) {
-        self.c_display.replace(conn.display());
     }
 
     /// returns false to forward the button press, and true to intercept
@@ -905,6 +994,13 @@ impl WrapperSpace for PanelSpace {
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.is_dirty = true;
+        if let Err(err) = self.spawn_clients(
+            self.s_display.clone().unwrap(),
+            &qh,
+            self.security_context_manager.clone(),
+        ) {
+            error!(?err, "Failed to spawn clients");
+        }
         Ok(())
     }
 

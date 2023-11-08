@@ -6,12 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use cctk::wayland_client::Connection;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
     output::OutputInfo,
     reexports::client::{
-        backend::ObjectId,
         protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
         Proxy, QueueHandle,
     },
@@ -60,8 +60,12 @@ use smithay::{
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
-use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use wayland_protocols::wp::{
+    fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
+    security_context::v1::client::wp_security_context_v1::WpSecurityContextV1,
+};
+use xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
@@ -75,11 +79,11 @@ use xdg_shell_wrapper::{
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
 pub enum AppletMsg {
-    NewProcess(ObjectId, Process),
-    NewNotificationsProcess(ObjectId, Process, Vec<(String, String)>, RawFd),
+    NewProcess(String, Process),
+    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<RawFd>),
     NeedNewNotificationFd(oneshot::Sender<RawFd>),
     ClientSocketPair(ClientId),
-    Cleanup(ObjectId),
+    Cleanup(String),
 }
 
 render_elements! {
@@ -87,6 +91,8 @@ render_elements! {
     Memory=MemoryRenderBufferRenderElement<R>,
     WaylandSurface=WaylandSurfaceRenderElement<R>
 }
+
+pub type Clients = Arc<Mutex<Vec<(String, Client, UnixStream, Option<WpSecurityContextV1>)>>>;
 
 /// space for the cosmic panel
 #[derive(Debug)]
@@ -97,9 +103,9 @@ pub(crate) struct PanelSpace {
     pub config: CosmicPanelConfig,
     pub(crate) space: Space<Window>,
     pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
-    pub(crate) clients_left: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
-    pub(crate) clients_center: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
-    pub(crate) clients_right: Arc<Mutex<Vec<(String, Client, UnixStream)>>>,
+    pub(crate) clients_left: Clients,
+    pub(crate) clients_center: Clients,
+    pub(crate) clients_right: Clients,
     pub(crate) last_dirty: Option<Instant>,
     // pending size of the panel
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
@@ -133,6 +139,7 @@ pub(crate) struct PanelSpace {
     pub(crate) scale: f64,
     pub(crate) output_has_toplevel: bool,
     pub(crate) first_draw: bool,
+    pub(crate) security_context_manager: Option<SecurityContextManager>,
 }
 
 impl PanelSpace {
@@ -143,6 +150,9 @@ impl PanelSpace {
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
         mut bg_color: [f32; 4],
+        s_display: DisplayHandle,
+        security_context_manager: Option<SecurityContextManager>,
+        conn: &Connection,
     ) -> Self {
         bg_color[3] = config.opacity;
         let visibility = if config.autohide.is_none() {
@@ -163,8 +173,8 @@ impl PanelSpace {
             dimensions: Default::default(),
             suggested_length: None,
             output: Default::default(),
-            s_display: Default::default(),
-            c_display: Default::default(),
+            s_display: Some(s_display.clone()),
+            c_display: Some(conn.display().clone()),
             layer: Default::default(),
             layer_fractional_scale: Default::default(),
             layer_viewport: Default::default(),
@@ -189,7 +199,21 @@ impl PanelSpace {
             scale: 1.0,
             output_has_toplevel: false,
             first_draw: true,
+            security_context_manager,
         }
+    }
+
+    pub(crate) fn id(&self) -> String {
+        let id = format!(
+            "panel-{}-{}-{}",
+            self.config.name,
+            self.config.output,
+            self.output
+                .as_ref()
+                .map(|o| o.2.name.clone().unwrap_or_default())
+                .unwrap_or_default()
+        );
+        id
     }
 
     pub(crate) fn handle_focus(&mut self) {
@@ -577,7 +601,6 @@ impl PanelSpace {
                     mut width,
                     mut height,
                 } => {
-                    let _ = self.spawn_clients(self.s_display.clone().unwrap());
                     if w != 0 {
                         width = w as i32;
                         if self.config.is_horizontal() {
@@ -828,8 +851,6 @@ impl PanelSpace {
 impl Drop for PanelSpace {
     fn drop(&mut self) {
         // request processes to stop
-        if let Some(id) = self.layer.as_ref().map(|l| l.wl_surface().id()) {
-            let _ = self.applet_tx.try_send(AppletMsg::Cleanup(id));
-        }
+        let _ = self.applet_tx.try_send(AppletMsg::Cleanup(self.id()));
     }
 }

@@ -25,6 +25,7 @@ use xdg_shell_wrapper::{
     shared_state::GlobalState,
     space::{Visibility, WrapperSpace},
     wp_fractional_scaling::FractionalScalingManager,
+    wp_security_context::SecurityContextManager,
     wp_viewporter::ViewporterState,
 };
 
@@ -55,12 +56,15 @@ impl WrapperSpace for SpaceContainer {
         &mut self,
         compositor_state: &CompositorState,
         fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        security_context_manager: Option<SecurityContextManager>,
         viewport: Option<&ViewporterState<W>>,
         layer_state: &mut LayerShell,
         conn: &Connection,
         qh: &QueueHandle<GlobalState<W>>,
     ) {
         self.connection = Some(conn.clone());
+        self.security_context_manager = security_context_manager.clone();
+
         // create a space for each config profile which is configured for Active output and call setup on each
         self.space_list.append(
             &mut self
@@ -80,10 +84,14 @@ impl WrapperSpace for SpaceContainer {
                                 CosmicPanelBackground::Light => self.light_bg,
                                 CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
                             },
+                            self.s_display.clone().unwrap(),
+                            self.security_context_manager.clone(),
+                            conn,
                         );
                         s.setup(
                             compositor_state,
                             fractional_scale_manager,
+                            security_context_manager.clone(),
                             viewport,
                             layer_state,
                             conn,
@@ -175,10 +183,14 @@ impl WrapperSpace for SpaceContainer {
                             self.c_hovered_surface.clone(),
                             self.applet_tx.clone(),
                             c,
+                            self.s_display.clone().unwrap(),
+                            self.security_context_manager.clone(),
+                            conn,
                         );
                         s.setup(
                             compositor_state,
                             fractional_scale_manager,
+                            self.security_context_manager.clone(),
                             viewport,
                             layer_state,
                             conn,
@@ -225,14 +237,9 @@ impl WrapperSpace for SpaceContainer {
                                 CosmicPanelBackground::Light => light,
                                 CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
                             },
-                        );
-                        s.setup(
-                            compositor_state,
-                            fractional_scale_manager,
-                            viewport,
-                            layer_state,
+                            self.s_display.clone().unwrap(),
+                            self.security_context_manager.clone(),
                             conn,
-                            qh,
                         );
 
                         if let Some(s_display) = self.s_display.as_ref() {
@@ -284,7 +291,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _)| Some(c.id()) == w_client)
+                .any(|(_, c, _, _)| Some(c.id()) == w_client)
         }) {
             space.add_window(s_top_level);
         }
@@ -313,7 +320,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _)| Some(c.id()) == p_client)
+                .any(|(_, c, _, _)| Some(c.id()) == p_client)
         }) {
             space.add_popup(
                 compositor_state,
@@ -348,7 +355,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _)| Some(c.id()) == p_client)
+                .any(|(_, c, _, _)| Some(c.id()) == p_client)
         }) {
             space.reposition_popup(popup, positioner_state, token)?
         }
@@ -383,9 +390,11 @@ impl WrapperSpace for SpaceContainer {
         self.config.clone()
     }
 
-    fn spawn_clients(
+    fn spawn_clients<W: WrapperSpace>(
         &mut self,
         _display: smithay::reexports::wayland_server::DisplayHandle,
+        _qh: &QueueHandle<GlobalState<W>>,
+        _: Option<SecurityContextManager>,
     ) -> anyhow::Result<()> {
         // spaces spawn their clients when they are created
         Ok(())
@@ -413,7 +422,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _)| Some(c.id()) == w_client)
+                .any(|(_, c, _, _)| Some(c.id()) == w_client)
         }) {
             space.dirty_window(dh, w);
         }
@@ -435,7 +444,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _)| Some(c.id()) == p_client)
+                .any(|(_, c, _, _)| Some(c.id()) == p_client)
         }) {
             space.dirty_popup(dh, w);
         }

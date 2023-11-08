@@ -404,7 +404,7 @@ dependencies = [
 [[package]]
 name = "cosmic-client-toolkit"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols#769bccfb1132ac0d7354016c5e938bb6fd911bf1"
+source = "git+https://github.com/pop-os/cosmic-protocols#5faec87be0a1fd1d72e99431ac8e6647ff1dfd41"
 dependencies = [
  "cosmic-protocols",
  "smithay-client-toolkit",
@@ -501,7 +501,7 @@ dependencies = [
 [[package]]
 name = "cosmic-protocols"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols#769bccfb1132ac0d7354016c5e938bb6fd911bf1"
+source = "git+https://github.com/pop-os/cosmic-protocols#5faec87be0a1fd1d72e99431ac8e6647ff1dfd41"
 dependencies = [
  "bitflags 2.4.0",
  "wayland-backend",
@@ -1286,7 +1286,7 @@ dependencies = [
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad.git#13e3b6931c9759acdf58b45eb85379d1e8b43da9"
+source = "git+https://github.com/pop-os/launch-pad.git?branch=fix-update-fds#c6dd9fefd7f473ef626ee71d6d4cfb55ccd108c0"
 dependencies = [
  "log",
  "nix 0.26.4",
@@ -1402,15 +1402,6 @@ checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
 
 [[package]]
 name = "memmap2"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "memmap2"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a5a03cefb0d953ec0be133036f14e109412fa594edc2f77227249db66cc3ed"
@@ -1495,7 +1486,6 @@ dependencies = [
  "bitflags 2.4.0",
  "cfg-if",
  "libc",
- "memoffset 0.9.0",
 ]
 
 [[package]]
@@ -2208,7 +2198,7 @@ checksum = "942b4a808e05215192e39f4ab80813e599068285906cc91aa64f923db842bd5a"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay#0db3272deb3f5bc9adb9481d6ee6d19e466c5b34"
+source = "git+https://github.com/smithay/smithay#a8f3c46f0bd0153160a3ba117502ba47c38ab0dc"
 dependencies = [
  "appendlist",
  "bitflags 2.4.0",
@@ -2219,6 +2209,7 @@ dependencies = [
  "drm",
  "drm-ffi",
  "drm-fourcc",
+ "errno",
  "gbm",
  "gl_generator",
  "indexmap",
@@ -2229,6 +2220,7 @@ dependencies = [
  "once_cell",
  "profiling",
  "rand",
+ "rustix 0.38.18",
  "scan_fmt",
  "smallvec",
  "tempfile",
@@ -2240,7 +2232,7 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-server",
  "wayland-sys",
- "xkbcommon 0.6.0",
+ "xkbcommon",
 ]
 
 [[package]]
@@ -2266,7 +2258,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "wayland-scanner",
- "xkbcommon 0.7.0",
+ "xkbcommon",
  "xkeysym",
 ]
 
@@ -3019,14 +3011,16 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#fa62a8c865cc5ba391a48fe4753a8687d8ab8ded"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper//?branch=feat-security-context#50a388c795e1fa06d80bb44166675a42fca05f07"
 dependencies = [
  "anyhow",
  "cosmic-client-toolkit",
  "itertools",
  "libc",
  "once_cell",
+ "rand",
  "ron",
+ "rustix 0.38.18",
  "serde",
  "shlex",
  "smithay",
@@ -3042,21 +3036,10 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper#fa62a8c865cc5ba391a48fe4753a8687d8ab8ded"
+source = "git+https://github.com/pop-os/xdg-shell-wrapper//?branch=feat-security-context#50a388c795e1fa06d80bb44166675a42fca05f07"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
-]
-
-[[package]]
-name = "xkbcommon"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c286371c44b3572d19b09196c129a8fff47d7704d6494daefb44fec10f0278ab"
-dependencies = [
- "libc",
- "memmap2 0.7.1",
- "xkeysym",
 ]
 
 [[package]]
