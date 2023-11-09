@@ -2,7 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
     fs,
-    os::unix::prelude::AsRawFd,
+    os::{fd::OwnedFd, unix::prelude::AsRawFd},
     rc::Rc,
     time::Instant,
 };
@@ -248,6 +248,7 @@ impl WrapperSpace for PanelSpace {
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
         let mut right_guard = self.clients_right.lock().unwrap();
+
         if left_guard.is_empty() && center_guard.is_empty() && right_guard.is_empty() {
             *left_guard = self
                 .config
@@ -258,7 +259,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s, None)
+                    (id, c, Some(s), None)
                 })
                 .collect();
 
@@ -271,7 +272,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s, None)
+                    (id, c, Some(s), None)
                 })
                 .collect();
 
@@ -284,7 +285,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|id| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, s, None)
+                    (id, c, Some(s), None)
                 })
                 .collect();
 
@@ -330,6 +331,12 @@ impl WrapperSpace for PanelSpace {
                     let (id, client, socket, applet_security_context, my_list) =
                         desktop_ids.remove(position);
                     info!(id);
+
+                    let Some(socket) = socket.take() else {
+                        error!("Failed to get socket for {}", &id);
+                        continue;
+                    };
+
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                             if let Some(exec) = entry.exec() {
@@ -364,18 +371,13 @@ impl WrapperSpace for PanelSpace {
                                                 let data = security_context
                                                     .data::<SecurityContext>()
                                                     .unwrap();
-                                                let privileged_socket = data
-                                                    .conn
-                                                    .lock()
-                                                    .unwrap()
-                                                    .as_ref()
-                                                    .unwrap()
-                                                    .as_raw_fd();
+                                                let privileged_socket =
+                                                    data.conn.lock().unwrap().take().unwrap();
                                                 applet_env.push((
                                                     "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
-                                                    privileged_socket.to_string(),
+                                                    privileged_socket.as_raw_fd().to_string(),
                                                 ));
-                                                fds.push(privileged_socket);
+                                                fds.push(privileged_socket.into());
                                                 *applet_security_context = Some(security_context);
                                             }
                                             Err(why) => {
@@ -391,9 +393,12 @@ impl WrapperSpace for PanelSpace {
                                     }
                                     applet_env.push((key.clone(), val.clone()));
                                 }
-                                fds.push(socket.as_raw_fd());
-                                let fd = socket.as_raw_fd().to_string();
-                                applet_env.push(("WAYLAND_SOCKET".to_string(), fd.to_string()));
+                                applet_env.push((
+                                    "WAYLAND_SOCKET".to_string(),
+                                    socket.as_raw_fd().to_string(),
+                                ));
+
+                                fds.push(socket.into());
                                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
                                 let is_notification_applet =
                                     entry.desktop_entry("X-NotificationsApplet").is_some();
@@ -448,7 +453,7 @@ impl WrapperSpace for PanelSpace {
                                         let raw_client_socket = client_socket.as_raw_fd();
                                         let client_id_clone = client_id.clone();
                                         let mut applet_env = Vec::with_capacity(1);
-                                        let mut fds = Vec::with_capacity(2);
+                                        let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
                                         let security_context = if requests_wayland_display {
                                             security_context_manager_clone.as_ref().and_then(
                                                 |security_context_manager| {
@@ -468,15 +473,16 @@ impl WrapperSpace for PanelSpace {
                                                                 .conn
                                                                 .lock()
                                                                 .unwrap()
-                                                                .as_ref()
-                                                                .unwrap()
-                                                                .as_raw_fd();
+                                                                .take()
+                                                                .unwrap();
                                                             applet_env.push((
                                                                 "X_PRIVILEGED_WAYLAND_SOCKET"
                                                                     .to_string(),
-                                                                privileged_socket.to_string(),
+                                                                privileged_socket
+                                                                    .as_raw_fd()
+                                                                    .to_string(),
                                                             ));
-                                                            fds.push(privileged_socket);
+                                                            fds.push(privileged_socket.into());
                                                             security_context
                                                         })
                                                 },
@@ -507,7 +513,7 @@ impl WrapperSpace for PanelSpace {
                                                         &key,
                                                         vec![(
                                                             "COSMIC_NOTIFICATIONS".to_string(),
-                                                            fd.to_string(),
+                                                            fd.as_raw_fd().to_string(),
                                                         )],
                                                     )
                                                     .await
@@ -516,19 +522,17 @@ impl WrapperSpace for PanelSpace {
                                                     return;
                                                 }
                                                 fds.push(fd);
-                                                fds.push(raw_client_socket);
-                                                if let Err(err) = pman
-                                                    .update_process_fds(&key, move || fds.clone())
-                                                    .await
+                                                fds.push(client_socket.into());
+                                                if let Err(err) =
+                                                    pman.update_process_fds(&key, move || fds).await
                                                 {
                                                     error!("Failed to update process fds: {}", err);
                                                     return;
                                                 }
                                             } else {
-                                                fds.push(raw_client_socket);
-                                                if let Err(err) = pman
-                                                    .update_process_fds(&key, move || fds.clone())
-                                                    .await
+                                                fds.push(client_socket.into());
+                                                if let Err(err) =
+                                                    pman.update_process_fds(&key, move || fds).await
                                                 {
                                                     error!("Failed to update process fds: {}", err);
                                                     return;
@@ -542,7 +546,6 @@ impl WrapperSpace for PanelSpace {
                                                 .find(|(id, _, _, _)| id == &id_clone)
                                             {
                                                 old_client.1 = c;
-                                                old_client.2 = client_socket;
                                                 old_client.3 = security_context;
                                                 info!("Replaced the client socket");
                                             } else {
@@ -570,7 +573,7 @@ impl WrapperSpace for PanelSpace {
                                         process_id, process, applet_env, fds,
                                     )
                                 } else {
-                                    process = process.with_fds(move || fds.clone());
+                                    process = process.with_fds(move || fds);
 
                                     AppletMsg::NewProcess(process_id, process.with_env(applet_env))
                                 };
