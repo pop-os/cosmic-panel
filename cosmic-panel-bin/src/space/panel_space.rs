@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    os::{fd::RawFd, unix::net::UnixStream},
+    os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -80,8 +80,8 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 pub enum AppletMsg {
     NewProcess(String, Process),
-    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<RawFd>),
-    NeedNewNotificationFd(oneshot::Sender<RawFd>),
+    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
+    NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
 }
@@ -92,7 +92,16 @@ render_elements! {
     WaylandSurface=WaylandSurfaceRenderElement<R>
 }
 
-pub type Clients = Arc<Mutex<Vec<(String, Client, UnixStream, Option<WpSecurityContextV1>)>>>;
+pub type Clients = Arc<
+    Mutex<
+        Vec<(
+            String,
+            Client,
+            Option<UnixStream>,
+            Option<WpSecurityContextV1>,
+        )>,
+    >,
+>;
 
 /// space for the cosmic panel
 #[derive(Debug)]

@@ -11,7 +11,12 @@ use launch_pad::{ProcessKey, ProcessManager};
 use notifications::notifications_conn;
 use sctk::reexports::calloop::channel::SyncSender;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
-use std::{collections::HashMap, mem, os::fd::IntoRawFd, time::Duration};
+use std::{
+    collections::HashMap,
+    mem,
+    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
+    time::Duration,
+};
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -176,8 +181,11 @@ fn main() -> Result<()> {
                             continue;
                         };
                         info!("Getting fd for notifications applet");
-                        let fd = match tokio::time::timeout(Duration::from_secs(1), proxy.get_fd())
-                            .await
+                        let notif_fd = match tokio::time::timeout(
+                            Duration::from_secs(1),
+                            proxy.get_fd(),
+                        )
+                        .await
                         {
                             Ok(Ok(fd)) => fd,
                             Ok(Err(err)) => {
@@ -189,10 +197,13 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
-                        let notif_fd = fd.into_raw_fd();
-                        env.push(("COSMIC_NOTIFICATIONS".to_string(), notif_fd.to_string()));
+                        let notif_fd = unsafe { OwnedFd::from_raw_fd(notif_fd.into_raw_fd()) };
+                        env.push((
+                            "COSMIC_NOTIFICATIONS".to_string(),
+                            notif_fd.as_raw_fd().to_string(),
+                        ));
                         fds.push(notif_fd);
-                        process = process.with_fds(move || fds.clone());
+                        process = process.with_fds(move || fds);
                         process = process.with_env(env);
                         info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
@@ -220,7 +231,7 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
-                        let fd = fd.into_raw_fd();
+                        let fd = unsafe { OwnedFd::from_raw_fd(fd.into_raw_fd()) };
 
                         _ = sender.send(fd);
                     }
