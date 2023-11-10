@@ -27,7 +27,7 @@ tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.16", features = ["fmt", "env-filter", "ansi"]}
 tracing-journald = "0.3.0"
 tracing-futures = "0.2.5"
-launch-pad = { git = "https://github.com/pop-os/launch-pad.git", branch = "fix-close-fds-after-start"}
+launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme" }
