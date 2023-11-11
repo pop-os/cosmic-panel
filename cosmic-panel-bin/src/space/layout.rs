@@ -349,7 +349,10 @@ impl PanelSpace {
                 PanelAnchor::Left | PanelAnchor::Right => {
                     let cur = (
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.w as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.w as u32,
+                            ),
                         cur,
                     );
                     prev += size.h as f64;
@@ -360,7 +363,10 @@ impl PanelSpace {
                     let cur = (
                         cur,
                         margin_offset
-                            + center_in_bar(new_list_thickness.try_into().unwrap(), size.h as u32),
+                            + center_in_bar(
+                                new_logical_thickness.try_into().unwrap(),
+                                size.h as u32,
+                            ),
                     );
                     prev += size.w as f64;
                     self.space
