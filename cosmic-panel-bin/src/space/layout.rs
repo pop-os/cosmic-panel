@@ -41,6 +41,13 @@ impl PanelSpace {
             num_lists += 1;
         }
 
+        let make_indices_contiguous = |windows: &mut Vec<(usize, Window)>| {
+            windows.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
+            for (j, (i, _)) in windows.iter_mut().enumerate() {
+                *i = j;
+            }
+        };
+
         let mut windows_right = self
             .space
             .elements()
@@ -61,7 +68,7 @@ impl PanelSpace {
                     })
             })
             .collect_vec();
-        windows_right.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
+        make_indices_contiguous(&mut windows_right);
 
         let mut windows_center = self
             .space
@@ -83,7 +90,7 @@ impl PanelSpace {
                     })
             })
             .collect_vec();
-        windows_center.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
+        make_indices_contiguous(&mut windows_center);
 
         let mut windows_left = self
             .space
@@ -105,7 +112,7 @@ impl PanelSpace {
                     })
             })
             .collect_vec();
-        windows_left.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
+        make_indices_contiguous(&mut windows_left);
 
         fn map_fn(
             (i, w): &(usize, Window),
@@ -339,7 +346,7 @@ impl PanelSpace {
         let mut prev: f64 = if is_dock {
             prev
         } else {
-            list_length as f64 - padding_u32 as f64 - right_sum
+            list_length as f64 - right_sum
         };
 
         for (i, w) in &mut windows_right.iter_mut() {
