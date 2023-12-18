@@ -444,6 +444,9 @@ impl WrapperSpace for PanelSpace {
                                         }
                                     })
                                     .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                                        if let Some(err_code) = err_code {
+                                            error!("Exited with error code {}", err_code)
+                                        }
                                         let my_list = my_list.clone();
                                         let mut display_handle = display_handle.clone();
                                         let id_clone = id_clone.clone();
@@ -454,7 +457,10 @@ impl WrapperSpace for PanelSpace {
                                         let client_id_clone = client_id.clone();
                                         let mut applet_env = Vec::with_capacity(1);
                                         let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
-                                        let security_context = if requests_wayland_display {
+                                        let should_restart = is_restarting && err_code.is_some();
+                                        let security_context = if requests_wayland_display
+                                            && should_restart
+                                        {
                                             security_context_manager_clone.as_ref().and_then(
                                                 |security_context_manager| {
                                                     security_context_manager
@@ -492,10 +498,8 @@ impl WrapperSpace for PanelSpace {
                                         };
 
                                         async move {
-                                            if let Some(err_code) = err_code {
-                                                error!("Exited with error code {}", err_code)
-                                            }
-                                            if !is_restarting {
+                                            if !should_restart {
+                                                _ = pman.stop_process(key).await;
                                                 return;
                                             }
 
