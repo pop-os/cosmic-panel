@@ -200,6 +200,8 @@ impl SpaceContainer {
     }
 
     /// apply a new or updated entry to the space list
+    // TODO avoid recreating the space
+    // instead, update the space with the new config, and mark it to animate to the new desired size, color, etc
     pub fn update_space<W: WrapperSpace>(
         &mut self,
         entry: CosmicPanelConfig,
@@ -216,7 +218,7 @@ impl SpaceContainer {
             return;
         }
 
-        // TODO: Lower priority panel surfaces are recreated on the same output as well after updating the config
+        // Lower priority panel surfaces are recreated on the same output as well after updating the config
         if let Some(config) = self
             .config
             .config_list
