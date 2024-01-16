@@ -346,7 +346,7 @@ impl PanelSpace {
         let mut prev: f64 = if is_dock {
             prev
         } else {
-            list_length as f64 - right_sum
+            list_length as f64 - right_sum - padding_u32 as f64
         };
 
         for (i, w) in &mut windows_right.iter_mut() {
