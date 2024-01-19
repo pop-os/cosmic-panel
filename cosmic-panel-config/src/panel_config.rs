@@ -230,6 +230,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
 // TODO refactor to have separate dock mode config & panel mode config
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, CosmicConfigEntry)]
+#[version = 1]
 #[serde(deny_unknown_fields)]
 pub struct CosmicPanelConfig {
     /// profile name for this config, should be unique
