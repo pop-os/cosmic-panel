@@ -12,7 +12,7 @@ use cosmic_config::CosmicConfigEntry;
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
 };
-use cosmic_theme::{palette, Theme, ThemeMode};
+use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
 use sctk::{
     output::OutputInfo,
@@ -69,11 +69,11 @@ impl SpaceContainer {
             .unwrap_or_default()
             .is_dark;
 
-        let light = Theme::<palette::Srgba>::light_config()
+        let light = Theme::light_config()
             .ok()
             .and_then(|c| Theme::get_entry(&c).ok())
             .unwrap_or_else(|| Theme::light_default());
-        let dark = Theme::<palette::Srgba>::dark_config()
+        let dark = Theme::dark_config()
             .ok()
             .and_then(|c| Theme::get_entry(&c).ok())
             .unwrap_or_else(|| Theme::dark_default());
