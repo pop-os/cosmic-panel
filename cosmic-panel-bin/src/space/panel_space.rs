@@ -960,11 +960,33 @@ impl PanelSpace {
 
     pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4]) {
         // avoid animating if currently maximized
-        // if self.maximized {
-        //     self.config = config;
-        //     return;
-        // }
+        if self.maximized {
+            self.config = config;
+            return;
+        }
+        let mut needs_commit = false;
+        if config.exclusive_zone != self.config.exclusive_zone {
+            if let Some(l) = self.layer.as_ref() {
+                let list_thickness = if config.exclusive_zone {
+                    match self.config.anchor() {
+                        PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
+                        PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
+                    }
+                } else {
+                    -1
+                };
+
+                l.set_exclusive_zone(list_thickness as i32);
+                needs_commit = true;
+            }
+        }
         self.visibility = Visibility::Visible;
+        // adjust last hover time so that the panel doesn't hide immediately
+        if let Some(c_hovered_surface) = self.c_hovered_surface.borrow_mut().iter_mut().next() {
+            if matches!(c_hovered_surface.2, FocusStatus::LastFocused(_)) {
+                c_hovered_surface.2 = FocusStatus::LastFocused(Instant::now());
+            }
+        }
         if config.autohide.is_none() && self.config.autohide.is_some() {
             if let Some(l) = self.layer.as_ref() {
                 let margin = config.get_effective_anchor_gap() as i32;
@@ -980,17 +1002,18 @@ impl PanelSpace {
                     (self.dimensions.w, 0)
                 };
                 l.set_size(width as u32, height as u32);
-                l.commit();
+                needs_commit = true;
             }
         } else {
             if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
                 if let Some(l) = self.layer.as_ref() {
                     let margin = config.get_effective_anchor_gap() as i32;
                     Self::set_margin(config.anchor, margin, margin, l);
-                    l.commit();
+                    needs_commit = true;
                 }
             }
         }
+
         // can't animate anchor changes
         // return early
         if config.anchor() != self.config.anchor() {
@@ -1015,7 +1038,11 @@ impl PanelSpace {
             }
         }
 
-        // dbg!(self.config.expand_to_edges, config.expand_to_edges);
+        if needs_commit {
+            if let Some(l) = self.layer.as_ref() {
+                l.commit();
+            }
+        }
 
         let start = AnimatableState {
             bg_color: self.bg_color,
