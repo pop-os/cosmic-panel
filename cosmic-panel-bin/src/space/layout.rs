@@ -16,6 +16,9 @@ use smithay::{
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
         self.space.refresh();
+        let bg_color = self.bg_color();
+        let gap = self.gap();
+        let border_radius = self.border_radius();
         let padding_u32 = self.config.padding() as u32;
         let padding_scaled = padding_u32 as f64 * self.scale;
         let anchor = self.config.anchor();
@@ -34,7 +37,7 @@ impl PanelSpace {
         let is_dock = !self.config.expand_to_edges();
 
         let mut num_lists = 0;
-        if !is_dock && self.config.plugins_wings.is_some() {
+        if self.config.plugins_wings.is_some() {
             num_lists += 2;
         }
         if self.config.plugins_center.is_some() {
@@ -183,7 +186,7 @@ impl PanelSpace {
         };
         new_dim = self.constrain_dim(new_dim);
         // update input region of panel when list changes
-        if old_actual != self.actual_size && is_dock {
+        if old_actual != self.actual_size && is_dock || self.animate_state.is_some() {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
                 (Some(r), Some(layer)) => (r, layer),
                 _ => anyhow::bail!("Missing input region or layer!"),
@@ -239,30 +242,33 @@ impl PanelSpace {
         let left_sum = left_sum_scaled / self.scale;
         let center_sum = center_sum_scaled / self.scale;
         let right_sum = right_sum_scaled / self.scale;
-        let total_sum = total_sum_scaled / self.scale;
 
-        let requested_eq_length: f64 = new_list_dim_length as f64 / num_lists as f64;
-        let (right_sum, center_offset) = if is_dock {
-            (
-                0.0,
-                padding_u32 as f64 + (new_list_dim_length - new_logical_length) as f64 / 2.0,
-            )
-        } else if left_sum < requested_eq_length as f64
+        // TODO adjust lengthwise pose for animation
+        let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
+            (new_logical_length as f32
+                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
+                as i32
+        } else if is_dock {
+            new_logical_length
+        } else {
+            new_list_dim_length
+        };
+        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
+
+        let requested_eq_length: f64 = container_length as f64 / num_lists as f64;
+        let center_left_spacing = if left_sum < requested_eq_length as f64
             && center_sum < requested_eq_length as f64
             && right_sum < requested_eq_length as f64
         {
-            let center_padding = (requested_eq_length as f64 - center_sum) / 2.0;
-            (
-                right_sum,
-                requested_eq_length + padding_u32 as f64 + center_padding,
-            )
-        } else {
-            let center_padding = (new_list_dim_length as f64 - total_sum) / 2.0;
+            let center_spacing = (requested_eq_length as f64 - center_sum) / 2.0;
+            let left_spacing = requested_eq_length as f64 - left_sum;
 
-            (right_sum, (left_sum + padding_u32 as f64 + center_padding))
+            left_spacing + center_spacing
+        } else {
+            (container_length as f64 - left_sum - center_sum - right_sum) as f64 / 2.
         };
 
-        let mut prev: f64 = padding_u32 as f64;
+        let mut prev: f64 = container_lengthwise_pos as f64 + padding_u32 as f64;
 
         // offset for centering
         let margin_offset = match anchor {
@@ -306,7 +312,9 @@ impl PanelSpace {
             };
         }
 
-        let mut prev: f64 = center_offset;
+        // will be already offset if dock
+        prev += center_left_spacing;
+
         for (i, w) in &mut windows_center.iter_mut() {
             // XXX this is a hack to get the logical size of the window
             let size = w.bbox().size.to_f64().downscale(self.scale);
@@ -342,12 +350,9 @@ impl PanelSpace {
             };
         }
 
-        // twice padding is subtracted
-        let mut prev: f64 = if is_dock {
-            prev
-        } else {
-            list_length as f64 - right_sum - padding_u32 as f64
-        };
+        let mut prev = container_lengthwise_pos as f64 + container_length as f64
+            - padding_u32 as f64
+            - right_sum;
 
         for (i, w) in &mut windows_right.iter_mut() {
             let size = w.bbox().size.to_f64().downscale(self.scale);
@@ -381,6 +386,7 @@ impl PanelSpace {
                 }
             };
         }
+
         self.space.refresh();
         if self.actual_size.w > 0
             && self.actual_size.h > 0
@@ -390,30 +396,14 @@ impl PanelSpace {
             // corners calculation with border_radius
 
             // default to actual size of the panel
-            let mut panel_size = self
-                .actual_size
-                .to_f64()
-                .to_physical(self.scale)
-                .to_i32_round();
+            let mut panel_size = self.actual_size;
 
-            // adjust the length if the panel extends to edges
-            if !is_dock {
-                if self.config.is_horizontal() {
-                    panel_size.w = self
-                        .dimensions
-                        .to_f64()
-                        .to_physical(self.scale)
-                        .to_i32_round()
-                        .w;
-                } else {
-                    panel_size.h = self
-                        .dimensions
-                        .to_f64()
-                        .to_physical(self.scale)
-                        .to_i32_round()
-                        .h;
-                }
+            if self.config.is_horizontal() {
+                panel_size.w = container_length as i32;
+            } else {
+                panel_size.h = container_length as i32;
             }
+            let panel_size = panel_size.to_f64().to_physical(self.scale).to_i32_round();
 
             let mut buff = MemoryRenderBuffer::new(
                 Fourcc::Abgr8888,
@@ -423,8 +413,7 @@ impl PanelSpace {
                 None,
             );
             let mut render_context = buff.render();
-            let bg_color = self
-                .bg_color
+            let bg_color = bg_color
                 .iter()
                 .map(|c| ((c * 255.0) as u8).clamp(0, 255))
                 .collect_vec();
@@ -433,7 +422,7 @@ impl PanelSpace {
                     chunk.copy_from_slice(&bg_color);
                 });
 
-                let radius = (self.config.border_radius as f64 * self.scale).round() as u32;
+                let radius = (border_radius as f64 * self.scale).round() as u32;
                 let radius = radius
                     .min(panel_size.w as u32 / 2)
                     .min(panel_size.h as u32 / 2);

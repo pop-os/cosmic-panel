@@ -1,5 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
+    mem,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -7,6 +8,7 @@ use std::{
 };
 
 use cctk::wayland_client::Connection;
+use cosmic_theme::palette::hues::OklabHueIter;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -43,6 +45,7 @@ use smithay::{
         wayland_server::{backend::ClientId, DisplayHandle},
     },
     render_elements,
+    utils::Physical,
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -103,6 +106,24 @@ pub type Clients = Arc<
     >,
 >;
 
+#[derive(Debug, Clone)]
+pub struct AnimatableState {
+    bg_color: [f32; 4],
+    border_radius: u32,
+    pub expanded: f32,
+    gap: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnimateState {
+    start: AnimatableState,
+    end: AnimatableState,
+    pub cur: AnimatableState,
+    started_at: Instant,
+    progress: f32,
+    duration: Duration,
+}
+
 /// space for the cosmic panel
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
@@ -138,7 +159,7 @@ pub(crate) struct PanelSpace {
     pub(crate) layer_viewport: Option<WpViewport>,
     pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) start_instant: Instant,
-    pub(crate) bg_color: [f32; 4],
+    pub bg_color: [f32; 4],
     pub(crate) applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) input_region: Option<Region>,
     pub(crate) old_buff: Option<MemoryRenderBuffer>,
@@ -149,6 +170,8 @@ pub(crate) struct PanelSpace {
     pub(crate) output_has_toplevel: bool,
     pub(crate) first_draw: bool,
     pub(crate) security_context_manager: Option<SecurityContextManager>,
+    pub(crate) animate_state: Option<AnimateState>,
+    pub maximized: bool,
 }
 
 impl PanelSpace {
@@ -209,6 +232,32 @@ impl PanelSpace {
             output_has_toplevel: false,
             first_draw: true,
             security_context_manager,
+            animate_state: None,
+            maximized: false,
+        }
+    }
+
+    pub fn bg_color(&self) -> [f32; 4] {
+        if let Some(animatable_state) = self.animate_state.as_ref() {
+            animatable_state.cur.bg_color
+        } else {
+            self.bg_color
+        }
+    }
+
+    pub fn border_radius(&self) -> u32 {
+        if let Some(animatable_state) = self.animate_state.as_ref() {
+            animatable_state.cur.border_radius
+        } else {
+            self.config.border_radius
+        }
+    }
+
+    pub fn gap(&self) -> u16 {
+        if let Some(animatable_state) = self.animate_state.as_ref() {
+            animatable_state.cur.gap
+        } else {
+            self.config.get_effective_anchor_gap() as u16
         }
     }
 
@@ -243,7 +292,7 @@ impl PanelSpace {
                     .iter()
                     .all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
             if self.config.autohide().is_none() {
-                if no_hover_focus {
+                if no_hover_focus && self.animate_state.is_none() {
                     self.visibility = Visibility::Hidden;
                 } else {
                     self.visibility = Visibility::Visible;
@@ -492,6 +541,55 @@ impl PanelSpace {
         (w as i32, h as i32).into()
     }
 
+    fn apply_animation_state(&mut self) {
+        if let Some(animation_state) = self.animate_state.as_mut() {
+            let progress = (Instant::now()
+                .duration_since(animation_state.started_at)
+                .as_millis() as f32)
+                / animation_state.duration.as_millis() as f32;
+            if progress >= 1.0 {
+                self.animate_state = None;
+                self.is_dirty = true;
+                return;
+            }
+            // dbg!(
+            //     animation_state.start.expanded,
+            //     animation_state.end.expanded,
+            //     progress
+            // );
+            animation_state.progress = progress;
+            let progress = smootherstep(progress);
+            let new_cur = AnimatableState {
+                bg_color: [
+                    animation_state.start.bg_color[0]
+                        + (animation_state.end.bg_color[0] - animation_state.start.bg_color[0])
+                            * progress,
+                    animation_state.start.bg_color[1]
+                        + (animation_state.end.bg_color[1] - animation_state.start.bg_color[1])
+                            * progress,
+                    animation_state.start.bg_color[2]
+                        + (animation_state.end.bg_color[2] - animation_state.start.bg_color[2])
+                            * progress,
+                    animation_state.start.bg_color[3]
+                        + (animation_state.end.bg_color[3] - animation_state.start.bg_color[3])
+                            * progress,
+                ],
+                border_radius: animation_state.start.border_radius
+                    + ((animation_state.end.border_radius - animation_state.start.border_radius)
+                        as f32
+                        * progress) as u32,
+                expanded: animation_state.start.expanded
+                    + ((animation_state.end.expanded - animation_state.start.expanded) as f32
+                        * progress),
+                gap: animation_state.start.gap
+                    + ((animation_state.end.gap - animation_state.start.gap) as f32 * progress)
+                        as u16,
+            };
+            animation_state.cur = new_cur;
+            self.is_dirty = true;
+        }
+    }
+
     pub(crate) fn handle_events<W: WrapperSpace>(
         &mut self,
         _dh: &DisplayHandle,
@@ -501,6 +599,8 @@ impl PanelSpace {
         qh: &QueueHandle<GlobalState<W>>,
     ) -> Instant {
         self.space.refresh();
+        self.apply_animation_state();
+
         popup_manager.cleanup();
 
         self.handle_focus();
@@ -541,10 +641,10 @@ impl PanelSpace {
                             .as_ref()
                             .unwrap()
                             .set_exclusive_zone(list_thickness as i32);
-                        if self.config.margin > 0 {
+                        if self.config.get_effective_anchor_gap() > 0 {
                             Self::set_margin(
                                 self.config.anchor,
-                                self.config.margin as i32,
+                                self.config.get_effective_anchor_gap() as i32,
                                 0,
                                 layer_surface,
                             );
@@ -800,6 +900,8 @@ impl PanelSpace {
             1.0,
             smithay::utils::Transform::Flipped180,
         ));
+        self.old_buff = None;
+        self.buffer = None;
     }
 
     pub fn apply_positioner_state(
@@ -853,6 +955,127 @@ impl PanelSpace {
             if let Some(parent_size) = parent_size {
                 positioner.set_parent_size(parent_size.w, parent_size.h);
             }
+        }
+    }
+
+    pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4]) {
+        // avoid animating if currently maximized
+        // if self.maximized {
+        //     self.config = config;
+        //     return;
+        // }
+        self.visibility = Visibility::Visible;
+        if config.autohide.is_none() && self.config.autohide.is_some() {
+            if let Some(l) = self.layer.as_ref() {
+                let margin = config.get_effective_anchor_gap() as i32;
+                Self::set_margin(config.anchor, margin, margin, l);
+                let list_thickness = match self.config.anchor() {
+                    PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
+                    PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
+                };
+                l.set_exclusive_zone(list_thickness as i32);
+                let (width, height) = if self.config.is_horizontal() {
+                    (0, self.dimensions.h)
+                } else {
+                    (self.dimensions.w, 0)
+                };
+                l.set_size(width as u32, height as u32);
+                l.commit();
+            }
+        } else {
+            if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
+                if let Some(l) = self.layer.as_ref() {
+                    let margin = config.get_effective_anchor_gap() as i32;
+                    Self::set_margin(config.anchor, margin, margin, l);
+                    l.commit();
+                }
+            }
+        }
+        // can't animate anchor changes
+        // return early
+        if config.anchor() != self.config.anchor() {
+            if let Some(l) = self.layer.as_ref() {
+                l.set_anchor(config.anchor().into());
+                l.commit();
+            }
+            self.config = config;
+            self.clear();
+            return;
+        }
+
+        if config.anchor_gap != self.config.anchor_gap {
+            if self.config.is_horizontal() {
+                if let Some(l) = self.suggested_length {
+                    self.dimensions.w = l as i32;
+                }
+            } else {
+                if let Some(l) = self.suggested_length {
+                    self.dimensions.h = l as i32;
+                }
+            }
+        }
+
+        // dbg!(self.config.expand_to_edges, config.expand_to_edges);
+
+        let start = AnimatableState {
+            bg_color: self.bg_color,
+            border_radius: self.config.border_radius,
+            expanded: if self.config.expand_to_edges {
+                1.0
+            } else {
+                0.0
+            },
+            gap: self.config.get_margin(),
+        };
+
+        let end = AnimatableState {
+            bg_color,
+            border_radius: config.border_radius,
+            expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
+            gap: config.get_margin(),
+        };
+        if let Some(animated_state) = self.animate_state.as_mut() {
+            animated_state.start = animated_state.cur.clone();
+            animated_state.end = end;
+            animated_state.started_at = animated_state.started_at;
+            animated_state.progress = 0.0;
+        } else {
+            self.animate_state = Some(AnimateState {
+                cur: start.clone(),
+                start,
+                end: AnimatableState {
+                    bg_color,
+                    border_radius: config.border_radius,
+                    expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
+                    gap: config.get_margin(),
+                },
+                progress: 0.0,
+                started_at: Instant::now(),
+                duration: Duration::from_millis(200), // TODO make configurable
+            });
+        }
+
+        self.config = config;
+
+        self.clear();
+    }
+
+    pub fn set_maximized(
+        &mut self,
+        maximized: bool,
+        config: CosmicPanelConfig,
+        bg_color: [f32; 4],
+    ) {
+        if self.maximized == maximized {
+            return;
+        }
+        if !self.maximized {
+            self.update_config(config, bg_color);
+            self.maximized = maximized;
+        } else {
+            // TODO restore old config
+            self.maximized = maximized;
+            self.update_config(config, bg_color);
         }
     }
 }

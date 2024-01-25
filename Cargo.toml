@@ -12,3 +12,5 @@ sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay
 [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "feat-security-context" }
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "feat-security-context" }
+[workspace.dependencies]
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }

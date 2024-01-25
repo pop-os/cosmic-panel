@@ -273,7 +273,9 @@ impl WrapperSpace for SpaceContainer {
         for s in &mut self.space_list {
             s.space.map_output(&s_output, output_info.location);
         }
-        self.apply_maximized(&c_output);
+        if self.maximized_outputs().iter().any(|o| o == &c_output) {
+            self.apply_maximized(&c_output, true);
+        }
         self.apply_toplevel_changes();
 
         Ok(())
@@ -631,6 +633,7 @@ impl WrapperSpace for SpaceContainer {
                 .any(|f| matches!(f.2, FocusStatus::Focused))
                 // transitions should try to be smooth
                 || !matches!(s.visibility, Visibility::Visible | Visibility::Hidden)
+                || s.animate_state.is_some()
         });
 
         if visible {

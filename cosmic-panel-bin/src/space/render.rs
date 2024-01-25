@@ -15,7 +15,7 @@ use smithay::{
         gles::GlesRenderer,
         Bind, Frame, Renderer, Unbind,
     },
-    utils::{Logical, Point, Rectangle},
+    utils::{Logical, Point, Rectangle, Size},
 };
 use xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace};
 
@@ -31,6 +31,7 @@ impl PanelSpace {
         {
             return Ok(());
         }
+        let bg_color = self.bg_color();
 
         if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
@@ -41,7 +42,7 @@ impl PanelSpace {
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
             let is_dock = !self.config.expand_to_edges();
             let clear_color = if self.buffer.is_none() {
-                &self.bg_color
+                &bg_color
             } else {
                 &[0.0, 0.0, 0.0, 0.0]
             };
@@ -120,7 +121,56 @@ impl PanelSpace {
                             PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
                         };
 
-                        let (panel_size, loc) = if is_dock {
+                        let (panel_size, loc) = if let Some(animate_state) =
+                            self.animate_state.as_ref()
+                        {
+                            let actual_length = if self.config.is_horizontal() {
+                                self.actual_size.w
+                            } else {
+                                self.actual_size.h
+                            };
+                            let dim_length = if self.config.is_horizontal() {
+                                self.dimensions.w
+                            } else {
+                                self.dimensions.h
+                            };
+                            let container_length = (actual_length as f32
+                                + (dim_length - actual_length) as f32 * animate_state.cur.expanded)
+                                as i32;
+
+                            let lengthwise_pos = (dim_length - container_length) as f64 / 2.0;
+
+                            let crosswise_pos = match self.config.anchor {
+                                PanelAnchor::Top | PanelAnchor::Left => {
+                                    self.config.get_effective_anchor_gap() as f64
+                                }
+                                PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
+                            };
+                            let crosswise_length = if self.config.is_horizontal() {
+                                self.actual_size.h
+                            } else {
+                                self.actual_size.w
+                            };
+                            let (x, y, width, height) = if self.config.is_horizontal() {
+                                (
+                                    lengthwise_pos,
+                                    crosswise_pos,
+                                    container_length,
+                                    crosswise_length,
+                                )
+                            } else {
+                                (
+                                    crosswise_pos,
+                                    lengthwise_pos,
+                                    crosswise_length,
+                                    container_length,
+                                )
+                            };
+                            (
+                                Size::<i32, Logical>::from((width, height)),
+                                Point::<f64, Logical>::from((x, y)),
+                            )
+                        } else if is_dock {
                             let loc: Point<f64, Logical> = if self.config.is_horizontal() {
                                 (
                                     ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).round(),
