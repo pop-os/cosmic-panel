@@ -1019,6 +1019,12 @@ impl PanelSpace {
         if config.anchor() != self.config.anchor() {
             if let Some(l) = self.layer.as_ref() {
                 l.set_anchor(config.anchor().into());
+                let (width, height) = if config.is_horizontal() {
+                    (0, self.dimensions.h)
+                } else {
+                    (self.dimensions.w, 0)
+                };
+                l.set_size(width as u32, height as u32);
                 l.commit();
             }
             self.config = config;
