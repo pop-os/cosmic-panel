@@ -457,7 +457,6 @@ impl WrapperSpace for PanelSpace {
                                         let client_id_clone = client_id.clone();
                                         let mut applet_env = Vec::with_capacity(1);
                                         let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
-                                        dbg!(err_code, is_restarting);
                                         let should_restart = is_restarting && err_code.is_some();
                                         let security_context = if requests_wayland_display
                                             && should_restart
@@ -962,12 +961,7 @@ impl WrapperSpace for PanelSpace {
             dimensions.h.try_into().unwrap(),
         );
 
-        client_surface.set_anchor(match self.config.anchor {
-            cosmic_panel_config::PanelAnchor::Left => Anchor::all().difference(Anchor::RIGHT),
-            cosmic_panel_config::PanelAnchor::Right => Anchor::all().difference(Anchor::LEFT),
-            cosmic_panel_config::PanelAnchor::Top => Anchor::all().difference(Anchor::BOTTOM),
-            cosmic_panel_config::PanelAnchor::Bottom => Anchor::all().difference(Anchor::TOP),
-        });
+        client_surface.set_anchor(self.config.anchor.into());
 
         if !self.config.expand_to_edges() {
             let input_region = Region::new(compositor_state)?;

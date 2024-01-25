@@ -493,6 +493,7 @@ dependencies = [
  "cosmic-config",
  "ron",
  "serde",
+ "smithay-client-toolkit",
  "tracing",
  "wayland-protocols-wlr",
  "xdg-shell-wrapper-config",

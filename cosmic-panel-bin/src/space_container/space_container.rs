@@ -204,7 +204,7 @@ impl SpaceContainer {
     // instead, update the space with the new config, and mark it to animate to the new desired size, color, etc
     pub fn update_space<W: WrapperSpace>(
         &mut self,
-        entry: CosmicPanelConfig,
+        mut entry: CosmicPanelConfig,
         compositor_state: &sctk::compositor::CompositorState,
         fractional_scale_manager: Option<&FractionalScalingManager<W>>,
         viewport: Option<&ViewporterState<W>>,
@@ -213,9 +213,21 @@ impl SpaceContainer {
         force_output: Option<WlOutput>,
     ) {
         // exit early if the config hasn't actually changed
-        if !force_output.is_some() && self.space_list.iter_mut().any(|s| s.config == entry) {
+        if !force_output.is_some()
+            && self.space_list.iter_mut().any(|s| {
+                if matches!(entry.output, CosmicPanelOuput::All) {
+                    entry.output = s.config.output.clone();
+                    let ret = s.config == entry;
+                    entry.output = CosmicPanelOuput::All;
+                    return ret;
+                }
+                s.config == entry
+            })
+        {
             info!("config unchanged, skipping");
             return;
+        } else {
+            info!("config changed, updating");
         }
 
         // Lower priority panel surfaces are recreated on the same output as well after updating the config
@@ -234,6 +246,54 @@ impl SpaceContainer {
             Some(c) => c,
             None => return,
         };
+
+        // recreate the original if: output changed
+        // or if the output is the same, but the priority changes to conflict with an adjacent panel
+        // or if applet size changes
+        let must_recreate = self
+            .config
+            .config_list
+            .iter()
+            .any(|c| c.name == entry.name && c.size != entry.size)
+            || entry.output != CosmicPanelOuput::All
+                && self.config.config_list.iter().any(|c| {
+                    // output changed
+                    (c.name == entry.name && c.output != entry.output)
+                    // panel priority changed to conflict with an adjacent panel
+                    || (c.name != entry.name
+                        && c.output == entry.output
+                        && (c.get_priority() > entry.get_priority()
+                            && c.get_priority() < entry.get_priority()
+                            || c.get_priority() < entry.get_priority()
+                                && c.get_priority() > entry.get_priority()))
+                    // applet restarts are required
+                    || ((c.is_horizontal() != entry.is_horizontal()
+                        || c.size != entry.size
+                        || c.background != entry.background
+                        || c.plugins_center != entry.plugins_center
+                        || c.plugins_wings != entry.plugins_wings)
+                        && c.output == entry.output)
+                });
+
+        if !must_recreate {
+            let mut bg_color = match entry.background {
+                CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
+                CosmicPanelBackground::Dark => self.dark_bg,
+                CosmicPanelBackground::Light => self.light_bg,
+                CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], entry.opacity],
+            };
+            bg_color[3] = entry.opacity;
+
+            for space in &mut self.space_list {
+                if space.config.name != entry.name {
+                    continue;
+                }
+
+                entry.output = space.config.output.clone();
+                space.update_config(entry.clone(), bg_color);
+            }
+            return;
+        }
 
         // remove old one if it exists
         self.space_list.retain(|s| {
@@ -297,9 +357,6 @@ impl SpaceContainer {
             let mut configs = self.config.configs_for_output(&output_name);
             configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
             for c in configs {
-                self.space_list.retain(|s| {
-                    s.config.name != c.name || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
-                });
                 let mut new_config = c.clone();
                 if maximized_output {
                     new_config.expand_to_edges = true;
@@ -307,38 +364,18 @@ impl SpaceContainer {
                     new_config.border_radius = 0;
                     new_config.opacity = 1.0;
                 }
-                let mut space = PanelSpace::new(
-                    new_config.clone(),
-                    self.c_focused_surface.clone(),
-                    self.c_hovered_surface.clone(),
-                    self.applet_tx.clone(),
-                    match entry.background {
-                        CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
-                        CosmicPanelBackground::Dark => self.dark_bg,
-                        CosmicPanelBackground::Light => self.light_bg,
-                        CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
-                    },
-                    self.s_display.clone().unwrap(),
-                    self.security_context_manager.clone(),
-                    self.connection.as_ref().unwrap(),
-                );
-                if let Some(s_display) = self.s_display.as_ref() {
-                    space.set_display_handle(s_display.clone());
-                }
-                if let Err(err) = space.new_output(
-                    compositor_state,
-                    fractional_scale_manager,
-                    viewport,
-                    layer_state,
-                    connection,
-                    qh,
-                    Some(wl_output.clone()),
-                    Some(output.clone()),
-                    Some(info.clone()),
-                ) {
-                    error!("Failed to create space for output: {}", err);
-                } else {
-                    self.space_list.push(space);
+                let mut bg_color = match new_config.background {
+                    CosmicPanelBackground::ThemeDefault => self.cur_bg_color(),
+                    CosmicPanelBackground::Dark => self.dark_bg,
+                    CosmicPanelBackground::Light => self.light_bg,
+                    CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], new_config.opacity],
+                };
+                bg_color[3] = new_config.opacity;
+                if let Some(s) = self.space_list.iter_mut().find(|s| {
+                    s.config.name == c.name && s.output.as_ref().map(|o| &o.0) == Some(wl_output)
+                }) {
+                    s.update_config(new_config.clone(), bg_color);
+                    continue;
                 }
             }
         }

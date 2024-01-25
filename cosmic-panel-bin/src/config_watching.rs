@@ -14,7 +14,6 @@ use xdg_shell_wrapper::shared_state::GlobalState;
 enum ConfigUpdate {
     Entries(Vec<String>),
     EntryChanged(String),
-    Opacity(f32, String),
 }
 
 #[derive(Debug, Clone)]
@@ -207,7 +206,6 @@ pub fn watch_config(
                         entry
                     }
                 };
-                info!("Updating entry: {:?}", entry);
                 state.space.update_space(
                     entry,
                     &state.client_state.compositor_state,
@@ -217,9 +215,6 @@ pub fn watch_config(
                     &state.client_state.queue_handle,
                     None,
                 );
-            }
-            channel::Event::Msg(ConfigUpdate::Opacity(o, name)) => {
-                state.space.set_opacity(o, name);
             }
             channel::Event::Closed => {}
         };
@@ -257,20 +252,11 @@ pub fn watch_config(
             CosmicPanelConfig::cosmic_config(&name_clone).expect("Failed to load cosmic config");
         info!("Watching panel config entry: {:?}", helper);
         let watcher = helper
-            .watch(move |helper, keys| {
-                if keys.len() == 1 && keys[0] == "opacity" {
-                    info!("Opacity changed: {:?}", keys);
-                    if let Ok(opacity) = helper.get::<f32>("opacity") {
-                        entries_tx_clone
-                            .send(ConfigUpdate::Opacity(opacity, name_clone.clone()))
-                            .expect("Failed to send Config Update");
-                    }
-                } else {
-                    info!("Entry changed: {:?}", keys);
-                    entries_tx_clone
-                        .send(ConfigUpdate::EntryChanged(name_clone.clone()))
-                        .expect("Failed to send Config Update");
-                }
+            .watch(move |_, keys| {
+                info!("Entry changed: {:?}", keys);
+                entries_tx_clone
+                    .send(ConfigUpdate::EntryChanged(name_clone.clone()))
+                    .expect("Failed to send Config Update");
             })
             .expect("Failed to watch cosmic config");
         watchers.insert(entry.name.clone(), watcher);

@@ -3,6 +3,8 @@ use cctk::{
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
+use cosmic_panel_config::AutoHide;
+use itertools::max;
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
 use super::SpaceContainer;
@@ -78,7 +80,7 @@ impl SpaceContainer {
         self.maximized_toplevels
             .push((toplevel.clone(), info.clone()));
         for output in &info.output {
-            self.apply_maximized(output);
+            self.apply_maximized(output, true);
         }
     }
 
@@ -94,27 +96,40 @@ impl SpaceContainer {
         };
 
         for output in &info.output {
-            self.apply_maximized(output);
+            self.apply_maximized(output, false);
         }
     }
 
-    pub(crate) fn apply_maximized(&self, output: &WlOutput) {
-        let Some(config_name) = self.space_list.iter().find_map(|s| {
-            if s.output.as_ref().iter().any(|(o, _, _)| o == output) {
-                Some(s.config.name.clone())
+    pub(crate) fn apply_maximized(&mut self, output: &WlOutput, maximized: bool) {
+        let mut bg_color = self.cur_bg_color(); // TODO
+
+        for s in self
+            .space_list
+            .iter_mut()
+            .filter(|s| s.output.as_ref().iter().any(|(o, _, _)| o == output))
+        {
+            let c = self
+                .config
+                .config_list
+                .iter()
+                .find(|c| c.name == s.config.name);
+            let mut config = s.config.clone();
+            if maximized {
+                bg_color[3] = 1.0;
+                config.anchor_gap = false;
+                config.expand_to_edges = true;
+                config.autohide = Some(AutoHide::default());
+                config.border_radius = 0;
+                config.exclusive_zone = false;
             } else {
-                None
+                if let Some(c) = c {
+                    config = c.clone();
+                }
+                bg_color[3] = config.opacity;
             }
-        }) else {
-            return;
-        };
-        let Some(config) = self.config.config_list.iter().find(|c| c.name == config_name) else {
-            return;
-        };
-        _ = self.panel_tx.send(crate::PanelCalloopMsg::RestartSpace(
-            config.clone(),
-            output.clone(),
-        ));
+
+            s.set_maximized(maximized, config, bg_color)
+        }
     }
 
     pub(crate) fn apply_toplevel_changes(&mut self) {

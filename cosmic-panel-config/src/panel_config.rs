@@ -4,6 +4,7 @@ use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::bail;
 use cosmic_config::{cosmic_config_derive::CosmicConfigEntry, Config, CosmicConfigEntry};
+use sctk::shell::wlr_layer::Anchor;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -58,6 +59,24 @@ impl Default for PanelAnchor {
 }
 
 #[cfg(feature = "wayland-rs")]
+impl TryFrom<Anchor> for PanelAnchor {
+    type Error = anyhow::Error;
+    fn try_from(align: Anchor) -> Result<Self, Self::Error> {
+        if align.contains(Anchor::LEFT) {
+            Ok(Self::Left)
+        } else if align.contains(Anchor::RIGHT) {
+            Ok(Self::Right)
+        } else if align.contains(Anchor::TOP) {
+            Ok(Self::Top)
+        } else if align.contains(Anchor::BOTTOM) {
+            Ok(Self::Bottom)
+        } else {
+            anyhow::bail!("Invalid Anchor")
+        }
+    }
+}
+
+#[cfg(feature = "wayland-rs")]
 impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     type Error = anyhow::Error;
     fn try_from(align: zwlr_layer_surface_v1::Anchor) -> Result<Self, Self::Error> {
@@ -78,22 +97,26 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 #[cfg(feature = "wayland-rs")]
 impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     fn into(self) -> zwlr_layer_surface_v1::Anchor {
-        let mut anchor = zwlr_layer_surface_v1::Anchor::empty();
+        let mut anchor = zwlr_layer_surface_v1::Anchor::all();
         match self {
-            Self::Left => {
-                anchor.insert(zwlr_layer_surface_v1::Anchor::Left);
-            }
-            Self::Right => {
-                anchor.insert(zwlr_layer_surface_v1::Anchor::Right);
-            }
-            Self::Top => {
-                anchor.insert(zwlr_layer_surface_v1::Anchor::Top);
-            }
-            Self::Bottom => {
-                anchor.insert(zwlr_layer_surface_v1::Anchor::Bottom);
-            }
-        };
-        anchor
+            Self::Left => anchor.difference(zwlr_layer_surface_v1::Anchor::Right),
+            Self::Right => anchor.difference(zwlr_layer_surface_v1::Anchor::Left),
+            Self::Top => anchor.difference(zwlr_layer_surface_v1::Anchor::Bottom),
+            Self::Bottom => anchor.difference(zwlr_layer_surface_v1::Anchor::Top),
+        }
+    }
+}
+
+#[cfg(feature = "wayland-rs")]
+impl Into<Anchor> for PanelAnchor {
+    fn into(self) -> Anchor {
+        let mut anchor = Anchor::all();
+        match self {
+            Self::Left => anchor.difference(Anchor::RIGHT),
+            Self::Right => anchor.difference(Anchor::LEFT),
+            Self::Top => anchor.difference(Anchor::BOTTOM),
+            Self::Bottom => anchor.difference(Anchor::TOP),
+        }
     }
 }
 
@@ -229,7 +252,7 @@ impl Into<WrapperOutput> for CosmicPanelOuput {
 #[cfg(feature = "wayland-rs")]
 // TODO refactor to have separate dock mode config & panel mode config
 /// Config structure for the cosmic panel
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, CosmicConfigEntry)]
+#[derive(Debug, Deserialize, Serialize, Clone, CosmicConfigEntry)]
 #[version = 1]
 #[serde(deny_unknown_fields)]
 pub struct CosmicPanelConfig {
@@ -269,6 +292,29 @@ pub struct CosmicPanelConfig {
     pub margin: u16,
     /// opacity of the panel
     pub opacity: f32,
+}
+
+impl PartialEq for CosmicPanelConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.anchor == other.anchor
+            && self.anchor_gap == other.anchor_gap
+            && self.layer == other.layer
+            && self.keyboard_interactivity == other.keyboard_interactivity
+            && self.size == other.size
+            && self.output == other.output
+            && self.background == other.background
+            && self.plugins_wings == other.plugins_wings
+            && self.plugins_center == other.plugins_center
+            && self.expand_to_edges == other.expand_to_edges
+            && self.padding == other.padding
+            && self.spacing == other.spacing
+            && self.border_radius == other.border_radius
+            && self.exclusive_zone == other.exclusive_zone
+            && self.autohide == other.autohide
+            && self.margin == other.margin
+            && (self.opacity - other.opacity).abs() < 0.01
+    }
 }
 
 #[cfg(feature = "wayland-rs")]
@@ -385,46 +431,15 @@ impl CosmicPanelConfig {
     }
 
     pub fn plugins_left(&self) -> Option<Vec<String>> {
-        if self.expand_to_edges {
-            self.plugins_wings.as_ref().map(|w| w.0.clone())
-        } else {
-            None
-        }
+        self.plugins_wings.as_ref().map(|w| w.0.clone())
     }
 
     pub fn plugins_center(&self) -> Option<Vec<String>> {
-        if self.expand_to_edges || self.plugins_wings.is_none() {
-            self.plugins_center.clone()
-        } else if let Some(plugins_center) = self.plugins_center.as_ref() {
-            let (left, right) = self.plugins_wings.as_ref().unwrap();
-            Some(
-                left.clone()
-                    .into_iter()
-                    .chain(
-                        plugins_center
-                            .clone()
-                            .into_iter()
-                            .chain(right.clone().into_iter()),
-                    )
-                    .collect(),
-            )
-        } else {
-            let (left, right) = self.plugins_wings.as_ref().unwrap();
-            Some(
-                left.clone()
-                    .into_iter()
-                    .chain(right.clone().into_iter())
-                    .collect(),
-            )
-        }
+        self.plugins_center.clone()
     }
 
     pub fn plugins_right(&self) -> Option<Vec<String>> {
-        if self.expand_to_edges {
-            self.plugins_wings.as_ref().map(|w| w.1.clone())
-        } else {
-            None
-        }
+        self.plugins_wings.as_ref().map(|w| w.1.clone())
     }
 
     pub fn anchor(&self) -> PanelAnchor {
