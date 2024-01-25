@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use crate::space_container::SpaceContainer;
 use anyhow::anyhow;
@@ -6,14 +6,18 @@ use cosmic_config::{ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use cosmic_theme::{palette, Theme, ThemeMode};
 use notify::RecommendedWatcher;
-use smithay::reexports::calloop::{channel, LoopHandle};
+use sctk::reexports::calloop::{self, timer::TimeoutAction};
+use smithay::{
+    backend::renderer::gles::ffi::MAX_COMPUTE_IMAGE_UNIFORMS,
+    reexports::calloop::{channel, LoopHandle},
+};
 use tracing::{error, info};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
 #[derive(Debug, Clone)]
 enum ConfigUpdate {
     Entries(Vec<String>),
-    EntryChanged(String),
+    EntryChanged(CosmicPanelConfig),
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +128,7 @@ pub fn watch_config(
     let (entries_tx, entries_rx) = channel::sync_channel::<ConfigUpdate>(30);
 
     let entries_tx_clone = entries_tx.clone();
+
     handle.insert_source(entries_rx, move |event, _, state| {
         match event {
             channel::Event::Msg(ConfigUpdate::Entries(entries)) => {
@@ -157,9 +162,18 @@ pub fn watch_config(
                     let helper = CosmicPanelConfig::cosmic_config(&name_clone)
                         .expect("Failed to load cosmic config");
                     let watcher = helper
-                        .watch(move |_helper, _keys| {
+                        .watch(move |helper, keys| {
+                            let new = match CosmicPanelConfig::get_entry(&helper) {
+                                Ok(entry) => entry,
+                                Err((err, entry)) => {
+                                    for error in err {
+                                        error!("Failed to get entry value: {:?}", error);
+                                    }
+                                    entry
+                                }
+                            };
                             entries_tx_clone
-                                .send(ConfigUpdate::EntryChanged(name_clone.clone()))
+                                .send(ConfigUpdate::EntryChanged(new))
                                 .expect("Failed to send Config Update");
                         })
                         .expect("Failed to watch cosmic config");
@@ -188,26 +202,9 @@ pub fn watch_config(
                     state.space.remove_space(entry);
                 }
             }
-            channel::Event::Msg(ConfigUpdate::EntryChanged(entry)) => {
-                let cosmic_config = match CosmicPanelConfig::cosmic_config(&entry) {
-                    Ok(config) => config,
-                    Err(err) => {
-                        error!("Failed to load cosmic config: {:?}", err);
-                        return;
-                    }
-                };
-
-                let entry = match CosmicPanelConfig::get_entry(&cosmic_config) {
-                    Ok(entry) => entry,
-                    Err((err, entry)) => {
-                        for error in err {
-                            error!("Failed to get entry value: {:?}", error);
-                        }
-                        entry
-                    }
-                };
+            channel::Event::Msg(ConfigUpdate::EntryChanged(config)) => {
                 state.space.update_space(
-                    entry,
+                    config,
                     &state.client_state.compositor_state,
                     state.client_state.fractional_scaling_manager.as_ref(),
                     state.client_state.viewporter_state.as_ref(),
@@ -252,10 +249,19 @@ pub fn watch_config(
             CosmicPanelConfig::cosmic_config(&name_clone).expect("Failed to load cosmic config");
         info!("Watching panel config entry: {:?}", helper);
         let watcher = helper
-            .watch(move |_, keys| {
+            .watch(move |helper, keys| {
                 info!("Entry changed: {:?}", keys);
+                let new = match CosmicPanelConfig::get_entry(&helper) {
+                    Ok(entry) => entry,
+                    Err((err, entry)) => {
+                        for error in err {
+                            error!("Failed to get entry value: {:?}", error);
+                        }
+                        entry
+                    }
+                };
                 entries_tx_clone
-                    .send(ConfigUpdate::EntryChanged(name_clone.clone()))
+                    .send(ConfigUpdate::EntryChanged(new))
                     .expect("Failed to send Config Update");
             })
             .expect("Failed to watch cosmic config");

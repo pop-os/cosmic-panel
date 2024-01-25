@@ -963,13 +963,11 @@ impl WrapperSpace for PanelSpace {
 
         client_surface.set_anchor(self.config.anchor.into());
 
-        if !self.config.expand_to_edges() {
-            let input_region = Region::new(compositor_state)?;
-            client_surface
-                .wl_surface()
-                .set_input_region(Some(input_region.wl_region()));
-            self.input_region.replace(input_region);
-        }
+        let input_region = Region::new(compositor_state)?;
+        client_surface
+            .wl_surface()
+            .set_input_region(Some(input_region.wl_region()));
+        self.input_region.replace(input_region);
 
         let fractional_scale = fractional_scale_manager
             .map(|f| f.fractional_scaling(client_surface.wl_surface(), &qh));

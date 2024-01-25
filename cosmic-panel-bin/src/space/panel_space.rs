@@ -547,19 +547,17 @@ impl PanelSpace {
                 .duration_since(animation_state.started_at)
                 .as_millis() as f32)
                 / animation_state.duration.as_millis() as f32;
+            self.is_dirty = true;
             if progress >= 1.0 {
+                self.bg_color = animation_state.end.bg_color;
                 self.animate_state = None;
-                self.is_dirty = true;
                 return;
             }
-            // dbg!(
-            //     animation_state.start.expanded,
-            //     animation_state.end.expanded,
-            //     progress
-            // );
+
             animation_state.progress = progress;
             let progress = smootherstep(progress);
             let new_cur = AnimatableState {
+                // TODO: blend in perceptual color space?
                 bg_color: [
                     animation_state.start.bg_color[0]
                         + (animation_state.end.bg_color[0] - animation_state.start.bg_color[0])
@@ -574,19 +572,20 @@ impl PanelSpace {
                         + (animation_state.end.bg_color[3] - animation_state.start.bg_color[3])
                             * progress,
                 ],
-                border_radius: animation_state.start.border_radius
-                    + ((animation_state.end.border_radius - animation_state.start.border_radius)
-                        as f32
-                        * progress) as u32,
+                border_radius: (animation_state.start.border_radius as f32
+                    + ((animation_state.end.border_radius as f32
+                        - animation_state.start.border_radius as f32)
+                        * progress))
+                    .round() as u32,
                 expanded: animation_state.start.expanded
                     + ((animation_state.end.expanded - animation_state.start.expanded) as f32
                         * progress),
-                gap: animation_state.start.gap
-                    + ((animation_state.end.gap - animation_state.start.gap) as f32 * progress)
-                        as u16,
+                gap: (animation_state.start.gap as f32
+                    + ((animation_state.end.gap as f32 - animation_state.start.gap as f32)
+                        * progress))
+                    .round() as u16,
             };
             animation_state.cur = new_cur;
-            self.is_dirty = true;
         }
     }
 
@@ -884,8 +883,7 @@ impl PanelSpace {
         if let CosmicPanelBackground::ThemeDefault = self.config.background {
             color[3] = self.config.opacity;
         }
-        self.bg_color = color;
-        self.clear();
+        self.update_config(self.config.clone(), color)
     }
 
     /// clear the panel
@@ -1008,7 +1006,7 @@ impl PanelSpace {
             if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
                 if let Some(l) = self.layer.as_ref() {
                     let margin = config.get_effective_anchor_gap() as i32;
-                    Self::set_margin(config.anchor, margin, margin, l);
+                    Self::set_margin(config.anchor, margin, 0, l);
                     needs_commit = true;
                 }
             }
@@ -1017,6 +1015,9 @@ impl PanelSpace {
         // can't animate anchor changes
         // return early
         if config.anchor() != self.config.anchor() {
+            if config.is_horizontal() != self.config.is_horizontal() {
+                panic!("Can't apply anchor changes when orientation changes. Requires re-creation of the panel.");
+            }
             if let Some(l) = self.layer.as_ref() {
                 l.set_anchor(config.anchor().into());
                 let (width, height) = if config.is_horizontal() {
@@ -1058,33 +1059,28 @@ impl PanelSpace {
             } else {
                 0.0
             },
-            gap: self.config.get_margin(),
+            gap: self.config.get_effective_anchor_gap() as u16,
         };
 
         let end = AnimatableState {
             bg_color,
             border_radius: config.border_radius,
             expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
-            gap: config.get_margin(),
+            gap: config.get_effective_anchor_gap() as u16,
         };
         if let Some(animated_state) = self.animate_state.as_mut() {
             animated_state.start = animated_state.cur.clone();
             animated_state.end = end;
-            animated_state.started_at = animated_state.started_at;
+            animated_state.started_at = Instant::now();
             animated_state.progress = 0.0;
         } else {
             self.animate_state = Some(AnimateState {
                 cur: start.clone(),
                 start,
-                end: AnimatableState {
-                    bg_color,
-                    border_radius: config.border_radius,
-                    expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
-                    gap: config.get_margin(),
-                },
+                end,
                 progress: 0.0,
                 started_at: Instant::now(),
-                duration: Duration::from_millis(200), // TODO make configurable
+                duration: Duration::from_millis(300), // TODO make configurable
             });
         }
 
