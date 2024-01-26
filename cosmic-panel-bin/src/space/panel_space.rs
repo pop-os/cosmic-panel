@@ -883,7 +883,32 @@ impl PanelSpace {
         if let CosmicPanelBackground::ThemeDefault = self.config.background {
             color[3] = self.config.opacity;
         }
-        self.update_config(self.config.clone(), color)
+        if let Some(animate_state) = self.animate_state.as_mut() {
+            animate_state.end.bg_color = color;
+        } else {
+            let start = AnimatableState {
+                bg_color: self.bg_color,
+                border_radius: self.config.border_radius,
+                expanded: if self.config.expand_to_edges {
+                    1.0
+                } else {
+                    0.0
+                },
+                gap: self.config.get_effective_anchor_gap() as u16,
+            };
+            let cur = start.clone();
+            let mut end = start.clone();
+            end.bg_color = color;
+            self.animate_state = Some(AnimateState {
+                start,
+                end,
+                cur,
+                started_at: Instant::now(),
+                progress: 0.0,
+                duration: Duration::from_millis(300),
+            })
+        }
+        self.bg_color = color;
     }
 
     /// clear the panel

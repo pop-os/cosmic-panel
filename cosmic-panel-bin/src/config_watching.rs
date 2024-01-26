@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use crate::space_container::SpaceContainer;
 use anyhow::anyhow;
@@ -6,11 +6,7 @@ use cosmic_config::{ConfigGet, CosmicConfigEntry};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use cosmic_theme::{palette, Theme, ThemeMode};
 use notify::RecommendedWatcher;
-use sctk::reexports::calloop::{self, timer::TimeoutAction};
-use smithay::{
-    backend::renderer::gles::ffi::MAX_COMPUTE_IMAGE_UNIFORMS,
-    reexports::calloop::{channel, LoopHandle},
-};
+use smithay::reexports::calloop::{channel, LoopHandle};
 use tracing::{error, info};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
