@@ -26,13 +26,9 @@ impl PanelSpace {
         let spacing_scaled = spacing_u32 as f64 * self.scale;
         // First try partitioning the panel evenly into N spaces.
         // If all windows fit into each space, then set their offsets and return.
-        let (list_length, list_thickness, actual_length) = match anchor {
-            PanelAnchor::Left | PanelAnchor::Right => {
-                (self.dimensions.h, self.dimensions.w, self.actual_size.h)
-            }
-            PanelAnchor::Top | PanelAnchor::Bottom => {
-                (self.dimensions.w, self.dimensions.h, self.actual_size.w)
-            }
+        let list_thickness = match anchor {
+            PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
+            PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
         };
         let is_dock = !self.config.expand_to_edges();
 

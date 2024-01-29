@@ -21,7 +21,7 @@ use sctk::{
     },
     shell::{
         wlr_layer::{
-            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
+            KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
         },
         xdg::popup,
         WaylandSurface,

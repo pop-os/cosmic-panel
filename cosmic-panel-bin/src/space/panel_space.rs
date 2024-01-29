@@ -1,6 +1,5 @@
 use std::{
     cell::{Cell, RefCell},
-    mem,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -8,7 +7,6 @@ use std::{
 };
 
 use cctk::wayland_client::Connection;
-use cosmic_theme::palette::hues::OklabHueIter;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -45,7 +43,6 @@ use smithay::{
         wayland_server::{backend::ClientId, DisplayHandle},
     },
     render_elements,
-    utils::Physical,
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -984,7 +981,6 @@ impl PanelSpace {
     pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4]) {
         // avoid animating if currently maximized
         if self.maximized {
-            self.config = config;
             return;
         }
         let mut needs_commit = false;

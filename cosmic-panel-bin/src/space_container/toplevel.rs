@@ -3,8 +3,6 @@ use cctk::{
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
-use cosmic_panel_config::AutoHide;
-use itertools::max;
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
 use super::SpaceContainer;
