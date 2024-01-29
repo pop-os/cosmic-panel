@@ -118,9 +118,7 @@ impl SpaceContainer {
                 bg_color[3] = 1.0;
                 config.anchor_gap = false;
                 config.expand_to_edges = true;
-                config.autohide = Some(AutoHide::default());
                 config.border_radius = 0;
-                config.exclusive_zone = false;
             } else {
                 if let Some(c) = c {
                     config = c.clone();
