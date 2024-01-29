@@ -158,7 +158,7 @@ pub fn watch_config(
                     let helper = CosmicPanelConfig::cosmic_config(&name_clone)
                         .expect("Failed to load cosmic config");
                     let watcher = helper
-                        .watch(move |helper, keys| {
+                        .watch(move |helper, _keys| {
                             let new = match CosmicPanelConfig::get_entry(&helper) {
                                 Ok(entry) => entry,
                                 Err((err, entry)) => {
