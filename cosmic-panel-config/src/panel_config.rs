@@ -493,6 +493,14 @@ impl CosmicPanelConfig {
         let entry_name = format!("{NAME}.{}", name);
         Config::new(&entry_name, VERSION)
     }
+
+    pub fn maximize(&mut self) {
+        self.expand_to_edges = true;
+        self.margin = 0;
+        self.border_radius = 0;
+        self.opacity = 1.0;
+        self.anchor_gap = false;
+    }
 }
 
 #[cfg(feature = "wayland-rs")]
