@@ -239,7 +239,6 @@ impl PanelSpace {
         let center_sum = center_sum_scaled / self.scale;
         let right_sum = right_sum_scaled / self.scale;
 
-        // TODO adjust lengthwise pose for animation
         let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
             (new_logical_length as f32
                 + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
@@ -251,17 +250,20 @@ impl PanelSpace {
         };
         let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
 
-        let requested_eq_length: f64 = container_length as f64 / num_lists as f64;
+        // eq length should assign space evenly to all lists even if they are empty
+        let requested_eq_length: f64 = container_length as f64 / 3.;
         let center_left_spacing = if left_sum < requested_eq_length as f64
             && center_sum < requested_eq_length as f64
             && right_sum < requested_eq_length as f64
         {
             let center_spacing = (requested_eq_length as f64 - center_sum) / 2.0;
-            let left_spacing = requested_eq_length as f64 - left_sum;
+            let left_spacing = requested_eq_length as f64 - left_sum - padding_u32 as f64;
 
             left_spacing + center_spacing
         } else {
-            (container_length as f64 - left_sum - center_sum - right_sum) as f64 / 2.
+            (container_length as f64 - left_sum - center_sum - right_sum - 2. * padding_u32 as f64)
+                as f64
+                / 2.
         };
 
         let mut prev: f64 = container_lengthwise_pos as f64 + padding_u32 as f64;
