@@ -745,8 +745,10 @@ impl PanelSpace {
                             let client_egl_display = ClientEglDisplay {
                                 display: self.c_display.as_ref().unwrap().clone(),
                             };
-                            EGLDisplay::new(client_egl_display)
-                                .expect("Failed to create EGL display")
+                            unsafe {
+                                EGLDisplay::new(client_egl_display)
+                                    .expect("Failed to create EGL display")
+                            }
                         };
 
                         let egl_context = EGLContext::new_with_config(
