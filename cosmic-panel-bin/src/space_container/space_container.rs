@@ -199,16 +199,28 @@ impl SpaceContainer {
         qh: &QueueHandle<GlobalState<W>>,
         force_output: Option<WlOutput>,
     ) {
-        // exit early if the config hasn't actually changed
+        // if the output is set to "all", we need to check if the config is the same for all outputs
+        // if the output is set to a specific output, we need to make sure it doesn't exist on another output
+        let mut output_count = if  matches!(entry.output, CosmicPanelOuput::All) {
+            self.outputs.len()
+        } else {
+            self.space_list.iter().filter(|s| s.config.name == entry.name).count()
+        };
+
         if !force_output.is_some()
             && self.space_list.iter_mut().any(|s| {
-                if matches!(entry.output, CosmicPanelOuput::All) {
+                let ret = if matches!(entry.output, CosmicPanelOuput::All) {
                     entry.output = s.config.output.clone();
                     let ret = s.config == entry;
                     entry.output = CosmicPanelOuput::All;
-                    return ret;
+                    ret
+                } else {
+                    s.config == entry
+                };
+                if ret {
+                    output_count -= 1;
                 }
-                s.config == entry
+                return output_count <= 0;
             })
         {
             info!("config unchanged, skipping");
@@ -221,17 +233,26 @@ impl SpaceContainer {
             Some(c) => c,
             None => return,
         };
+        
+        let output_count_mismatch = match entry.output {
+            CosmicPanelOuput::All => self.space_list.iter().filter(|s| s.config.name == entry.name).count() != self.outputs.len(),
+            CosmicPanelOuput::Name(_) => self.space_list.iter().filter(|s| s.config.name == entry.name).count() != 1,
+            _ => true,
+        };
 
         // recreate the original if: output changed
         // or if the output is the same, but the priority changes to conflict with an adjacent panel
         // or if applet size changes
-        let must_recreate = self.config.config_list.iter().any(|c| {
+        let must_recreate =             
+        // implies that there is at least one output which needs to be recreated
+        output_count_mismatch
+        || self.config.config_list.iter().any(|c| {
             // size changed
             c.name == entry.name && c.size != entry.size
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
-            // panel priority changed to conflict with an adjacent panel
+           // panel priority changed to conflict with an adjacent panel
             || (c.name != entry.name
                 && c.output == entry.output
                 && (c.get_priority() > entry.get_priority()
@@ -247,17 +268,8 @@ impl SpaceContainer {
                 || c.plugins_wings != entry.plugins_wings)))
         });
 
-        // Lower priority panel surfaces are recreated on the same output as well after updating the config
-        if let Some(config) = self
-            .config
-            .config_list
-            .iter_mut()
-            .find(|c| c.name == entry.name)
-        {
-            *config = entry.clone();
-        } else {
-            self.config.config_list.push(entry.clone());
-        }
+        self.config.config_list.retain(|c| c.name != entry.name);
+        self.config.config_list.push(entry.clone());
 
         if !must_recreate {
             let mut bg_color = match entry.background {
@@ -281,8 +293,9 @@ impl SpaceContainer {
 
         // remove old one if it exists
         self.space_list.retain(|s| {
+            // keep if the name is different or the output is different
             s.config.name != entry.name
-                || s.output
+                || force_output.is_some() && s.output
                     .as_ref()
                     .map(|(wl_output, _, _)| Some(wl_output) != force_output.as_ref())
                     .unwrap_or_default()
@@ -332,18 +345,15 @@ impl SpaceContainer {
 
         let maximized_outputs = self.maximized_outputs();
         for (wl_output, output, info) in outputs {
+            let output_name = output.name();
             if force_output.as_ref() != Some(wl_output) && force_output.is_some() {
                 continue;
             }
 
-            let output_name = output.name();
             let maximized_output = maximized_outputs.contains(wl_output);
             let mut configs = self.config.configs_for_output(&output_name);
             configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
             for c in configs {
-                self.space_list.retain(|s| {
-                    s.config.name != c.name || Some(wl_output) != s.output.as_ref().map(|o| &o.0)
-                });
                 let mut new_config = c.clone();
                 if maximized_output {
                     new_config.expand_to_edges = true;
@@ -351,6 +361,7 @@ impl SpaceContainer {
                     new_config.border_radius = 0;
                     new_config.opacity = 1.0;
                 }
+                new_config.output = CosmicPanelOuput::Name(output_name.clone());
                 let mut space = PanelSpace::new(
                     new_config.clone(),
                     self.c_focused_surface.clone(),
