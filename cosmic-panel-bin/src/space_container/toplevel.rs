@@ -114,9 +114,7 @@ impl SpaceContainer {
             let mut config = s.config.clone();
             if maximized {
                 bg_color[3] = 1.0;
-                config.anchor_gap = false;
-                config.expand_to_edges = true;
-                config.border_radius = 0;
+                config.maximize();
             } else {
                 if let Some(c) = c {
                     config = c.clone();

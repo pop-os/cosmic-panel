@@ -356,10 +356,7 @@ impl SpaceContainer {
             for c in configs {
                 let mut new_config = c.clone();
                 if maximized_output {
-                    new_config.expand_to_edges = true;
-                    new_config.margin = 0;
-                    new_config.border_radius = 0;
-                    new_config.opacity = 1.0;
+                    new_config.maximize();
                 }
                 new_config.output = CosmicPanelOuput::Name(output_name.clone());
                 let mut space = PanelSpace::new(
