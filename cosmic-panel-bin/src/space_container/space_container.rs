@@ -10,7 +10,7 @@ use cctk::{
 };
 use cosmic_config::CosmicConfigEntry;
 use cosmic_panel_config::{
-    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
+    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput, PanelAnchor
 };
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
@@ -239,7 +239,20 @@ impl SpaceContainer {
             CosmicPanelOuput::Name(_) => self.space_list.iter().filter(|s| s.config.name == entry.name).count() != 1,
             _ => true,
         };
-
+        let new_priority = entry.get_priority();
+        let (old_priority, old_anchor) = self.config.config_list.iter().find(|c| c.name == entry.name).map(|c| (c.get_priority(), c.anchor)).unwrap_or((0, entry.anchor));
+        
+        
+        let opposite_anchor = if old_anchor == entry.anchor {
+            None
+        } else {
+            Some(match entry.anchor {
+                PanelAnchor::Top => PanelAnchor::Bottom,
+                PanelAnchor::Bottom => PanelAnchor::Top,
+                PanelAnchor::Left => PanelAnchor::Right,
+                PanelAnchor::Right => PanelAnchor::Left,
+            })
+        };
         // recreate the original if: output changed
         // or if the output is the same, but the priority changes to conflict with an adjacent panel
         // or if applet size changes
@@ -255,10 +268,9 @@ impl SpaceContainer {
            // panel priority changed to conflict with an adjacent panel
             || (c.name != entry.name
                 && c.output == entry.output
-                && (c.get_priority() > entry.get_priority()
-                    && c.get_priority() < entry.get_priority()
-                    || c.get_priority() < entry.get_priority()
-                        && c.get_priority() > entry.get_priority()))
+                && (c.get_priority() > new_priority && c.get_priority() < old_priority
+                    || c.get_priority() < new_priority && c.get_priority() > old_priority))
+                && Some(c.anchor) != opposite_anchor
             // applet restarts are required
             || ((c.name == entry.name
                 && (c.is_horizontal() != entry.is_horizontal()
@@ -354,6 +366,18 @@ impl SpaceContainer {
             let mut configs = self.config.configs_for_output(&output_name);
             configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
             for c in configs {
+                let is_recreated = c.name == entry.name
+                    || Some(c.anchor) != opposite_anchor && (c.get_priority() < new_priority && c.get_priority() > old_priority
+                    || c.get_priority() > new_priority && c.get_priority() < old_priority);
+                if !is_recreated {
+                    continue;
+                }
+                // remove old one if it exists
+                self.space_list.retain(|s| {
+                    // keep if the name is different or the output is different
+                    s.config.name != c.name
+                        || s.output.as_ref().map(|(_, o, _)| o.name() != output_name).unwrap_or_default()
+                });
                 let mut new_config = c.clone();
                 if maximized_output {
                     new_config.maximize();
