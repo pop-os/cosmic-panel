@@ -298,10 +298,10 @@ impl PanelSpace {
             }
 
             c_hovered_surface.iter().fold(
-                if self.output_has_toplevel {
-                    FocusStatus::LastFocused(self.start_instant)
-                } else {
+                if self.animate_state.is_some() || !self.output_has_toplevel {
                     FocusStatus::Focused
+                } else {
+                    FocusStatus::LastFocused(self.start_instant)
                 },
                 |acc, (surface, _, f)| {
                     if self
@@ -470,7 +470,7 @@ impl PanelSpace {
 
                     if progress > total_t {
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(panel_size);
+                            layer_surface.set_exclusive_zone(panel_size + handle);
                         }
                         Self::set_margin(
                             self.config.anchor,
@@ -631,12 +631,13 @@ impl PanelSpace {
                         PanelAnchor::Left | PanelAnchor::Right => width,
                         PanelAnchor::Top | PanelAnchor::Bottom => height,
                     };
+                    let handle = self.config.get_hide_handle().unwrap() as i32;
 
                     if self.config.autohide.is_none() && self.config.exclusive_zone() {
                         self.layer
                             .as_ref()
                             .unwrap()
-                            .set_exclusive_zone(list_thickness as i32);
+                            .set_exclusive_zone(list_thickness as i32 + handle);
                         if self.config.get_effective_anchor_gap() > 0 {
                             Self::set_margin(
                                 self.config.anchor,
@@ -649,7 +650,7 @@ impl PanelSpace {
                         && matches!(self.visibility, Visibility::Hidden)
                     {
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(list_thickness as i32);
+                            layer_surface.set_exclusive_zone(list_thickness as i32 + handle);
                         }
                         Self::set_margin(
                             self.config.anchor,
@@ -985,6 +986,8 @@ impl PanelSpace {
         if self.maximized {
             return;
         }
+        let handle = self.config.get_hide_handle().unwrap() as i32;
+
         let mut needs_commit = false;
         if config.exclusive_zone != self.config.exclusive_zone {
             if let Some(l) = self.layer.as_ref() {
@@ -997,26 +1000,20 @@ impl PanelSpace {
                     -1
                 };
 
-                l.set_exclusive_zone(list_thickness as i32);
+                l.set_exclusive_zone(list_thickness as i32 + handle);
                 needs_commit = true;
             }
         }
-        self.visibility = Visibility::Visible;
-        // adjust last hover time so that the panel doesn't hide immediately
-        if let Some(c_hovered_surface) = self.c_hovered_surface.borrow_mut().iter_mut().next() {
-            if matches!(c_hovered_surface.2, FocusStatus::LastFocused(_)) {
-                c_hovered_surface.2 = FocusStatus::LastFocused(Instant::now());
-            }
-        }
+
         if config.autohide.is_none() && self.config.autohide.is_some() {
             if let Some(l) = self.layer.as_ref() {
                 let margin = config.get_effective_anchor_gap() as i32;
-                Self::set_margin(config.anchor, margin, margin, l);
+                Self::set_margin(config.anchor, margin, 0, l);
                 let list_thickness = match self.config.anchor() {
                     PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
                     PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
                 };
-                l.set_exclusive_zone(list_thickness as i32);
+                l.set_exclusive_zone(list_thickness as i32 + handle);
                 let (width, height) = if self.config.is_horizontal() {
                     (0, self.dimensions.h)
                 } else {
