@@ -406,7 +406,7 @@ impl PanelSpace {
 
                     if progress > total_t {
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(panel_size + handle);
+                            layer_surface.set_exclusive_zone(panel_size);
                         }
                         Self::set_margin(self.config.anchor, margin, target, layer_surface);
                         layer_shell_wl_surface.commit();
@@ -470,7 +470,7 @@ impl PanelSpace {
 
                     if progress > total_t {
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(panel_size + handle);
+                            layer_surface.set_exclusive_zone(panel_size);
                         }
                         Self::set_margin(
                             self.config.anchor,
@@ -631,13 +631,12 @@ impl PanelSpace {
                         PanelAnchor::Left | PanelAnchor::Right => width,
                         PanelAnchor::Top | PanelAnchor::Bottom => height,
                     };
-                    let handle = self.config.get_hide_handle().unwrap() as i32;
 
                     if self.config.autohide.is_none() && self.config.exclusive_zone() {
                         self.layer
                             .as_ref()
                             .unwrap()
-                            .set_exclusive_zone(list_thickness as i32 + handle);
+                            .set_exclusive_zone(list_thickness as i32);
                         if self.config.get_effective_anchor_gap() > 0 {
                             Self::set_margin(
                                 self.config.anchor,
@@ -650,7 +649,7 @@ impl PanelSpace {
                         && matches!(self.visibility, Visibility::Hidden)
                     {
                         if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(list_thickness as i32 + handle);
+                            layer_surface.set_exclusive_zone(list_thickness as i32);
                         }
                         Self::set_margin(
                             self.config.anchor,
@@ -986,7 +985,6 @@ impl PanelSpace {
         if self.maximized {
             return;
         }
-        let handle = self.config.get_hide_handle().unwrap() as i32;
 
         let mut needs_commit = false;
         if config.exclusive_zone != self.config.exclusive_zone {
@@ -1000,7 +998,7 @@ impl PanelSpace {
                     -1
                 };
 
-                l.set_exclusive_zone(list_thickness as i32 + handle);
+                l.set_exclusive_zone(list_thickness as i32);
                 needs_commit = true;
             }
         }
@@ -1013,7 +1011,7 @@ impl PanelSpace {
                     PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
                     PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
                 };
-                l.set_exclusive_zone(list_thickness as i32 + handle);
+                l.set_exclusive_zone(list_thickness as i32);
                 let (width, height) = if self.config.is_horizontal() {
                     (0, self.dimensions.h)
                 } else {
