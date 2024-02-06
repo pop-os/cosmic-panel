@@ -10,7 +10,8 @@ lto = "thin"
 [patch."https://github.com/Smithay/client-toolkit"]
 sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit", rev = "2e9bf9f" }
 [patch."https://github.com/pop-os/xdg-shell-wrapper"]
-# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "feat-security-context" }
-# xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "feat-security-context" }
+# xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
+# xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
+
 [workspace.dependencies]
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "2e9bf9f" }
