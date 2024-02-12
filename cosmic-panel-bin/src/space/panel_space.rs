@@ -92,16 +92,15 @@ render_elements! {
     WaylandSurface=WaylandSurfaceRenderElement<R>
 }
 
-pub type Clients = Arc<
-    Mutex<
-        Vec<(
-            String,
-            Client,
-            Option<UnixStream>,
-            Option<WpSecurityContextV1>,
-        )>,
-    >,
->;
+pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
+
+#[derive(Debug)]
+pub struct PanelClient {
+    pub name: String,
+    pub client: Client,
+    pub stream: Option<UnixStream>,
+    pub security_ctx: Option<WpSecurityContextV1>,
+}
 
 #[derive(Debug, Clone)]
 pub struct AnimatableState {
@@ -745,10 +744,8 @@ impl PanelSpace {
                             let client_egl_display = ClientEglDisplay {
                                 display: self.c_display.as_ref().unwrap().clone(),
                             };
-                            unsafe {
-                                EGLDisplay::new(client_egl_display)
-                                    .expect("Failed to create EGL display")
-                            }
+                            EGLDisplay::new(client_egl_display)
+                                .expect("Failed to create EGL display")
                         };
 
                         let egl_context = EGLContext::new_with_config(
