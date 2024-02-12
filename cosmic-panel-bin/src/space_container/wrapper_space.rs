@@ -87,6 +87,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -186,6 +187,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -240,6 +242,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
 
                         if let Some(s_display) = self.s_display.as_ref() {

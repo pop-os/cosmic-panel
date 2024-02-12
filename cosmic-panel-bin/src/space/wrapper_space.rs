@@ -264,6 +264,7 @@ impl WrapperSpace for PanelSpace {
                         client: c,
                         stream: Some(s),
                         security_ctx: None,
+                        is_minimize: false,
                     }
                 })
                 .collect();
@@ -282,6 +283,7 @@ impl WrapperSpace for PanelSpace {
                         client: c,
                         stream: Some(s),
                         security_ctx: None,
+                        is_minimize: false,
                     }
                 })
                 .collect();
@@ -300,6 +302,7 @@ impl WrapperSpace for PanelSpace {
                         client: c,
                         stream: Some(s),
                         security_ctx: None,
+                        is_minimize: false,
                     }
                 })
                 .collect();
@@ -337,6 +340,9 @@ impl WrapperSpace for PanelSpace {
             ];
             info!("{:?}", &desktop_ids);
 
+            // only allow 1 per panel
+            let mut has_minimize = false;
+
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
                 if let Some(position) =
                     desktop_ids
@@ -353,6 +359,7 @@ impl WrapperSpace for PanelSpace {
                             client,
                             stream,
                             security_ctx,
+                            is_minimize,
                         },
                         my_list,
                     ) = desktop_ids.remove(position);
@@ -370,6 +377,12 @@ impl WrapperSpace for PanelSpace {
 
                                 let requests_wayland_display =
                                     entry.desktop_entry("X-HostWaylandDisplay").is_some();
+
+                                if !has_minimize {
+                                    has_minimize =
+                                        entry.desktop_entry("X-MinimizeApplet").is_some();
+                                    *is_minimize = has_minimize;
+                                }
 
                                 let mut exec_iter = Shlex::new(exec);
                                 let exec = exec_iter

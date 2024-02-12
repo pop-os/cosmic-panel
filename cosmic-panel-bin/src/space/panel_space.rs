@@ -11,9 +11,12 @@ use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
     output::OutputInfo,
-    reexports::client::{
-        protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
-        Proxy, QueueHandle,
+    reexports::{
+        calloop,
+        client::{
+            protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
+            Proxy, QueueHandle,
+        },
     },
     shell::{
         wlr_layer::{LayerSurface, LayerSurfaceConfigure},
@@ -43,6 +46,7 @@ use smithay::{
         wayland_server::{backend::ClientId, DisplayHandle},
     },
     render_elements,
+    utils::Rectangle,
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -78,6 +82,8 @@ use xdg_shell_wrapper::{
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
+use crate::PanelCalloopMsg;
+
 pub enum AppletMsg {
     NewProcess(String, Process),
     NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
@@ -100,6 +106,7 @@ pub struct PanelClient {
     pub client: Client,
     pub stream: Option<UnixStream>,
     pub security_ctx: Option<WpSecurityContextV1>,
+    pub is_minimize: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +175,8 @@ pub(crate) struct PanelSpace {
     pub(crate) security_context_manager: Option<SecurityContextManager>,
     pub(crate) animate_state: Option<AnimateState>,
     pub maximized: bool,
+    pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+    pub(crate) minimize_applet_rect: Rectangle<i32, Logical>,
 }
 
 impl PanelSpace {
@@ -181,6 +190,7 @@ impl PanelSpace {
         s_display: DisplayHandle,
         security_context_manager: Option<SecurityContextManager>,
         conn: &Connection,
+        panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     ) -> Self {
         bg_color[3] = config.opacity;
         let visibility = if config.autohide.is_none() {
@@ -230,6 +240,8 @@ impl PanelSpace {
             security_context_manager,
             animate_state: None,
             maximized: false,
+            panel_tx,
+            minimize_applet_rect: Default::default(),
         }
     }
 

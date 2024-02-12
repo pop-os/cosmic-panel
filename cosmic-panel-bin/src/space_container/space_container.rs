@@ -1,8 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    space::{AppletMsg, PanelSpace},
-    PanelCalloopMsg,
+    minimize::MinimizeApplet, space::{AppletMsg, PanelSpace}, PanelCalloopMsg
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
@@ -55,6 +54,8 @@ pub struct SpaceContainer {
     pub(crate) light_bg: [f32; 4],
     pub(crate) dark_bg: [f32; 4],
     pub(crate) security_context_manager: Option<SecurityContextManager>,
+    /// map from output name to minimized applet info
+    pub(crate) minimized_applets: HashMap<String, MinimizeApplet>
 }
 
 impl SpaceContainer {
@@ -99,6 +100,7 @@ impl SpaceContainer {
             light_bg: [light.red, light.green, light.blue, light.alpha],
             dark_bg: [dark.red, dark.green, dark.blue, dark.alpha],
             security_context_manager: None,
+            minimized_applets: HashMap::new()
         }
     }
 
@@ -329,6 +331,7 @@ impl SpaceContainer {
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
+                    self.panel_tx.clone()
                 );
                 if let Err(err) = space.new_output(
                     compositor_state,
@@ -397,6 +400,7 @@ impl SpaceContainer {
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
+                    self.panel_tx.clone()
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());

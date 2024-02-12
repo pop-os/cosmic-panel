@@ -1,4 +1,5 @@
 mod config_watching;
+mod minimize;
 mod notifications;
 mod space;
 mod space_container;
@@ -8,6 +9,7 @@ use cctk::wayland_client::protocol::wl_output::WlOutput;
 use config_watching::{watch_config, watch_cosmic_theme};
 use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
+use minimize::MinimizeApplet;
 use notifications::notifications_conn;
 use sctk::reexports::calloop::channel::SyncSender;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
@@ -28,6 +30,10 @@ use xdg_shell_wrapper::{
 pub enum PanelCalloopMsg {
     ClientSocketPair(ClientId),
     RestartSpace(CosmicPanelConfig, WlOutput),
+    MinimizeRect {
+        output: String,
+        applet_info: MinimizeApplet,
+    },
 }
 
 fn main() -> Result<()> {
@@ -116,6 +122,10 @@ fn main() -> Result<()> {
                                 Some(o),
                             );
                         }
+                        PanelCalloopMsg::MinimizeRect {
+                            output,
+                            applet_info,
+                        } => minimize::set_rectangles(state, output, applet_info),
                     },
                     calloop::channel::Event::Closed => {}
                 };
