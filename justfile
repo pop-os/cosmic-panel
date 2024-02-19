@@ -43,12 +43,13 @@ check-json: (check '--message-format=json')
 # Installs files
 install:
     install -Dm0755 {{bin-src}} {{bin-dst}}
-    find data/default_schema -type f -exec install -Dm0644 {} {{default-schema-target}}/{} \;
+    find 'data'/'default_schema' -type f -exec echo {} \; | rev | cut -d'/' -f-3 | rev | xargs -d '\n' -I {} install -Dm0644 'data'/'default_schema'/{} {{default-schema-target}}/{}
 
 # Uninstalls installed files
 uninstall:
     rm {{bin-dst}}
-    rm {{default-schema-target}}/{{APPID}}*
+    rm -rf {{default-schema-target}}/{{APPID}}*
+    
 # Vendor dependencies locally
 vendor:
     mkdir -p .cargo
