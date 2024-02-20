@@ -3,6 +3,7 @@ use cctk::{
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
+use cosmic_panel_config::CosmicPanelBackground;
 use xdg_shell_wrapper::space::ToplevelInfoSpace;
 
 use super::SpaceContainer;
@@ -99,7 +100,7 @@ impl SpaceContainer {
     }
 
     pub(crate) fn apply_maximized(&mut self, output: &WlOutput, maximized: bool) {
-        let mut bg_color = self.cur_bg_color(); // TODO
+        let bg_color = self.cur_bg_color();
 
         for s in self
             .space_list
@@ -112,6 +113,8 @@ impl SpaceContainer {
                 .iter()
                 .find(|c| c.name == s.config.name);
             let mut config = s.config.clone();
+            let mut bg_color = bg_color;
+
             if maximized {
                 bg_color[3] = 1.0;
                 config.maximize();
@@ -119,7 +122,12 @@ impl SpaceContainer {
                 if let Some(c) = c {
                     config = c.clone();
                 }
-                bg_color[3] = config.opacity;
+                bg_color = match config.background {
+                    CosmicPanelBackground::ThemeDefault => bg_color,
+                    CosmicPanelBackground::Dark => self.dark_bg,
+                    CosmicPanelBackground::Light => self.light_bg,
+                    CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], config.opacity],
+                };
             }
 
             s.set_maximized(maximized, config, bg_color)
