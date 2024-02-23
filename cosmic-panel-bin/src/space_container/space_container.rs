@@ -1,7 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    minimize::MinimizeApplet, space::{AppletMsg, PanelSpace}, PanelCalloopMsg
+    minimize::MinimizeApplet,
+    space::{AppletMsg, PanelSpace},
+    PanelCalloopMsg,
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
@@ -9,7 +11,8 @@ use cctk::{
 };
 use cosmic_config::CosmicConfigEntry;
 use cosmic_panel_config::{
-    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput, PanelAnchor
+    CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
+    PanelAnchor,
 };
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
@@ -55,7 +58,7 @@ pub struct SpaceContainer {
     pub(crate) dark_bg: [f32; 4],
     pub(crate) security_context_manager: Option<SecurityContextManager>,
     /// map from output name to minimized applet info
-    pub(crate) minimized_applets: HashMap<String, MinimizeApplet>
+    pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
 }
 
 impl SpaceContainer {
@@ -100,7 +103,7 @@ impl SpaceContainer {
             light_bg: [light.red, light.green, light.blue, light.alpha],
             dark_bg: [dark.red, dark.green, dark.blue, dark.alpha],
             security_context_manager: None,
-            minimized_applets: HashMap::new()
+            minimized_applets: HashMap::new(),
         }
     }
 
@@ -203,10 +206,13 @@ impl SpaceContainer {
     ) {
         // if the output is set to "all", we need to check if the config is the same for all outputs
         // if the output is set to a specific output, we need to make sure it doesn't exist on another output
-        let mut output_count = if  matches!(entry.output, CosmicPanelOuput::All) {
+        let mut output_count = if matches!(entry.output, CosmicPanelOuput::All) {
             self.outputs.len()
         } else {
-            self.space_list.iter().filter(|s| s.config.name == entry.name).count()
+            self.space_list
+                .iter()
+                .filter(|s| s.config.name == entry.name)
+                .count()
         };
 
         if !force_output.is_some()
@@ -235,16 +241,33 @@ impl SpaceContainer {
             Some(c) => c,
             None => return,
         };
-        
+
         let output_count_mismatch = match entry.output {
-            CosmicPanelOuput::All => self.space_list.iter().filter(|s| s.config.name == entry.name).count() != self.outputs.len(),
-            CosmicPanelOuput::Name(_) => self.space_list.iter().filter(|s| s.config.name == entry.name).count() != 1,
+            CosmicPanelOuput::All => {
+                self.space_list
+                    .iter()
+                    .filter(|s| s.config.name == entry.name)
+                    .count()
+                    != self.outputs.len()
+            }
+            CosmicPanelOuput::Name(_) => {
+                self.space_list
+                    .iter()
+                    .filter(|s| s.config.name == entry.name)
+                    .count()
+                    != 1
+            }
             _ => true,
         };
         let new_priority = entry.get_priority();
-        let (old_priority, old_anchor) = self.config.config_list.iter().find(|c| c.name == entry.name).map(|c| (c.get_priority(), c.anchor)).unwrap_or((0, entry.anchor));
-        
-        
+        let (old_priority, old_anchor) = self
+            .config
+            .config_list
+            .iter()
+            .find(|c| c.name == entry.name)
+            .map(|c| (c.get_priority(), c.anchor))
+            .unwrap_or((0, entry.anchor));
+
         let opposite_anchor = if old_anchor == entry.anchor {
             None
         } else {
@@ -258,7 +281,7 @@ impl SpaceContainer {
         // recreate the original if: output changed
         // or if the output is the same, but the priority changes to conflict with an adjacent panel
         // or if applet size changes
-        let must_recreate =             
+        let must_recreate =
         // implies that there is at least one output which needs to be recreated
         output_count_mismatch
         || self.config.config_list.iter().any(|c| {
@@ -309,10 +332,11 @@ impl SpaceContainer {
         self.space_list.retain(|s| {
             // keep if the name is different or the output is different
             s.config.name != entry.name
-                || force_output.is_some() && s.output
-                    .as_ref()
-                    .map(|(wl_output, _, _)| Some(wl_output) != force_output.as_ref())
-                    .unwrap_or_default()
+                || force_output.is_some()
+                    && s.output
+                        .as_ref()
+                        .map(|(wl_output, _, _)| Some(wl_output) != force_output.as_ref())
+                        .unwrap_or_default()
         });
 
         let outputs: Vec<_> = match &entry.output {
@@ -331,7 +355,7 @@ impl SpaceContainer {
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
-                    self.panel_tx.clone()
+                    self.panel_tx.clone(),
                 );
                 if let Err(err) = space.new_output(
                     compositor_state,
@@ -370,8 +394,9 @@ impl SpaceContainer {
             configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
             for c in configs {
                 let is_recreated = c.name == entry.name
-                    || Some(c.anchor) != opposite_anchor && (c.get_priority() < new_priority && c.get_priority() > old_priority
-                    || c.get_priority() > new_priority && c.get_priority() < old_priority);
+                    || Some(c.anchor) != opposite_anchor
+                        && (c.get_priority() < new_priority && c.get_priority() > old_priority
+                            || c.get_priority() > new_priority && c.get_priority() < old_priority);
                 if !is_recreated {
                     continue;
                 }
@@ -379,7 +404,10 @@ impl SpaceContainer {
                 self.space_list.retain(|s| {
                     // keep if the name is different or the output is different
                     s.config.name != c.name
-                        || s.output.as_ref().map(|(_, o, _)| o.name() != output_name).unwrap_or_default()
+                        || s.output
+                            .as_ref()
+                            .map(|(_, o, _)| o.name() != output_name)
+                            .unwrap_or_default()
                 });
                 let mut new_config = c.clone();
                 if maximized_output {
@@ -400,7 +428,7 @@ impl SpaceContainer {
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
-                    self.panel_tx.clone()
+                    self.panel_tx.clone(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());

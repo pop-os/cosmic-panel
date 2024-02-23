@@ -260,6 +260,7 @@ fn main() -> Result<()> {
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
+    client_state.init_toplevel_manager_state();
     run(
         space,
         client_state,

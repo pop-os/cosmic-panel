@@ -276,7 +276,7 @@ impl PanelSpace {
             PanelAnchor::Bottom | PanelAnchor::Right => 0,
         } as i32;
         let mut map_windows = |windows: IterMut<'_, (usize, Window, bool)>, mut prev| -> f64 {
-            for (i, w, is_minimized) in windows {
+            for (i, w, is_minimize) in windows {
                 // XXX this is a hack to get the logical size of the window
                 // TODO improve how this is done
                 let size = w.bbox().size.to_f64().downscale(self.scale);
@@ -311,10 +311,10 @@ impl PanelSpace {
                         self.space.map_element(w.clone(), (x, y), false);
                     }
                 };
-                if *is_minimized {
+                if *is_minimize {
                     let new_rect = Rectangle {
                         loc: (x, y).into(),
-                        size: (size.w as i32, size.h as i32).into(),
+                        size: ((size.w.ceil() as i32).max(1), (size.w.ceil() as i32).max(1)).into(),
                     };
                     if new_rect != self.minimize_applet_rect {
                         self.minimize_applet_rect = new_rect;

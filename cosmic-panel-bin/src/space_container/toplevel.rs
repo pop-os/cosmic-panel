@@ -1,10 +1,14 @@
 use cctk::{
-    cosmic_protocols::{toplevel_info::v1::client::zcosmic_toplevel_handle_v1, workspace},
+    cosmic_protocols::{
+        toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
+        toplevel_management::v1::client::zcosmic_toplevel_manager_v1, workspace,
+    },
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
+
 use cosmic_panel_config::CosmicPanelBackground;
-use xdg_shell_wrapper::space::ToplevelInfoSpace;
+use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
 
 use super::SpaceContainer;
 
@@ -67,6 +71,20 @@ impl ToplevelInfoSpace for SpaceContainer {
         if self.maximized_toplevels.iter().any(|(h, _)| h == toplevel) {
             self.remove_maximized(toplevel);
         }
+    }
+}
+
+impl ToplevelManagerSpace for SpaceContainer {
+    /// Supported capabilities
+    fn capabilities(
+        &mut self,
+        _: &Connection,
+        _: Vec<
+            cctk::wayland_client::WEnum<
+                zcosmic_toplevel_manager_v1::ZcosmicToplelevelManagementCapabilitiesV1,
+            >,
+        >,
+    ) {
     }
 }
 
