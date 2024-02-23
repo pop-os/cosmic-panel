@@ -41,15 +41,12 @@ pub fn set_rectangles(
         };
 
         for (toplevel, toplevel_info) in &mut state.space.toplevels {
-            if toplevel_info.output.iter().any(|o| {
+            if !toplevel_info.output.iter().any(|o| {
                 let Some(i) = state.client_state.output_state.info(o) else { return false;};
                 i.name.as_ref() == Some(&output)
             }) {
                 continue;
             }
-            dbg!(&toplevel_info.title, &output);
-            println!("sending rectangle...");
-            dbg!(&info.rect);
             toplevel_mngr.manager.set_rectangle(
                 toplevel,
                 &info.surface,
