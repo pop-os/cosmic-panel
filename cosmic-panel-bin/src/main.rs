@@ -5,7 +5,10 @@ mod space;
 mod space_container;
 
 use anyhow::Result;
-use cctk::wayland_client::protocol::wl_output::WlOutput;
+use cctk::{
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
+    wayland_client::protocol::wl_output::WlOutput,
+};
 use config_watching::{watch_config, watch_cosmic_theme};
 use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
@@ -34,6 +37,7 @@ pub enum PanelCalloopMsg {
         output: String,
         applet_info: MinimizeApplet,
     },
+    UpdateToplevel(zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1),
 }
 
 fn main() -> Result<()> {
@@ -121,6 +125,9 @@ fn main() -> Result<()> {
                                 &state.client_state.queue_handle,
                                 Some(o),
                             );
+                        }
+                        PanelCalloopMsg::UpdateToplevel(toplevel) => {
+                            minimize::update_toplevel(state, toplevel)
                         }
                         PanelCalloopMsg::MinimizeRect {
                             output,

@@ -22,6 +22,9 @@ impl ToplevelInfoSpace for SpaceContainer {
     ) {
         self.toplevels.push((toplevel.clone(), info.clone()));
         self.apply_toplevel_changes();
+        _ = self
+            .panel_tx
+            .send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
 
         let is_maximized = info
             .state
@@ -45,6 +48,9 @@ impl ToplevelInfoSpace for SpaceContainer {
         {
             *info_1 = info.clone();
         }
+        _ = self
+            .panel_tx
+            .send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
         self.apply_toplevel_changes();
 
         let is_maximized = info

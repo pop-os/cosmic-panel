@@ -1,4 +1,7 @@
-use cctk::wayland_client::{protocol::wl_surface::WlSurface, Proxy};
+use cctk::{
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
+    wayland_client::{protocol::wl_surface::WlSurface, Proxy},
+};
 use smithay::utils::{Logical, Rectangle};
 use xdg_shell_wrapper::shared_state::GlobalState;
 
@@ -11,6 +14,40 @@ pub struct MinimizeApplet {
     pub surface: WlSurface,
 }
 
+pub fn update_toplevel(
+    state: &mut GlobalState<SpaceContainer>,
+    toplevel: zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+) {
+    let Some(toplevel_mngr) = state.client_state.toplevel_manager_state.as_ref() else {
+        return;
+    };
+    let minimized_applets = &state.space.minimized_applets;
+    let (_, toplevel_info) = &mut state
+        .space
+        .toplevels
+        .iter()
+        .find(|t| &t.0 == &toplevel)
+        .unwrap();
+
+    if let Some((_, info)) = minimized_applets.iter().find(|(output_name, _)| {
+        toplevel_info.output.iter().any(|o| {
+            let Some(i) = state.client_state.output_state.info(o) else {
+                return false;
+            };
+            i.name.as_ref() == Some(output_name)
+        })
+    }) {
+        toplevel_mngr.manager.set_rectangle(
+            &toplevel,
+            &info.surface,
+            info.rect.loc.x,
+            info.rect.loc.y,
+            info.rect.size.w,
+            info.rect.size.h,
+        );
+    }
+}
+
 pub fn set_rectangles(
     state: &mut GlobalState<SpaceContainer>,
     output: String,
@@ -20,12 +57,13 @@ pub fn set_rectangles(
     let mut changed = false;
     let minimized_applets = &mut state.space.minimized_applets;
 
-    let mut old_info = minimized_applets.entry(output.clone()).or_insert_with(|| {
+    let old_info = minimized_applets.entry(output.clone()).or_insert_with(|| {
         changed = true;
         info.clone()
     });
+
     if !changed {
-        if old_info.surface == info.surface && old_info.rect != old_info.rect {
+        if old_info.surface == info.surface && old_info.rect != info.rect {
             old_info.rect = info.rect;
             changed = true;
         } else if old_info.priority < info.priority || !old_info.surface.is_alive() {
@@ -42,7 +80,9 @@ pub fn set_rectangles(
 
         for (toplevel, toplevel_info) in &mut state.space.toplevels {
             if !toplevel_info.output.iter().any(|o| {
-                let Some(i) = state.client_state.output_state.info(o) else { return false;};
+                let Some(i) = state.client_state.output_state.info(o) else {
+                    return false;
+                };
                 i.name.as_ref() == Some(&output)
             }) {
                 continue;
@@ -52,8 +92,8 @@ pub fn set_rectangles(
                 &info.surface,
                 info.rect.loc.x,
                 info.rect.loc.y,
-                info.rect.size.w.max(1),
-                info.rect.size.h.max(1),
+                info.rect.size.w,
+                info.rect.size.h,
             );
         }
     }
