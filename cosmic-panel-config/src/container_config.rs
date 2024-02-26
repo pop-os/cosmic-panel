@@ -134,7 +134,6 @@ impl Default for CosmicPanelContainerConfig {
                         vec![
                             "com.system76.CosmicAppletAudio".to_string(),
                             "com.system76.CosmicAppletNetwork".to_string(),
-                            "com.system76.CosmicAppletGraphics".to_string(),
                             "com.system76.CosmicAppletBattery".to_string(),
                             "com.system76.CosmicAppletNotifications".to_string(),
                             "com.system76.CosmicAppletPower".to_string(),
