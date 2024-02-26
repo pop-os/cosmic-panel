@@ -22,12 +22,9 @@ pub fn update_toplevel(
         return;
     };
     let minimized_applets = &state.space.minimized_applets;
-    let (_, toplevel_info) = &mut state
-        .space
-        .toplevels
-        .iter()
-        .find(|t| &t.0 == &toplevel)
-        .unwrap();
+    let Some((_, toplevel_info)) = state.space.toplevels.iter().find(|t| &t.0 == &toplevel) else {
+        return;
+    };
 
     if let Some((_, info)) = minimized_applets.iter().find(|(output_name, _)| {
         toplevel_info.output.iter().any(|o| {
