@@ -166,12 +166,13 @@ impl PanelSpace {
         .to_logical(self.scale)
         .to_i32_round();
 
+        self.actual_size = self.constrain_dim(self.actual_size);
         let (new_logical_length, new_logical_thickness) = if self.config.is_horizontal() {
             (self.actual_size.w, self.actual_size.h)
         } else {
             (self.actual_size.h, self.actual_size.w)
         };
-        let mut new_dim = if self.config.is_horizontal() {
+        let new_dim = if self.config.is_horizontal() {
             let mut dim = self.actual_size;
             dim.h += gap as i32;
             dim
@@ -180,7 +181,6 @@ impl PanelSpace {
             dim.w += gap as i32;
             dim
         };
-        new_dim = self.constrain_dim(new_dim);
         // update input region of panel when list changes
         if old_actual != self.actual_size || self.animate_state.is_some() {
             let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
