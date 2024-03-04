@@ -57,7 +57,7 @@ use xdg_shell_wrapper::{
     wp_viewporter::ViewporterState,
 };
 
-use crate::space::AppletMsg;
+use crate::space::{panel_space::PanelClient, AppletMsg};
 
 use super::PanelSpace;
 
@@ -257,9 +257,15 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|id| {
+                .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, Some(s), None)
+                    PanelClient {
+                        name,
+                        client: c,
+                        stream: Some(s),
+                        security_ctx: None,
+                        is_minimize: false,
+                    }
                 })
                 .collect();
 
@@ -270,9 +276,15 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|id| {
+                .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, Some(s), None)
+                    PanelClient {
+                        name,
+                        client: c,
+                        stream: Some(s),
+                        security_ctx: None,
+                        is_minimize: false,
+                    }
                 })
                 .collect();
 
@@ -283,24 +295,30 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|id| {
+                .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    (id, c, Some(s), None)
+                    PanelClient {
+                        name,
+                        client: c,
+                        stream: Some(s),
+                        security_ctx: None,
+                        is_minimize: false,
+                    }
                 })
                 .collect();
 
             let mut desktop_ids: Vec<_> = left_guard
                 .iter_mut()
-                .map(|(a, b, c, d)| (a, b, c, d, self.clients_left.clone()))
+                .map(|c| (c, self.clients_left.clone()))
                 .chain(
                     center_guard
                         .iter_mut()
-                        .map(|(a, b, c, d)| (a, b, c, d, self.clients_center.clone())),
+                        .map(|c| (c, self.clients_center.clone())),
                 )
                 .chain(
                     right_guard
                         .iter_mut()
-                        .map(|(a, b, c, d)| (a, b, c, d, self.clients_right.clone())),
+                        .map(|c| (c, self.clients_right.clone())),
                 )
                 .collect();
 
@@ -322,18 +340,33 @@ impl WrapperSpace for PanelSpace {
             ];
             info!("{:?}", &desktop_ids);
 
+            // only allow 1 per panel
+            let mut has_minimize = false;
+
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
-                if let Some(position) = desktop_ids.iter().position(|(app_file_name, ..)| {
-                    Some(OsString::from(app_file_name).as_os_str()) == path.file_stem()
-                }) {
+                if let Some(position) =
+                    desktop_ids
+                        .iter()
+                        .position(|(PanelClient { ref name, .. }, ..)| {
+                            Some(OsString::from(name).as_os_str()) == path.file_stem()
+                        })
+                {
                     // This way each applet is at most started once,
                     // even if multiple desktop files in different directories match
-                    let (id, client, socket, applet_security_context, my_list) =
-                        desktop_ids.remove(position);
-                    info!(id);
+                    let (
+                        PanelClient {
+                            name,
+                            client,
+                            stream,
+                            security_ctx,
+                            is_minimize,
+                        },
+                        my_list,
+                    ) = desktop_ids.remove(position);
+                    info!(name);
 
-                    let Some(socket) = socket.take() else {
-                        error!("Failed to get socket for {}", &id);
+                    let Some(socket) = stream.take() else {
+                        error!("Failed to get socket for {}", &name);
                         continue;
                     };
 
@@ -344,6 +377,12 @@ impl WrapperSpace for PanelSpace {
 
                                 let requests_wayland_display =
                                     entry.desktop_entry("X-HostWaylandDisplay").is_some();
+
+                                if !has_minimize {
+                                    has_minimize =
+                                        entry.desktop_entry("X-MinimizeApplet").is_some();
+                                    *is_minimize = has_minimize;
+                                }
 
                                 let mut exec_iter = Shlex::new(exec);
                                 let exec = exec_iter
@@ -378,7 +417,7 @@ impl WrapperSpace for PanelSpace {
                                                     privileged_socket.as_raw_fd().to_string(),
                                                 ));
                                                 fds.push(privileged_socket.into());
-                                                *applet_security_context = Some(security_context);
+                                                *security_ctx = Some(security_context);
                                             }
                                             Err(why) => {
                                                 error!(?why, "Failed to create a listener");
@@ -405,9 +444,9 @@ impl WrapperSpace for PanelSpace {
 
                                 let display_handle = display.clone();
                                 let applet_tx_clone = self.applet_tx.clone();
-                                let id_clone = id.clone();
-                                let id_clone_info = id.clone();
-                                let id_clone_err = id.clone();
+                                let id_clone = name.clone();
+                                let id_clone_info = name.clone();
+                                let id_clone_err = name.clone();
                                 let client_id = client.id();
                                 let client_id_info = client.id();
                                 let client_id_err = client.id();
@@ -543,14 +582,13 @@ impl WrapperSpace for PanelSpace {
                                                 }
                                             }
 
-                                            if let Some(old_client) = my_list
-                                                .lock()
-                                                .unwrap()
-                                                .iter_mut()
-                                                .find(|(id, _, _, _)| id == &id_clone)
+                                            if let Some(old_client) =
+                                                my_list.lock().unwrap().iter_mut().find(
+                                                    |PanelClient { name, .. }| name == &id_clone,
+                                                )
                                             {
-                                                old_client.1 = c;
-                                                old_client.3 = security_context;
+                                                old_client.client = c;
+                                                old_client.security_ctx = security_context;
                                                 info!("Replaced the client socket");
                                             } else {
                                                 error!(
@@ -571,7 +609,7 @@ impl WrapperSpace for PanelSpace {
                                         }
                                     });
 
-                                let process_id = format!("{}-{}", self.id(), id);
+                                let process_id = format!("{}-{}", self.id(), name);
                                 let msg = if is_notification_applet {
                                     AppletMsg::NewNotificationsProcess(
                                         process_id, process, applet_env, fds,
@@ -1035,7 +1073,7 @@ impl WrapperSpace for PanelSpace {
             .iter()
             .chain(self.clients_left.lock().unwrap().iter())
             .chain(self.clients_right.lock().unwrap().iter())
-            .any(|c| Some(&c.1) == client.as_ref())
+            .any(|c| Some(&c.client) == client.as_ref())
         {
             Some(self.scale)
         } else {

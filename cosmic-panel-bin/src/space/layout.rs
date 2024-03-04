@@ -1,3 +1,6 @@
+use std::slice::IterMut;
+
+use crate::minimize::MinimizeApplet;
 use crate::space::Alignment;
 
 use super::PanelSpace;
@@ -40,9 +43,9 @@ impl PanelSpace {
             num_lists += 1;
         }
 
-        let make_indices_contiguous = |windows: &mut Vec<(usize, Window)>| {
-            windows.sort_by(|(a_i, _), (b_i, _)| a_i.cmp(b_i));
-            for (j, (i, _)) in windows.iter_mut().enumerate() {
+        let make_indices_contiguous = |windows: &mut Vec<(usize, Window, bool)>| {
+            windows.sort_by(|(a_i, _, _), (b_i, _, _)| a_i.cmp(b_i));
+            for (j, (i, _, _)) in windows.iter_mut().enumerate() {
                 *i = j;
             }
         };
@@ -58,9 +61,10 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
-                            Some((i, w.clone()))
+                    .find_map(|(i, c)| {
+                        if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
+                        {
+                            Some((i, w.clone(), c.is_minimize))
                         } else {
                             None
                         }
@@ -80,9 +84,10 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
-                            Some((i, w.clone()))
+                    .find_map(|(i, c)| {
+                        if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
+                        {
+                            Some((i, w.clone(), c.is_minimize))
                         } else {
                             None
                         }
@@ -102,9 +107,10 @@ impl PanelSpace {
                     .unwrap()
                     .iter()
                     .enumerate()
-                    .find_map(|(i, (_, c, _, _))| {
-                        if Some(c.id()) == w.toplevel().wl_surface().client().map(|c| c.id()) {
-                            Some((i, w.clone()))
+                    .find_map(|(i, c)| {
+                        if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
+                        {
+                            Some((i, w.clone(), c.is_minimize))
                         } else {
                             None
                         }
@@ -114,7 +120,7 @@ impl PanelSpace {
         make_indices_contiguous(&mut windows_left);
 
         fn map_fn(
-            (i, w): &(usize, Window),
+            (i, w, _): &(usize, Window, bool),
             anchor: PanelAnchor,
             alignment: Alignment,
             _scale: f64,
@@ -182,12 +188,11 @@ impl PanelSpace {
             dim
         };
         // update input region of panel when list changes
+        let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
+            (Some(r), Some(layer)) => (r, layer),
+            _ => panic!("input region or layer missing"),
+        };
         if old_actual != self.actual_size || self.animate_state.is_some() {
-            let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
-                (Some(r), Some(layer)) => (r, layer),
-                _ => panic!("input region or layer missing"),
-            };
-
             input_region.subtract(
                 0,
                 0,
@@ -265,125 +270,82 @@ impl PanelSpace {
                 as f64
                 / 2.
         };
-
-        let mut prev: f64 = container_lengthwise_pos as f64 + padding_u32 as f64;
-
         // offset for centering
         let margin_offset = match anchor {
             PanelAnchor::Top | PanelAnchor::Left => gap,
             PanelAnchor::Bottom | PanelAnchor::Right => 0,
         } as i32;
+        let mut map_windows = |windows: IterMut<'_, (usize, Window, bool)>, mut prev| -> f64 {
+            for (i, w, is_minimize) in windows {
+                // XXX this is a hack to get the logical size of the window
+                // TODO improve how this is done
+                let size = w.bbox().size.to_f64().downscale(self.scale);
 
-        for (i, w) in &mut windows_left.iter_mut() {
-            // XXX this is a hack to get the logical size of the window
-            // TODO improve how this is done
-            let size = w.bbox().size.to_f64().downscale(self.scale);
+                let cur: f64 = prev + spacing_u32 as f64 * *i as f64;
+                let (x, y);
+                match anchor {
+                    PanelAnchor::Left | PanelAnchor::Right => {
+                        let cur = (
+                            margin_offset
+                                + center_in_bar(
+                                    new_logical_thickness.try_into().unwrap(),
+                                    size.w as u32,
+                                ),
+                            cur,
+                        );
+                        (x, y) = (cur.0 as i32, cur.1 as i32);
+                        prev += size.h as f64;
+                        self.space.map_element(w.clone(), (x, y), false);
+                    }
+                    PanelAnchor::Top | PanelAnchor::Bottom => {
+                        let cur = (
+                            cur,
+                            margin_offset
+                                + center_in_bar(
+                                    new_logical_thickness.try_into().unwrap(),
+                                    size.h as u32,
+                                ),
+                        );
+                        (x, y) = (cur.0 as i32, cur.1 as i32);
+                        prev += size.w as f64;
+                        self.space.map_element(w.clone(), (x, y), false);
+                    }
+                };
+                if *is_minimize {
+                    let new_rect = Rectangle {
+                        loc: (x, y).into(),
+                        size: ((size.w.ceil() as i32).max(1), (size.w.ceil() as i32).max(1)).into(),
+                    };
+                    if new_rect != self.minimize_applet_rect {
+                        self.minimize_applet_rect = new_rect;
+                        let output = self.output.as_ref().map(|o| o.1.name()).unwrap_or_default();
+                        _ = self.panel_tx.send(crate::PanelCalloopMsg::MinimizeRect {
+                            output,
+                            applet_info: MinimizeApplet {
+                                priority: if is_dock { 1 } else { 0 },
+                                rect: new_rect,
+                                surface: layer.wl_surface().clone(),
+                            },
+                        });
+                    }
+                }
+            }
+            prev
+        };
+        let mut prev: f64 = container_lengthwise_pos as f64 + padding_u32 as f64;
 
-            let cur: f64 = prev + spacing_u32 as f64 * *i as f64;
-            match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => {
-                    let cur = (
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.w as u32,
-                            ),
-                        cur,
-                    );
-                    prev += size.h as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-                PanelAnchor::Top | PanelAnchor::Bottom => {
-                    let cur = (
-                        cur,
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.h as u32,
-                            ),
-                    );
-                    prev += size.w as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-            };
-        }
+        prev = map_windows(windows_left.iter_mut(), prev);
 
         // will be already offset if dock
         prev += center_left_spacing;
 
-        for (i, w) in &mut windows_center.iter_mut() {
-            // XXX this is a hack to get the logical size of the window
-            let size = w.bbox().size.to_f64().downscale(self.scale);
+        map_windows(windows_center.iter_mut(), prev);
 
-            let cur = prev + spacing_u32 as f64 * *i as f64;
-            match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => {
-                    let cur = (
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.w as u32,
-                            ),
-                        cur,
-                    );
-                    prev += size.h as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-                PanelAnchor::Top | PanelAnchor::Bottom => {
-                    let cur = (
-                        cur,
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.h as u32,
-                            ),
-                    );
-                    prev += size.w as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-            };
-        }
-
-        let mut prev = container_lengthwise_pos as f64 + container_length as f64
+        let prev = container_lengthwise_pos as f64 + container_length as f64
             - padding_u32 as f64
             - right_sum;
 
-        for (i, w) in &mut windows_right.iter_mut() {
-            let size = w.bbox().size.to_f64().downscale(self.scale);
-            let cur = prev + spacing_u32 as f64 * *i as f64;
-            match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => {
-                    let cur = (
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.w as u32,
-                            ),
-                        cur,
-                    );
-                    prev += size.h as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-                PanelAnchor::Top | PanelAnchor::Bottom => {
-                    let cur = (
-                        cur,
-                        margin_offset
-                            + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
-                                size.h as u32,
-                            ),
-                    );
-                    prev += size.w as f64;
-                    self.space
-                        .map_element(w.clone(), (cur.0 as i32, cur.1 as i32), false);
-                }
-            };
-        }
+        map_windows(windows_right.iter_mut(), prev);
 
         self.space.refresh();
 

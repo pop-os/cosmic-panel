@@ -1,13 +1,18 @@
 mod config_watching;
+mod minimize;
 mod notifications;
 mod space;
 mod space_container;
 
 use anyhow::Result;
-use cctk::wayland_client::protocol::wl_output::WlOutput;
+use cctk::{
+    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
+    wayland_client::protocol::wl_output::WlOutput,
+};
 use config_watching::{watch_config, watch_cosmic_theme};
 use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
+use minimize::MinimizeApplet;
 use notifications::notifications_conn;
 use sctk::reexports::calloop::channel::SyncSender;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
@@ -28,6 +33,11 @@ use xdg_shell_wrapper::{
 pub enum PanelCalloopMsg {
     ClientSocketPair(ClientId),
     RestartSpace(CosmicPanelConfig, WlOutput),
+    MinimizeRect {
+        output: String,
+        applet_info: MinimizeApplet,
+    },
+    UpdateToplevel(zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1),
 }
 
 fn main() -> Result<()> {
@@ -116,6 +126,13 @@ fn main() -> Result<()> {
                                 Some(o),
                             );
                         }
+                        PanelCalloopMsg::UpdateToplevel(toplevel) => {
+                            minimize::update_toplevel(state, toplevel)
+                        }
+                        PanelCalloopMsg::MinimizeRect {
+                            output,
+                            applet_info,
+                        } => minimize::set_rectangles(state, output, applet_info),
                     },
                     calloop::channel::Event::Closed => {}
                 };
@@ -250,6 +267,7 @@ fn main() -> Result<()> {
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
+    client_state.init_toplevel_manager_state();
     run(
         space,
         client_state,

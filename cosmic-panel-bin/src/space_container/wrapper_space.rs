@@ -87,6 +87,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -186,6 +187,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -240,6 +242,7 @@ impl WrapperSpace for SpaceContainer {
                             self.s_display.clone().unwrap(),
                             self.security_context_manager.clone(),
                             conn,
+                            self.panel_tx.clone(),
                         );
 
                         if let Some(s_display) = self.s_display.as_ref() {
@@ -293,7 +296,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _, _)| Some(c.id()) == w_client)
+                .any(|c| Some(c.client.id()) == w_client)
         }) {
             space.add_window(s_top_level);
         }
@@ -322,7 +325,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _, _)| Some(c.id()) == p_client)
+                .any(|c| Some(c.client.id()) == p_client)
         }) {
             space.add_popup(
                 compositor_state,
@@ -357,7 +360,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _, _)| Some(c.id()) == p_client)
+                .any(|c| Some(c.client.id()) == p_client)
         }) {
             space.reposition_popup(popup, positioner_state, token)?
         }
@@ -424,7 +427,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _, _)| Some(c.id()) == w_client)
+                .any(|c| Some(c.client.id()) == w_client)
         }) {
             space.dirty_window(dh, w);
         }
@@ -446,7 +449,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|(_, c, _, _)| Some(c.id()) == p_client)
+                .any(|c| Some(c.client.id()) == p_client)
         }) {
             space.dirty_popup(dh, w);
         }
