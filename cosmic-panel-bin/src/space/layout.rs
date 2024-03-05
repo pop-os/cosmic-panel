@@ -172,18 +172,24 @@ impl PanelSpace {
         .to_logical(self.scale)
         .to_i32_round();
 
-        self.actual_size = self.constrain_dim(self.actual_size);
+        let actual_size_constrained = self.constrain_dim(self.actual_size);
+        if self.config.is_horizontal() {
+            self.actual_size.h = actual_size_constrained.h;
+        } else {
+            self.actual_size.w = actual_size_constrained.w;
+        }
+
         let (new_logical_length, new_logical_thickness) = if self.config.is_horizontal() {
             (self.actual_size.w, self.actual_size.h)
         } else {
             (self.actual_size.h, self.actual_size.w)
         };
         let new_dim = if self.config.is_horizontal() {
-            let mut dim = self.actual_size;
+            let mut dim = actual_size_constrained;
             dim.h += gap as i32;
             dim
         } else {
-            let mut dim = self.actual_size;
+            let mut dim = actual_size_constrained;
             dim.w += gap as i32;
             dim
         };
