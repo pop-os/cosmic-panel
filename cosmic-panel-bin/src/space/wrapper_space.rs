@@ -609,15 +609,17 @@ impl WrapperSpace for PanelSpace {
                                         }
                                     });
 
-                                let process_id = format!("{}-{}", self.id(), name);
                                 let msg = if is_notification_applet {
                                     AppletMsg::NewNotificationsProcess(
-                                        process_id, process, applet_env, fds,
+                                        self.id(),
+                                        process,
+                                        applet_env,
+                                        fds,
                                     )
                                 } else {
                                     process = process.with_fds(move || fds);
 
-                                    AppletMsg::NewProcess(process_id, process.with_env(applet_env))
+                                    AppletMsg::NewProcess(self.id(), process.with_env(applet_env))
                                 };
                                 match self.applet_tx.try_send(msg) {
                                     Ok(_) => {}
