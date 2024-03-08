@@ -12,6 +12,9 @@ sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay
 [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
+[patch."https://github.com/pop-os/libcosmic"]
+cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
 
 [workspace.dependencies]
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "2e9bf9f" }
