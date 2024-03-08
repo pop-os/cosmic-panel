@@ -46,6 +46,10 @@ impl CosmicPanelContainerConfig {
                 return Err((vec![e], Self::default()));
             }
         };
+        Self::load_from_config(&config)
+    }
+
+    pub fn load_from_config(config: &Config) -> Result<Self, (Vec<cosmic_config::Error>, Self)> {
         let entry_names = match config.get::<Vec<String>>("entries") {
             Ok(names) => names,
             Err(e) => {
