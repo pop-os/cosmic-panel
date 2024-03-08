@@ -97,7 +97,7 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 #[cfg(feature = "wayland-rs")]
 impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     fn into(self) -> zwlr_layer_surface_v1::Anchor {
-        let mut anchor = zwlr_layer_surface_v1::Anchor::all();
+        let anchor = zwlr_layer_surface_v1::Anchor::all();
         match self {
             Self::Left => anchor.difference(zwlr_layer_surface_v1::Anchor::Right),
             Self::Right => anchor.difference(zwlr_layer_surface_v1::Anchor::Left),
@@ -110,7 +110,7 @@ impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 #[cfg(feature = "wayland-rs")]
 impl Into<Anchor> for PanelAnchor {
     fn into(self) -> Anchor {
-        let mut anchor = Anchor::all();
+        let anchor = Anchor::all();
         match self {
             Self::Left => anchor.difference(Anchor::RIGHT),
             Self::Right => anchor.difference(Anchor::LEFT),
@@ -134,6 +134,26 @@ pub enum PanelSize {
     L,
     /// XL
     XL,
+}
+
+impl PanelSize {
+    /// get applet icon dimensions
+    pub fn get_applet_icon_size(&self) -> u32 {
+        match self {
+            PanelSize::XS => 16,
+            PanelSize::S => 16,
+            PanelSize::M => 32,
+            PanelSize::L => 40,
+            PanelSize::XL => 56,
+        }
+    }
+
+    pub fn get_applet_padding(&self) -> u16 {
+        match self {
+            PanelSize::XS => 8,
+            _ => 12,
+        }
+    }
 }
 
 impl Display for PanelSize {
@@ -347,13 +367,11 @@ impl Default for CosmicPanelConfig {
 impl CosmicPanelConfig {
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self) -> u32 {
-        match &self.size {
-            PanelSize::XS => 18,
-            PanelSize::S => 24,
-            PanelSize::M => 36,
-            PanelSize::L => 48,
-            PanelSize::XL => 64,
-        }
+        self.size.get_applet_icon_size()
+    }
+
+    pub fn get_applet_padding(&self) -> u16 {
+        self.size.get_applet_padding()
     }
 
     /// get the priority of the panel
