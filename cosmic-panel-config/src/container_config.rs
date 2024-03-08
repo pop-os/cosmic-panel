@@ -46,10 +46,13 @@ impl CosmicPanelContainerConfig {
                 return Err((vec![e], Self::default()));
             }
         };
-        Self::load_from_config(&config)
+        Self::load_from_config(&config, false)
     }
 
-    pub fn load_from_config(config: &Config) -> Result<Self, (Vec<cosmic_config::Error>, Self)> {
+    pub fn load_from_config(
+        config: &Config,
+        system: bool,
+    ) -> Result<Self, (Vec<cosmic_config::Error>, Self)> {
         let entry_names = match config.get::<Vec<String>>("entries") {
             Ok(names) => names,
             Err(e) => {
@@ -61,7 +64,11 @@ impl CosmicPanelContainerConfig {
         let mut entry_errors = Vec::new();
 
         for name in entry_names {
-            let config = match Config::new(format!("{}.{}", NAME, name).as_str(), VERSION) {
+            let config = match if system {
+                Config::system(format!("{}.{}", NAME, name).as_str(), VERSION)
+            } else {
+                Config::new(format!("{}.{}", NAME, name).as_str(), VERSION)
+            } {
                 Ok(config) => config,
                 Err(e) => {
                     entry_errors.push(e);
