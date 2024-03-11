@@ -22,8 +22,13 @@ impl PanelSpace {
         let bg_color = self.bg_color();
         let gap = self.gap();
         let border_radius = self.border_radius();
+        let border_radius_scaled = self.border_radius() as f64 * self.scale;
         let padding_u32 = self.config.padding() as u32;
         let padding_scaled = padding_u32 as f64 * self.scale;
+        // XXX need to pad so that sharp corners of applets cand poke out past panel
+        // TODO should it be clipped when rendering instead?
+        let lengthwise_padding = padding_u32.max(border_radius);
+        let lengthwise_padding_scaled = padding_scaled.max(border_radius_scaled);
         let anchor = self.config.anchor();
         let spacing_u32 = self.config.spacing() as u32;
         let spacing_scaled = spacing_u32 as f64 * self.scale;
@@ -154,7 +159,7 @@ impl PanelSpace {
 
         let total_sum_scaled = left_sum_scaled + center_sum_scaled + right_sum_scaled;
         let new_list_length = (total_sum_scaled as f64
-            + padding_scaled * 2.0
+            + (lengthwise_padding_scaled * 2.0)
             + spacing_scaled * (num_lists as f64 - 1.0)) as i32;
         let new_list_thickness = (2.0 * padding_scaled
             + chain!(left.clone(), center.clone(), right.clone())
@@ -268,12 +273,15 @@ impl PanelSpace {
             && right_sum < requested_eq_length as f64
         {
             let center_spacing = (requested_eq_length as f64 - center_sum) / 2.0;
-            let left_spacing = requested_eq_length as f64 - left_sum - padding_u32 as f64;
+            let left_spacing = requested_eq_length as f64 - left_sum - lengthwise_padding as f64;
 
             left_spacing + center_spacing
         } else {
-            (container_length as f64 - left_sum - center_sum - right_sum - 2. * padding_u32 as f64)
-                as f64
+            (container_length as f64
+                - left_sum
+                - center_sum
+                - right_sum
+                - 2. * lengthwise_padding as f64) as f64
                 / 2.
         };
         // offset for centering
@@ -338,7 +346,7 @@ impl PanelSpace {
             }
             prev
         };
-        let mut prev: f64 = container_lengthwise_pos as f64 + padding_u32 as f64;
+        let mut prev: f64 = container_lengthwise_pos as f64 + lengthwise_padding as f64;
 
         prev = map_windows(windows_left.iter_mut(), prev);
 
@@ -348,7 +356,7 @@ impl PanelSpace {
         map_windows(windows_center.iter_mut(), prev);
 
         let prev = container_lengthwise_pos as f64 + container_length as f64
-            - padding_u32 as f64
+            - lengthwise_padding as f64
             - right_sum;
 
         map_windows(windows_right.iter_mut(), prev);
