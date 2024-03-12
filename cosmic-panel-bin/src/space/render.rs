@@ -31,7 +31,10 @@ impl PanelSpace {
         {
             return Ok(());
         }
-        let bg_color = self.bg_color();
+        let mut bg_color = self.bg_color();
+        for c in 0..3 {
+            bg_color[c] *= bg_color[3];
+        }
 
         if self.is_dirty && self.has_frame {
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
