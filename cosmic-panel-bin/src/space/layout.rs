@@ -19,7 +19,10 @@ use smithay::{
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
         self.space.refresh();
-        let bg_color = self.bg_color();
+        let mut bg_color = self.bg_color();
+        for c in 0..3 {
+            bg_color[c] *= bg_color[3];
+        }
         let gap = self.gap();
         let border_radius = self.border_radius();
         let padding_u32 = self.config.padding() as u32;
@@ -375,11 +378,14 @@ impl PanelSpace {
             None,
         );
         let mut render_context = buff.render();
-        let bg_color = bg_color
+        let bg_color: [u8; 4] = bg_color
             .iter()
             .map(|c| ((c * 255.0) as u8).clamp(0, 255))
-            .collect_vec();
+            .collect_vec()
+            .try_into()
+            .unwrap();
 
+        // TODO use 2 MemoryRenderBuffer for sides, and 1 single pixel buffer for center
         let _ = render_context.draw(|buffer| {
             buffer.chunks_exact_mut(4).for_each(|chunk| {
                 chunk.copy_from_slice(&bg_color);
@@ -407,13 +413,6 @@ impl PanelSpace {
                 })
                 .collect_vec();
 
-            let bg_color: [u8; 4] = self
-                .bg_color()
-                .iter()
-                .map(|c| ((c * 255.0) as u8).clamp(0, 255))
-                .collect_vec()
-                .try_into()
-                .unwrap();
             let empty = [0, 0, 0, 0];
 
             let mut corner_image = RgbaImage::new(drawn_radius, drawn_radius);
