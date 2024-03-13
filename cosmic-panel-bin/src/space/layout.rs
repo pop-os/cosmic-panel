@@ -5,16 +5,10 @@ use crate::space::Alignment;
 
 use super::PanelSpace;
 use cosmic_panel_config::PanelAnchor;
-use image::RgbaImage;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
 use smithay::utils::{IsAlive, Physical, Size};
-use smithay::{
-    backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
-    desktop::Window,
-    reexports::wayland_server::Resource,
-    utils::{Point, Rectangle, Transform},
-};
+use smithay::{desktop::Window, reexports::wayland_server::Resource, utils::Rectangle};
 
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
@@ -24,7 +18,6 @@ impl PanelSpace {
             bg_color[c] *= bg_color[3];
         }
         let gap = self.gap();
-        let border_radius = self.border_radius();
         let padding_u32 = self.config.padding() as u32;
         let padding_scaled = padding_u32 as f64 * self.scale;
         let anchor = self.config.anchor();
@@ -201,7 +194,8 @@ impl PanelSpace {
             (Some(r), Some(layer)) => (r, layer),
             _ => panic!("input region or layer missing"),
         };
-        if old_actual != self.actual_size || self.animate_state.is_some() {
+        let changed = old_actual != self.actual_size || self.animate_state.is_some();
+        if changed {
             input_region.subtract(
                 0,
                 0,
@@ -262,6 +256,7 @@ impl PanelSpace {
         } else {
             new_list_dim_length
         };
+        self.container_length = container_length;
         let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
 
         // eq length should assign space evenly to all lists even if they are empty
@@ -358,120 +353,9 @@ impl PanelSpace {
 
         self.space.refresh();
 
-        // corners calculation with border_radius
-
+        // needs new corners calculation with border_radius
+        self.buffer_changed = changed;
         // default to actual size of the panel
-        let mut panel_size = self.actual_size;
-
-        if self.config.is_horizontal() {
-            panel_size.w = container_length as i32;
-        } else {
-            panel_size.h = container_length as i32;
-        }
-        let panel_size = panel_size.to_f64().to_physical(self.scale).to_i32_round();
-
-        let mut buff = MemoryRenderBuffer::new(
-            Fourcc::Abgr8888,
-            (panel_size.w, panel_size.h),
-            1,
-            Transform::Normal,
-            None,
-        );
-        let mut render_context = buff.render();
-        let bg_color: [u8; 4] = bg_color
-            .iter()
-            .map(|c| ((c * 255.0) as u8).clamp(0, 255))
-            .collect_vec()
-            .try_into()
-            .unwrap();
-
-        // TODO use 2 MemoryRenderBuffer for sides, and 1 single pixel buffer for center
-        let _ = render_context.draw(|buffer| {
-            buffer.chunks_exact_mut(4).for_each(|chunk| {
-                chunk.copy_from_slice(&bg_color);
-            });
-
-            let radius = (border_radius as f64 * self.scale).round() as u32;
-            let radius = radius
-                .min(panel_size.w as u32 / 2)
-                .min(panel_size.h as u32 / 2);
-
-            // early return if no radius
-            if radius == 0 {
-                return Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
-                    Point::default(),
-                    (panel_size.w, panel_size.h),
-                )]);
-            }
-            let drawn_radius = 128;
-            let drawn_radius2 = drawn_radius as f64 * drawn_radius as f64;
-            let grid = (0..((drawn_radius + 1) * (drawn_radius + 1)))
-                .into_iter()
-                .map(|i| {
-                    let (x, y) = (i as u32 % (drawn_radius + 1), i as u32 / (drawn_radius + 1));
-                    drawn_radius2 - (x as f64 * x as f64 + y as f64 * y as f64)
-                })
-                .collect_vec();
-
-            let empty = [0, 0, 0, 0];
-
-            let mut corner_image = RgbaImage::new(drawn_radius, drawn_radius);
-            for i in 0..(drawn_radius * drawn_radius) {
-                let (x, y) = (i as u32 / drawn_radius, i as u32 % drawn_radius);
-                let bottom_left = grid[(y * (drawn_radius + 1) + x) as usize];
-                let bottom_right = grid[(y * (drawn_radius + 1) + x + 1) as usize];
-                let top_left = grid[((y + 1) * (drawn_radius + 1) + x) as usize];
-                let top_right = grid[((y + 1) * (drawn_radius + 1) + x + 1) as usize];
-                let color = if bottom_left >= 0.0
-                    && bottom_right >= 0.0
-                    && top_left >= 0.0
-                    && top_right >= 0.0
-                {
-                    bg_color.clone()
-                } else {
-                    empty
-                };
-                corner_image.put_pixel(x, y, image::Rgba(color));
-            }
-            let corner_image = image::imageops::resize(
-                &corner_image,
-                radius as u32,
-                radius as u32,
-                image::imageops::FilterType::CatmullRom,
-            );
-
-            for (i, color) in corner_image.pixels().enumerate() {
-                let (x, y) = (i as u32 % radius, i as u32 / radius);
-                let top_left = (radius - 1 - x, radius - 1 - y);
-                let top_right = (panel_size.w as u32 - radius + x, radius - 1 - y);
-                let bottom_left = (radius - 1 - x, panel_size.h as u32 - radius + y);
-                let bottom_right = (
-                    panel_size.w as u32 - radius + x,
-                    panel_size.h as u32 - radius + y,
-                );
-                for (c_x, c_y) in match (self.config.anchor, gap > 0) {
-                    (PanelAnchor::Left, false) => vec![top_right, bottom_right],
-                    (PanelAnchor::Right, false) => vec![top_left, bottom_left],
-                    (PanelAnchor::Top, false) => vec![bottom_left, bottom_right],
-                    (PanelAnchor::Bottom, false) => vec![top_left, top_right],
-                    _ => vec![top_left, top_right, bottom_left, bottom_right],
-                } {
-                    let b_i = (c_y * panel_size.w as u32 + c_x) as usize * 4;
-                    let c = buffer.get_mut(b_i..b_i + 4).unwrap();
-                    c.copy_from_slice(&color.0);
-                }
-            }
-
-            // Return the whole buffer as damage
-            Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
-                Point::default(),
-                (panel_size.w, panel_size.h),
-            )])
-        });
-        drop(render_context);
-        let old = self.buffer.replace(buff);
-        self.old_buff = old;
-        self.buffer_changed = true;
 
         Ok(())
     }
