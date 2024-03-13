@@ -118,8 +118,7 @@ impl PanelSpace {
                 // FIXME the first draw is stretched even when not scaled when using a buffer
                 // this is a workaround
                 if !self.first_draw {
-                    if let Some(buff) = self.buffer.as_mut() {
-                        let render_context = buff.render();
+                    if let Some(buff) = self.buffer.as_ref() {
                         let margin_offset = match self.config.anchor {
                             PanelAnchor::Top | PanelAnchor::Left => {
                                 self.config.get_effective_anchor_gap() as f64
@@ -185,7 +184,6 @@ impl PanelSpace {
 
                         self.buffer_changed = false;
 
-                        drop(render_context);
                         if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
                             renderer,
                             loc.to_physical(self.scale).to_i32_round(),
