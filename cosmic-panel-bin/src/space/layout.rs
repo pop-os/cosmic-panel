@@ -1,6 +1,7 @@
 use std::slice::IterMut;
 
 use crate::minimize::MinimizeApplet;
+use crate::space::corner_element::RoundedRectangleSettings;
 use crate::space::Alignment;
 
 use super::PanelSpace;
@@ -194,8 +195,72 @@ impl PanelSpace {
             (Some(r), Some(layer)) => (r, layer),
             _ => panic!("input region or layer missing"),
         };
-        let changed = old_actual != self.actual_size || self.animate_state.is_some();
-        if changed {
+
+        let (new_list_dim_length, new_list_thickness_dim) = match anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
+            PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
+        };
+
+        self.panel_changed |= old_actual != self.actual_size
+            || new_list_thickness_dim != list_thickness
+            || self.animate_state.is_some();
+
+        let left_sum = left_sum_scaled / self.scale;
+        let center_sum = center_sum_scaled / self.scale;
+        let right_sum = right_sum_scaled / self.scale;
+
+        let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
+            (new_logical_length as f32
+                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
+                as i32
+        } else if is_dock {
+            new_logical_length
+        } else {
+            new_list_dim_length
+        };
+        self.container_length = container_length;
+        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
+
+        if self.panel_changed {
+            let gap = self.gap();
+            let border_radius = self.border_radius() as f32;
+            // let radius = (border_radius as f64 * self.scale).round() as u32;
+
+            let mut panel_size = self.actual_size;
+            let container_length = self.container_length;
+
+            if self.config.is_horizontal() {
+                panel_size.w = container_length as i32;
+            } else {
+                panel_size.h = container_length as i32;
+            }
+            let border_radius = border_radius
+                .min(panel_size.w as f32 / 2.)
+                .min(panel_size.h as f32 / 2.);
+            let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, gap) {
+                (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
+                (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
+                (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
+                (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
+                _ => (border_radius, border_radius, border_radius, border_radius),
+            };
+            let loc = match self.config.anchor {
+                PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
+                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
+                PanelAnchor::Top => [
+                    container_lengthwise_pos as f32,
+                    (list_thickness as f32 - gap as f32),
+                ],
+                PanelAnchor::Bottom => [container_lengthwise_pos as f32, gap as f32],
+            };
+            self.panel_rect_settings = RoundedRectangleSettings {
+                rad_tl,
+                rad_tr,
+                rad_bl,
+                rad_br,
+                loc,
+                rect_size: [panel_size.w as f32, panel_size.h as f32],
+            };
             input_region.subtract(
                 0,
                 0,
@@ -226,39 +291,11 @@ impl PanelSpace {
                 .set_input_region(Some(input_region.wl_region()));
         }
 
-        let (new_list_dim_length, new_list_thickness_dim) = match anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
-            PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
-        };
-
-        if new_list_thickness_dim != list_thickness {
-            self.pending_dimensions = Some(new_dim);
-            self.is_dirty = true;
-            anyhow::bail!("resizing list");
-        }
-
         // must use logical coordinates for layout here
 
-        fn center_in_bar(thickness: u32, dim: u32) -> i32 {
-            (thickness as i32 - dim as i32) / 2
+        fn center_in_bar(crosswise_dim: u32, dim: u32) -> i32 {
+            (crosswise_dim as i32 - dim as i32) / 2
         }
-
-        let left_sum = left_sum_scaled / self.scale;
-        let center_sum = center_sum_scaled / self.scale;
-        let right_sum = right_sum_scaled / self.scale;
-
-        let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
-            (new_logical_length as f32
-                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
-                as i32
-        } else if is_dock {
-            new_logical_length
-        } else {
-            new_list_dim_length
-        };
-        self.container_length = container_length;
-        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
-
         // eq length should assign space evenly to all lists even if they are empty
         let requested_eq_length: f64 = container_length as f64 / 3.;
         let center_left_spacing = if left_sum < requested_eq_length as f64
@@ -274,6 +311,11 @@ impl PanelSpace {
                 as f64
                 / 2.
         };
+        if new_list_thickness_dim != list_thickness {
+            self.pending_dimensions = Some(new_dim);
+            self.is_dirty = true;
+            anyhow::bail!("resizing list");
+        }
         // offset for centering
         let margin_offset = match anchor {
             PanelAnchor::Top | PanelAnchor::Left => gap,
@@ -354,7 +396,6 @@ impl PanelSpace {
         self.space.refresh();
 
         // needs new corners calculation with border_radius
-        self.buffer_changed = changed;
         // default to actual size of the panel
 
         Ok(())
