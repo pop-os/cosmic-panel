@@ -401,11 +401,7 @@ impl PanelSpace {
             - right_sum;
 
         map_windows(windows_right.iter_mut(), prev);
-
         self.space.refresh();
-
-        // needs new corners calculation with border_radius
-        // default to actual size of the panel
 
         Ok(())
     }
