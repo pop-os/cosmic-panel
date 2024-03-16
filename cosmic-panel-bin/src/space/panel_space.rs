@@ -37,7 +37,7 @@ use smithay::{
                 surface::WaylandSurfaceRenderElement, Element, RenderElement, UnderlyingStorage,
             },
             gles::{GlesError, GlesFrame},
-            Bind, ImportAll, ImportMem, Unbind,
+            Bind, Unbind,
         },
     },
     output::Output,
@@ -45,7 +45,6 @@ use smithay::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, DisplayHandle},
     },
-    render_elements,
     utils::{Buffer, Physical, Rectangle},
     wayland::{
         seat::WaylandFocus,
@@ -96,41 +95,36 @@ pub enum AppletMsg {
     Cleanup(String),
 }
 
-render_elements! {
-    pub(crate) MyRenderElements<R> where R: ImportMem + ImportAll;
-    WaylandSurface=WaylandSurfaceRenderElement<R>,
-}
-
 pub(crate) enum PanelRenderElement {
-    MyRenderElements(MyRenderElements<GlesRenderer>),
+    Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
     RoundedRectangle(RoundedRectangleShaderElement),
 }
 
 impl Element for PanelRenderElement {
     fn id(&self) -> &smithay::backend::renderer::element::Id {
         match self {
-            Self::MyRenderElements(e) => e.id(),
+            Self::Wayland(e) => e.id(),
             Self::RoundedRectangle(e) => e.id(),
         }
     }
 
     fn current_commit(&self) -> smithay::backend::renderer::utils::CommitCounter {
         match self {
-            Self::MyRenderElements(e) => e.current_commit(),
+            Self::Wayland(e) => e.current_commit(),
             Self::RoundedRectangle(e) => e.current_commit(),
         }
     }
 
     fn src(&self) -> Rectangle<f64, Buffer> {
         match self {
-            Self::MyRenderElements(e) => e.src(),
+            Self::Wayland(e) => e.src(),
             Self::RoundedRectangle(e) => e.src(),
         }
     }
 
     fn geometry(&self, scale: smithay::utils::Scale<f64>) -> Rectangle<i32, Physical> {
         match self {
-            Self::MyRenderElements(e) => e.geometry(scale),
+            Self::Wayland(e) => e.geometry(scale),
             Self::RoundedRectangle(e) => e.geometry(scale),
         }
     }
@@ -145,14 +139,14 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
         damage: &[Rectangle<i32, Physical>],
     ) -> Result<(), GlesError> {
         match self {
-            Self::MyRenderElements(e) => e.draw(frame, src, dst, damage),
+            Self::Wayland(e) => e.draw(frame, src, dst, damage),
             Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage),
         }
     }
 
     fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
         match self {
-            PanelRenderElement::MyRenderElements(e) => e.underlying_storage(renderer),
+            PanelRenderElement::Wayland(e) => e.underlying_storage(renderer),
             PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
         }
     }
