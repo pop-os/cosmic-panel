@@ -610,6 +610,14 @@ impl PanelSpace {
 
     fn apply_animation_state(&mut self) {
         if let Some(animation_state) = self.animate_state.as_mut() {
+            self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+                self.dimensions
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round(),
+                1.0,
+                smithay::utils::Transform::Flipped180,
+            ));
             self.panel_changed = true;
             let progress = (Instant::now()
                 .duration_since(animation_state.started_at)
