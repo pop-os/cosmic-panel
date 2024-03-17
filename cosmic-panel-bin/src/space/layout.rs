@@ -222,45 +222,45 @@ impl PanelSpace {
         let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
 
         if self.panel_changed {
-            let gap = self.gap();
-            let border_radius = self.border_radius() as f32;
-            // let radius = (border_radius as f64 * self.scale).round() as u32;
+            {
+                let gap = self.gap() as f64 * self.scale;
+                let border_radius = self.border_radius() as f64 * self.scale;
 
-            let mut panel_size = self.actual_size;
-            let container_length = self.container_length;
+                let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
+                let container_length = self.container_length as f64 * self.scale;
+                let container_lengthwise_pos = container_lengthwise_pos as f32 * self.scale as f32;
+                if self.config.is_horizontal() {
+                    panel_size.w = container_length;
+                } else {
+                    panel_size.h = container_length;
+                }
 
-            if self.config.is_horizontal() {
-                panel_size.w = container_length as i32;
-            } else {
-                panel_size.h = container_length as i32;
+                let border_radius = border_radius.min(panel_size.w / 2.).min(panel_size.h / 2.);
+                let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, self.gap()) {
+                    (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
+                    (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
+                    (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
+                    (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
+                    _ => (border_radius, border_radius, border_radius, border_radius),
+                };
+                let loc = match self.config.anchor {
+                    PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
+                    PanelAnchor::Right => [0., container_lengthwise_pos as f32],
+                    PanelAnchor::Top => [
+                        container_lengthwise_pos as f32,
+                        (list_thickness as f32 - gap as f32),
+                    ],
+                    PanelAnchor::Bottom => [container_lengthwise_pos as f32, gap as f32],
+                };
+                self.panel_rect_settings = RoundedRectangleSettings {
+                    rad_tl: rad_tl as f32,
+                    rad_tr: rad_tr as f32,
+                    rad_bl: rad_bl as f32,
+                    rad_br: rad_br as f32,
+                    loc,
+                    rect_size: [panel_size.w as f32, panel_size.h as f32],
+                };
             }
-            let border_radius = border_radius
-                .min(panel_size.w as f32 / 2.)
-                .min(panel_size.h as f32 / 2.);
-            let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, gap) {
-                (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
-                (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
-                (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
-                (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
-                _ => (border_radius, border_radius, border_radius, border_radius),
-            };
-            let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
-                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
-                PanelAnchor::Top => [
-                    container_lengthwise_pos as f32,
-                    (list_thickness as f32 - gap as f32),
-                ],
-                PanelAnchor::Bottom => [container_lengthwise_pos as f32, gap as f32],
-            };
-            self.panel_rect_settings = RoundedRectangleSettings {
-                rad_tl,
-                rad_tr,
-                rad_bl,
-                rad_br,
-                loc,
-                rect_size: [panel_size.w as f32, panel_size.h as f32],
-            };
             input_region.subtract(
                 0,
                 0,
@@ -383,16 +383,7 @@ impl PanelSpace {
         prev = map_windows(windows_left.iter_mut(), prev);
 
         // will be already offset if dock
-        prev += if self
-            .config
-            .plugins_left()
-            .map(|l| l.is_empty())
-            .unwrap_or(true)
-        {
-            0.
-        } else {
-            center_left_spacing
-        };
+        prev += center_left_spacing;
 
         map_windows(windows_center.iter_mut(), prev);
 

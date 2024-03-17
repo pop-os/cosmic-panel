@@ -41,15 +41,16 @@ void main() {
 
     vec3 color = vec3(1.,0.,1.0);
     
-    if (p.x < loc.x || p.x > loc.x + rect_size.x || p.y < loc.y || p.y > loc.y + rect_size.y) {
+    float delta = fwidth(.1);
+    if (p.x - delta <= loc.x || p.x + delta >= loc.x + rect_size.x || p.y - delta <= loc.y || p.y + delta >= loc.y + rect_size.y) {
         gl_FragColor = vec4(0.);
-    } else if (p.x < tl_corner.x && p.y > tl_corner.y) {
+    } else if (p.x <= tl_corner.x && p.y >= tl_corner.y) {
         gl_FragColor = corner(rad_tl, tl_corner, p, color);
-    } else if (p.x > tr_corner.x && p.y > tr_corner.y) {
+    } else if (p.x >= tr_corner.x && p.y >= tr_corner.y) {
         gl_FragColor = corner(rad_tr, tr_corner, p, color);
-    } else if (p.x < bl_corner.x && p.y < bl_corner.y) {
+    } else if (p.x <= bl_corner.x && p.y <= bl_corner.y) {
         gl_FragColor = corner(rad_bl, bl_corner, p, color);
-    } else if (p.x > br_corner.x && p.y < br_corner.y) {
+    } else if (p.x >= br_corner.x && p.y <= br_corner.y) {
         gl_FragColor = corner(rad_bl, br_corner, p, color);
     } else {
         gl_FragColor = vec4(color,1.0);

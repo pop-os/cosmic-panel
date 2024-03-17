@@ -80,7 +80,7 @@ impl PanelSpace {
                     .then(|| {
                         PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
                             renderer,
-                            Rectangle::from_loc_and_size((0, 0), self.dimensions),
+                            Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
                             self.panel_rect_settings,
                         ))
                     })
@@ -100,7 +100,7 @@ impl PanelSpace {
                                     renderer,
                                     w.toplevel().wl_surface(),
                                     loc,
-                                    1.0,
+                                    self.scale,
                                     1.0,
                                     smithay::backend::renderer::element::Kind::Unspecified,
                                 )
@@ -156,7 +156,7 @@ impl PanelSpace {
                 renderer,
                 p.s_surface.wl_surface(),
                 (0, 0),
-                1.0,
+                self.scale,
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );

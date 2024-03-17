@@ -672,7 +672,11 @@ impl WrapperSpace for PanelSpace {
             .iter_mut()
             .find(|p| p.s_surface.wl_surface() == s)
         {
-            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
+            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0))
+                .to_physical(1)
+                .to_f64()
+                .to_logical(self.scale)
+                .to_i32_round();
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
                 p.c_popup.xdg_surface().set_window_geometry(
