@@ -829,7 +829,23 @@ impl WrapperSpace for PanelSpace {
                 }
                 return None;
             }
-            if let Some((w, relative_loc)) = self.space.element_under((x as f64, y as f64)) {
+            // FIXME
+            // There has to be a way to avoid messing with the scaling like this...
+            if let Some((w, relative_loc)) = self.space.elements().rev().find_map(|e| {
+                let Some(render_location) = self.space.element_location(e) else {
+                        return None;
+                    };
+                let mut bbox = e.bbox().to_f64();
+                bbox.size.w /= self.scale;
+                bbox.size.h /= self.scale;
+                bbox.loc.x = render_location.x as f64;
+                bbox.loc.y = render_location.y as f64;
+                if bbox.contains((x as f64, y as f64)) {
+                    Some((e.clone(), render_location))
+                } else {
+                    None
+                }
+            }) {
                 // XXX HACK
                 let geo = w
                     .bbox()
