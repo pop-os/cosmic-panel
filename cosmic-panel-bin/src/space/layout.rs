@@ -246,10 +246,7 @@ impl PanelSpace {
                 let loc = match self.config.anchor {
                     PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
                     PanelAnchor::Right => [0., container_lengthwise_pos as f32],
-                    PanelAnchor::Top => [
-                        container_lengthwise_pos as f32,
-                        (list_thickness as f32 - gap as f32),
-                    ],
+                    PanelAnchor::Top => [container_lengthwise_pos as f32, 0.],
                     PanelAnchor::Bottom => [container_lengthwise_pos as f32, gap as f32],
                 };
                 self.panel_rect_settings = RoundedRectangleSettings {
