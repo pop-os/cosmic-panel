@@ -51,7 +51,11 @@ impl PanelSpace {
             renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
             let is_dock = !self.config.expand_to_edges();
-            let clear_color = &[0.0, 0.0, 0.0, 0.0];
+            let clear_color = if self.buffer.is_none() {
+                &bg_color
+            } else {
+                &[0.0, 0.0, 0.0, 0.0]
+            };
             // if not visible, just clear and exit early
             let not_visible = self.config.autohide.is_some()
                 && matches!(
