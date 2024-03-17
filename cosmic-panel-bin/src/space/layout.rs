@@ -383,16 +383,7 @@ impl PanelSpace {
         prev = map_windows(windows_left.iter_mut(), prev);
 
         // will be already offset if dock
-        prev += if self
-            .config
-            .plugins_left()
-            .map(|l| l.is_empty())
-            .unwrap_or(true)
-        {
-            0.
-        } else {
-            center_left_spacing
-        };
+        prev += center_left_spacing;
 
         map_windows(windows_center.iter_mut(), prev);
 
