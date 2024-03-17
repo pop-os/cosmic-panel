@@ -22,7 +22,7 @@ vec4 corner(float rad, vec2 corner, vec2 point, vec3 c) {
     vec2 diff = abs(corner - point);
     float mh_dist = diff.x + diff.y;
     float distance_to_corner = length(diff);
-    // for anti-aliasing
+    // need good method for this
     float delta = fwidth(distance_to_corner);
     if (distance_to_corner <= rad - delta / 2. || mh_dist <= rad) {
         return vec4(c, 1.);
@@ -39,10 +39,12 @@ void main() {
 
     vec2 p = gl_FragCoord.xy;
 
-    vec3 color = vec3(1.,0.,1.0);
+    vec3 color = vec3(0.);
+    color = vec3(1.,0.,1.0);
     
     if (p.x < loc.x || p.x > loc.x + rect_size.x || p.y < loc.y || p.y > loc.y + rect_size.y) {
         gl_FragColor = vec4(0.);
+        // top left check
     } else if (p.x < tl_corner.x && p.y > tl_corner.y) {
         gl_FragColor = corner(rad_tl, tl_corner, p, color);
     } else if (p.x > tr_corner.x && p.y > tr_corner.y) {
