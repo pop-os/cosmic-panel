@@ -9,7 +9,7 @@ lto = "thin"
 
 [patch."https://github.com/Smithay/client-toolkit"]
 sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit", rev = "2e9bf9f" }
-# [patch."https://github.com/pop-os/xdg-shell-wrapper"]
+[patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
 

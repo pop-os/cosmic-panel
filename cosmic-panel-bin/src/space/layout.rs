@@ -1,15 +1,20 @@
 use std::slice::IterMut;
 
 use crate::minimize::MinimizeApplet;
-use crate::space::corner_element::RoundedRectangleSettings;
 use crate::space::Alignment;
 
 use super::PanelSpace;
 use cosmic_panel_config::PanelAnchor;
+use image::RgbaImage;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
 use smithay::utils::{IsAlive, Physical, Size};
-use smithay::{desktop::Window, reexports::wayland_server::Resource, utils::Rectangle};
+use smithay::{
+    backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
+    desktop::Window,
+    reexports::wayland_server::Resource,
+    utils::{Point, Rectangle, Transform},
+};
 
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {
@@ -19,6 +24,7 @@ impl PanelSpace {
             bg_color[c] *= bg_color[3];
         }
         let gap = self.gap();
+        let border_radius = self.border_radius();
         let padding_u32 = self.config.padding() as u32;
         let padding_scaled = padding_u32 as f64 * self.scale;
         let anchor = self.config.anchor();
@@ -195,72 +201,7 @@ impl PanelSpace {
             (Some(r), Some(layer)) => (r, layer),
             _ => panic!("input region or layer missing"),
         };
-
-        let (new_list_dim_length, new_list_thickness_dim) = match anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
-            PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
-        };
-
-        self.panel_changed |= old_actual != self.actual_size
-            || new_list_thickness_dim != list_thickness
-            || self.animate_state.is_some();
-
-        let left_sum = left_sum_scaled / self.scale;
-        let center_sum = center_sum_scaled / self.scale;
-        let right_sum = right_sum_scaled / self.scale;
-
-        let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
-            (new_logical_length as f32
-                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
-                as i32
-        } else if is_dock {
-            new_logical_length
-        } else {
-            new_list_dim_length
-        };
-        self.container_length = container_length;
-        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
-
-        if self.panel_changed {
-            let gap = self.gap();
-            let border_radius = self.border_radius() as f32;
-            // let radius = (border_radius as f64 * self.scale).round() as u32;
-
-            let mut panel_size = self.actual_size;
-            let container_length = self.container_length;
-
-            if self.config.is_horizontal() {
-                panel_size.w = container_length as i32;
-            } else {
-                panel_size.h = container_length as i32;
-            }
-            let border_radius = border_radius
-                .min(panel_size.w as f32 / 2.)
-                .min(panel_size.h as f32 / 2.);
-            let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, gap) {
-                (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
-                (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
-                (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
-                (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
-                _ => (border_radius, border_radius, border_radius, border_radius),
-            };
-            let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
-                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
-                PanelAnchor::Top => [
-                    container_lengthwise_pos as f32,
-                    (list_thickness as f32 - gap as f32),
-                ],
-                PanelAnchor::Bottom => [container_lengthwise_pos as f32, gap as f32],
-            };
-            self.panel_rect_settings = RoundedRectangleSettings {
-                rad_tl,
-                rad_tr,
-                rad_bl,
-                rad_br,
-                loc,
-                rect_size: [panel_size.w as f32, panel_size.h as f32],
-            };
+        if old_actual != self.actual_size || self.animate_state.is_some() {
             input_region.subtract(
                 0,
                 0,
@@ -291,11 +232,38 @@ impl PanelSpace {
                 .set_input_region(Some(input_region.wl_region()));
         }
 
+        let (new_list_dim_length, new_list_thickness_dim) = match anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (new_dim.h, new_dim.w),
+            PanelAnchor::Top | PanelAnchor::Bottom => (new_dim.w, new_dim.h),
+        };
+
+        if new_list_thickness_dim != list_thickness {
+            self.pending_dimensions = Some(new_dim);
+            self.is_dirty = true;
+            anyhow::bail!("resizing list");
+        }
+
         // must use logical coordinates for layout here
 
-        fn center_in_bar(crosswise_dim: u32, dim: u32) -> i32 {
-            (crosswise_dim as i32 - dim as i32) / 2
+        fn center_in_bar(thickness: u32, dim: u32) -> i32 {
+            (thickness as i32 - dim as i32) / 2
         }
+
+        let left_sum = left_sum_scaled / self.scale;
+        let center_sum = center_sum_scaled / self.scale;
+        let right_sum = right_sum_scaled / self.scale;
+
+        let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
+            (new_logical_length as f32
+                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
+                as i32
+        } else if is_dock {
+            new_logical_length
+        } else {
+            new_list_dim_length
+        };
+        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
+
         // eq length should assign space evenly to all lists even if they are empty
         let requested_eq_length: f64 = container_length as f64 / 3.;
         let center_left_spacing = if left_sum < requested_eq_length as f64
@@ -311,11 +279,6 @@ impl PanelSpace {
                 as f64
                 / 2.
         };
-        if new_list_thickness_dim != list_thickness {
-            self.pending_dimensions = Some(new_dim);
-            self.is_dirty = true;
-            anyhow::bail!("resizing list");
-        }
         // offset for centering
         let margin_offset = match anchor {
             PanelAnchor::Top | PanelAnchor::Left => gap,
@@ -383,16 +346,7 @@ impl PanelSpace {
         prev = map_windows(windows_left.iter_mut(), prev);
 
         // will be already offset if dock
-        prev += if self
-            .config
-            .plugins_left()
-            .map(|l| l.is_empty())
-            .unwrap_or(true)
-        {
-            0.
-        } else {
-            center_left_spacing
-        };
+        prev += center_left_spacing;
 
         map_windows(windows_center.iter_mut(), prev);
 
@@ -401,7 +355,123 @@ impl PanelSpace {
             - right_sum;
 
         map_windows(windows_right.iter_mut(), prev);
+
         self.space.refresh();
+
+        // corners calculation with border_radius
+
+        // default to actual size of the panel
+        let mut panel_size = self.actual_size;
+
+        if self.config.is_horizontal() {
+            panel_size.w = container_length as i32;
+        } else {
+            panel_size.h = container_length as i32;
+        }
+        let panel_size = panel_size.to_f64().to_physical(self.scale).to_i32_round();
+
+        let mut buff = MemoryRenderBuffer::new(
+            Fourcc::Abgr8888,
+            (panel_size.w, panel_size.h),
+            1,
+            Transform::Normal,
+            None,
+        );
+        let mut render_context = buff.render();
+        let bg_color: [u8; 4] = bg_color
+            .iter()
+            .map(|c| ((c * 255.0) as u8).clamp(0, 255))
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        // TODO use 2 MemoryRenderBuffer for sides, and 1 single pixel buffer for center
+        let _ = render_context.draw(|buffer| {
+            buffer.chunks_exact_mut(4).for_each(|chunk| {
+                chunk.copy_from_slice(&bg_color);
+            });
+
+            let radius = (border_radius as f64 * self.scale).round() as u32;
+            let radius = radius
+                .min(panel_size.w as u32 / 2)
+                .min(panel_size.h as u32 / 2);
+
+            // early return if no radius
+            if radius == 0 {
+                return Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
+                    Point::default(),
+                    (panel_size.w, panel_size.h),
+                )]);
+            }
+            let drawn_radius = 128;
+            let drawn_radius2 = drawn_radius as f64 * drawn_radius as f64;
+            let grid = (0..((drawn_radius + 1) * (drawn_radius + 1)))
+                .into_iter()
+                .map(|i| {
+                    let (x, y) = (i as u32 % (drawn_radius + 1), i as u32 / (drawn_radius + 1));
+                    drawn_radius2 - (x as f64 * x as f64 + y as f64 * y as f64)
+                })
+                .collect_vec();
+
+            let empty = [0, 0, 0, 0];
+
+            let mut corner_image = RgbaImage::new(drawn_radius, drawn_radius);
+            for i in 0..(drawn_radius * drawn_radius) {
+                let (x, y) = (i as u32 / drawn_radius, i as u32 % drawn_radius);
+                let bottom_left = grid[(y * (drawn_radius + 1) + x) as usize];
+                let bottom_right = grid[(y * (drawn_radius + 1) + x + 1) as usize];
+                let top_left = grid[((y + 1) * (drawn_radius + 1) + x) as usize];
+                let top_right = grid[((y + 1) * (drawn_radius + 1) + x + 1) as usize];
+                let color = if bottom_left >= 0.0
+                    && bottom_right >= 0.0
+                    && top_left >= 0.0
+                    && top_right >= 0.0
+                {
+                    bg_color.clone()
+                } else {
+                    empty
+                };
+                corner_image.put_pixel(x, y, image::Rgba(color));
+            }
+            let corner_image = image::imageops::resize(
+                &corner_image,
+                radius as u32,
+                radius as u32,
+                image::imageops::FilterType::CatmullRom,
+            );
+
+            for (i, color) in corner_image.pixels().enumerate() {
+                let (x, y) = (i as u32 % radius, i as u32 / radius);
+                let top_left = (radius - 1 - x, radius - 1 - y);
+                let top_right = (panel_size.w as u32 - radius + x, radius - 1 - y);
+                let bottom_left = (radius - 1 - x, panel_size.h as u32 - radius + y);
+                let bottom_right = (
+                    panel_size.w as u32 - radius + x,
+                    panel_size.h as u32 - radius + y,
+                );
+                for (c_x, c_y) in match (self.config.anchor, gap > 0) {
+                    (PanelAnchor::Left, false) => vec![top_right, bottom_right],
+                    (PanelAnchor::Right, false) => vec![top_left, bottom_left],
+                    (PanelAnchor::Top, false) => vec![bottom_left, bottom_right],
+                    (PanelAnchor::Bottom, false) => vec![top_left, top_right],
+                    _ => vec![top_left, top_right, bottom_left, bottom_right],
+                } {
+                    let b_i = (c_y * panel_size.w as u32 + c_x) as usize * 4;
+                    let c = buffer.get_mut(b_i..b_i + 4).unwrap();
+                    c.copy_from_slice(&color.0);
+                }
+            }
+
+            // Return the whole buffer as damage
+            Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
+                Point::default(),
+                (panel_size.w, panel_size.h),
+            )])
+        });
+        drop(render_context);
+        let old = self.buffer.replace(buff);
+        self.old_buff = old;
+        self.buffer_changed = true;
 
         Ok(())
     }

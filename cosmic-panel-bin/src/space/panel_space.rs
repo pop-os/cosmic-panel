@@ -34,10 +34,10 @@ use smithay::{
         renderer::{
             damage::OutputDamageTracker,
             element::{
-                surface::WaylandSurfaceRenderElement, Element, RenderElement, UnderlyingStorage,
+                memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
+                surface::WaylandSurfaceRenderElement,
             },
-            gles::{GlesError, GlesFrame},
-            Bind, Unbind,
+            Bind, ImportAll, ImportMem, Unbind,
         },
     },
     output::Output,
@@ -45,7 +45,8 @@ use smithay::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, DisplayHandle},
     },
-    utils::{Buffer, Physical, Rectangle},
+    render_elements,
+    utils::Rectangle,
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -83,10 +84,6 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 use crate::PanelCalloopMsg;
 
-use super::corner_element::{
-    init_shaders, RoundedRectangleSettings, RoundedRectangleShaderElement,
-};
-
 pub enum AppletMsg {
     NewProcess(String, Process),
     NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
@@ -95,61 +92,10 @@ pub enum AppletMsg {
     Cleanup(String),
 }
 
-pub(crate) enum PanelRenderElement {
-    Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
-    RoundedRectangle(RoundedRectangleShaderElement),
-}
-
-impl Element for PanelRenderElement {
-    fn id(&self) -> &smithay::backend::renderer::element::Id {
-        match self {
-            Self::Wayland(e) => e.id(),
-            Self::RoundedRectangle(e) => e.id(),
-        }
-    }
-
-    fn current_commit(&self) -> smithay::backend::renderer::utils::CommitCounter {
-        match self {
-            Self::Wayland(e) => e.current_commit(),
-            Self::RoundedRectangle(e) => e.current_commit(),
-        }
-    }
-
-    fn src(&self) -> Rectangle<f64, Buffer> {
-        match self {
-            Self::Wayland(e) => e.src(),
-            Self::RoundedRectangle(e) => e.src(),
-        }
-    }
-
-    fn geometry(&self, scale: smithay::utils::Scale<f64>) -> Rectangle<i32, Physical> {
-        match self {
-            Self::Wayland(e) => e.geometry(scale),
-            Self::RoundedRectangle(e) => e.geometry(scale),
-        }
-    }
-}
-
-impl RenderElement<GlesRenderer> for PanelRenderElement {
-    fn draw(
-        &self,
-        frame: &mut GlesFrame<'_>,
-        src: Rectangle<f64, Buffer>,
-        dst: Rectangle<i32, Physical>,
-        damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), GlesError> {
-        match self {
-            Self::Wayland(e) => e.draw(frame, src, dst, damage),
-            Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage),
-        }
-    }
-
-    fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
-        match self {
-            PanelRenderElement::Wayland(e) => e.underlying_storage(renderer),
-            PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
-        }
-    }
+render_elements! {
+    pub(crate) MyRenderElements<R> where R: ImportMem + ImportAll;
+    Memory=MemoryRenderBufferRenderElement<R>,
+    WaylandSurface=WaylandSurfaceRenderElement<R>
 }
 
 pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
@@ -202,8 +148,6 @@ pub(crate) struct PanelSpace {
     pub(crate) actual_size: Size<i32, Logical>,
     // dimensions of the layer surface
     pub(crate) dimensions: Size<i32, Logical>,
-    // Logical size of the panel, with the applied animation state
-    pub(crate) container_length: i32,
     pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
@@ -221,16 +165,18 @@ pub(crate) struct PanelSpace {
     pub bg_color: [f32; 4],
     pub(crate) applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) input_region: Option<Region>,
-    pub(crate) panel_changed: bool,
+    pub(crate) old_buff: Option<MemoryRenderBuffer>,
+    pub(crate) buffer: Option<MemoryRenderBuffer>,
+    pub(crate) buffer_changed: bool,
     pub(crate) has_frame: bool,
     pub(crate) scale: f64,
     pub(crate) output_has_toplevel: bool,
+    pub(crate) first_draw: bool,
     pub(crate) security_context_manager: Option<SecurityContextManager>,
     pub(crate) animate_state: Option<AnimateState>,
     pub maximized: bool,
     pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     pub(crate) minimize_applet_rect: Rectangle<i32, Logical>,
-    pub(crate) panel_rect_settings: RoundedRectangleSettings,
 }
 
 impl PanelSpace {
@@ -282,19 +228,20 @@ impl PanelSpace {
             applet_tx,
             actual_size: (0, 0).into(),
             input_region: None,
-            damage_tracked_renderer: None,
+            damage_tracked_renderer: Default::default(),
             is_dirty: false,
-            panel_changed: false,
+            old_buff: Default::default(),
+            buffer: Default::default(),
+            buffer_changed: false,
             has_frame: true,
             scale: 1.0,
             output_has_toplevel: false,
+            first_draw: true,
             security_context_manager,
             animate_state: None,
             maximized: false,
             panel_tx,
             minimize_applet_rect: Default::default(),
-            container_length: 0,
-            panel_rect_settings: RoundedRectangleSettings::default(),
         }
     }
 
@@ -604,15 +551,6 @@ impl PanelSpace {
 
     fn apply_animation_state(&mut self) {
         if let Some(animation_state) = self.animate_state.as_mut() {
-            self.damage_tracked_renderer = Some(OutputDamageTracker::new(
-                self.dimensions
-                    .to_f64()
-                    .to_physical(self.scale)
-                    .to_i32_round(),
-                1.0,
-                smithay::utils::Transform::Flipped180,
-            ));
-            self.panel_changed = true;
             let progress = (Instant::now()
                 .duration_since(animation_state.started_at)
                 .as_millis() as f32)
@@ -855,8 +793,6 @@ impl PanelSpace {
                             }
                         };
 
-                        init_shaders(&mut new_renderer).expect("Failed to init shaders...");
-
                         let egl_surface = Rc::new(unsafe {
                             EGLSurface::new(
                                 &new_egl_display,
@@ -995,6 +931,8 @@ impl PanelSpace {
             1.0,
             smithay::utils::Transform::Flipped180,
         ));
+        self.old_buff = None;
+        self.buffer = None;
     }
 
     pub fn apply_positioner_state(

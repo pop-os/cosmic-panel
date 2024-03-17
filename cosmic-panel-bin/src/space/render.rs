@@ -1,17 +1,21 @@
 use std::time::Duration;
 
-use super::{corner_element::RoundedRectangleShader, panel_space::PanelRenderElement, PanelSpace};
+use super::{panel_space::MyRenderElements, PanelSpace};
 use cctk::wayland_client::{Proxy, QueueHandle};
-
+use cosmic_panel_config::PanelAnchor;
+use itertools::Itertools;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
         damage::OutputDamageTracker,
-        element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+        element::{
+            memory::MemoryRenderBufferRenderElement,
+            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+        },
         gles::GlesRenderer,
         Bind, Frame, Renderer, Unbind,
     },
-    utils::Rectangle,
+    utils::{Logical, Point, Rectangle, Size},
 };
 use xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace};
 
@@ -22,7 +26,8 @@ impl PanelSpace {
         time: u32,
         qh: &QueueHandle<GlobalState<W>>,
     ) -> anyhow::Result<()> {
-        if self.space_event.get() != None && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
+        if self.space_event.get() != None
+            || self.first_draw && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
         {
             return Ok(());
         }
@@ -38,20 +43,27 @@ impl PanelSpace {
             };
             renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
-            let clear_color = bg_color;
+            let is_dock = !self.config.expand_to_edges();
+            let clear_color = if self.buffer.is_none() {
+                &bg_color
+            } else {
+                &[0.0, 0.0, 0.0, 0.0]
+            };
             // if not visible, just clear and exit early
             let not_visible = self.config.autohide.is_some()
                 && matches!(
                     self.visibility,
                     xdg_shell_wrapper::space::Visibility::Hidden
                 );
-            let dim = self
-                .dimensions
-                .to_f64()
-                .to_physical(self.scale)
-                .to_i32_round();
+
             // TODO check to make sure this is not going to cause damage issues
             if not_visible {
+                let dim = self
+                    .dimensions
+                    .to_f64()
+                    .to_physical(self.scale)
+                    .to_i32_round();
+
                 if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
                     _ = frame.clear(
                         [0.0, 0.0, 0.0, 0.0],
@@ -75,41 +87,146 @@ impl PanelSpace {
             }
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let elements: Vec<PanelRenderElement> = (self.panel_changed
-                    && (self.config.anchor_gap || self.config.border_radius > 0))
-                    .then(|| {
-                        PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
+                let mut elements: Vec<MyRenderElements<_>> = self
+                    .space
+                    .elements()
+                    .map(|w| {
+                        let loc = self
+                            .space
+                            .element_location(w)
+                            .unwrap_or_default()
+                            .to_f64()
+                            .to_physical(self.scale)
+                            .to_i32_round();
+                        render_elements_from_surface_tree(
                             renderer,
-                            Rectangle::from_loc_and_size((0, 0), self.dimensions),
-                            self.panel_rect_settings,
-                        ))
+                            w.toplevel().wl_surface(),
+                            loc,
+                            1.0,
+                            1.0,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        )
+                        .into_iter()
+                        .map(|r| MyRenderElements::WaylandSurface(r))
                     })
-                    .into_iter()
-                    .chain(
-                        self.space
-                            .elements()
-                            .map(|w| {
-                                let loc = self
-                                    .space
-                                    .element_location(w)
-                                    .unwrap_or_default()
-                                    .to_f64()
-                                    .to_physical(self.scale)
-                                    .to_i32_round();
-                                render_elements_from_surface_tree(
-                                    renderer,
-                                    w.toplevel().wl_surface(),
-                                    loc,
-                                    1.0,
-                                    1.0,
-                                    smithay::backend::renderer::element::Kind::Unspecified,
+                    .flatten()
+                    .collect_vec();
+
+                // FIXME the first draw is stretched even when not scaled when using a buffer
+                // this is a workaround
+                if !self.first_draw {
+                    if let Some(buff) = self.buffer.as_mut() {
+                        let mut render_context = buff.render();
+                        let margin_offset = match self.config.anchor {
+                            PanelAnchor::Top | PanelAnchor::Left => {
+                                self.config.get_effective_anchor_gap() as f64
+                            }
+                            PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
+                        };
+
+                        let (panel_size, loc) = if let Some(animate_state) =
+                            self.animate_state.as_ref()
+                        {
+                            let actual_length = if self.config.is_horizontal() {
+                                self.actual_size.w
+                            } else {
+                                self.actual_size.h
+                            };
+                            let dim_length = if self.config.is_horizontal() {
+                                self.dimensions.w
+                            } else {
+                                self.dimensions.h
+                            };
+                            let container_length = (actual_length as f32
+                                + (dim_length - actual_length) as f32 * animate_state.cur.expanded)
+                                as i32;
+
+                            let lengthwise_pos = (dim_length - container_length) as f64 / 2.0;
+
+                            let crosswise_pos = match self.config.anchor {
+                                PanelAnchor::Top | PanelAnchor::Left => {
+                                    self.config.get_effective_anchor_gap() as f64
+                                }
+                                PanelAnchor::Bottom | PanelAnchor::Right => 0.0,
+                            };
+                            let crosswise_length = if self.config.is_horizontal() {
+                                self.actual_size.h
+                            } else {
+                                self.actual_size.w
+                            };
+                            let (x, y, width, height) = if self.config.is_horizontal() {
+                                (
+                                    lengthwise_pos,
+                                    crosswise_pos,
+                                    container_length,
+                                    crosswise_length,
                                 )
-                                .into_iter()
-                                .map(|r| PanelRenderElement::Wayland(r))
-                            })
-                            .flatten(),
-                    )
-                    .collect();
+                            } else {
+                                (
+                                    crosswise_pos,
+                                    lengthwise_pos,
+                                    crosswise_length,
+                                    container_length,
+                                )
+                            };
+                            (
+                                Size::<i32, Logical>::from((width, height)),
+                                Point::<f64, Logical>::from((x, y)),
+                            )
+                        } else if is_dock {
+                            let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                                (
+                                    ((self.dimensions.w - self.actual_size.w) as f64 / 2.0).round(),
+                                    margin_offset,
+                                )
+                            } else {
+                                (
+                                    margin_offset,
+                                    ((self.dimensions.h - self.actual_size.h) as f64 / 2.0).round(),
+                                )
+                            }
+                            .into();
+
+                            (self.actual_size, loc)
+                        } else {
+                            let loc: Point<f64, Logical> = if self.config.is_horizontal() {
+                                (0.0, margin_offset)
+                            } else {
+                                (margin_offset, 0.0)
+                            }
+                            .into();
+
+                            (self.dimensions, loc)
+                        };
+                        let scaled_panel_size =
+                            panel_size.to_f64().to_physical(self.scale).to_i32_round();
+
+                        let _ = render_context.draw(|_| {
+                            if self.buffer_changed {
+                                Result::<_, ()>::Ok(vec![Rectangle::from_loc_and_size(
+                                    Point::default(),
+                                    (scaled_panel_size.w, scaled_panel_size.h),
+                                )])
+                            } else {
+                                Result::<_, ()>::Ok(Default::default())
+                            }
+                        });
+                        self.buffer_changed = false;
+
+                        drop(render_context);
+                        if let Ok(render_element) = MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            loc.to_physical(self.scale).to_i32_round(),
+                            &buff,
+                            None,
+                            None,
+                            None,
+                            smithay::backend::renderer::element::Kind::Unspecified,
+                        ) {
+                            elements.push(MyRenderElements::Memory(render_element));
+                        }
+                    }
+                }
 
                 _ = my_renderer.render_output(
                     renderer,
@@ -119,9 +236,8 @@ impl PanelSpace {
                         .buffer_age()
                         .unwrap_or_default() as usize,
                     &elements,
-                    clear_color,
+                    *clear_color,
                 );
-
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
                 for window in self.space.elements() {
@@ -180,6 +296,7 @@ impl PanelSpace {
             p.has_frame = false;
         }
         renderer.unbind()?;
+        self.first_draw = false;
 
         Ok(())
     }
