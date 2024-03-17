@@ -148,8 +148,6 @@ pub(crate) struct PanelSpace {
     pub(crate) actual_size: Size<i32, Logical>,
     // dimensions of the layer surface
     pub(crate) dimensions: Size<i32, Logical>,
-    // Logical size of the panel, with the applied animation state
-    pub(crate) container_length: i32,
     pub(crate) is_dirty: bool,
     pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
@@ -167,6 +165,7 @@ pub(crate) struct PanelSpace {
     pub bg_color: [f32; 4],
     pub(crate) applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) input_region: Option<Region>,
+    pub(crate) old_buff: Option<MemoryRenderBuffer>,
     pub(crate) buffer: Option<MemoryRenderBuffer>,
     pub(crate) buffer_changed: bool,
     pub(crate) has_frame: bool,
@@ -231,6 +230,7 @@ impl PanelSpace {
             input_region: None,
             damage_tracked_renderer: Default::default(),
             is_dirty: false,
+            old_buff: Default::default(),
             buffer: Default::default(),
             buffer_changed: false,
             has_frame: true,
@@ -242,7 +242,6 @@ impl PanelSpace {
             maximized: false,
             panel_tx,
             minimize_applet_rect: Default::default(),
-            container_length: 0,
         }
     }
 
@@ -932,6 +931,7 @@ impl PanelSpace {
             1.0,
             smithay::utils::Transform::Flipped180,
         ));
+        self.old_buff = None;
         self.buffer = None;
     }
 
