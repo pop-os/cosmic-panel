@@ -1,6 +1,10 @@
 use std::time::Duration;
 
-use super::{corner_element::RoundedRectangleShader, panel_space::PanelRenderElement, PanelSpace};
+use super::{
+    corner_element::RoundedRectangleShader,
+    panel_space::{MyRenderElements, PanelRenderElement},
+    PanelSpace,
+};
 use cctk::wayland_client::{Proxy, QueueHandle};
 
 use sctk::shell::WaylandSurface;
@@ -105,7 +109,11 @@ impl PanelSpace {
                                     smithay::backend::renderer::element::Kind::Unspecified,
                                 )
                                 .into_iter()
-                                .map(|r| PanelRenderElement::Wayland(r))
+                                .map(|r| {
+                                    PanelRenderElement::MyRenderElements(
+                                        MyRenderElements::WaylandSurface(r),
+                                    )
+                                })
                             })
                             .flatten(),
                     )
