@@ -8,7 +8,8 @@ use cctk::{
 };
 
 use cosmic_panel_config::CosmicPanelBackground;
-use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
+use itertools::Itertools;
+use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace, WrapperSpace};
 
 use super::SpaceContainer;
 
@@ -125,12 +126,11 @@ impl SpaceContainer {
 
     pub(crate) fn apply_maximized(&mut self, output: &WlOutput, maximized: bool) {
         let bg_color = self.cur_bg_color();
-
-        for s in self
+        let s_list = self
             .space_list
             .iter_mut()
-            .filter(|s| s.output.as_ref().iter().any(|(o, _, _)| o == output))
-        {
+            .filter(|s| s.output.as_ref().iter().any(|(o, _, _)| o == output));
+        for s in s_list.sorted_by(|a, b| a.config.get_priority().cmp(&b.config.get_priority())) {
             let c = self
                 .config
                 .config_list
