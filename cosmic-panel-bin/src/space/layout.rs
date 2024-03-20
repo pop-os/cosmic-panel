@@ -40,7 +40,7 @@ impl PanelSpace {
             num_lists += 1;
         }
 
-        let make_indices_contiguous = |windows: &mut Vec<(usize, Window, bool)>| {
+        let make_indices_contiguous = |windows: &mut Vec<(usize, Window, Option<u32>)>| {
             windows.sort_by(|(a_i, _, _), (b_i, _, _)| a_i.cmp(b_i));
             for (j, (i, _, _)) in windows.iter_mut().enumerate() {
                 *i = j;
@@ -61,7 +61,7 @@ impl PanelSpace {
                     .find_map(|(i, c)| {
                         if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
                         {
-                            Some((i, w.clone(), c.is_minimize))
+                            Some((i, w.clone(), c.minimize_priority))
                         } else {
                             None
                         }
@@ -84,7 +84,7 @@ impl PanelSpace {
                     .find_map(|(i, c)| {
                         if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
                         {
-                            Some((i, w.clone(), c.is_minimize))
+                            Some((i, w.clone(), c.minimize_priority))
                         } else {
                             None
                         }
@@ -107,7 +107,7 @@ impl PanelSpace {
                     .find_map(|(i, c)| {
                         if Some(c.client.id()) == w.toplevel().wl_surface().client().map(|c| c.id())
                         {
-                            Some((i, w.clone(), c.is_minimize))
+                            Some((i, w.clone(), c.minimize_priority))
                         } else {
                             None
                         }
@@ -117,7 +117,7 @@ impl PanelSpace {
         make_indices_contiguous(&mut windows_left);
 
         fn map_fn(
-            (i, w, _): &(usize, Window, bool),
+            (i, w, _): &(usize, Window, Option<u32>),
             anchor: PanelAnchor,
             alignment: Alignment,
             _scale: f64,
@@ -318,8 +318,10 @@ impl PanelSpace {
             PanelAnchor::Top | PanelAnchor::Left => gap,
             PanelAnchor::Bottom | PanelAnchor::Right => 0,
         } as i32;
-        let mut map_windows = |windows: IterMut<'_, (usize, Window, bool)>, mut prev| -> f64 {
-            for (i, w, is_minimize) in windows {
+        let mut map_windows = |windows: IterMut<'_, (usize, Window, Option<u32>)>,
+                               mut prev|
+         -> f64 {
+            for (i, w, minimize_priority) in windows {
                 // XXX this is a hack to get the logical size of the window
                 // TODO improve how this is done
                 let size = w.bbox().size.to_f64().downscale(self.scale);
@@ -354,7 +356,7 @@ impl PanelSpace {
                         self.space.map_element(w.clone(), (x, y), false);
                     }
                 };
-                if *is_minimize {
+                if minimize_priority.is_some() {
                     let new_rect = Rectangle {
                         loc: (x, y).into(),
                         size: ((size.w.ceil() as i32).max(1), (size.w.ceil() as i32).max(1)).into(),

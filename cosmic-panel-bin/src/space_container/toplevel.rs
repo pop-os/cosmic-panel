@@ -9,7 +9,7 @@ use cctk::{
 
 use cosmic_panel_config::CosmicPanelBackground;
 use itertools::Itertools;
-use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace, WrapperSpace};
+use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
 
 use super::SpaceContainer;
 

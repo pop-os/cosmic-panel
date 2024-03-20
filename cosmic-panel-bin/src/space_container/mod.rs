@@ -7,4 +7,3 @@ pub(crate) mod workspace;
 mod wrapper_space;
 
 pub use space_container::*;
-pub use wrapper_space::*;

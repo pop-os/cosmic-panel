@@ -41,7 +41,7 @@ impl PanelSpace {
         config: sctk::shell::xdg::popup::PopupConfigure,
         renderer: Option<&mut GlesRenderer>,
     ) {
-        let Some(renderer)= renderer else {
+        let Some(renderer) = renderer else {
             return;
         };
 

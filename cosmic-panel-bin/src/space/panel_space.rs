@@ -160,7 +160,25 @@ pub struct PanelClient {
     pub client: Client,
     pub stream: Option<UnixStream>,
     pub security_ctx: Option<WpSecurityContextV1>,
-    pub is_minimize: bool,
+    pub exec: Option<String>,
+    pub minimize_priority: Option<u32>,
+    pub requests_wayland_display: Option<bool>,
+    pub is_notification_applet: Option<bool>,
+}
+
+impl PanelClient {
+    pub fn new(name: String, client: Client, stream: Option<UnixStream>) -> Self {
+        Self {
+            name,
+            client,
+            stream,
+            security_ctx: None,
+            exec: None,
+            minimize_priority: None,
+            requests_wayland_display: None,
+            is_notification_applet: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
