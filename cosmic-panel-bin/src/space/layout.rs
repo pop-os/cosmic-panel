@@ -46,12 +46,60 @@ impl PanelSpace {
                 *i = j;
             }
         };
-
-        let mut windows_right = self
+        let mut to_map: Vec<Window> = Vec::with_capacity(self.space.elements().count());
+        // must handle unmapped windows, and unmap windows that are too large for the current configuration.
+        let to_unmap = self
             .space
             .elements()
             .cloned()
-            .filter(|w| w.alive())
+            .filter(|w| {
+                if !w.alive() {
+                    return true;
+                }
+                let size = w.bbox().size;
+                let constrained = self.constrain_dim(size, Some(gap as u32));
+
+                let ret = if self.config.is_horizontal() {
+                        constrained.h < size.h
+                    } else {
+                        constrained.w < size.w
+                    };
+                if ret {
+                    tracing::error!(
+                        "Window {size:?} is too large for what panel configuration allows {constrained:?}. It will be unmapped.",
+                    );
+                } else {
+                    to_map.push(w.clone());
+                }
+                ret
+            })
+            .collect_vec();
+        for w in self.unmapped.drain(..).collect_vec() {
+            if w.alive() && {
+                let size = w.bbox().size;
+                let constrained = self.constrain_dim(size, Some(gap as u32));
+                if self.config.is_horizontal() {
+                    constrained.h >= size.h
+                } else {
+                    constrained.w >= size.w
+                }
+            } {
+                to_map.push(w);
+            } else {
+                tracing::trace!("Window was unmapped and will stay so. {:?}", w.bbox());
+                self.unmapped.push(w);
+            }
+        }
+        for w in to_unmap {
+            self.space.unmap_elem(&w);
+            self.unmapped.push(w);
+        }
+
+        self.space.refresh();
+
+        let mut windows_right = to_map
+            .iter()
+            .cloned()
             .filter_map(|w| {
                 self.clients_right
                     .lock()
@@ -70,11 +118,9 @@ impl PanelSpace {
             .collect_vec();
         make_indices_contiguous(&mut windows_right);
 
-        let mut windows_center = self
-            .space
-            .elements()
+        let mut windows_center = to_map
+            .iter()
             .cloned()
-            .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_center
                     .lock()
@@ -92,12 +138,9 @@ impl PanelSpace {
             })
             .collect_vec();
         make_indices_contiguous(&mut windows_center);
-
-        let mut windows_left = self
-            .space
-            .elements()
+        let mut windows_left = to_map
+            .iter()
             .cloned()
-            .filter(|w| w.alive())
             .filter_map(|w| {
                 self.clients_left
                     .lock()
@@ -169,7 +212,7 @@ impl PanelSpace {
         .to_logical(self.scale)
         .to_i32_round();
 
-        let actual_size_constrained = self.constrain_dim(self.actual_size);
+        let actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
         if self.config.is_horizontal() {
             self.actual_size.h = actual_size_constrained.h;
         } else {

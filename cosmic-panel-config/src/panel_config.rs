@@ -488,16 +488,17 @@ impl CosmicPanelConfig {
         &self,
         output_dims: Option<(u32, u32)>,
         suggested_length: Option<u32>,
+        gap: Option<u32>,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
-        let mut bar_thickness = match &self.size {
-            PanelSize::XS => 8..61,
-            PanelSize::S => 8..81,
-            PanelSize::M => 8..101,
-            PanelSize::L => 8..121,
-            PanelSize::XL => 8..141,
+        let gap = gap.unwrap_or_else(|| self.get_effective_anchor_gap());
+        let bar_thickness = match &self.size {
+            PanelSize::XS => 8 + gap..61 + gap,
+            PanelSize::S => 8 + gap..81 + gap,
+            PanelSize::M => 8 + gap..101 + gap,
+            PanelSize::L => 8 + gap..121 + gap,
+            PanelSize::XL => 8 + gap..141 + gap,
         };
-        assert!(2 * self.padding < bar_thickness.end);
-        bar_thickness.end -= 2 * self.padding;
+        assert!(2 * self.padding + gap < bar_thickness.end);
         let o_h = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().1);
         let o_w = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().0);
 
