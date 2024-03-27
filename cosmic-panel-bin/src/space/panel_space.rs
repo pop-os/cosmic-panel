@@ -207,6 +207,7 @@ pub(crate) struct PanelSpace {
     pub(crate) c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
     pub(crate) space: Space<Window>,
+    pub(crate) unmapped: Vec<Window>,
     pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
     pub(crate) clients_left: Clients,
     pub(crate) clients_center: Clients,
@@ -274,6 +275,7 @@ impl PanelSpace {
         Self {
             config,
             space: Space::default(),
+            unmapped: Vec::new(),
             clients_left: Default::default(),
             clients_center: Default::default(),
             clients_right: Default::default(),
@@ -593,7 +595,11 @@ impl PanelSpace {
         };
     }
 
-    pub(crate) fn constrain_dim(&self, size: Size<i32, Logical>) -> Size<i32, Logical> {
+    pub(crate) fn constrain_dim(
+        &self,
+        size: Size<i32, Logical>,
+        active_gap: Option<u32>,
+    ) -> Size<i32, Logical> {
         let mut w: i32 = size.w;
         let mut h: i32 = size.h;
 
@@ -607,9 +613,9 @@ impl PanelSpace {
             })
             .map(|(w, h)| (w as u32, h as u32));
 
-        let (constrained_w, constrained_h) = self
-            .config
-            .get_dimensions(output_dims, self.suggested_length);
+        let (constrained_w, constrained_h) =
+            self.config
+                .get_dimensions(output_dims, self.suggested_length, active_gap);
         if let Some(w_range) = constrained_w {
             w = w.clamp(w_range.start as i32, w_range.end as i32 - 1);
         }
@@ -816,7 +822,10 @@ impl PanelSpace {
                     if height <= 0 {
                         height = 1;
                     }
-                    let dim = self.constrain_dim((width as i32, height as i32).into());
+                    let dim = self.constrain_dim(
+                        (width as i32, height as i32).into(),
+                        Some(self.gap() as u32),
+                    );
 
                     if first {
                         let client_egl_surface = unsafe {
@@ -945,7 +954,10 @@ impl PanelSpace {
                 if height == 0 {
                     height = 1;
                 }
-                let dim = self.constrain_dim((width as i32, height as i32).into());
+                let dim = self.constrain_dim(
+                    (width as i32, height as i32).into(),
+                    Some(self.gap() as u32),
+                );
 
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())

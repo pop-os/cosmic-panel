@@ -928,7 +928,7 @@ impl WrapperSpace for PanelSpace {
         info: OutputInfo,
     ) -> anyhow::Result<bool> {
         self.output.replace((c_output, s_output, info));
-        self.dimensions = self.constrain_dim(self.dimensions.clone());
+        self.dimensions = self.constrain_dim(self.dimensions.clone(), Some(self.gap() as u32));
         self.is_dirty = true;
         Ok(true)
     }
@@ -969,7 +969,8 @@ impl WrapperSpace for PanelSpace {
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }
-        let dimensions: Size<i32, Logical> = self.constrain_dim((0, 0).into());
+        let dimensions: Size<i32, Logical> =
+            self.constrain_dim((0, 0).into(), Some(self.gap() as u32));
 
         let layer = match self.config().layer() {
             zwlr_layer_shell_v1::Layer::Background => Layer::Background,
