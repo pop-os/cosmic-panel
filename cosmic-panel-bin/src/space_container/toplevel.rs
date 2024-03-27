@@ -120,7 +120,13 @@ impl SpaceContainer {
         };
 
         for output in &info.output {
-            self.apply_maximized(output, false);
+            if !self
+                .maximized_toplevels
+                .iter()
+                .any(|(_, info)| info.output.contains(output))
+            {
+                self.apply_maximized(output, false);
+            }
         }
     }
 
