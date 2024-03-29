@@ -70,7 +70,8 @@ impl PanelSpace {
                 if !w.alive() {
                     return true;
                 }
-                let size = w.bbox().size;
+                let size = w.bbox().size.to_f64().downscale(self.scale).to_i32_round();
+
                 let constrained = self.constrain_dim(size, Some(gap as u32));
 
                 let unmap = if self.config.is_horizontal() {
@@ -90,7 +91,8 @@ impl PanelSpace {
             .collect_vec();
         for w in self.unmapped.drain(..).collect_vec() {
             if w.alive() && {
-                let size = w.bbox().size;
+                let size = w.bbox().size.to_f64().downscale(self.scale).to_i32_round();
+
                 let constrained = self.constrain_dim(size, Some(gap as u32));
                 if self.config.is_horizontal() {
                     constrained.h >= size.h
