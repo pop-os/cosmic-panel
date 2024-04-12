@@ -290,12 +290,8 @@ impl SpaceContainer {
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
-           // panel priority changed to conflict with an adjacent panel
-            || (c.name != entry.name
-                && c.output == entry.output
-                && (c.get_priority() > new_priority && c.get_priority() < old_priority
-                    || c.get_priority() < new_priority && c.get_priority() > old_priority))
-                && Some(c.anchor) != opposite_anchor
+            // panel anchor change forces restart
+            || opposite_anchor.is_some()
             // applet restarts are required
             || ((c.name == entry.name
                 && (c.is_horizontal() != entry.is_horizontal()
