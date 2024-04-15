@@ -138,20 +138,43 @@ pub enum PanelSize {
 
 impl PanelSize {
     /// get applet icon dimensions
-    pub fn get_applet_icon_size(&self) -> u32 {
-        match self {
-            PanelSize::XS => 16,
-            PanelSize::S => 16,
-            PanelSize::M => 32,
-            PanelSize::L => 40,
-            PanelSize::XL => 56,
+    pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
+        if is_symbolic {
+            match self {
+                PanelSize::XS => 16,
+                PanelSize::S => 20,
+                PanelSize::M => 28,
+                PanelSize::L => 32,
+                PanelSize::XL => 48,
+            }
+        } else {
+            match self {
+                PanelSize::XS => 24,
+                PanelSize::S => 32,
+                PanelSize::M => 40,
+                PanelSize::L => 48,
+                PanelSize::XL => 56,
+            }
         }
     }
 
-    pub fn get_applet_padding(&self) -> u16 {
-        match self {
-            PanelSize::XS => 8,
-            _ => 12,
+    pub fn get_applet_padding(&self, is_symbolic: bool) -> u16 {
+        if is_symbolic {
+            match self {
+                PanelSize::XS => 8,
+                PanelSize::S => 10,
+                PanelSize::M => 14,
+                PanelSize::L => 16,
+                PanelSize::XL => 16,
+            }
+        } else {
+            match self {
+                PanelSize::XS => 4,
+                PanelSize::S => 4,
+                PanelSize::M => 8,
+                PanelSize::L => 8,
+                PanelSize::XL => 12,
+            }
         }
     }
 }
@@ -366,12 +389,12 @@ impl Default for CosmicPanelConfig {
 #[cfg(feature = "wayland-rs")]
 impl CosmicPanelConfig {
     /// get applet icon dimensions
-    pub fn get_applet_icon_size(&self) -> u32 {
-        self.size.get_applet_icon_size()
+    pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
+        self.size.get_applet_icon_size(is_symbolic)
     }
 
-    pub fn get_applet_padding(&self) -> u16 {
-        self.size.get_applet_padding()
+    pub fn get_applet_padding(&self, is_symbolic: bool) -> u16 {
+        self.size.get_applet_padding(is_symbolic)
     }
 
     /// get the priority of the panel
