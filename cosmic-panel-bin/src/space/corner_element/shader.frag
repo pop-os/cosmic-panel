@@ -1,6 +1,6 @@
 // Author: Ashley Wulber
 // Title: Rounded rectangle
-#extension GL_OES_standard_derivatives : enable
+#extension GL_OES_standard_derivatives:enable
 #ifdef GL_ES
 precision mediump float;
 #endif
@@ -15,45 +15,48 @@ uniform float rad_br;
 uniform vec2 loc;
 uniform vec2 rect_size;
 
-vec4 corner(float rad, vec2 corner, vec2 point, vec3 c) {
-    if (rad <= 0.) {
-        return vec4(c, 1.);
-    }
-    vec2 diff = abs(corner - point);
-    float mh_dist = diff.x + diff.y;
-    float distance_to_corner = length(diff);
-    // for anti-aliasing
-    float delta = fwidth(distance_to_corner);
-    if (distance_to_corner <= rad - delta / 2. || mh_dist <= rad) {
-        return vec4(c, 1.);
-    }
-    
-    return vec4(c, 1. - smoothstep(rad - delta / 2., rad + delta / 2., distance_to_corner));
+float sdRoundBox(in vec2 p,in vec2 b,in vec4 r)
+{
+    r.xy=(p.x>0.)?r.xy:r.zw;
+    r.x=(p.y>0.)?r.x:r.y;
+    vec2 q=abs(p)-b+r.x;
+    return min(max(q.x,q.y),0.)+length(max(q,0.))-r.x;
 }
 
-void main() {
-    vec2 tl_corner = vec2(loc.x + rad_tl, loc.y + rect_size.y - rad_tl);
-    vec2 tr_corner = vec2(loc.x + rect_size.x - rad_tr, loc.y + rect_size.y - rad_tr);
-    vec2 bl_corner = vec2(loc.x + rad_bl, loc.y + rad_bl);
-    vec2 br_corner = vec2(loc.x + rect_size.x - rad_br, loc.y + rad_br);
-
-    vec2 p = gl_FragCoord.xy;
-
-    vec3 color = vec3(1.,0.,1.0);
+void main()
+{
+    vec2 p=2.*gl_FragCoord.xy-(rect_size+loc*2.);
     
-    float delta = fwidth(.1);
-    if (p.x - delta <= loc.x || p.x + delta >= loc.x + rect_size.x || p.y - delta <= loc.y || p.y + delta >= loc.y + rect_size.y) {
-        gl_FragColor = vec4(0.);
-    } else if (p.x <= tl_corner.x && p.y >= tl_corner.y) {
-        gl_FragColor = corner(rad_tl, tl_corner, p, color);
-    } else if (p.x >= tr_corner.x && p.y >= tr_corner.y) {
-        gl_FragColor = corner(rad_tr, tr_corner, p, color);
-    } else if (p.x <= bl_corner.x && p.y <= bl_corner.y) {
-        gl_FragColor = corner(rad_bl, bl_corner, p, color);
-    } else if (p.x >= br_corner.x && p.y <= br_corner.y) {
-        gl_FragColor = corner(rad_bl, br_corner, p, color);
-    } else {
-        gl_FragColor = vec4(color,1.0);
+    vec2 si=rect_size;
+    vec4 ra=2.*vec4(rad_tr,rad_br,rad_tl,rad_bl);
+    ra=min(ra,min(si.x,si.y));
+    
+    float d=sdRoundBox(p,si,ra);
+    
+    vec2 tl_corner=vec2(loc.x,loc.y+rect_size.y);
+    vec2 tr_corner=vec2(loc.x+rect_size.x,loc.y+rect_size.y);
+    vec2 bl_corner=vec2(loc.x,loc.y);
+    vec2 br_corner=vec2(loc.x+rect_size.x,loc.y);
+    vec2 pos=gl_FragCoord.xy;
+    
+    float delta=0.;
+    float d_tl=distance(pos,tl_corner);
+    float d_tr=distance(pos,tr_corner);
+    float d_bl=distance(pos,bl_corner);
+    float d_br=distance(pos,br_corner);
+    
+    if(d_tl<ra.z){
+        delta=(ra.z-d_tl)/ra.z*fwidth(d)*2.;
+    }else if(d_tr<ra.x){
+        delta=(ra.x-d_tr)/ra.x*fwidth(d)*2.;
+    }else if(d_bl<ra.w){
+        delta=(ra.w-d_bl)/ra.w*fwidth(d)*2.;
+    }else if(d_br<ra.y){
+        delta=(ra.y-d_br)/ra.y*fwidth(d)*2.;
     }
+    
+    float a=1.-smoothstep(1.-delta,1.,1.+d);
+    
+    gl_FragColor=vec4(0.,0.,0.,a);
 }
 
