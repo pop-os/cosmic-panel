@@ -637,6 +637,7 @@ impl WrapperSpace for SpaceContainer {
                 // transitions should try to be smooth
                 || !matches!(s.visibility, Visibility::Visible | Visibility::Hidden)
                 || s.animate_state.is_some()
+                || !s.popups.is_empty()
         });
 
         if visible {
