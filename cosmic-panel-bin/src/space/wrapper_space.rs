@@ -61,9 +61,12 @@ use xdg_shell_wrapper::{
     wp_viewporter::ViewporterState,
 };
 
-use crate::space::{
-    panel_space::{AppletAutoClickAnchor, PanelClient},
-    AppletMsg,
+use crate::{
+    iced::elements::CosmicMappedInternal,
+    space::{
+        panel_space::{AppletAutoClickAnchor, PanelClient},
+        AppletMsg,
+    },
 };
 
 use super::PanelSpace;
@@ -88,6 +91,19 @@ impl WrapperSpace for PanelSpace {
 
     fn add_window(&mut self, w: Window) {
         self.is_dirty = true;
+        if let Some(t) = w.toplevel() {
+            let suggested_size = self.config.size.get_applet_icon_size(true) as i32
+                + self.config.size.get_applet_padding(true) as i32 * 2;
+            let is_horizontal = self.config.is_horizontal();
+            t.with_pending_state(|state| {
+                state.size = Some(if is_horizontal {
+                    (0, suggested_size).into()
+                } else {
+                    (suggested_size, 0).into()
+                });
+            });
+            t.send_pending_configure();
+        }
         if let Some(s) = w.wl_surface() {
             with_states(&s, |states| {
                 with_fractional_scale(states, |fractional_scale| {
@@ -95,7 +111,7 @@ impl WrapperSpace for PanelSpace {
                 });
             });
         }
-        self.space.map_element(w.clone(), (0, 0), false);
+        self.space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
     }
 
     fn add_popup<W: WrapperSpace>(
@@ -111,14 +127,18 @@ impl WrapperSpace for PanelSpace {
         positioner_state: PositionerState,
     ) -> anyhow::Result<()> {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
-        if !self.popups.is_empty() {
-            self.close_popups();
-        }
-
         let c_wl_surface = compositor_state.create_surface(qh);
 
+        let parent = self.popups.iter().find_map(|p| {
+            if s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface()) {
+                Some(p.c_popup.xdg_surface())
+            } else {
+                None
+            }
+        });
+
         let c_popup = popup::Popup::from_surface(
-            None,
+            parent,
             &positioner,
             qh,
             c_wl_surface.clone(),
@@ -152,8 +172,9 @@ impl WrapperSpace for PanelSpace {
             c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
 
-        self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
-
+        if parent.is_none() {
+            self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        }
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, &qh));
 
@@ -174,18 +195,14 @@ impl WrapperSpace for PanelSpace {
             c_wl_surface.set_buffer_scale(self.scale as i32);
         }
 
-        // //must be done after role is assigned as popup
+        // must be done after role is assigned as popup
         c_wl_surface.commit();
 
         let cur_popup_state = Some(WrapperPopupState::WaitConfigure);
 
         self.popups.push(WrapperPopup {
             damage_tracked_renderer: OutputDamageTracker::new(
-                positioner_state
-                    .rect_size
-                    .to_f64()
-                    .to_physical(self.scale)
-                    .to_i32_round(),
+                positioner_state.rect_size.to_f64().to_physical(self.scale).to_i32_round(),
                 1.0,
                 smithay::utils::Transform::Flipped180,
             ),
@@ -297,24 +314,13 @@ impl WrapperSpace for PanelSpace {
             let mut desktop_ids: Vec<_> = left_guard
                 .iter_mut()
                 .map(|c| (c, self.clients_left.clone()))
-                .chain(
-                    center_guard
-                        .iter_mut()
-                        .map(|c| (c, self.clients_center.clone())),
-                )
-                .chain(
-                    right_guard
-                        .iter_mut()
-                        .map(|c| (c, self.clients_right.clone())),
-                )
+                .chain(center_guard.iter_mut().map(|c| (c, self.clients_center.clone())))
+                .chain(right_guard.iter_mut().map(|c| (c, self.clients_right.clone())))
                 .collect();
 
             let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
-            let active_output = self
-                .output
-                .as_ref()
-                .and_then(|o| o.2.name.clone())
-                .unwrap_or_default();
+            let active_output =
+                self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default();
 
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
@@ -338,11 +344,9 @@ impl WrapperSpace for PanelSpace {
                 // This way each applet is at most started once,
                 // even if multiple desktop files in different directories match
                 if let Some(position) =
-                    desktop_ids
-                        .iter()
-                        .position(|(PanelClient { ref name, .. }, ..)| {
-                            Some(OsString::from(name).as_os_str()) == path.file_stem()
-                        })
+                    desktop_ids.iter().position(|(PanelClient { ref name, .. }, ..)| {
+                        Some(OsString::from(name).as_os_str()) == path.file_stem()
+                    })
                 {
                     let (panel_client, my_list) = desktop_ids.remove(position);
                     info!(panel_client.name);
@@ -353,6 +357,12 @@ impl WrapperSpace for PanelSpace {
                                 panel_client.exec = Some(exec.to_string());
                                 panel_client.requests_wayland_display =
                                     Some(entry.desktop_entry("X-HostWaylandDisplay").is_some());
+                                panel_client.shrink_min_size = entry
+                                    .desktop_entry("X-OverflowMinSize")
+                                    .and_then(|x| x.parse::<u32>().ok());
+                                panel_client.shrink_priority = entry
+                                    .desktop_entry("X-OverflowPriority")
+                                    .and_then(|x| x.parse::<u32>().ok());
 
                                 panel_client.minimize_priority = if let Some(x_minimize_entry) =
                                     entry.desktop_entry("X-MinimizeApplet")
@@ -361,7 +371,7 @@ impl WrapperSpace for PanelSpace {
                                         Ok(p) => {
                                             max_minimize_priority = max_minimize_priority.max(p);
                                             Some(p)
-                                        }
+                                        },
                                         Err(_) => Some(0),
                                     }
                                 } else {
@@ -411,9 +421,7 @@ impl WrapperSpace for PanelSpace {
                     panel_client.requests_wayland_display.unwrap_or(false);
 
                 let mut exec_iter = Shlex::new(&panel_client.exec.as_deref().unwrap());
-                let exec = exec_iter
-                    .next()
-                    .expect("exec parameter must contain at least on word");
+                let exec = exec_iter.next().expect("exec parameter must contain at least on word");
 
                 let mut args = Vec::new();
                 for arg in exec_iter {
@@ -427,7 +435,6 @@ impl WrapperSpace for PanelSpace {
                     "X_MINIMIZE_APPLET".to_string(),
                     panel_client.minimize_priority.is_some().to_string(),
                 ));
-
                 if requests_wayland_display {
                     if let Some(security_context_manager) = security_context_manager.as_ref() {
                         match security_context_manager.create_listener::<W>(qh) {
@@ -441,14 +448,15 @@ impl WrapperSpace for PanelSpace {
                                     "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
                                     privileged_socket.as_raw_fd().to_string(),
                                 ));
+
                                 fds.push(privileged_socket.into());
                                 panel_client.security_ctx = Some(security_context);
-                            }
+                            },
                             Err(why) => {
                                 error!(?why, "Failed to create a listener");
-                            }
+                            },
                         }
-                    };
+                    }
                 }
 
                 for (key, val) in &env_vars {
@@ -516,10 +524,8 @@ impl WrapperSpace for PanelSpace {
                         let security_context = if requests_wayland_display && should_restart {
                             security_context_manager_clone.as_ref().and_then(
                                 |security_context_manager| {
-                                    security_context_manager
-                                        .create_listener(&qh_clone)
-                                        .ok()
-                                        .map(|security_context| {
+                                    security_context_manager.create_listener(&qh_clone).ok().map(
+                                        |security_context| {
                                             security_context.set_sandbox_engine(NAME.to_string());
                                             security_context.commit();
 
@@ -533,7 +539,8 @@ impl WrapperSpace for PanelSpace {
                                             ));
                                             fds.push(privileged_socket.into());
                                             security_context
-                                        })
+                                        },
+                                    )
                                 },
                             )
                         } else {
@@ -613,7 +620,7 @@ impl WrapperSpace for PanelSpace {
                     AppletMsg::NewProcess(self.id(), process.with_env(applet_env))
                 };
                 match self.applet_tx.try_send(msg) {
-                    Ok(_) => {}
+                    Ok(_) => {},
                     Err(e) => error!("{e}"),
                 };
             }
@@ -634,7 +641,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn raise_window(&mut self, w: &Window, activate: bool) {
-        self.space.raise_element(w, activate);
+        self.space.raise_element(&CosmicMappedInternal::Window(w.clone()), activate);
     }
 
     fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
@@ -643,7 +650,8 @@ impl WrapperSpace for PanelSpace {
         if let Some(w) = self
             .space
             .elements()
-            .find(|w| w.wl_surface().as_ref() == Some(s))
+            .filter_map(|w| if let CosmicMappedInternal::Window(w) = w { Some(w) } else { None })
+            .find(|w| w.wl_surface().is_some_and(|w| w.as_ref() == s))
         {
             w.on_commit();
             w.refresh();
@@ -654,11 +662,7 @@ impl WrapperSpace for PanelSpace {
         self.is_dirty = true;
         self.space.refresh();
 
-        if let Some(p) = self
-            .popups
-            .iter_mut()
-            .find(|p| p.s_surface.wl_surface() == s)
-        {
+        if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0))
                 .to_physical(1)
                 .to_f64()
@@ -689,9 +693,7 @@ impl WrapperSpace for PanelSpace {
                     for r in input_regions.rects {
                         p.input_region.add(0, 0, r.1.size.w, r.1.size.h);
                     }
-                    p.c_popup
-                        .wl_surface()
-                        .set_input_region(Some(p.input_region.wl_region()));
+                    p.c_popup.wl_surface().set_input_region(Some(p.input_region.wl_region()));
                 }
 
                 p.state = Some(WrapperPopupState::Rectangle {
@@ -764,17 +766,12 @@ impl WrapperSpace for PanelSpace {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        let mut prev_hover = self
-            .s_hovered_surface
-            .iter_mut()
-            .enumerate()
-            .find(|(_, f)| f.seat_name == seat_name);
+        let mut prev_hover =
+            self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
-        let ret = if let Some(p) = self
-            .popups
-            .iter()
-            .find(|p| p.c_popup.wl_surface() == &c_wl_surface)
+        let ret = if let Some(p) =
+            self.popups.iter().find(|p| p.c_popup.wl_surface() == &c_wl_surface)
         {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
@@ -787,7 +784,7 @@ impl WrapperSpace for PanelSpace {
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
                 prev_foc.c_pos = p.rectangle.loc;
-                prev_foc.s_pos = p.rectangle.loc - geo.loc;
+                prev_foc.s_pos = (p.rectangle.loc - geo.loc).to_f64();
 
                 prev_foc.surface = p.s_surface.wl_surface().clone();
                 Some(prev_foc.clone())
@@ -796,23 +793,17 @@ impl WrapperSpace for PanelSpace {
                     surface: p.s_surface.wl_surface().clone(),
                     seat_name: seat_name.to_string(),
                     c_pos: p.rectangle.loc,
-                    s_pos: p.rectangle.loc - geo.loc,
+                    s_pos: (p.rectangle.loc - geo.loc).to_f64(),
                 });
                 self.s_hovered_surface.last().cloned()
             }
         } else {
             // if not on this panel's client surface return None
-            if self
-                .layer
-                .as_ref()
-                .map(|s| *s.wl_surface() != c_wl_surface)
-                .unwrap_or(true)
-            {
+            if self.layer.as_ref().map(|s| *s.wl_surface() != c_wl_surface).unwrap_or(true) {
                 if self.space.elements().any(|e| {
                     e.wl_surface()
                         .zip(prev_hover.as_ref())
-                        .map(|(s, prev_hover)| s == prev_hover.1.surface)
-                        .unwrap_or_default()
+                        .is_some_and(|(s, prev_hover)| s.as_ref() == &prev_hover.1.surface)
                 }) {
                     let (pos, _) = prev_hover.unwrap();
                     self.s_hovered_surface.remove(pos);
@@ -839,21 +830,18 @@ impl WrapperSpace for PanelSpace {
                     None
                 }
             }) {
-                // XXX HACK
-                let geo = w
-                    .bbox()
-                    .to_f64()
-                    .to_physical(1.0)
-                    .to_logical(self.scale)
-                    .to_i32_round();
-                if let Some(prev_kbd) = prev_foc {
-                    prev_kbd.0 = w.toplevel().expect("Missing toplevel").wl_surface().clone();
-                } else {
-                    self.s_focused_surface.push((
-                        w.toplevel().expect("Missing toplevel").wl_surface().clone(),
-                        seat_name.to_string(),
-                    ));
+                let geo = w.bbox().to_f64().to_physical(1.0).to_logical(self.scale).to_i32_round();
+                if let CosmicMappedInternal::Window(ref w) = w {
+                    if let Some(prev_kbd) = prev_foc {
+                        prev_kbd.0 = w.toplevel().expect("Missing toplevel").wl_surface().clone();
+                    } else {
+                        self.s_focused_surface.push((
+                            w.toplevel().expect("Missing toplevel").wl_surface().clone(),
+                            seat_name.to_string(),
+                        ));
+                    }
                 }
+
                 let prev_popup_client = self
                     .popups
                     .iter()
@@ -861,12 +849,8 @@ impl WrapperSpace for PanelSpace {
                     .and_then(|p| p.s_surface.wl_surface().client())
                     .map(|c| c.id());
 
-                let cur_client_hover_id = w
-                    .toplevel()
-                    .expect("Missing toplevel")
-                    .wl_surface()
-                    .client()
-                    .map(|c| c.id());
+                let cur_client_hover_id =
+                    w.toplevel().and_then(|t| t.wl_surface().client().map(|c| c.id()));
                 if prev_popup_client.is_some()
                     && prev_popup_client != cur_client_hover_id
                     && self.generated_ptr_event_count == 0
@@ -876,14 +860,13 @@ impl WrapperSpace for PanelSpace {
                     let center_guard = self.clients_center.lock().unwrap();
                     let right_guard = self.clients_right.lock().unwrap();
 
-                    if let Some(c) = left_guard
-                        .iter()
-                        .chain(center_guard.iter())
-                        .chain(right_guard.iter())
-                        .find(|c| {
-                            c.auto_popup_hover_press.is_some()
-                                && Some(c.client.id()) == cur_client_hover_id
-                        })
+                    if let Some(c) =
+                        left_guard.iter().chain(center_guard.iter()).chain(right_guard.iter()).find(
+                            |c| {
+                                c.auto_popup_hover_press.is_some()
+                                    && Some(c.client.id()) == cur_client_hover_id
+                            },
+                        )
                     {
                         let mut p = (x, y);
                         let effective_anchor = match (
@@ -901,27 +884,27 @@ impl WrapperSpace for PanelSpace {
                                 // centered on the top edge
                                 p.0 = relative_loc.x + geo.size.w as i32 / 2;
                                 p.1 = relative_loc.y + 4;
-                            }
+                            },
                             AppletAutoClickAnchor::Bottom => {
                                 // centered on the bottom edge
                                 p.0 = relative_loc.x + geo.size.w as i32 / 2;
                                 p.1 = relative_loc.y + geo.size.h as i32 - 4;
-                            }
+                            },
                             AppletAutoClickAnchor::Left => {
                                 // centered on the left edge
                                 p.0 = relative_loc.x + 4;
                                 p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            }
+                            },
                             AppletAutoClickAnchor::Right => {
                                 // centered on the right edge
                                 p.0 = relative_loc.x + geo.size.w as i32 - 4;
                                 p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            }
+                            },
                             AppletAutoClickAnchor::Center => {
                                 // centered on the center
                                 p.0 = relative_loc.x + geo.size.w as i32 / 2;
                                 p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            }
+                            },
                             AppletAutoClickAnchor::Auto => {
                                 let relative_x = x - relative_loc.x;
                                 let relative_y = y - relative_loc.y;
@@ -935,11 +918,11 @@ impl WrapperSpace for PanelSpace {
                                 } else if (relative_y - geo.size.h as i32).abs() < 4 {
                                     p.1 -= 4;
                                 }
-                            }
+                            },
                             AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
                                 tracing::warn!("Invalid anchor for auto click");
                                 // should be handled above
-                            }
+                            },
                         }
 
                         self.generated_pointer_events = vec![
@@ -968,20 +951,26 @@ impl WrapperSpace for PanelSpace {
                             },
                         ];
                     }
+                } else if prev_popup_client.is_some() && self.generated_ptr_event_count == 0 {
+                    // TODO simulate button press on the overflow button...
                 }
-                if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                    prev_foc.s_pos = relative_loc;
-                    prev_foc.c_pos = geo.loc;
-                    prev_foc.surface = w.wl_surface().unwrap();
-                    Some(prev_foc.clone())
+                if let CosmicMappedInternal::Window(w) = w {
+                    if let Some((_, prev_foc)) = prev_hover.as_mut() {
+                        prev_foc.s_pos = relative_loc.to_f64();
+                        prev_foc.c_pos = geo.loc;
+                        prev_foc.surface = w.wl_surface().map(|w| w.into_owned()).unwrap();
+                        Some(prev_foc.clone())
+                    } else {
+                        self.s_hovered_surface.push(ServerPointerFocus {
+                            surface: w.wl_surface().map(|w| w.into_owned()).unwrap(),
+                            seat_name: seat_name.to_string(),
+                            c_pos: geo.loc,
+                            s_pos: relative_loc.to_f64(),
+                        });
+                        self.s_hovered_surface.last().cloned()
+                    }
                 } else {
-                    self.s_hovered_surface.push(ServerPointerFocus {
-                        surface: w.wl_surface().unwrap(),
-                        seat_name: seat_name.to_string(),
-                        c_pos: geo.loc,
-                        s_pos: relative_loc,
-                    });
-                    self.s_hovered_surface.last().cloned()
+                    None
                 }
             } else {
                 if let Some((prev_i, _)) = prev_hover {
@@ -1010,8 +999,7 @@ impl WrapperSpace for PanelSpace {
     fn pointer_leave(&mut self, seat_name: &str, _s: Option<c_wl_surface::WlSurface>) {
         self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
 
-        self.s_hovered_surface
-            .retain(|focus| focus.seat_name != seat_name);
+        self.s_hovered_surface.retain(|focus| focus.seat_name != seat_name);
     }
 
     fn pointer_enter(
@@ -1093,13 +1081,13 @@ impl WrapperSpace for PanelSpace {
             match &self.config.output {
                 CosmicPanelOuput::Active => {
                     bail!("output does not match config")
-                }
+                },
                 CosmicPanelOuput::Name(config_name)
                     if output_info.name != Some(config_name.to_string()) =>
                 {
                     bail!("output does not match config")
-                }
-                _ => {}
+                },
+                _ => {},
             };
             if matches!(self.config.output, CosmicPanelOuput::Active) && self.layer.is_some() {
                 return Ok(());
@@ -1121,27 +1109,23 @@ impl WrapperSpace for PanelSpace {
         let surface = compositor_state.create_surface(&qh);
         let client_surface =
             layer_state.create_layer_surface(&qh, surface, layer, Some("Panel"), c_output.as_ref());
-        // client_surface.set_margin(margin.top, margin.right, margin.bottom, margin.left);
+        // client_surface.set_margin(margin.top, margin.right, margin.bottom,
+        // margin.left);
         client_surface.set_keyboard_interactivity(match self.config.keyboard_interactivity {
             xdg_shell_wrapper_config::KeyboardInteractivity::None => KeyboardInteractivity::None,
             xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
                 KeyboardInteractivity::Exclusive
-            }
+            },
             xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
                 KeyboardInteractivity::OnDemand
-            }
+            },
         });
-        client_surface.set_size(
-            dimensions.w.try_into().unwrap(),
-            dimensions.h.try_into().unwrap(),
-        );
+        client_surface.set_size(dimensions.w.try_into().unwrap(), dimensions.h.try_into().unwrap());
 
         client_surface.set_anchor(self.config.anchor.into());
 
         let input_region = Region::new(compositor_state)?;
-        client_surface
-            .wl_surface()
-            .set_input_region(Some(input_region.wl_region()));
+        client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
         self.input_region.replace(input_region);
 
         let fractional_scale = fractional_scale_manager
@@ -1157,12 +1141,8 @@ impl WrapperSpace for PanelSpace {
             height: dimensions.h,
         })));
 
-        self.output = izip!(
-            c_output.into_iter(),
-            s_output.into_iter(),
-            output_info.as_ref().cloned()
-        )
-        .next();
+        self.output =
+            izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
         self.layer = Some(client_surface);
         self.layer_fractional_scale = fractional_scale;
         self.layer_viewport = viewport;
@@ -1192,11 +1172,7 @@ impl WrapperSpace for PanelSpace {
     fn frame(&mut self, surface: &c_wl_surface::WlSurface, _time: u32) {
         if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
             self.has_frame = true;
-        } else if let Some(p) = self
-            .popups
-            .iter_mut()
-            .find(|p| surface == p.c_popup.wl_surface())
-        {
+        } else if let Some(p) = self.popups.iter_mut().find(|p| surface == p.c_popup.wl_surface()) {
             p.has_frame = true;
         }
     }

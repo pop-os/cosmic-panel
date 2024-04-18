@@ -29,13 +29,9 @@ impl ToplevelInfoSpace for SpaceContainer {
     ) {
         self.toplevels.push((toplevel.clone(), info.clone()));
         self.apply_toplevel_changes();
-        _ = self
-            .panel_tx
-            .send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
+        _ = self.panel_tx.send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
 
-        let is_maximized = info
-            .state
-            .contains(&zcosmic_toplevel_handle_v1::State::Maximized);
+        let is_maximized = info.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized);
         if is_maximized {
             self.add_maximized(toplevel, info);
         }
@@ -55,14 +51,10 @@ impl ToplevelInfoSpace for SpaceContainer {
         {
             *info_1 = info.clone();
         }
-        _ = self
-            .panel_tx
-            .send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
+        _ = self.panel_tx.send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
         self.apply_toplevel_changes();
 
-        let is_maximized = info
-            .state
-            .contains(&zcosmic_toplevel_handle_v1::State::Maximized);
+        let is_maximized = info.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized);
 
         let was_maximized = self.maximized_toplevels.iter().any(|(t, _)| t == toplevel);
         if is_maximized && !was_maximized {
@@ -107,30 +99,22 @@ impl SpaceContainer {
         toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
-        self.maximized_toplevels
-            .push((toplevel.clone(), info.clone()));
+        self.maximized_toplevels.push((toplevel.clone(), info.clone()));
         for output in &info.output {
             self.apply_maximized(output, true);
         }
     }
 
     fn remove_maximized(&mut self, toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1) {
-        let (_, info) = if let Some(pos) = self
-            .maximized_toplevels
-            .iter()
-            .position(|(h, _)| h == toplevel)
-        {
-            self.maximized_toplevels.remove(pos)
-        } else {
-            return;
-        };
+        let (_, info) =
+            if let Some(pos) = self.maximized_toplevels.iter().position(|(h, _)| h == toplevel) {
+                self.maximized_toplevels.remove(pos)
+            } else {
+                return;
+            };
 
         for output in &info.output {
-            if !self
-                .maximized_toplevels
-                .iter()
-                .any(|(_, info)| info.output.contains(output))
-            {
+            if !self.maximized_toplevels.iter().any(|(_, info)| info.output.contains(output)) {
                 self.apply_maximized(output, false);
             }
         }
@@ -140,52 +124,30 @@ impl SpaceContainer {
         let s_list = self
             .space_list
             .iter_mut()
-            .filter(|s| s.output.as_ref().iter().any(|(o, _, _)| o == output));
+            .filter(|s| s.output.as_ref().iter().any(|(o, ..)| o == output));
         for s in s_list.sorted_by(|a, b| a.config.get_priority().cmp(&b.config.get_priority())) {
-            let c = self
-                .config
-                .config_list
-                .iter()
-                .find(|c| c.name == s.config.name);
+            let c = self.config.config_list.iter().find(|c| c.name == s.config.name);
             let mut config = s.config.clone();
 
-            let mut bg_color = if s.is_dark(self.is_dark) {
-                self.dark_bg
-            } else {
-                self.light_bg
-            };
-
-            if maximized {
-                bg_color[3] = 1.0;
+            let opacity = if maximized {
                 config.maximize();
+                1.0
             } else {
                 if let Some(c) = c {
                     config = c.clone();
                 }
-                bg_color = match config.background {
-                    CosmicPanelBackground::ThemeDefault => bg_color,
-                    CosmicPanelBackground::Dark => self.dark_bg,
-                    CosmicPanelBackground::Light => self.light_bg,
-                    CosmicPanelBackground::Color(c) => [c[0], c[1], c[2], config.opacity],
-                };
-            }
+                config.opacity
+            };
 
-            s.set_maximized(maximized, config, bg_color)
+            s.set_maximized(maximized, config, opacity)
         }
     }
 
     pub(crate) fn apply_toplevel_changes(&mut self) {
-        for output in self
-            .outputs
-            .iter()
-            .map(|o| (o.0.clone(), o.1.name()))
-            .collect::<Vec<_>>()
-        {
+        for output in self.outputs.iter().map(|o| (o.0.clone(), o.1.name())).collect::<Vec<_>>() {
             let has_toplevel = self.toplevels.iter().any(|(_, info)| {
                 info.output.contains(&output.0)
-                    && !info
-                        .state
-                        .contains(&zcosmic_toplevel_handle_v1::State::Minimized)
+                    && !info.state.contains(&zcosmic_toplevel_handle_v1::State::Minimized)
                     && self.workspace_groups.iter().any(|g| {
                         g.workspaces.iter().any(|w| {
                             w.state.contains(&cctk::wayland_client::WEnum::Value(
@@ -196,12 +158,9 @@ impl SpaceContainer {
             });
 
             let name = output.1;
-            for anchor in [
-                PanelAnchor::Top,
-                PanelAnchor::Bottom,
-                PanelAnchor::Left,
-                PanelAnchor::Right,
-            ] {
+            for anchor in
+                [PanelAnchor::Top, PanelAnchor::Bottom, PanelAnchor::Left, PanelAnchor::Right]
+            {
                 let mut additional_gap = 0;
                 for s in self.stacked_spaces_by_priority(&name, anchor) {
                     s.set_additional_gap(additional_gap);
