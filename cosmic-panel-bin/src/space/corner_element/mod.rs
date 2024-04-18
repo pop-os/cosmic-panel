@@ -25,6 +25,10 @@ pub struct RoundedRectangleSettings {
     pub rad_br: f32,
     pub loc: [f32; 2],
     pub rect_size: [f32; 2],
+    pub border_width: f32,
+    pub drop_shadow: f32,
+    pub bg_color: [f32; 4],
+    pub border_color: [f32; 4],
 }
 
 pub struct RoundedRectangleShaderElement(PixelShaderElement);
@@ -73,6 +77,10 @@ impl RoundedRectangleShader {
                             Uniform::new("rad_br", settings.rad_br),
                             Uniform::new("loc", settings.loc),
                             Uniform::new("rect_size", settings.rect_size),
+                            Uniform::new("border_width", settings.border_width),
+                            Uniform::new("drop_shadow", settings.drop_shadow),
+                            Uniform::new("bg_color", settings.bg_color),
+                            Uniform::new("border_color", settings.border_color),
                         ],
                         Kind::Unspecified,
                     ),
@@ -109,6 +117,10 @@ pub fn init_shaders(gles_renderer: &mut GlesRenderer) -> Result<(), GlesError> {
             UniformName::new("rad_br", UniformType::_1f),
             UniformName::new("loc", UniformType::_2f),
             UniformName::new("rect_size", UniformType::_2f),
+            UniformName::new("border_width", UniformType::_1f),
+            UniformName::new("drop_shadow", UniformType::_1f),
+            UniformName::new("bg_color", UniformType::_4f),
+            UniformName::new("border_color", UniformType::_4f),
         ],
     )?;
 
