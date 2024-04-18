@@ -9,25 +9,27 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
+calloop = { version = "0.13.0", features = ["executor"] }
+ordered-float = "4.2.0"
 smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = [
     "use_system_lib",
     "desktop",
     "backend_egl",
     "backend_drm",
     "renderer_gl",
-], rev = "49ba425" }
+], rev = "fe654453b032020cb26861a38b245ba12842ba8f" }
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
-wayland-protocols = { version = "0.31.0", features = ["staging"] }
+wayland-protocols = { version = "0.32.1", features = ["staging"] }
 xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
-cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "e65fa5e" }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "c8d3a1c" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
-wayland-egl = "0.32.0"
-wayland-protocols-wlr = { version = "0.2.0", features = ["client"] }
+wayland-egl = "0.32.1"
+wayland-protocols-wlr = { version = "0.3.1", features = ["client"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = [
     "fmt",
@@ -47,8 +49,8 @@ log-panics = { version = "2", features = ["with-backtrace"] }
 libc = "0.2.132"
 freedesktop-desktop-entry = "0.5.0"
 xdg = "2.4.1"
-itertools = "0.11"
-notify = "6.0"
+itertools = "0.12"
+notify = "6.1"
 tokio = { version = "1", features = [
     "process",
     "sync",
@@ -58,7 +60,12 @@ tokio = { version = "1", features = [
     "time",
 ] }
 csscolorparser = "0.6.2"
-cosmic-config = { git = "https://github.com/pop-os/libcosmic" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic", features = [
+    "dbus-config",
+] }
+iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic/" }
+tiny-skia = "0.11"
+once_cell = "1.19.0"
 ron = "0.8"
 sendfd = "0.4"
 cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }

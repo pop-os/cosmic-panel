@@ -8,6 +8,7 @@ use std::{
 };
 
 use cctk::wayland_client::Connection;
+use cosmic::theme;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -35,14 +36,7 @@ use smithay::{
             surface::EGLSurface,
             EGLContext,
         },
-        renderer::{
-            damage::OutputDamageTracker,
-            element::{
-                surface::WaylandSurfaceRenderElement, Element, RenderElement, UnderlyingStorage,
-            },
-            gles::{GlesError, GlesFrame, GlesRenderer},
-            Bind, Unbind,
-        },
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Unbind},
     },
     desktop::{PopupManager, Space, Window},
     output::Output,
@@ -50,7 +44,7 @@ use smithay::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, Client, DisplayHandle},
     },
-    utils::{Buffer, Logical, Physical, Rectangle, Size},
+    utils::{Logical, Rectangle, Size},
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -59,10 +53,13 @@ use smithay::{
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
-use wayland_protocols::wp::{
-    fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
-    security_context::v1::client::wp_security_context_v1::WpSecurityContextV1,
-    viewporter::client::wp_viewport::WpViewport,
+use wayland_protocols::{
+    wp::{
+        fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
+        security_context::v1::client::wp_security_context_v1::WpSecurityContextV1,
+        viewporter::client::wp_viewport::WpViewport,
+    },
+    xdg::shell::client::xdg_positioner::ConstraintAdjustment,
 };
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
@@ -77,11 +74,11 @@ use xdg_shell_wrapper::{
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
-use crate::PanelCalloopMsg;
-
-use super::corner_element::{
-    init_shaders, RoundedRectangleSettings, RoundedRectangleShaderElement,
+use crate::{
+    iced::elements::CosmicMappedInternal, space_container::SpaceContainer, PanelCalloopMsg,
 };
+
+use super::corner_element::{init_shaders, RoundedRectangleSettings};
 
 pub enum AppletMsg {
     NewProcess(String, Process),
@@ -89,63 +86,6 @@ pub enum AppletMsg {
     NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
-}
-
-pub(crate) enum PanelRenderElement {
-    Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
-    RoundedRectangle(RoundedRectangleShaderElement),
-}
-
-impl Element for PanelRenderElement {
-    fn id(&self) -> &smithay::backend::renderer::element::Id {
-        match self {
-            Self::Wayland(e) => e.id(),
-            Self::RoundedRectangle(e) => e.id(),
-        }
-    }
-
-    fn current_commit(&self) -> smithay::backend::renderer::utils::CommitCounter {
-        match self {
-            Self::Wayland(e) => e.current_commit(),
-            Self::RoundedRectangle(e) => e.current_commit(),
-        }
-    }
-
-    fn src(&self) -> Rectangle<f64, Buffer> {
-        match self {
-            Self::Wayland(e) => e.src(),
-            Self::RoundedRectangle(e) => e.src(),
-        }
-    }
-
-    fn geometry(&self, scale: smithay::utils::Scale<f64>) -> Rectangle<i32, Physical> {
-        match self {
-            Self::Wayland(e) => e.geometry(scale),
-            Self::RoundedRectangle(e) => e.geometry(scale),
-        }
-    }
-}
-
-impl RenderElement<GlesRenderer> for PanelRenderElement {
-    fn draw(
-        &self,
-        frame: &mut GlesFrame<'_>,
-        src: Rectangle<f64, Buffer>,
-        dst: Rectangle<i32, Physical>,
-        damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), GlesError> {
-        match self {
-            Self::Wayland(e) => e.draw(frame, src, dst, damage),
-            Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage),
-        }
-    }
-
-    fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
-        match self {
-            PanelRenderElement::Wayland(e) => e.underlying_storage(renderer),
-            PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
-        }
-    }
 }
 
 pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
@@ -160,6 +100,8 @@ pub struct PanelClient {
     pub minimize_priority: Option<u32>,
     pub requests_wayland_display: Option<bool>,
     pub is_notification_applet: Option<bool>,
+    pub shrink_priority: Option<u32>,
+    pub shrink_min_size: Option<u32>,
     /// If there is an existing popup, this applet with be pressed when hovered.
     pub auto_popup_hover_press: Option<AppletAutoClickAnchor>,
 }
@@ -206,6 +148,8 @@ impl PanelClient {
             requests_wayland_display: None,
             is_notification_applet: None,
             auto_popup_hover_press: None,
+            shrink_priority: None,
+            shrink_min_size: None,
         }
     }
 }
@@ -228,6 +172,30 @@ pub struct AnimateState {
     duration: Duration,
 }
 
+#[derive(Debug, Clone)]
+pub struct PanelColors {
+    pub theme: cosmic::Theme,
+    pub color_override: Option<[f32; 4]>,
+}
+
+impl PanelColors {
+    pub fn new(theme: cosmic::Theme) -> Self {
+        Self { theme, color_override: None }
+    }
+
+    pub fn with_color_override(mut self, color_override: Option<[f32; 4]>) -> Self {
+        self.color_override = color_override;
+        self
+    }
+
+    pub fn bg_color(&self, alpha: f32) -> [f32; 4] {
+        self.color_override.unwrap_or_else(|| {
+            let c = self.theme.cosmic().bg_color();
+            [c.red, c.green, c.blue, alpha]
+        })
+    }
+}
+
 /// space for the cosmic panel
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
@@ -235,12 +203,15 @@ pub(crate) struct PanelSpace {
     pub(crate) egl_surface: Option<Rc<EGLSurface>>,
     pub(crate) c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
-    pub(crate) space: Space<Window>,
+    pub(crate) space: Space<CosmicMappedInternal>,
     pub(crate) unmapped: Vec<Window>,
     pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
     pub(crate) clients_left: Clients,
     pub(crate) clients_center: Clients,
     pub(crate) clients_right: Clients,
+    pub(crate) overflow_left: Space<Window>,
+    pub(crate) overflow_center: Space<Window>,
+    pub(crate) overflow_right: Space<Window>,
     pub(crate) last_dirty: Option<Instant>,
     // pending size of the panel
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
@@ -248,7 +219,8 @@ pub(crate) struct PanelSpace {
     pub(crate) suggested_length: Option<u32>,
     // size of the panel
     pub(crate) actual_size: Size<i32, Logical>,
-    // dimensions of the layer surface
+    /// dimensions of the layer surface
+    /// this will be the same as the output size on the major axis of the panel
     pub(crate) dimensions: Size<i32, Logical>,
     // Logical size of the panel, with the applied animation state
     pub(crate) container_length: i32,
@@ -266,7 +238,7 @@ pub(crate) struct PanelSpace {
     pub(crate) layer_viewport: Option<WpViewport>,
     pub(crate) popups: Vec<WrapperPopup>,
     pub(crate) start_instant: Instant,
-    pub bg_color: [f32; 4],
+    pub colors: PanelColors,
     pub(crate) applet_tx: mpsc::Sender<AppletMsg>,
     pub(crate) input_region: Option<Region>,
     pub(crate) panel_changed: bool,
@@ -284,6 +256,7 @@ pub(crate) struct PanelSpace {
     pub(crate) generated_ptr_event_count: usize,
     pub scale_change_retries: u32,
     pub additional_gap: i32,
+    pub loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
 }
 
 impl PanelSpace {
@@ -293,18 +266,20 @@ impl PanelSpace {
         c_focused_surface: Rc<RefCell<ClientFocus>>,
         c_hovered_surface: Rc<RefCell<ClientFocus>>,
         applet_tx: mpsc::Sender<AppletMsg>,
-        mut bg_color: [f32; 4],
+        theme: cosmic::Theme,
         s_display: DisplayHandle,
         security_context_manager: Option<SecurityContextManager>,
         conn: &Connection,
         panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
         visibility: Visibility,
+        loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
     ) -> Self {
-        bg_color[3] = config.opacity;
-
         Self {
             config,
             space: Space::default(),
+            overflow_left: Space::default(),
+            overflow_center: Space::default(),
+            overflow_right: Space::default(),
             unmapped: Vec::new(),
             clients_left: Default::default(),
             clients_center: Default::default(),
@@ -328,7 +303,7 @@ impl PanelSpace {
             c_hovered_surface,
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
-            bg_color,
+            colors: PanelColors::new(theme),
             applet_tx,
             actual_size: (0, 0).into(),
             input_region: None,
@@ -349,6 +324,7 @@ impl PanelSpace {
             generated_ptr_event_count: 0,
             scale_change_retries: 0,
             additional_gap: 0,
+            loop_handle,
         }
     }
 
@@ -364,7 +340,7 @@ impl PanelSpace {
         if let Some(animatable_state) = self.animate_state.as_ref() {
             animatable_state.cur.bg_color
         } else {
-            self.bg_color
+            self.colors.bg_color(self.config.opacity)
         }
     }
 
@@ -389,10 +365,7 @@ impl PanelSpace {
             "panel-{}-{}-{}",
             self.config.name,
             self.config.output,
-            self.output
-                .as_ref()
-                .map(|o| o.2.name.clone().unwrap_or_default())
-                .unwrap_or_default()
+            self.output.as_ref().map(|o| o.2.name.clone().unwrap_or_default()).unwrap_or_default()
         );
         id
     }
@@ -408,12 +381,9 @@ impl PanelSpace {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
             // no transition if not configured for autohide
-            let no_hover_focus = c_focused_surface
-                .iter()
-                .all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
-                && c_hovered_surface
-                    .iter()
-                    .all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
+            let no_hover_focus =
+                c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
+                    && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
             if self.config.autohide().is_none() {
                 if no_hover_focus && self.animate_state.is_none() {
                     self.additional_gap = 0;
@@ -431,16 +401,10 @@ impl PanelSpace {
                     FocusStatus::LastFocused(self.start_instant)
                 },
                 |acc, (surface, _, f)| {
-                    if self
-                        .layer
-                        .as_ref()
-                        .is_some_and(|s| *s.wl_surface() == *surface)
+                    if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
                         || self.popups.iter().any(|p| {
                             &p.c_popup.wl_surface() == &surface
-                                || self
-                                    .popups
-                                    .iter()
-                                    .any(|p| p.c_popup.wl_surface() == surface)
+                                || self.popups.iter().any(|p| p.c_popup.wl_surface() == surface)
                         })
                     {
                         match (&acc, &f) {
@@ -450,7 +414,7 @@ impl PanelSpace {
                                 } else {
                                     acc
                                 }
-                            }
+                            },
                             (FocusStatus::LastFocused(_), FocusStatus::Focused) => *f,
                             _ => acc,
                         }
@@ -476,7 +440,7 @@ impl PanelSpace {
                         prev_margin: margin,
                     }
                 }
-            }
+            },
             Visibility::Visible => {
                 if let FocusStatus::LastFocused(t) = cur_hover {
                     // start transition to hidden
@@ -492,12 +456,8 @@ impl PanelSpace {
                         }
                     }
                 }
-            }
-            Visibility::TransitionToHidden {
-                last_instant,
-                progress,
-                prev_margin,
-            } => {
+            },
+            Visibility::TransitionToHidden { last_instant, progress, prev_margin } => {
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
                 let delta_t = match now.checked_duration_since(last_instant) {
@@ -568,12 +528,8 @@ impl PanelSpace {
                         };
                     }
                 }
-            }
-            Visibility::TransitionToVisible {
-                last_instant,
-                progress,
-                prev_margin,
-            } => {
+            },
+            Visibility::TransitionToVisible { last_instant, progress, prev_margin } => {
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
                 let delta_t = match now.checked_duration_since(last_instant) {
@@ -642,7 +598,7 @@ impl PanelSpace {
                         };
                     }
                 }
-            }
+            },
         }
         return;
     }
@@ -658,16 +614,16 @@ impl PanelSpace {
         match anchor {
             PanelAnchor::Left => {
                 layer_surface.set_margin(margin, 0, margin, target + additional_gap)
-            }
+            },
             PanelAnchor::Right => {
                 layer_surface.set_margin(margin, target + additional_gap, margin, 0)
-            }
+            },
             PanelAnchor::Top => {
                 layer_surface.set_margin(target + additional_gap, margin, 0, margin)
-            }
+            },
             PanelAnchor::Bottom => {
                 layer_surface.set_margin(0, margin, target + additional_gap, margin)
-            }
+            },
         };
     }
 
@@ -683,15 +639,12 @@ impl PanelSpace {
             .output
             .as_ref()
             .and_then(|(_, _, info)| {
-                info.modes
-                    .iter()
-                    .find_map(|m| if m.current { Some(m.dimensions) } else { None })
+                info.modes.iter().find_map(|m| if m.current { Some(m.dimensions) } else { None })
             })
             .map(|(w, h)| (w as u32, h as u32));
 
         let (constrained_w, constrained_h) =
-            self.config
-                .get_dimensions(output_dims, self.suggested_length, active_gap);
+            self.config.get_dimensions(output_dims, self.suggested_length, active_gap);
         if let Some(w_range) = constrained_w {
             w = w.clamp(w_range.start as i32, w_range.end as i32 - 1);
         }
@@ -705,22 +658,23 @@ impl PanelSpace {
     fn apply_animation_state(&mut self) {
         if let Some(animation_state) = self.animate_state.as_mut() {
             self.damage_tracked_renderer = Some(OutputDamageTracker::new(
-                self.dimensions
-                    .to_f64()
-                    .to_physical(self.scale)
-                    .to_i32_round(),
+                self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
                 1.0,
                 smithay::utils::Transform::Flipped180,
             ));
             self.panel_changed = true;
-            let progress = (Instant::now()
-                .duration_since(animation_state.started_at)
-                .as_millis() as f32)
+            let progress = (Instant::now().duration_since(animation_state.started_at).as_millis()
+                as f32)
                 / animation_state.duration.as_millis() as f32;
             self.is_dirty = true;
             if progress >= 1.0 {
                 tracing::info!("Animation finished, setting bg_color to end value");
-                self.bg_color = animation_state.end.bg_color;
+                if let CosmicPanelBackground::Color(c) = self.config.background {
+                    self.colors = PanelColors::new(self.colors.theme.clone())
+                        .with_color_override(Some([c[0], c[1], c[2], self.config.opacity]));
+                } else {
+                    self.colors.color_override = None;
+                }
                 self.animate_state = None;
                 return;
             }
@@ -802,18 +756,10 @@ impl PanelSpace {
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
                 info!("root layer shell surface removed.");
-            }
-            Some(SpaceEvent::WaitConfigure {
-                first,
-                width,
-                height,
-            }) => {
-                self.space_event.replace(Some(SpaceEvent::WaitConfigure {
-                    first,
-                    width,
-                    height,
-                }));
-            }
+            },
+            Some(SpaceEvent::WaitConfigure { first, width, height }) => {
+                self.space_event.replace(Some(SpaceEvent::WaitConfigure { first, width, height }));
+            },
             None => {
                 if let (Some(size), Some(layer_surface)) =
                     (self.pending_dimensions.take(), self.layer.as_ref())
@@ -831,10 +777,7 @@ impl PanelSpace {
                     };
 
                     if self.config.autohide.is_none() && self.config.exclusive_zone() {
-                        self.layer
-                            .as_ref()
-                            .unwrap()
-                            .set_exclusive_zone(list_thickness as i32);
+                        self.layer.as_ref().unwrap().set_exclusive_zone(list_thickness as i32);
                         if self.config.get_effective_anchor_gap() > 0 {
                             Self::set_margin(
                                 self.config.anchor,
@@ -867,19 +810,18 @@ impl PanelSpace {
                     }));
                 } else if self.layer.is_some() {
                     should_render = if self.is_dirty {
-                        let update_res = self.layout();
+                        let update_res = self.layout_();
                         update_res.is_ok()
                     } else {
                         true
                     };
                 }
-            }
+            },
         }
 
         if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
-            self.popups
-                .retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
+            self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
 
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
@@ -911,11 +853,7 @@ impl PanelSpace {
         let (w, h) = configure.new_size;
         match self.space_event.take() {
             Some(e) => match e {
-                SpaceEvent::WaitConfigure {
-                    first,
-                    mut width,
-                    mut height,
-                } => {
+                SpaceEvent::WaitConfigure { first, mut width, mut height } => {
                     if w != 0 {
                         width = w as i32;
                         if self.config.is_horizontal() {
@@ -1050,7 +988,7 @@ impl PanelSpace {
                         1.0,
                         smithay::utils::Transform::Flipped180,
                     ));
-                }
+                },
                 SpaceEvent::Quit => (),
             },
             None => {
@@ -1074,10 +1012,8 @@ impl PanelSpace {
                 if height == 0 {
                     height = 1;
                 }
-                let dim = self.constrain_dim(
-                    (width as i32, height as i32).into(),
-                    Some(self.gap() as u32),
-                );
+                let dim = self
+                    .constrain_dim((width as i32, height as i32).into(), Some(self.gap() as u32));
 
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
@@ -1097,7 +1033,7 @@ impl PanelSpace {
                     1.0,
                     smithay::utils::Transform::Flipped180,
                 ));
-            }
+            },
         }
     }
 
@@ -1109,21 +1045,15 @@ impl PanelSpace {
         }
     }
 
-    pub fn set_theme_window_color(&mut self, mut color: [f32; 4]) {
-        if let CosmicPanelBackground::ThemeDefault = self.config.background {
-            color[3] = self.config.opacity;
-        }
+    pub fn set_theme(&mut self, colors: PanelColors) {
+        let color = colors.bg_color(self.config.opacity);
         if let Some(animate_state) = self.animate_state.as_mut() {
             animate_state.end.bg_color = color;
         } else {
             let start = AnimatableState {
-                bg_color: self.bg_color,
+                bg_color: self.colors.bg_color(self.config.opacity),
                 border_radius: self.config.border_radius,
-                expanded: if self.config.expand_to_edges {
-                    1.0
-                } else {
-                    0.0
-                },
+                expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
             let cur = start.clone();
@@ -1138,7 +1068,7 @@ impl PanelSpace {
                 duration: Duration::from_millis(300),
             })
         }
-        self.bg_color = color;
+        self.colors = colors;
     }
 
     /// clear the panel
@@ -1146,13 +1076,11 @@ impl PanelSpace {
         self.is_dirty = true;
         self.popups.clear();
         self.damage_tracked_renderer = Some(OutputDamageTracker::new(
-            self.dimensions
-                .to_f64()
-                .to_physical(self.scale)
-                .to_i32_round(),
+            self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
             1.0,
             smithay::utils::Transform::Flipped180,
         ));
+        self.space.refresh();
     }
 
     pub fn apply_positioner_state(
@@ -1172,20 +1100,20 @@ impl PanelSpace {
             parent_size,
             parent_configure: _,
         } = pos_state;
-        let parent_window = if let Some(s) = self
-            .space
-            .elements()
-            .find(|w| w.wl_surface() == s_surface.get_parent_surface().as_ref().cloned())
-        {
-            s
+        let p_offset = if let Some(s) = self.space.elements().find(|w| {
+            s_surface
+                .get_parent_surface()
+                .is_some_and(|s| w.wl_surface().is_some_and(|w| w.as_ref() == &s))
+        }) {
+            self.space.element_location(s).unwrap_or_else(|| (0, 0).into())
+        } else if let Some(p) = self.popups.iter().find(|p| {
+            s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface())
+        }) {
+            // panic!("Popup parent surface not found in space");
+            p.rectangle.loc
         } else {
             return;
-        };
-
-        let p_offset = self
-            .space
-            .element_location(parent_window)
-            .unwrap_or_else(|| (0, 0).into());
+        }; // TODO check overflow popup spaces too
 
         positioner.set_size(rect_size.w.max(1), rect_size.h.max(1));
         positioner.set_anchor_rect(
@@ -1197,7 +1125,9 @@ impl PanelSpace {
         positioner.set_anchor(Anchor::try_from(anchor_edges as u32).unwrap_or(Anchor::None));
         positioner.set_gravity(Gravity::try_from(gravity as u32).unwrap_or(Gravity::None));
 
-        positioner.set_constraint_adjustment(u32::from(constraint_adjustment));
+        positioner.set_constraint_adjustment(
+            u32::from(constraint_adjustment).try_into().unwrap_or(ConstraintAdjustment::empty()),
+        );
         positioner.set_offset(offset.x, offset.y);
         if positioner.version() >= 3 {
             if reactive {
@@ -1209,7 +1139,13 @@ impl PanelSpace {
         }
     }
 
-    pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4], animate: bool) {
+    pub fn update_config(
+        &mut self,
+        config: CosmicPanelConfig,
+        bg_color: Option<[f32; 4]>,
+        animate: bool,
+    ) {
+        let bg_color = bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity));
         // avoid animating if currently maximized
         if self.maximized {
             return;
@@ -1263,7 +1199,10 @@ impl PanelSpace {
         // return early
         if config.anchor() != self.config.anchor() {
             if config.is_horizontal() != self.config.is_horizontal() {
-                panic!("Can't apply anchor changes when orientation changes. Requires re-creation of the panel.");
+                panic!(
+                    "Can't apply anchor changes when orientation changes. Requires re-creation of \
+                     the panel."
+                );
             }
             if let Some(l) = self.layer.as_ref() {
                 l.set_anchor(config.anchor().into());
@@ -1300,13 +1239,9 @@ impl PanelSpace {
 
         if animate {
             let start = AnimatableState {
-                bg_color: self.bg_color,
+                bg_color: self.colors.bg_color(self.config.opacity),
                 border_radius: self.config.border_radius,
-                expanded: if self.config.expand_to_edges {
-                    1.0
-                } else {
-                    0.0
-                },
+                expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
             let end = AnimatableState {
@@ -1337,21 +1272,17 @@ impl PanelSpace {
         self.clear();
     }
 
-    pub fn set_maximized(
-        &mut self,
-        maximized: bool,
-        config: CosmicPanelConfig,
-        bg_color: [f32; 4],
-    ) {
+    pub fn set_maximized(&mut self, maximized: bool, config: CosmicPanelConfig, opacity: f32) {
         if self.maximized == maximized {
             return;
         }
+        let bg_color = self.colors.bg_color(opacity);
         if !self.maximized {
-            self.update_config(config, bg_color, self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
             self.maximized = maximized;
         } else {
             self.maximized = maximized;
-            self.update_config(config, bg_color, self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
             if let Some(s) = self.animate_state.as_mut() {
                 s.end.bg_color[3] = self.config.opacity;
             }

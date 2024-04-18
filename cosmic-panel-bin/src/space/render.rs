@@ -1,19 +1,96 @@
 use std::time::Duration;
 
-use super::{corner_element::RoundedRectangleShader, panel_space::PanelRenderElement, PanelSpace};
+use crate::iced::elements::CosmicMappedInternal;
+
+use super::{
+    corner_element::{RoundedRectangleShader, RoundedRectangleShaderElement},
+    PanelSpace,
+};
 use cctk::wayland_client::{Proxy, QueueHandle};
 
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
         damage::OutputDamageTracker,
-        element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-        gles::GlesRenderer,
+        element::{
+            memory::MemoryRenderBufferRenderElement,
+            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+            AsRenderElements, Element, RenderElement, UnderlyingStorage,
+        },
+        gles::{GlesError, GlesFrame, GlesRenderer},
         Bind, Frame, Renderer, Unbind,
     },
-    utils::Rectangle,
+    utils::{Buffer, Physical, Rectangle},
 };
 use xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace};
+pub(crate) enum PanelRenderElement {
+    Wayland(
+        WaylandSurfaceRenderElement<GlesRenderer>,
+        Rectangle<f64, Buffer>,
+        Rectangle<i32, Physical>,
+    ),
+    RoundedRectangle(RoundedRectangleShaderElement),
+    Iced(MemoryRenderBufferRenderElement<GlesRenderer>),
+}
+
+impl smithay::backend::renderer::element::Element for PanelRenderElement {
+    fn id(&self) -> &smithay::backend::renderer::element::Id {
+        match self {
+            Self::Wayland(e, ..) => e.id(),
+            Self::RoundedRectangle(e) => e.id(),
+            Self::Iced(e) => e.id(),
+        }
+    }
+
+    fn current_commit(&self) -> smithay::backend::renderer::utils::CommitCounter {
+        match self {
+            Self::Wayland(e, ..) => e.current_commit(),
+            Self::RoundedRectangle(e) => e.current_commit(),
+            Self::Iced(e) => e.current_commit(),
+        }
+    }
+
+    fn src(&self) -> Rectangle<f64, Buffer> {
+        match self {
+            Self::Wayland(e, src, ..) => *src,
+            Self::RoundedRectangle(e) => e.src(),
+            Self::Iced(e) => e.src(),
+        }
+    }
+
+    fn geometry(&self, scale: smithay::utils::Scale<f64>) -> Rectangle<i32, Physical> {
+        match self {
+            Self::Wayland(e, _, geo) => *geo,
+            Self::RoundedRectangle(e) => e.geometry(scale),
+            Self::Iced(e) => e.geometry(scale),
+        }
+    }
+}
+
+impl RenderElement<GlesRenderer> for PanelRenderElement {
+    fn draw(
+        &self,
+        frame: &mut GlesFrame<'_>,
+        src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), GlesError> {
+        match self {
+            Self::Wayland(e, ..) => e.draw(frame, src, dst, damage, opaque_regions),
+            Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage, opaque_regions),
+            Self::Iced(e) => e.draw(frame, src, dst, damage, opaque_regions),
+        }
+    }
+
+    fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
+        match self {
+            PanelRenderElement::Wayland(e, ..) => e.underlying_storage(renderer),
+            PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
+            PanelRenderElement::Iced(e) => e.underlying_storage(renderer),
+        }
+    }
+}
 
 impl PanelSpace {
     pub(crate) fn render<W: WrapperSpace>(
@@ -41,24 +118,17 @@ impl PanelSpace {
             let clear_color = bg_color;
             // if not visible, just clear and exit early
             let not_visible = self.config.autohide.is_some()
-                && matches!(
-                    self.visibility,
-                    xdg_shell_wrapper::space::Visibility::Hidden
-                );
-            let dim = self
-                .dimensions
-                .to_f64()
-                .to_physical(self.scale)
-                .to_i32_round();
+                && matches!(self.visibility, xdg_shell_wrapper::space::Visibility::Hidden);
+            let dim = self.dimensions.to_f64().to_physical(self.scale).to_i32_round();
             // TODO check to make sure this is not going to cause damage issues
             if not_visible {
                 if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
-                    _ = frame.clear(
-                        [0.0, 0.0, 0.0, 0.0],
-                        &[Rectangle::from_loc_and_size((0, 0), dim)],
-                    );
+                    _ = frame
+                        .clear([0.0, 0.0, 0.0, 0.0], &[Rectangle::from_loc_and_size((0, 0), dim)]);
                     if let Ok(sync_point) = frame.finish() {
-                        _ = sync_point.wait();
+                        if let Err(err) = sync_point.wait() {
+                            tracing::error!("Error waiting for sync point: {:?}", err);
+                        }
                         self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                     }
                     let wl_surface = self.layer.as_ref().unwrap().wl_surface();
@@ -89,7 +159,7 @@ impl PanelSpace {
                     .chain(
                         self.space
                             .elements()
-                            .map(|w| {
+                            .filter_map(|w| {
                                 let loc = self
                                     .space
                                     .element_location(w)
@@ -97,16 +167,49 @@ impl PanelSpace {
                                     .to_f64()
                                     .to_physical(self.scale)
                                     .to_i32_round();
-                                render_elements_from_surface_tree(
-                                    renderer,
-                                    w.toplevel().expect("Missing toplevel").wl_surface(),
-                                    loc,
-                                    self.scale,
-                                    1.0,
-                                    smithay::backend::renderer::element::Kind::Unspecified,
-                                )
-                                .into_iter()
-                                .map(|r| PanelRenderElement::Wayland(r))
+                                if let CosmicMappedInternal::OverflowButton(b) = w {
+                                    return Some(
+                                        b.render_elements(renderer, loc, self.scale.into(), 1.0)
+                                            .into_iter()
+                                            .map(|r| PanelRenderElement::Iced(r))
+                                            .collect::<Vec<_>>(),
+                                    );
+                                }
+
+                                w.toplevel().map(|t| {
+                                    render_elements_from_surface_tree(
+                                        renderer,
+                                        t.wl_surface(),
+                                        loc,
+                                        self.scale,
+                                        1.0,
+                                        smithay::backend::renderer::element::Kind::Unspecified,
+                                    )
+                                    .into_iter()
+                                    .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
+                                        let mut src = r.src();
+                                        let mut geo = r.geometry(self.scale.into());
+                                        if let Some(size) = t.current_state().size {
+                                            let scaled_size = size
+                                                .to_f64()
+                                                .to_buffer(
+                                                    self.scale,
+                                                    smithay::utils::Transform::Normal,
+                                                )
+                                                .to_i32_ceil();
+                                            if size.w > 0 && scaled_size.w < src.size.w {
+                                                src.size.w = scaled_size.w;
+                                                geo.size.w = scaled_size.w.ceil() as i32;
+                                            }
+                                            if size.h > 0 && scaled_size.h < src.size.h {
+                                                src.size.h = scaled_size.h;
+                                                geo.size.h = scaled_size.h.ceil() as i32;
+                                            }
+                                        }
+                                        PanelRenderElement::Wayland(r, src, geo)
+                                    })
+                                    .collect::<Vec<_>>()
+                                })
                             })
                             .flatten(),
                     )
@@ -114,18 +217,20 @@ impl PanelSpace {
 
                 _ = my_renderer.render_output(
                     renderer,
-                    self.egl_surface
-                        .as_ref()
-                        .unwrap()
-                        .buffer_age()
-                        .unwrap_or_default() as usize,
+                    self.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize,
                     &elements,
                     clear_color,
                 );
 
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
-                for window in self.space.elements() {
+                for window in self.space.elements().filter_map(|w| {
+                    if let CosmicMappedInternal::Window(w) = w {
+                        Some(w)
+                    } else {
+                        None
+                    }
+                }) {
                     let output = *o;
                     window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
                         Some(output.clone())
@@ -162,11 +267,7 @@ impl PanelSpace {
             );
             p.damage_tracked_renderer.render_output(
                 renderer,
-                p.egl_surface
-                    .as_ref()
-                    .unwrap()
-                    .buffer_age()
-                    .unwrap_or_default() as usize,
+                p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize,
                 &elements,
                 clear_color,
             )?;

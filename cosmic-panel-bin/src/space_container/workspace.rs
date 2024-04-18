@@ -12,7 +12,7 @@ impl WorkspaceHandlerSpace for SpaceContainer {
         self.workspace_groups = groups.to_vec();
         let post_maximized_outputs = self.maximized_outputs();
         let outputs = self.outputs.clone();
-        for (o, _, _) in &outputs {
+        for (o, ..) in &outputs {
             let max_pre = pre_maximixed_outputs.iter().contains(o);
             let max_post = post_maximized_outputs.iter().contains(o);
             if max_post && !max_pre {

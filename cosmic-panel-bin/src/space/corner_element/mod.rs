@@ -58,34 +58,31 @@ impl RoundedRectangleShader {
             .unwrap()
             .borrow_mut();
 
-        let elem = cache
-            .take()
-            .filter(|(s, _)| *s == settings)
-            .unwrap_or_else(|| {
-                let shader = Self::get(renderer);
-                (
-                    settings,
-                    PixelShaderElement::new(
-                        shader,
-                        geo,
-                        None, //TODO
-                        1.0,
-                        vec![
-                            Uniform::new("rad_tl", settings.rad_tl),
-                            Uniform::new("rad_tr", settings.rad_tr),
-                            Uniform::new("rad_bl", settings.rad_bl),
-                            Uniform::new("rad_br", settings.rad_br),
-                            Uniform::new("loc", settings.loc),
-                            Uniform::new("rect_size", settings.rect_size),
-                            Uniform::new("border_width", settings.border_width),
-                            Uniform::new("drop_shadow", settings.drop_shadow),
-                            Uniform::new("bg_color", settings.bg_color),
-                            Uniform::new("border_color", settings.border_color),
-                        ],
-                        Kind::Unspecified,
-                    ),
-                )
-            });
+        let elem = cache.take().filter(|(s, _)| *s == settings).unwrap_or_else(|| {
+            let shader = Self::get(renderer);
+            (
+                settings,
+                PixelShaderElement::new(
+                    shader,
+                    geo,
+                    None, // TODO
+                    1.0,
+                    vec![
+                        Uniform::new("rad_tl", settings.rad_tl),
+                        Uniform::new("rad_tr", settings.rad_tr),
+                        Uniform::new("rad_bl", settings.rad_bl),
+                        Uniform::new("rad_br", settings.rad_br),
+                        Uniform::new("loc", settings.loc),
+                        Uniform::new("rect_size", settings.rect_size),
+                        Uniform::new("border_width", settings.border_width),
+                        Uniform::new("drop_shadow", settings.drop_shadow),
+                        Uniform::new("bg_color", settings.bg_color),
+                        Uniform::new("border_color", settings.border_color),
+                    ],
+                    Kind::Unspecified,
+                ),
+            )
+        });
         *cache = Some(elem);
 
         let elem = &mut cache.as_mut().unwrap().1;
@@ -99,11 +96,7 @@ impl RoundedRectangleShader {
 pub fn init_shaders(gles_renderer: &mut GlesRenderer) -> Result<(), GlesError> {
     {
         let egl_context = gles_renderer.egl_context();
-        if egl_context
-            .user_data()
-            .get::<RoundedRectangleShader>()
-            .is_some()
-        {
+        if egl_context.user_data().get::<RoundedRectangleShader>().is_some() {
             return Ok(());
         }
     }
@@ -125,9 +118,7 @@ pub fn init_shaders(gles_renderer: &mut GlesRenderer) -> Result<(), GlesError> {
     )?;
 
     let egl_context = gles_renderer.egl_context();
-    egl_context
-        .user_data()
-        .insert_if_missing(|| RoundedRectangleShader(rectangle_shader));
+    egl_context.user_data().insert_if_missing(|| RoundedRectangleShader(rectangle_shader));
 
     Ok(())
 }
@@ -157,13 +148,14 @@ impl RenderElement<GlesRenderer> for RoundedRectangleShaderElement {
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[smithay::utils::Rectangle<i32, Physical>],
     ) -> Result<(), GlesError> {
         _ = frame.with_context(|gl| unsafe {
             gl.Enable(BLEND);
             gl.BlendFuncSeparate(ZERO, SRC_ALPHA, ZERO, SRC_ALPHA);
             gl.BlendEquation(FUNC_ADD);
         });
-        let res = self.0.draw(frame, src, dst, damage);
+        let res = self.0.draw(frame, src, dst, damage, opaque_regions);
         _ = frame.with_context(|gl| unsafe {
             gl.Disable(BLEND);
         });

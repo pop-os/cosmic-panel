@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
 use smithay::reexports::rustix::{
-    self,
     io::{fcntl_getfd, fcntl_setfd, FdFlags},
+    {self},
 };
 use std::os::{
     fd::{FromRawFd, OwnedFd, RawFd},
@@ -34,7 +34,7 @@ pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
         // CLOEXEC didn't work, something is wrong with the fd, just close it
         Err(err) => {
             return Err(err).with_context(|| "Failed to setup session socket");
-        }
+        },
     };
     daemon_stream.set_nonblocking(true)?;
 

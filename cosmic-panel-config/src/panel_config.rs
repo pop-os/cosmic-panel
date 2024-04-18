@@ -16,12 +16,14 @@ use crate::{NAME, VERSION};
 /// Edge to which the panel is anchored
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+#[derive(Default)]
 pub enum PanelAnchor {
     /// anchored to left edge
     Left,
     /// anchored to right edge
     Right,
     /// anchored to top edge
+    #[default]
     Top,
     /// anchored to bottom edge
     Bottom,
@@ -52,15 +54,10 @@ impl FromStr for PanelAnchor {
     }
 }
 
-impl Default for PanelAnchor {
-    fn default() -> Self {
-        PanelAnchor::Top
-    }
-}
-
 #[cfg(feature = "wayland-rs")]
 impl TryFrom<Anchor> for PanelAnchor {
     type Error = anyhow::Error;
+
     fn try_from(align: Anchor) -> Result<Self, Self::Error> {
         if align.contains(Anchor::LEFT) {
             Ok(Self::Left)
@@ -79,6 +76,7 @@ impl TryFrom<Anchor> for PanelAnchor {
 #[cfg(feature = "wayland-rs")]
 impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
     type Error = anyhow::Error;
+
     fn try_from(align: zwlr_layer_surface_v1::Anchor) -> Result<Self, Self::Error> {
         if align.contains(zwlr_layer_surface_v1::Anchor::Left) {
             Ok(Self::Left)
@@ -95,27 +93,27 @@ impl TryFrom<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
 }
 
 #[cfg(feature = "wayland-rs")]
-impl Into<zwlr_layer_surface_v1::Anchor> for PanelAnchor {
-    fn into(self) -> zwlr_layer_surface_v1::Anchor {
+impl From<PanelAnchor> for zwlr_layer_surface_v1::Anchor {
+    fn from(val: PanelAnchor) -> Self {
         let anchor = zwlr_layer_surface_v1::Anchor::all();
-        match self {
-            Self::Left => anchor.difference(zwlr_layer_surface_v1::Anchor::Right),
-            Self::Right => anchor.difference(zwlr_layer_surface_v1::Anchor::Left),
-            Self::Top => anchor.difference(zwlr_layer_surface_v1::Anchor::Bottom),
-            Self::Bottom => anchor.difference(zwlr_layer_surface_v1::Anchor::Top),
+        match val {
+            PanelAnchor::Left => anchor.difference(zwlr_layer_surface_v1::Anchor::Right),
+            PanelAnchor::Right => anchor.difference(zwlr_layer_surface_v1::Anchor::Left),
+            PanelAnchor::Top => anchor.difference(zwlr_layer_surface_v1::Anchor::Bottom),
+            PanelAnchor::Bottom => anchor.difference(zwlr_layer_surface_v1::Anchor::Top),
         }
     }
 }
 
 #[cfg(feature = "wayland-rs")]
-impl Into<Anchor> for PanelAnchor {
-    fn into(self) -> Anchor {
+impl From<PanelAnchor> for Anchor {
+    fn from(val: PanelAnchor) -> Self {
         let anchor = Anchor::all();
-        match self {
-            Self::Left => anchor.difference(Anchor::RIGHT),
-            Self::Right => anchor.difference(Anchor::LEFT),
-            Self::Top => anchor.difference(Anchor::BOTTOM),
-            Self::Bottom => anchor.difference(Anchor::TOP),
+        match val {
+            PanelAnchor::Left => anchor.difference(Anchor::RIGHT),
+            PanelAnchor::Right => anchor.difference(Anchor::LEFT),
+            PanelAnchor::Top => anchor.difference(Anchor::BOTTOM),
+            PanelAnchor::Bottom => anchor.difference(Anchor::TOP),
         }
     }
 }
@@ -177,6 +175,10 @@ impl PanelSize {
             }
         }
     }
+
+    pub fn get_applet_icon_size_with_padding(&self, is_symbolic: bool) -> u32 {
+        self.get_applet_icon_size(is_symbolic) + self.get_applet_padding(is_symbolic) as u32 * 2
+    }
 }
 
 impl Display for PanelSize {
@@ -236,11 +238,7 @@ pub struct AutoHide {
 
 impl Default for AutoHide {
     fn default() -> Self {
-        Self {
-            wait_time: 1000,
-            transition_time: 200,
-            handle_size: 4,
-        }
+        Self { wait_time: 1000, transition_time: 200, handle_size: 4 }
     }
 }
 
@@ -275,16 +273,16 @@ impl FromStr for CosmicPanelOuput {
             "Active" => Ok(Self::Active),
             s if s.len() >= 6 && &s[..5] == "Name(" && s.ends_with(')') => {
                 Ok(Self::Name(s[5..s.len() - 1].to_string()))
-            }
+            },
             _ => bail!("Failed to parse output."),
         }
     }
 }
 
 #[cfg(feature = "wayland-rs")]
-impl Into<WrapperOutput> for CosmicPanelOuput {
-    fn into(self) -> WrapperOutput {
-        match self {
+impl From<CosmicPanelOuput> for WrapperOutput {
+    fn from(val: CosmicPanelOuput) -> Self {
+        match val {
             CosmicPanelOuput::All => WrapperOutput::All,
             CosmicPanelOuput::Active => WrapperOutput::Name(vec![]),
             CosmicPanelOuput::Name(n) => WrapperOutput::Name(vec![n]),
@@ -311,7 +309,8 @@ pub struct CosmicPanelConfig {
     pub keyboard_interactivity: KeyboardInteractivity,
     /// configured size for the panel
     pub size: PanelSize,
-    /// name of configured output (Intended for dock or panel), or None to place on active output (Intended for wrapping a single application)
+    /// name of configured output (Intended for dock or panel), or None to place
+    /// on active output (Intended for wrapping a single application)
     pub output: CosmicPanelOuput,
     /// customized background, or
     pub background: CosmicPanelBackground,
@@ -329,7 +328,8 @@ pub struct CosmicPanelConfig {
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
-    /// enable autohide feature with the transitions lasting the supplied wait time and duration in millis
+    /// enable autohide feature with the transitions lasting the supplied wait
+    /// time and duration in millis
     pub autohide: Option<AutoHide>,
     /// margin between the panel and the edge of the output
     pub margin: u16,
@@ -398,7 +398,8 @@ impl CosmicPanelConfig {
     }
 
     /// get the priority of the panel
-    /// higher priority panels will be created first and given more space when competing for space
+    /// higher priority panels will be created first and given more space when
+    /// competing for space
     pub fn get_priority(&self) -> u32 {
         let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
         if self.autohide().is_none() {
@@ -430,27 +431,26 @@ impl CosmicPanelConfig {
         }
     }
 
-    /// if autohide is configured, returns the duration of time which the panel should wait to hide when it has lost focus
+    /// if autohide is configured, returns the duration of time which the panel
+    /// should wait to hide when it has lost focus
     pub fn get_hide_wait(&self) -> Option<Duration> {
         self.autohide
             .as_ref()
             .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
     }
 
-    /// if autohide is configured, returns the duration of time which the panel hide / show transition should last
+    /// if autohide is configured, returns the duration of time which the panel
+    /// hide / show transition should last
     pub fn get_hide_transition(&self) -> Option<Duration> {
-        self.autohide.as_ref().map(
-            |AutoHide {
-                 transition_time, ..
-             }| Duration::from_millis((*transition_time).into()),
-        )
+        self.autohide.as_ref().map(|AutoHide { transition_time, .. }| {
+            Duration::from_millis((*transition_time).into())
+        })
     }
 
-    /// if autohide is configured, returns the size of the handle of the panel which should be exposed
+    /// if autohide is configured, returns the size of the handle of the panel
+    /// which should be exposed
     pub fn get_hide_handle(&self) -> Option<u32> {
-        self.autohide
-            .as_ref()
-            .map(|AutoHide { handle_size, .. }| *handle_size)
+        self.autohide.as_ref().map(|AutoHide { handle_size, .. }| *handle_size)
     }
 
     pub fn background(&self) -> CosmicPanelBackground {
@@ -506,6 +506,13 @@ impl CosmicPanelConfig {
         match self.anchor {
             PanelAnchor::Top | PanelAnchor::Bottom => true,
             _ => false,
+        }
+    }
+
+    pub fn bg_color_override(&self) -> Option<[f32; 4]> {
+        match self.background {
+            CosmicPanelBackground::Color(c) => Some([c[0], c[1], c[2], self.opacity]),
+            _ => None,
         }
     }
 
