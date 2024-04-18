@@ -15,6 +15,11 @@ uniform float rad_br;
 uniform vec2 loc;
 uniform vec2 rect_size;
 
+uniform float border_width;
+uniform float drop_shadow;
+uniform vec4 bg_color;
+uniform vec4 border_color;
+
 float sdRoundBox(in vec2 p,in vec2 b,in vec4 r)
 {
     r.xy=(p.x>0.)?r.xy:r.zw;
@@ -55,6 +60,7 @@ void main()
         d_bl=abs(bl_corner.y-pos.y);
         d_br=abs(br_corner.y-pos.y);
     }
+    vec4 calc_bg_color;
     
     if(d_tl<=rad_tl){
         delta=(ra.z-d_tl)/rad_tl*fwidth(d)/2.;

@@ -340,6 +340,10 @@ impl PanelSpace {
                     rad_br: rad_br as f32,
                     loc,
                     rect_size: [panel_size.w as f32, panel_size.h as f32],
+                    border_width: 0.0,
+                    drop_shadow: 0.0,
+                    bg_color: [0.0, 0.0, 0.0, 1.0],
+                    border_color: [0.0, 0.0, 0.0, 0.0],
                 };
             }
             input_region.subtract(

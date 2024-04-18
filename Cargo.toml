@@ -2,21 +2,32 @@
 members = ["cosmic-panel-bin", "cosmic-panel-config"]
 resolver = "2"
 
-[workspace.dependencies]
-sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = [
-    "calloop",
-    "xkbcommon",
-], rev = "3bed072" }
+# [workspace.dependencies]
+# sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = [
+#     "calloop",
+#     "xkbcommon",
+# ], rev = "3bed072" }
+
+[profile.dev]
+opt-level = 1
 
 [profile.release]
 lto = "thin"
 
 [patch."https://github.com/Smithay/client-toolkit"]
 sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay-client-toolkit", rev = "3bed072" }
+
+# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update-smithay-sctk" }
+
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
-# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update-smithay-sctk" }
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update-smithay-sctk" }
 # [patch."https://github.com/pop-os/libcosmic"]
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
+[workspace.dependencies]
+
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = [
+    "calloop",
+    "xkbcommon",
+], rev = "2e9bf9f" }
