@@ -32,7 +32,7 @@ impl PanelSpace {
         };
         let is_dock = !self.config.expand_to_edges();
 
-        let mut num_lists = 0;
+        let mut num_lists: u32 = 0;
         if self
             .config
             .plugins_wings
@@ -193,25 +193,26 @@ impl PanelSpace {
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Left, self.scale));
         let left_sum_scaled = left.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled as f64 * (windows_left.len().max(1) as f64 - 1.0);
+            + spacing_scaled as f64 * windows_left.len().saturating_sub(1) as f64;
 
         let center = windows_center
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
         let center_sum_scaled = center.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled * (windows_center.len().max(1) - 1) as f64;
+            + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
 
         let right = windows_right
             .iter()
             .map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
 
         let right_sum_scaled = right.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled * (windows_right.len().max(1) - 1) as f64;
+            + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
 
         let total_sum_scaled = left_sum_scaled + center_sum_scaled + right_sum_scaled;
         let new_list_length = (total_sum_scaled as f64
             + padding_scaled * 2.0
-            + spacing_scaled * (num_lists - 1) as f64) as i32;
+            + spacing_scaled * num_lists.saturating_sub(1) as f64)
+            as i32;
         let new_list_thickness = (2.0 * padding_scaled
             + chain!(left.clone(), center.clone(), right.clone())
                 .map(|(_, _, _, thickness)| thickness)
