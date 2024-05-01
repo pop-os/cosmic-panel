@@ -319,7 +319,7 @@ impl SpaceContainer {
                 }
 
                 entry.output = space.config.output.clone();
-                space.update_config(entry.clone(), bg_color);
+                space.update_config(entry.clone(), bg_color, true);
             }
             return;
         }

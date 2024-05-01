@@ -1081,7 +1081,7 @@ impl PanelSpace {
         }
     }
 
-    pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4]) {
+    pub fn update_config(&mut self, config: CosmicPanelConfig, bg_color: [f32; 4], animate: bool) {
         // avoid animating if currently maximized
         if self.maximized {
             return;
@@ -1170,37 +1170,38 @@ impl PanelSpace {
             }
         }
 
-        let start = AnimatableState {
-            bg_color: self.bg_color,
-            border_radius: self.config.border_radius,
-            expanded: if self.config.expand_to_edges {
-                1.0
+        if animate {
+            let start = AnimatableState {
+                bg_color: self.bg_color,
+                border_radius: self.config.border_radius,
+                expanded: if self.config.expand_to_edges {
+                    1.0
+                } else {
+                    0.0
+                },
+                gap: self.config.get_effective_anchor_gap() as u16,
+            };
+            let end = AnimatableState {
+                bg_color,
+                border_radius: config.border_radius,
+                expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
+                gap: config.get_effective_anchor_gap() as u16,
+            };
+            if let Some(animated_state) = self.animate_state.as_mut() {
+                animated_state.start = animated_state.cur.clone();
+                animated_state.end = end;
+                animated_state.started_at = Instant::now();
+                animated_state.progress = 0.0;
             } else {
-                0.0
-            },
-            gap: self.config.get_effective_anchor_gap() as u16,
-        };
-
-        let end = AnimatableState {
-            bg_color,
-            border_radius: config.border_radius,
-            expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
-            gap: config.get_effective_anchor_gap() as u16,
-        };
-        if let Some(animated_state) = self.animate_state.as_mut() {
-            animated_state.start = animated_state.cur.clone();
-            animated_state.end = end;
-            animated_state.started_at = Instant::now();
-            animated_state.progress = 0.0;
-        } else {
-            self.animate_state = Some(AnimateState {
-                cur: start.clone(),
-                start,
-                end,
-                progress: 0.0,
-                started_at: Instant::now(),
-                duration: Duration::from_millis(300), // TODO make configurable
-            });
+                self.animate_state = Some(AnimateState {
+                    cur: start.clone(),
+                    start,
+                    end,
+                    progress: 0.0,
+                    started_at: Instant::now(),
+                    duration: Duration::from_millis(300), // TODO make configurable
+                });
+            }
         }
 
         self.config = config;
@@ -1218,11 +1219,11 @@ impl PanelSpace {
             return;
         }
         if !self.maximized {
-            self.update_config(config, bg_color);
+            self.update_config(config, bg_color, self.config.autohide.is_none());
             self.maximized = maximized;
         } else {
             self.maximized = maximized;
-            self.update_config(config, bg_color);
+            self.update_config(config, bg_color, self.config.autohide.is_none());
             if let Some(s) = self.animate_state.as_mut() {
                 s.end.bg_color[3] = self.config.opacity;
             }
