@@ -1221,9 +1221,11 @@ impl PanelSpace {
             self.update_config(config, bg_color);
             self.maximized = maximized;
         } else {
-            // TODO restore old config
             self.maximized = maximized;
             self.update_config(config, bg_color);
+            if let Some(s) = self.animate_state.as_mut() {
+                s.end.bg_color[3] = self.config.opacity;
+            }
         }
     }
 }
