@@ -40,22 +40,33 @@ void main()
     vec2 pos=gl_FragCoord.xy;
     
     float delta=0.;
-    float d_tl=distance(pos,tl_corner);
-    float d_tr=distance(pos,tr_corner);
-    float d_bl=distance(pos,bl_corner);
-    float d_br=distance(pos,br_corner);
-    
-    if(d_tl<ra.z){
-        delta=(ra.z-d_tl)/ra.z*fwidth(d)*2.;
-    }else if(d_tr<ra.x){
-        delta=(ra.x-d_tr)/ra.x*fwidth(d)*2.;
-    }else if(d_bl<ra.w){
-        delta=(ra.w-d_bl)/ra.w*fwidth(d)*2.;
-    }else if(d_br<ra.y){
-        delta=(ra.y-d_br)/ra.y*fwidth(d)*2.;
+    float d_tl;
+    float d_tr;
+    float d_bl;
+    float d_br;
+    if(dot(tl_corner,tr_corner)>dot(tl_corner,bl_corner)){
+        d_tl=abs(tl_corner.x-pos.x);
+        d_tr=abs(tr_corner.x-pos.x);
+        d_bl=abs(bl_corner.x-pos.x);
+        d_br=abs(br_corner.x-pos.x);
+    }else{
+        d_tl=abs(tl_corner.y-pos.y);
+        d_tr=abs(tr_corner.y-pos.y);
+        d_bl=abs(bl_corner.y-pos.y);
+        d_br=abs(br_corner.y-pos.y);
     }
     
-    float a=1.-smoothstep(1.-delta,1.,1.+d);
+    if(d_tl<=rad_tl){
+        delta=(ra.z-d_tl)/rad_tl*fwidth(d)/2.;
+    }else if(d_tr<=rad_tr){
+        delta=(ra.x-d_tr)/rad_tr*fwidth(d)/2.;
+    }else if(d_bl<=rad_bl){
+        delta=(ra.w-d_bl)/rad_bl*fwidth(d)/2.;
+    }else if(d_br<=rad_br){
+        delta=(ra.y-d_br)/rad_br*fwidth(d)/2.;
+    }
+    
+    float a=1.-smoothstep(1.-5.*delta/6.,1.+delta/6.,1.+d);
     
     gl_FragColor=vec4(0.,0.,0.,a);
 }
