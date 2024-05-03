@@ -299,7 +299,11 @@ impl SpaceContainer {
                 || c.background != entry.background
                 || c.plugins_center != entry.plugins_center
                 || c.plugins_wings != entry.plugins_wings)))
-        });
+            // Priority change to conflict with adjacent panel
+            || c.name != entry.name
+                && Some(c.anchor) != opposite_anchor
+                && (old_priority < c.get_priority() && new_priority > c.get_priority() || old_priority > c.get_priority() && new_priority < c.get_priority())}
+        );
 
         self.config.config_list.retain(|c| c.name != entry.name);
         self.config.config_list.push(entry.clone());
@@ -388,11 +392,19 @@ impl SpaceContainer {
             let maximized_output = maximized_outputs.contains(wl_output);
             let mut configs = self.config.configs_for_output(&output_name);
             configs.sort_by(|a, b| b.get_priority().cmp(&a.get_priority()));
-            for c in configs {
+            for c in &configs {
                 let is_recreated = c.name == entry.name
-                    || Some(c.anchor) != opposite_anchor
-                        && (c.get_priority() < new_priority && c.get_priority() > old_priority
-                            || c.get_priority() > new_priority && c.get_priority() < old_priority);
+                    || Some(c.anchor) == opposite_anchor && c.get_priority() < new_priority
+                    || configs.iter().any(|other| {
+                        let other_opposite_anchor = match other.anchor {
+                            PanelAnchor::Top => PanelAnchor::Bottom,
+                            PanelAnchor::Bottom => PanelAnchor::Top,
+                            PanelAnchor::Left => PanelAnchor::Right,
+                            PanelAnchor::Right => PanelAnchor::Left,
+                        };
+                        c.anchor != other_opposite_anchor && c.get_priority() < other.get_priority()
+                    });
+
                 if !is_recreated {
                     continue;
                 }
@@ -402,10 +414,9 @@ impl SpaceContainer {
                     s.config.name != c.name
                         || s.output
                             .as_ref()
-                            .map(|(_, o, _)| o.name() != output_name)
-                            .unwrap_or_default()
+                            .is_some_and(|(_, o, _)| o.name() != output_name)
                 });
-                let mut new_config = c.clone();
+                let mut new_config = (*c).clone();
                 if maximized_output {
                     new_config.maximize();
                 }

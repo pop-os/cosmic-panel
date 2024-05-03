@@ -1,8 +1,5 @@
 [workspace]
-members = [
-    "cosmic-panel-bin",
-    "cosmic-panel-config"
-]
+members = ["cosmic-panel-bin", "cosmic-panel-config"]
 
 [profile.release]
 lto = "thin"
@@ -14,4 +11,7 @@ sctk = { git = "https://github.com/smithay/client-toolkit//", package = "smithay
 # xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
 
 [workspace.dependencies]
-sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"], rev = "2e9bf9f" }
+sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = [
+    "calloop",
+    "xkbcommon",
+], rev = "2e9bf9f" }
