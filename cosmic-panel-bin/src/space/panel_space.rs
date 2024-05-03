@@ -18,6 +18,7 @@ use sctk::{
             Proxy, QueueHandle,
         },
     },
+    seat::pointer::PointerEvent,
     shell::{
         wlr_layer::{LayerSurface, LayerSurfaceConfigure},
         xdg::XdgPositioner,
@@ -164,6 +165,8 @@ pub struct PanelClient {
     pub minimize_priority: Option<u32>,
     pub requests_wayland_display: Option<bool>,
     pub is_notification_applet: Option<bool>,
+    /// If there is an existing popup, this applet with be pressed when hovered.
+    pub auto_popup_hover_press: bool,
 }
 
 impl PanelClient {
@@ -177,6 +180,7 @@ impl PanelClient {
             minimize_priority: None,
             requests_wayland_display: None,
             is_notification_applet: None,
+            auto_popup_hover_press: false,
         }
     }
 }
@@ -250,6 +254,9 @@ pub(crate) struct PanelSpace {
     pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     pub(crate) minimize_applet_rect: Rectangle<i32, Logical>,
     pub(crate) panel_rect_settings: RoundedRectangleSettings,
+    pub(crate) generated_pointer_events: Vec<PointerEvent>,
+    // Counter for handling of generated pointer events
+    pub(crate) generated_ptr_event_count: usize,
 }
 
 impl PanelSpace {
@@ -311,6 +318,8 @@ impl PanelSpace {
             minimize_applet_rect: Default::default(),
             container_length: 0,
             panel_rect_settings: RoundedRectangleSettings::default(),
+            generated_pointer_events: Vec::new(),
+            generated_ptr_event_count: 0,
         }
     }
 
@@ -490,7 +499,6 @@ impl PanelSpace {
                         }
                         Self::set_margin(self.config.anchor, margin, target, layer_surface);
                         layer_shell_wl_surface.commit();
-                        self.is_dirty = true;
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
@@ -498,7 +506,6 @@ impl PanelSpace {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
                             Self::set_margin(self.config.anchor, margin, cur_pix, layer_surface);
-
                             layer_shell_wl_surface.commit();
                         }
                         self.close_popups();
@@ -567,7 +574,6 @@ impl PanelSpace {
                             }
                             let margin = self.config.get_margin() as i32;
                             Self::set_margin(self.config.anchor, margin, cur_pix, layer_surface);
-
                             layer_shell_wl_surface.commit();
                         }
                         self.visibility = Visibility::TransitionToVisible {
@@ -583,6 +589,7 @@ impl PanelSpace {
     }
 
     fn set_margin(anchor: PanelAnchor, margin: i32, target: i32, layer_surface: &LayerSurface) {
+        info!("Setting margin: {} {} {}", anchor, margin, target);
         match anchor {
             PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, target),
             PanelAnchor::Right => layer_surface.set_margin(margin, target, margin, 0),
@@ -639,6 +646,7 @@ impl PanelSpace {
                 / animation_state.duration.as_millis() as f32;
             self.is_dirty = true;
             if progress >= 1.0 {
+                tracing::info!("Animation finished, setting bg_color to end value");
                 self.bg_color = animation_state.end.bg_color;
                 self.animate_state = None;
                 return;
@@ -761,7 +769,6 @@ impl PanelSpace {
                 } else if self.layer.is_some() {
                     should_render = if self.is_dirty {
                         let update_res = self.layout();
-
                         update_res.is_ok()
                     } else {
                         true
@@ -842,8 +849,10 @@ impl PanelSpace {
                             let client_egl_display = ClientEglDisplay {
                                 display: self.c_display.as_ref().unwrap().clone(),
                             };
-                            EGLDisplay::new(client_egl_display)
-                                .expect("Failed to create EGL display")
+                            unsafe {
+                                EGLDisplay::new(client_egl_display)
+                                    .expect("Failed to create EGL display")
+                            }
                         };
 
                         let egl_context = EGLContext::new_with_config(

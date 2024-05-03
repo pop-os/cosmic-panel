@@ -300,7 +300,12 @@ impl WrapperSpace for SpaceContainer {
 
     fn add_window(&mut self, s_top_level: smithay::desktop::Window) {
         // add window to the space with a client that matches the window
-        let w_client = s_top_level.toplevel().wl_surface().client().map(|c| c.id());
+        let w_client = s_top_level
+            .toplevel()
+            .expect("Missing toplevel")
+            .wl_surface()
+            .client()
+            .map(|c| c.id());
 
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
@@ -505,19 +510,19 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn handle_press(&mut self, seat_name: &str) -> Option<wl_surface::WlSurface> {
+    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<wl_surface::WlSurface> {
         if let Some((popup_space_i, popup_space)) = self
             .space_list
             .iter_mut()
             .enumerate()
             .find(|(_, s)| !s.popups.is_empty())
         {
-            if let Some(p_ret) = popup_space.handle_press(seat_name) {
+            if let Some(p_ret) = popup_space.handle_button(seat_name, press) {
                 Some(p_ret)
             } else {
                 self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
                     if i != popup_space_i {
-                        s.handle_press(seat_name)
+                        s.handle_button(seat_name, press)
                     } else {
                         None
                     }
@@ -526,7 +531,7 @@ impl WrapperSpace for SpaceContainer {
         } else {
             self.space_list
                 .iter_mut()
-                .find_map(|s| s.handle_press(seat_name))
+                .find_map(|s| s.handle_button(seat_name, press))
         }
     }
 
@@ -757,5 +762,13 @@ impl WrapperSpace for SpaceContainer {
         _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
+    }
+
+    fn generate_pointer_events(&mut self) -> Vec<sctk::seat::pointer::PointerEvent> {
+        let mut events = Vec::new();
+        for s in &mut self.space_list {
+            events.append(&mut s.generate_pointer_events());
+        }
+        events
     }
 }

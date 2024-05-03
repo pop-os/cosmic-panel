@@ -67,10 +67,11 @@ impl PanelSpace {
                     // reset the damage tracker
                     *my_renderer =
                         OutputDamageTracker::new(dim, 1.0, smithay::utils::Transform::Flipped180);
-                    self.is_dirty = false;
                 }
 
                 renderer.unbind()?;
+                self.is_dirty = false;
+                self.has_frame = false;
                 return Ok(());
             }
 
@@ -98,7 +99,7 @@ impl PanelSpace {
                                     .to_i32_round();
                                 render_elements_from_surface_tree(
                                     renderer,
-                                    w.toplevel().wl_surface(),
+                                    w.toplevel().expect("Missing toplevel").wl_surface(),
                                     loc,
                                     self.scale,
                                     1.0,
@@ -138,7 +139,6 @@ impl PanelSpace {
                 self.has_frame = false;
             }
         }
-
         let clear_color = [0.0, 0.0, 0.0, 0.0];
         // TODO Popup rendering optimization
         for p in self.popups.iter_mut().filter(|p| {

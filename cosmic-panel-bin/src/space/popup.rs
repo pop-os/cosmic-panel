@@ -15,14 +15,14 @@ use super::PanelSpace;
 impl PanelSpace {
     pub(crate) fn close_popups(&mut self) {
         for w in &mut self.space.elements() {
-            for (p, _) in PopupManager::popups_for_surface(w.toplevel().wl_surface()) {
+            for (p, _) in PopupManager::popups_for_surface(
+                w.toplevel().expect("Missing toplevel").wl_surface(),
+            ) {
                 match p {
                     PopupKind::Xdg(p) => {
-                        if !self
-                            .s_hovered_surface
-                            .iter()
-                            .any(|hs| &hs.surface == w.toplevel().wl_surface())
-                        {
+                        if !self.s_hovered_surface.iter().any(|hs| {
+                            &hs.surface == w.toplevel().expect("Missing toplevel").wl_surface()
+                        }) {
                             p.send_popup_done();
                         }
                     }
@@ -33,6 +33,7 @@ impl PanelSpace {
                 }
             }
         }
+        self.popups.clear();
     }
 
     pub fn configure_panel_popup(
