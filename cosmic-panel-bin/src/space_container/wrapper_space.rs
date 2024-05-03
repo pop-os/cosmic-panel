@@ -88,6 +88,11 @@ impl WrapperSpace for SpaceContainer {
                             self.security_context_manager.clone(),
                             conn,
                             self.panel_tx.clone(),
+                            if config.autohide.is_some() {
+                                Visibility::Hidden
+                            } else {
+                                Visibility::Visible
+                            },
                         );
                         s.setup(
                             compositor_state,
@@ -164,111 +169,120 @@ impl WrapperSpace for SpaceContainer {
             .config
             .configs_for_output(&output_name)
             .into_iter()
-            .filter_map(|config| match &config.output {
-                CosmicPanelOuput::All => {
-                    let c = match config.background {
-                        CosmicPanelBackground::ThemeDefault => cur,
-                        CosmicPanelBackground::Dark => dark,
-                        CosmicPanelBackground::Light => light,
-                        CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
-                    };
-                    let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
-                        s.config.name == config.name
-                            && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
-                    }) {
-                        self.space_list.remove(s)
-                    } else {
-                        let mut s = PanelSpace::new(
-                            config.clone(),
-                            self.c_focused_surface.clone(),
-                            self.c_hovered_surface.clone(),
-                            self.applet_tx.clone(),
-                            c,
-                            self.s_display.clone().unwrap(),
-                            self.security_context_manager.clone(),
-                            conn,
-                            self.panel_tx.clone(),
-                        );
-                        s.setup(
+            .filter_map(|config| {
+                let visible = if config.autohide.is_some() {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Visible
+                };
+                match &config.output {
+                    CosmicPanelOuput::All => {
+                        let c = match config.background {
+                            CosmicPanelBackground::ThemeDefault => cur,
+                            CosmicPanelBackground::Dark => dark,
+                            CosmicPanelBackground::Light => light,
+                            CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                        };
+                        let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
+                            s.config.name == config.name
+                                && Some(&c_output) == s.output.as_ref().map(|o| &o.0)
+                        }) {
+                            self.space_list.remove(s)
+                        } else {
+                            let mut s = PanelSpace::new(
+                                config.clone(),
+                                self.c_focused_surface.clone(),
+                                self.c_hovered_surface.clone(),
+                                self.applet_tx.clone(),
+                                c,
+                                self.s_display.clone().unwrap(),
+                                self.security_context_manager.clone(),
+                                conn,
+                                self.panel_tx.clone(),
+                                visible,
+                            );
+                            s.setup(
+                                compositor_state,
+                                fractional_scale_manager,
+                                self.security_context_manager.clone(),
+                                viewport,
+                                layer_state,
+                                conn,
+                                qh,
+                            );
+                            if let Some(s_display) = self.s_display.as_ref() {
+                                s.set_display_handle(s_display.clone());
+                            }
+                            s
+                        };
+
+                        if s.new_output(
                             compositor_state,
                             fractional_scale_manager,
-                            self.security_context_manager.clone(),
                             viewport,
                             layer_state,
                             conn,
                             qh,
-                        );
-                        if let Some(s_display) = self.s_display.as_ref() {
-                            s.set_display_handle(s_display.clone());
+                            Some(c_output.clone()),
+                            Some(s_output.clone()),
+                            Some(output_info.clone()),
+                        )
+                        .is_ok()
+                        {
+                            Some(s)
+                        } else {
+                            None
                         }
-                        s
-                    };
-
-                    if s.new_output(
-                        compositor_state,
-                        fractional_scale_manager,
-                        viewport,
-                        layer_state,
-                        conn,
-                        qh,
-                        Some(c_output.clone()),
-                        Some(s_output.clone()),
-                        Some(output_info.clone()),
-                    )
-                    .is_ok()
-                    {
-                        Some(s)
-                    } else {
-                        None
                     }
-                }
-                CosmicPanelOuput::Name(name) if name == &output_name => {
-                    let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
-                        s.config.name == config.name && config.output == s.config.output
-                    }) {
-                        self.space_list.remove(s)
-                    } else {
-                        let mut s = PanelSpace::new(
-                            config.clone(),
-                            self.c_focused_surface.clone(),
-                            self.c_hovered_surface.clone(),
-                            self.applet_tx.clone(),
-                            match config.background {
-                                CosmicPanelBackground::ThemeDefault => cur,
-                                CosmicPanelBackground::Dark => dark,
-                                CosmicPanelBackground::Light => light,
-                                CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
-                            },
-                            self.s_display.clone().unwrap(),
-                            self.security_context_manager.clone(),
+                    CosmicPanelOuput::Name(name) if name == &output_name => {
+                        let mut s = if let Some(s) = self.space_list.iter_mut().position(|s| {
+                            s.config.name == config.name && config.output == s.config.output
+                        }) {
+                            self.space_list.remove(s)
+                        } else {
+                            let mut s = PanelSpace::new(
+                                config.clone(),
+                                self.c_focused_surface.clone(),
+                                self.c_hovered_surface.clone(),
+                                self.applet_tx.clone(),
+                                match config.background {
+                                    CosmicPanelBackground::ThemeDefault => cur,
+                                    CosmicPanelBackground::Dark => dark,
+                                    CosmicPanelBackground::Light => light,
+                                    CosmicPanelBackground::Color(c) => [c[0], c[1], c[1], 1.0],
+                                },
+                                self.s_display.clone().unwrap(),
+                                self.security_context_manager.clone(),
+                                conn,
+                                self.panel_tx.clone(),
+                                visible,
+                            );
+
+                            if let Some(s_display) = self.s_display.as_ref() {
+                                s.set_display_handle(s_display.clone());
+                            }
+                            s
+                        };
+                        if s.new_output(
+                            compositor_state,
+                            fractional_scale_manager,
+                            viewport,
+                            layer_state,
                             conn,
-                            self.panel_tx.clone(),
-                        );
-
-                        if let Some(s_display) = self.s_display.as_ref() {
-                            s.set_display_handle(s_display.clone());
+                            qh,
+                            Some(c_output.clone()),
+                            Some(s_output.clone()),
+                            Some(output_info.clone()),
+                        )
+                        .is_ok()
+                        {
+                            Some(s)
+                        } else {
+                            None
                         }
-                        s
-                    };
-                    if s.new_output(
-                        compositor_state,
-                        fractional_scale_manager,
-                        viewport,
-                        layer_state,
-                        conn,
-                        qh,
-                        Some(c_output.clone()),
-                        Some(s_output.clone()),
-                        Some(output_info.clone()),
-                    )
-                    .is_ok()
-                    {
-                        Some(s)
-                    } else {
-                        None
                     }
+                    _ => None,
                 }
-                _ => None,
             })
             .collect_vec();
         self.space_list.append(&mut new_spaces);
