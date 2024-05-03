@@ -20,6 +20,7 @@ use sctk::{
         protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
         Connection, Proxy, QueueHandle,
     },
+    seat::pointer::{PointerEvent, BTN_LEFT},
     shell::{
         wlr_layer::{
             KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
@@ -107,7 +108,7 @@ impl WrapperSpace for PanelSpace {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         // TODO handle popups not on main surface
         if !self.popups.is_empty() {
-            self.popups.clear();
+            self.close_popups();
             return Ok(());
         }
 
@@ -361,6 +362,10 @@ impl WrapperSpace for PanelSpace {
                                 } else {
                                     None
                                 };
+
+                                panel_client.auto_popup_hover_press = entry
+                                    .desktop_entry("X-CosmicHoverPopup")
+                                    .is_some_and(|v| v.parse().unwrap_or_default());
 
                                 panel_client.is_notification_applet =
                                     Some(entry.desktop_entry("X-NotificationsApplet").is_some());
@@ -712,7 +717,9 @@ impl WrapperSpace for PanelSpace {
     }
 
     /// returns false to forward the button press, and true to intercept
-    fn handle_press(&mut self, seat_name: &str) -> Option<s_WlSurface> {
+    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<s_WlSurface> {
+        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
+
         if let Some(prev_foc) = {
             let c_hovered_surface: &ClientFocus = &self.c_hovered_surface.borrow();
 
@@ -725,6 +732,7 @@ impl WrapperSpace for PanelSpace {
             // close popups when panel is pressed
             if self.layer.as_ref().map(|s| s.wl_surface()) == Some(&prev_foc.1)
                 && !self.popups.is_empty()
+                && press
             {
                 self.close_popups();
             }
@@ -757,7 +765,7 @@ impl WrapperSpace for PanelSpace {
             .find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
-        if let Some(p) = self
+        let ret = if let Some(p) = self
             .popups
             .iter()
             .find(|p| p.c_popup.wl_surface() == &c_wl_surface)
@@ -803,12 +811,15 @@ impl WrapperSpace for PanelSpace {
                     let (pos, _) = prev_hover.unwrap();
                     self.s_hovered_surface.remove(pos);
                 }
+                self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
                 return None;
             }
             // FIXME
             // There has to be a way to avoid messing with the scaling like this...
             if let Some((w, relative_loc)) = self.space.elements().rev().find_map(|e| {
                 let Some(render_location) = self.space.element_location(e) else {
+                    self.generated_ptr_event_count =
+                        self.generated_ptr_event_count.saturating_sub(1);
                     return None;
                 };
                 let mut bbox = e.bbox().to_f64();
@@ -830,10 +841,73 @@ impl WrapperSpace for PanelSpace {
                     .to_logical(self.scale)
                     .to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
-                    prev_kbd.0 = w.toplevel().wl_surface().clone();
+                    prev_kbd.0 = w.toplevel().expect("Missing toplevel").wl_surface().clone();
                 } else {
-                    self.s_focused_surface
-                        .push((w.toplevel().wl_surface().clone(), seat_name.to_string()));
+                    self.s_focused_surface.push((
+                        w.toplevel().expect("Missing toplevel").wl_surface().clone(),
+                        seat_name.to_string(),
+                    ));
+                }
+                let prev_popup_client = self
+                    .popups
+                    .iter()
+                    .next()
+                    .and_then(|p| p.s_surface.wl_surface().client())
+                    .map(|c| c.id());
+
+                let cur_client_hover_id = w
+                    .toplevel()
+                    .expect("Missing toplevel")
+                    .wl_surface()
+                    .client()
+                    .map(|c| c.id());
+                if prev_popup_client.is_some()
+                    && prev_popup_client != cur_client_hover_id
+                    && self.generated_ptr_event_count == 0
+                {
+                    // send press to new client if it hover flag is set
+                    let left_guard = self.clients_left.lock().unwrap();
+                    let center_guard = self.clients_center.lock().unwrap();
+                    let right_guard = self.clients_right.lock().unwrap();
+
+                    if left_guard
+                        .iter()
+                        .chain(center_guard.iter())
+                        .chain(right_guard.iter())
+                        .any(|c| {
+                            c.auto_popup_hover_press && Some(c.client.id()) == cur_client_hover_id
+                        })
+                    {
+                        let mut p = relative_loc;
+                        p.x += geo.size.w / 2;
+                        p.y += geo.size.h / 2;
+
+                        self.generated_pointer_events = vec![
+                            PointerEvent {
+                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                                position: (p.x as f64, p.y as f64),
+                                kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
+                            },
+                            PointerEvent {
+                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                                position: (p.x as f64, p.y as f64),
+                                kind: sctk::seat::pointer::PointerEventKind::Press {
+                                    time: 0,
+                                    button: BTN_LEFT,
+                                    serial: 0,
+                                },
+                            },
+                            PointerEvent {
+                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                                position: (p.x as f64, p.y as f64),
+                                kind: sctk::seat::pointer::PointerEventKind::Release {
+                                    time: 0,
+                                    button: BTN_LEFT,
+                                    serial: 0,
+                                },
+                            },
+                        ];
+                    }
                 }
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = relative_loc;
@@ -855,7 +929,9 @@ impl WrapperSpace for PanelSpace {
                 }
                 None
             }
-        }
+        };
+        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
+        ret
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
@@ -872,6 +948,8 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
+        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
+
         self.s_hovered_surface
             .retain(|focus| focus.seat_name != seat_name);
     }
@@ -1144,5 +1222,10 @@ impl WrapperSpace for PanelSpace {
         _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
+    }
+
+    fn generate_pointer_events(&mut self) -> Vec<PointerEvent> {
+        self.generated_ptr_event_count = self.generated_pointer_events.len();
+        std::mem::take(&mut self.generated_pointer_events)
     }
 }

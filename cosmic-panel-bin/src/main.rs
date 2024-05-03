@@ -43,7 +43,7 @@ pub enum PanelCalloopMsg {
 fn main() -> Result<()> {
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
+        .or_else(|_| EnvFilter::try_new("warn"))
         .unwrap();
     if let Ok(journal_layer) = tracing_journald::layer() {
         tracing_subscriber::registry()

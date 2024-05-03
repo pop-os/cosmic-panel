@@ -151,7 +151,12 @@ impl SpaceContainer {
                 s.space
                     .elements()
                     .find(|w| {
-                        w.toplevel().wl_surface().client().map(|c| c.id()).as_ref()
+                        w.toplevel()
+                            .expect("Missing toplevel")
+                            .wl_surface()
+                            .client()
+                            .map(|c| c.id())
+                            .as_ref()
                             == Some(&old_client_id)
                     })
                     .cloned()
