@@ -795,6 +795,7 @@ impl PanelSpace {
         configure: LayerSurfaceConfigure,
         renderer: &mut Option<GlesRenderer>,
     ) {
+        self.is_dirty = true;
         let (w, h) = configure.new_size;
         match self.space_event.take() {
             Some(e) => match e {
