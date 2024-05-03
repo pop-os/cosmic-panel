@@ -264,13 +264,9 @@ impl PanelSpace {
         security_context_manager: Option<SecurityContextManager>,
         conn: &Connection,
         panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+        visibility: Visibility,
     ) -> Self {
         bg_color[3] = config.opacity;
-        let visibility = if config.autohide.is_none() {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
 
         Self {
             config,
