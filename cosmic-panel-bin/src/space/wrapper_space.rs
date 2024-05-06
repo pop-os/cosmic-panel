@@ -314,7 +314,9 @@ impl WrapperSpace for PanelSpace {
 
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
+            let config_name = self.config.name.clone();
             let env_vars = vec![
+                ("COSMIC_PANEL_NAME".to_string(), config_name),
                 ("COSMIC_PANEL_SIZE".to_string(), config_size),
                 ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
