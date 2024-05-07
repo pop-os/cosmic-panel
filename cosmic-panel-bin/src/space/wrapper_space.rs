@@ -880,19 +880,29 @@ impl WrapperSpace for PanelSpace {
                             c.auto_popup_hover_press && Some(c.client.id()) == cur_client_hover_id
                         })
                     {
-                        let mut p = relative_loc;
-                        p.x += geo.size.w / 2;
-                        p.y += geo.size.h / 2;
+                        let mut p = (x, y);
+                        let relative_x = x - relative_loc.x;
+                        let relative_y = y - relative_loc.y;
+                        if relative_x.abs() < 4 {
+                            p.0 += 4;
+                        } else if (relative_x - geo.size.w as i32).abs() < 4 {
+                            p.0 -= 4;
+                        }
+                        if relative_y.abs() < 4 {
+                            p.1 += 4;
+                        } else if (relative_y - geo.size.h as i32).abs() < 4 {
+                            p.1 -= 4;
+                        }
 
                         self.generated_pointer_events = vec![
                             PointerEvent {
                                 surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.x as f64, p.y as f64),
+                                position: (p.0 as f64, p.1 as f64),
                                 kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
                             },
                             PointerEvent {
                                 surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.x as f64, p.y as f64),
+                                position: (p.0 as f64, p.1 as f64),
                                 kind: sctk::seat::pointer::PointerEventKind::Press {
                                     time: 0,
                                     button: BTN_LEFT,
@@ -901,7 +911,7 @@ impl WrapperSpace for PanelSpace {
                             },
                             PointerEvent {
                                 surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.x as f64, p.y as f64),
+                                position: (p.0 as f64, p.1 as f64),
                                 kind: sctk::seat::pointer::PointerEventKind::Release {
                                     time: 0,
                                     button: BTN_LEFT,
