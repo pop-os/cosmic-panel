@@ -106,10 +106,8 @@ impl WrapperSpace for PanelSpace {
         positioner_state: PositionerState,
     ) -> anyhow::Result<()> {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
-        // TODO handle popups not on main surface
         if !self.popups.is_empty() {
             self.close_popups();
-            return Ok(());
         }
 
         let c_wl_surface = compositor_state.create_surface(qh);
