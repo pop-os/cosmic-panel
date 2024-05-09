@@ -1183,6 +1183,7 @@ impl WrapperSpace for PanelSpace {
                 .unwrap_or_else(|| "None".to_string())
         );
         if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
+            self.scale_change_retries = 10;
             self.scale = scale;
             self.is_dirty = true;
             if legacy && self.layer_fractional_scale.is_none() {
