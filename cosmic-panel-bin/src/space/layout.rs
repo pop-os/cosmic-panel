@@ -106,9 +106,14 @@ impl PanelSpace {
                 self.unmapped.push(w);
             }
         }
-        for w in to_unmap {
-            self.space.unmap_elem(&w);
-            self.unmapped.push(w);
+        // HACK temporarily avoid unmapping windows when changing scale
+        if to_unmap.len() > 0 && self.scale_change_retries == 0 {
+            for w in to_unmap {
+                self.space.unmap_elem(&w);
+                self.unmapped.push(w);
+            }
+        } else {
+            self.scale_change_retries -= 1;
         }
 
         self.space.refresh();

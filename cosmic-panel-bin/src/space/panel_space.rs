@@ -257,6 +257,7 @@ pub(crate) struct PanelSpace {
     pub(crate) generated_pointer_events: Vec<PointerEvent>,
     // Counter for handling of generated pointer events
     pub(crate) generated_ptr_event_count: usize,
+    pub scale_change_retries: u32,
 }
 
 impl PanelSpace {
@@ -320,6 +321,7 @@ impl PanelSpace {
             panel_rect_settings: RoundedRectangleSettings::default(),
             generated_pointer_events: Vec::new(),
             generated_ptr_event_count: 0,
+            scale_change_retries: 0,
         }
     }
 
@@ -785,6 +787,16 @@ impl PanelSpace {
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
                     error!("Failed to render, error: {:?}", e);
+                }
+            } else {
+                for w in &self.unmapped {
+                    let output = self.output.as_ref().unwrap().1.clone();
+                    w.send_frame(
+                        &output,
+                        Duration::from_millis(time as u64),
+                        Some(Duration::from_millis(time as u64)),
+                        |_, _| Some(output.clone()),
+                    );
                 }
             }
         }
