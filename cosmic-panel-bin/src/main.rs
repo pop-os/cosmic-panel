@@ -47,7 +47,6 @@ fn main() -> Result<()> {
         .unwrap();
     if let Ok(journal_layer) = tracing_journald::layer() {
         tracing_subscriber::registry()
-            .with(fmt_layer)
             .with(journal_layer)
             .with(filter_layer)
             .init();
