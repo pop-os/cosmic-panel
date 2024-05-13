@@ -59,7 +59,10 @@ use xdg_shell_wrapper::{
     wp_viewporter::ViewporterState,
 };
 
-use crate::space::{panel_space::PanelClient, AppletMsg};
+use crate::space::{
+    panel_space::{AppletAutoClickAnchor, PanelClient},
+    AppletMsg,
+};
 
 use super::PanelSpace;
 
@@ -363,9 +366,10 @@ impl WrapperSpace for PanelSpace {
                                     None
                                 };
 
-                                panel_client.auto_popup_hover_press = entry
-                                    .desktop_entry("X-CosmicHoverPopup")
-                                    .is_some_and(|v| v.parse().unwrap_or_default());
+                                panel_client.auto_popup_hover_press =
+                                    entry.desktop_entry("X-CosmicHoverPopup").map(|v| {
+                                        v.parse::<AppletAutoClickAnchor>().unwrap_or_default()
+                                    });
 
                                 panel_client.is_notification_applet =
                                     Some(entry.desktop_entry("X-NotificationsApplet").is_some());
@@ -870,26 +874,70 @@ impl WrapperSpace for PanelSpace {
                     let center_guard = self.clients_center.lock().unwrap();
                     let right_guard = self.clients_right.lock().unwrap();
 
-                    if left_guard
+                    if let Some(c) = left_guard
                         .iter()
                         .chain(center_guard.iter())
                         .chain(right_guard.iter())
-                        .any(|c| {
-                            c.auto_popup_hover_press && Some(c.client.id()) == cur_client_hover_id
+                        .find(|c| {
+                            c.auto_popup_hover_press.is_some()
+                                && Some(c.client.id()) == cur_client_hover_id
                         })
                     {
                         let mut p = (x, y);
-                        let relative_x = x - relative_loc.x;
-                        let relative_y = y - relative_loc.y;
-                        if relative_x.abs() < 4 {
-                            p.0 += 4;
-                        } else if (relative_x - geo.size.w as i32).abs() < 4 {
-                            p.0 -= 4;
-                        }
-                        if relative_y.abs() < 4 {
-                            p.1 += 4;
-                        } else if (relative_y - geo.size.h as i32).abs() < 4 {
-                            p.1 -= 4;
+                        let effective_anchor = match (
+                            c.auto_popup_hover_press.unwrap(),
+                            self.config.is_horizontal(),
+                        ) {
+                            (AppletAutoClickAnchor::Start, true) => AppletAutoClickAnchor::Left,
+                            (AppletAutoClickAnchor::Start, false) => AppletAutoClickAnchor::Top,
+                            (AppletAutoClickAnchor::End, true) => AppletAutoClickAnchor::Right,
+                            (AppletAutoClickAnchor::End, false) => AppletAutoClickAnchor::Bottom,
+                            (anchor, _) => anchor,
+                        };
+                        match effective_anchor {
+                            AppletAutoClickAnchor::Top => {
+                                // centered on the top edge
+                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                                p.1 = relative_loc.y + 4;
+                            }
+                            AppletAutoClickAnchor::Bottom => {
+                                // centered on the bottom edge
+                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                                p.1 = relative_loc.y + geo.size.h as i32 - 4;
+                            }
+                            AppletAutoClickAnchor::Left => {
+                                // centered on the left edge
+                                p.0 = relative_loc.x + 4;
+                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                            }
+                            AppletAutoClickAnchor::Right => {
+                                // centered on the right edge
+                                p.0 = relative_loc.x + geo.size.w as i32 - 4;
+                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                            }
+                            AppletAutoClickAnchor::Center => {
+                                // centered on the center
+                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                            }
+                            AppletAutoClickAnchor::Auto => {
+                                let relative_x = x - relative_loc.x;
+                                let relative_y = y - relative_loc.y;
+                                if relative_x.abs() < 4 {
+                                    p.0 += 4;
+                                } else if (relative_x - geo.size.w as i32).abs() < 4 {
+                                    p.0 -= 4;
+                                }
+                                if relative_y.abs() < 4 {
+                                    p.1 += 4;
+                                } else if (relative_y - geo.size.h as i32).abs() < 4 {
+                                    p.1 -= 4;
+                                }
+                            }
+                            AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
+                                tracing::warn!("Invalid anchor for auto click");
+                                // should be handled above
+                            }
                         }
 
                         self.generated_pointer_events = vec![
