@@ -1,7 +1,9 @@
 use std::{
     cell::{Cell, RefCell},
+    default,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
+    str::FromStr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -166,7 +168,37 @@ pub struct PanelClient {
     pub requests_wayland_display: Option<bool>,
     pub is_notification_applet: Option<bool>,
     /// If there is an existing popup, this applet with be pressed when hovered.
-    pub auto_popup_hover_press: bool,
+    pub auto_popup_hover_press: Option<AppletAutoClickAnchor>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum AppletAutoClickAnchor {
+    #[default]
+    Auto,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Center,
+    Start,
+    End,
+}
+
+impl FromStr for AppletAutoClickAnchor {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            "top" => Ok(Self::Top),
+            "bottom" => Ok(Self::Bottom),
+            "center" => Ok(Self::Center),
+            "start" => Ok(Self::Start),
+            "end" => Ok(Self::End),
+            _ => Err(()),
+        }
+    }
 }
 
 impl PanelClient {
@@ -180,7 +212,7 @@ impl PanelClient {
             minimize_priority: None,
             requests_wayland_display: None,
             is_notification_applet: None,
-            auto_popup_hover_press: false,
+            auto_popup_hover_press: None,
         }
     }
 }
