@@ -19,7 +19,7 @@ use smithay::reexports::{calloop, wayland_server::backend::ClientId};
 use std::{
     collections::HashMap,
     mem,
-    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
+    os::fd::{AsRawFd, OwnedFd},
     time::Duration,
 };
 use tokio::{runtime, sync::mpsc};
@@ -213,7 +213,7 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
-                        let notif_fd = unsafe { OwnedFd::from_raw_fd(notif_fd.into_raw_fd()) };
+                        let notif_fd = OwnedFd::from(notif_fd);
                         env.push((
                             "COSMIC_NOTIFICATIONS".to_string(),
                             notif_fd.as_raw_fd().to_string(),
@@ -247,7 +247,7 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
-                        let fd = unsafe { OwnedFd::from_raw_fd(fd.into_raw_fd()) };
+                        let fd = OwnedFd::from(fd);
 
                         _ = sender.send(fd);
                     }
