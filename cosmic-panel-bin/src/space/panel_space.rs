@@ -1,6 +1,5 @@
 use std::{
     cell::{Cell, RefCell},
-    default,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
     str::FromStr,
@@ -508,6 +507,7 @@ impl PanelSpace {
                 let progress_norm =
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
+                self.is_dirty = true;
 
                 if let FocusStatus::Focused = cur_hover {
                     // start transition to visible
