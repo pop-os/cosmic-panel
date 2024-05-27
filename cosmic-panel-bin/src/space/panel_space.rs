@@ -1031,6 +1031,14 @@ impl PanelSpace {
         }
     }
 
+    pub fn is_dark(&self, system_is_dark: bool) -> bool {
+        match &self.config.background {
+            CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Color(_) => system_is_dark,
+            CosmicPanelBackground::Dark => true,
+            CosmicPanelBackground::Light => false,
+        }
+    }
+
     pub fn set_theme_window_color(&mut self, mut color: [f32; 4]) {
         if let CosmicPanelBackground::ThemeDefault = self.config.background {
             color[3] = self.config.opacity;

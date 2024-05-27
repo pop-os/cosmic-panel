@@ -114,10 +114,8 @@ impl SpaceContainer {
         self.dark_bg = color;
 
         for space in &mut self.space_list {
-            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
-                && self.is_dark
-                || matches!(space.config.background, CosmicPanelBackground::Dark)
-            {
+            let is_dark = space.is_dark(self.is_dark);
+            if is_dark {
                 space.set_theme_window_color(color);
             }
         }
@@ -127,10 +125,8 @@ impl SpaceContainer {
         self.light_bg = color;
 
         for space in &mut self.space_list {
-            if matches!(space.config.background, CosmicPanelBackground::ThemeDefault)
-                && !self.is_dark
-                || matches!(space.config.background, CosmicPanelBackground::Light)
-            {
+            let is_dark = space.is_dark(self.is_dark);
+            if !is_dark {
                 space.set_theme_window_color(color);
             }
         }
