@@ -131,7 +131,6 @@ impl SpaceContainer {
     }
 
     pub(crate) fn apply_maximized(&mut self, output: &WlOutput, maximized: bool) {
-        let bg_color = self.cur_bg_color();
         let s_list = self
             .space_list
             .iter_mut()
@@ -143,7 +142,12 @@ impl SpaceContainer {
                 .iter()
                 .find(|c| c.name == s.config.name);
             let mut config = s.config.clone();
-            let mut bg_color = bg_color;
+
+            let mut bg_color = if s.is_dark(self.is_dark) {
+                self.dark_bg
+            } else {
+                self.light_bg
+            };
 
             if maximized {
                 bg_color[3] = 1.0;
