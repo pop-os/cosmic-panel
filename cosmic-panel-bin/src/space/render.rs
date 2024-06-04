@@ -58,7 +58,7 @@ impl PanelSpace {
                         &[Rectangle::from_loc_and_size((0, 0), dim)],
                     );
                     if let Ok(sync_point) = frame.finish() {
-                        sync_point.wait();
+                        _ = sync_point.wait();
                         self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
                     }
                     let wl_surface = self.layer.as_ref().unwrap().wl_surface();
@@ -126,7 +126,7 @@ impl PanelSpace {
                 self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
                 for window in self.space.elements() {
-                    let output = o.clone();
+                    let output = *o;
                     window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
                         Some(output.clone())
                     });

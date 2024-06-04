@@ -1005,7 +1005,7 @@ impl WrapperSpace for PanelSpace {
         None
     }
 
-    fn pointer_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
+    fn pointer_leave(&mut self, seat_name: &str, _s: Option<c_wl_surface::WlSurface>) {
         self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
 
         self.s_hovered_surface

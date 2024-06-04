@@ -7,9 +7,15 @@ use cctk::{
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
 
-use cosmic_panel_config::CosmicPanelBackground;
+use cosmic_panel_config::{CosmicPanelBackground, PanelAnchor};
 use itertools::Itertools;
-use xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
+use sctk::shell::WaylandSurface;
+use xdg_shell_wrapper::{
+    client_state::FocusStatus,
+    space::{ToplevelInfoSpace, ToplevelManagerSpace, Visibility, WrapperSpace},
+};
+
+use crate::space::PanelSpace;
 
 use super::SpaceContainer;
 
@@ -169,7 +175,12 @@ impl SpaceContainer {
     }
 
     pub(crate) fn apply_toplevel_changes(&mut self) {
-        for output in &self.outputs {
+        for output in self
+            .outputs
+            .iter()
+            .map(|o| (o.0.clone(), o.1.name()))
+            .collect::<Vec<_>>()
+        {
             let has_toplevel = self.toplevels.iter().any(|(_, info)| {
                 info.output.contains(&output.0)
                     && !info
@@ -183,8 +194,28 @@ impl SpaceContainer {
                         })
                     })
             });
-            for s in &mut self.space_list {
-                if s.output.as_ref().map(|o| &o.0) == Some(&output.0) {
+
+            let name = output.1;
+            for anchor in [
+                PanelAnchor::Top,
+                PanelAnchor::Bottom,
+                PanelAnchor::Left,
+                PanelAnchor::Right,
+            ] {
+                let mut additional_gap = 0;
+                for s in self.stacked_spaces_by_priority(&name, anchor) {
+                    s.set_additional_gap(additional_gap);
+                    if s.config.autohide.is_some()
+                        && (!has_toplevel
+                            || s.c_focused_surface.borrow().iter().any(|c| {
+                                matches!(c.2, FocusStatus::Focused)
+                                    && s.layer.as_ref().is_some_and(|s| s.wl_surface() == &c.0)
+                            }))
+                    {
+                        additional_gap += s.crosswise();
+                    }
+                    s.handle_focus();
+
                     s.output_has_toplevel = has_toplevel;
                 }
             }

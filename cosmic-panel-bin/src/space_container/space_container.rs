@@ -17,7 +17,7 @@ use cosmic_panel_config::{
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
 use sctk::{
-    output::OutputInfo,
+    output::{self, OutputInfo},
     reexports::{
         calloop,
         client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
@@ -307,6 +307,7 @@ impl SpaceContainer {
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
                 && (old_priority < c.get_priority() && new_priority > c.get_priority() || old_priority > c.get_priority() && new_priority < c.get_priority())}
+            || old_priority != new_priority && c.anchor == entry.anchor
         );
 
         self.config.config_list.retain(|c| c.name != entry.name);
@@ -329,6 +330,7 @@ impl SpaceContainer {
                 entry.output = space.config.output.clone();
                 space.update_config(entry.clone(), bg_color, true);
             }
+            self.apply_toplevel_changes();
             return;
         }
 
@@ -473,5 +475,28 @@ impl SpaceContainer {
             }
         }
         self.apply_toplevel_changes();
+    }
+
+    pub fn stacked_spaces_by_priority(
+        &mut self,
+        output_id: &str,
+        anchor: PanelAnchor,
+    ) -> Vec<&mut PanelSpace> {
+        let mut spaces = self
+            .space_list
+            .iter_mut()
+            .filter(|s| {
+                s.output
+                    .as_ref()
+                    .is_some_and(|o| o.1.name().as_str() == output_id)
+                    && &s.config.anchor == &anchor
+            })
+            .collect::<Vec<_>>();
+        if spaces.last().is_some_and(|s| s.config.autohide.is_none()) {
+            spaces.remove(spaces.len() - 1);
+        }
+        spaces.sort_by(|a, b| a.config.get_priority().cmp(&b.config.get_priority()));
+        spaces.reverse();
+        spaces
     }
 }
