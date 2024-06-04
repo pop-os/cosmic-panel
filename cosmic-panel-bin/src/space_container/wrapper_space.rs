@@ -4,7 +4,7 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, Cos
 use itertools::Itertools;
 use sctk::{
     compositor::CompositorState,
-    output::OutputInfo,
+    output::{self, OutputInfo},
     reexports::client::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
@@ -486,28 +486,82 @@ impl WrapperSpace for SpaceContainer {
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
     ) -> Option<ServerPointerFocus> {
-        if let Some((popup_space_i, popup_space)) = self
+        let mut anchor_output = None;
+        let ret = if let Some((popup_space_i, popup_space)) = self
             .space_list
             .iter_mut()
             .enumerate()
-            .find(|(_, s)| !s.popups.is_empty())
+            .find(|s| !s.1.popups.is_empty())
         {
             if let Some(p_ret) = popup_space.update_pointer(dim, seat_name, c_wl_surface.clone()) {
+                anchor_output = Some((
+                    popup_space.config.anchor,
+                    popup_space.output.as_ref().map(|o| o.1.name()),
+                ));
                 Some(p_ret)
             } else {
                 self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
                     if i != popup_space_i {
-                        s.update_pointer(dim, seat_name, c_wl_surface.clone())
+                        let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone());
+                        if ret.is_some() {
+                            anchor_output =
+                                Some((s.config.anchor, s.output.as_ref().map(|o| o.1.name())));
+                        }
+                        ret
                     } else {
                         None
                     }
                 })
             }
         } else {
-            self.space_list
-                .iter_mut()
-                .find_map(|s| s.update_pointer(dim, seat_name, c_wl_surface.clone()))
+            self.space_list.iter_mut().find_map(|s| {
+                let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone());
+                if ret.is_some() {
+                    anchor_output = Some((s.config.anchor, s.output.as_ref().map(|o| o.1.name())));
+                }
+                ret
+            })
+        };
+        if let Some((anchor, output)) = anchor_output {
+            // set the pointer focus for any other space with the same anchor
+            // and autohide
+            let mut additional_gap = 0;
+            let Some(output) = output else {
+                return ret;
+            };
+            let stacked = self.stacked_spaces_by_priority(&output, anchor);
+            for s in stacked {
+                let Some(space_c_wl_surface) = s.layer.as_ref().map(|l| l.wl_surface()) else {
+                    continue;
+                };
+                if s.config.autohide.is_none() {
+                    s.set_additional_gap(additional_gap);
+                    continue;
+                }
+                let hovered = s.c_hovered_surface.clone();
+                let mut guard = hovered.borrow_mut();
+                if let Some(f) = guard
+                    .iter_mut()
+                    .find(|f| space_c_wl_surface == &f.0 && f.1 == seat_name)
+                {
+                    f.2 = FocusStatus::Focused;
+                } else {
+                    guard.push((
+                        space_c_wl_surface.clone(),
+                        seat_name.to_string(),
+                        FocusStatus::Focused,
+                    ));
+                }
+                if s.visibility == Visibility::Visible {
+                    s.set_additional_gap(additional_gap);
+                } else {
+                    s.additional_gap = additional_gap;
+                }
+                additional_gap += s.crosswise();
+            }
         }
+
+        ret
     }
 
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<wl_surface::WlSurface> {
@@ -584,6 +638,7 @@ impl WrapperSpace for SpaceContainer {
     }
 
     fn pointer_leave(&mut self, seat_name: &str, surface: Option<c_wl_surface::WlSurface>) {
+        let mut output_anchor = None;
         if let Some((popup_space_i, popup_space)) = self
             .space_list
             .iter_mut()
@@ -591,14 +646,45 @@ impl WrapperSpace for SpaceContainer {
             .find(|(_, s)| !s.popups.is_empty())
         {
             popup_space.pointer_leave(seat_name, surface.clone());
+            output_anchor = popup_space
+                .output
+                .as_ref()
+                .map(|o| (o.1.name(), popup_space.config.anchor));
             for (i, s) in &mut self.space_list.iter_mut().enumerate() {
                 if i != popup_space_i {
-                    s.pointer_leave(seat_name, surface.clone())
+                    s.pointer_leave(seat_name, None)
                 };
+            }
+        } else if let Some(space) = self.space_list.iter_mut().find(|s| {
+            surface
+                .as_ref()
+                .zip(s.layer.as_ref().map(|l| l.wl_surface()))
+                .is_some_and(|(s, l)| s == l)
+        }) {
+            output_anchor = space
+                .output
+                .as_ref()
+                .map(|o| (o.1.name(), space.config.anchor));
+            for s in &mut self.space_list {
+                s.pointer_leave(seat_name, None);
             }
         } else {
             for s in &mut self.space_list {
-                s.pointer_leave(seat_name, surface.clone());
+                s.pointer_leave(seat_name, None);
+            }
+        }
+        let Some(output_anchor) = output_anchor else {
+            return;
+        };
+        for s in self.stacked_spaces_by_priority(output_anchor.0.as_str(), output_anchor.1) {
+            s.pointer_leave(seat_name, surface.clone());
+            for f in s.c_hovered_surface.borrow_mut().iter_mut() {
+                if f.1 == seat_name {
+                    f.2 = FocusStatus::LastFocused(Instant::now());
+                }
+            }
+            if s.config.autohide.is_none() {
+                s.set_additional_gap(0);
             }
         }
     }
@@ -685,7 +771,14 @@ impl WrapperSpace for SpaceContainer {
             .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
             space.configure_panel_layer(layer, configure, &mut self.renderer);
+            if matches!(space.visibility(), Visibility::Visible) || !space.output_has_toplevel {
+                space
+                    .output
+                    .as_ref()
+                    .map(|o| (o.1.name(), space.config.anchor));
+            }
         }
+        self.apply_toplevel_changes()
     }
 
     fn close_layer(&mut self, layer: &LayerSurface) {
@@ -720,6 +813,7 @@ impl WrapperSpace for SpaceContainer {
                 found = true;
             }
         }
+        self.apply_toplevel_changes();
 
         Ok(found)
     }
