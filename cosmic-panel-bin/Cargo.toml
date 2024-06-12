@@ -20,8 +20,8 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.31.0", features = ["staging"] }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "touch" }
+xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper", branch = "touch" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 # xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "e65fa5e" }
