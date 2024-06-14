@@ -306,8 +306,8 @@ impl SpaceContainer {
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
-                && (old_priority < c.get_priority() && new_priority > c.get_priority() || old_priority > c.get_priority() && new_priority < c.get_priority())}
-            || old_priority != new_priority && c.anchor == entry.anchor
+                && ((old_priority < c.get_priority() && new_priority > c.get_priority() || old_priority > c.get_priority() && new_priority < c.get_priority()))}
+            || c.name != entry.name && old_priority != new_priority && c.anchor == entry.anchor
         );
 
         self.config.config_list.retain(|c| c.name != entry.name);

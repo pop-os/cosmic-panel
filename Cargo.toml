@@ -1,5 +1,6 @@
 [workspace]
 members = ["cosmic-panel-bin", "cosmic-panel-config"]
+resolver = "2"
 
 [workspace.dependencies]
 sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = [
