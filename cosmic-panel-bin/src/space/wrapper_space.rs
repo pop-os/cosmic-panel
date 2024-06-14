@@ -755,6 +755,81 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
+    fn touch_under(
+        &mut self,
+        (x, y): (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        let mut prev_hover = self
+            .s_hovered_surface
+            .iter_mut()
+            .enumerate()
+            .find(|(_, f)| f.seat_name == seat_name);
+        let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
+        // first check if the motion is on a popup's client surface
+        if let Some(p) = self
+            .popups
+            .iter()
+            .find(|p| p.c_popup.wl_surface() == &c_wl_surface)
+        {
+            let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
+            Some(ServerPointerFocus {
+                surface: p.s_surface.wl_surface().clone(),
+                seat_name: seat_name.to_string(),
+                c_pos: p.rectangle.loc,
+                s_pos: p.rectangle.loc - geo.loc,
+            })
+        } else {
+            // if not on this panel's client surface return None
+            if self
+                .layer
+                .as_ref()
+                .map(|s| *s.wl_surface() != c_wl_surface)
+                .unwrap_or(true)
+            {
+                return None;
+            }
+            // FIXME
+            // There has to be a way to avoid messing with the scaling like this...
+            if let Some((w, relative_loc)) = self.space.elements().rev().find_map(|e| {
+                let Some(render_location) = self.space.element_location(e) else {
+                    self.generated_ptr_event_count =
+                        self.generated_ptr_event_count.saturating_sub(1);
+                    return None;
+                };
+                let mut bbox = e.bbox().to_f64();
+                bbox.size.w /= self.scale;
+                bbox.size.h /= self.scale;
+                bbox.loc.x = render_location.x as f64;
+                bbox.loc.y = render_location.y as f64;
+                if bbox.contains((x as f64, y as f64)) {
+                    Some((e.clone(), render_location))
+                } else {
+                    None
+                }
+            }) {
+                // XXX HACK
+                let geo = w
+                    .bbox()
+                    .to_f64()
+                    .to_physical(1.0)
+                    .to_logical(self.scale)
+                    .to_i32_round();
+                Some(ServerPointerFocus {
+                    surface: w.wl_surface().unwrap(),
+                    seat_name: seat_name.to_string(),
+                    c_pos: geo.loc,
+                    s_pos: relative_loc,
+                })
+            } else {
+                None
+            }
+        }
+    }
+
+
+
     ///  update active window based on pointer location
     fn update_pointer(
         &mut self,
