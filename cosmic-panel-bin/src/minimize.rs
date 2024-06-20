@@ -1,11 +1,9 @@
+use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
     wayland_client::{protocol::wl_surface::WlSurface, Proxy},
 };
 use smithay::utils::{Logical, Rectangle};
-use xdg_shell_wrapper::shared_state::GlobalState;
-
-use crate::space_container::SpaceContainer;
 
 #[derive(Debug, Clone)]
 pub struct MinimizeApplet {
@@ -15,7 +13,7 @@ pub struct MinimizeApplet {
 }
 
 pub fn update_toplevel(
-    state: &mut GlobalState<SpaceContainer>,
+    state: &mut GlobalState,
     toplevel: zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
 ) {
     let Some(toplevel_mngr) = state.client_state.toplevel_manager_state.as_ref() else {
@@ -45,11 +43,7 @@ pub fn update_toplevel(
     }
 }
 
-pub fn set_rectangles(
-    state: &mut GlobalState<SpaceContainer>,
-    output: String,
-    info: MinimizeApplet,
-) {
+pub fn set_rectangles(state: &mut GlobalState, output: String, info: MinimizeApplet) {
     // if surface matches cur & is different, or is higher priority, replace
     let mut changed = false;
     let minimized_applets = &mut state.space.minimized_applets;

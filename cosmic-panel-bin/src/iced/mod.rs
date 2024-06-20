@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::space_container::SpaceContainer;
+use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cosmic::{
     iced::{
         advanced::widget::Tree,
@@ -62,7 +62,6 @@ use smithay::{
     },
     wayland::seat::WaylandFocus,
 };
-use xdg_shell_wrapper::shared_state::GlobalState;
 
 pub mod elements;
 
@@ -104,7 +103,7 @@ pub trait Program {
     fn update(
         &mut self,
         message: Self::Message,
-        loop_handle: &LoopHandle<'static, GlobalState<SpaceContainer>>,
+        loop_handle: &LoopHandle<'static, GlobalState>,
     ) -> Command<Self::Message> {
         let _ = (message, loop_handle);
         Command::none()
@@ -125,7 +124,7 @@ pub trait Program {
     }
 }
 
-struct ProgramWrapper<P: Program>(P, LoopHandle<'static, GlobalState<SpaceContainer>>);
+struct ProgramWrapper<P: Program>(P, LoopHandle<'static, GlobalState>);
 impl<P: Program> IcedProgram for ProgramWrapper<P> {
     type Message = <P as Program>::Message;
     type Renderer = cosmic::Renderer;
@@ -157,7 +156,7 @@ struct IcedElementInternal<P: Program + Send + 'static> {
     debug: Debug,
 
     // futures
-    handle: LoopHandle<'static, GlobalState<SpaceContainer>>,
+    handle: LoopHandle<'static, GlobalState>,
     scheduler: Scheduler<<P as Program>::Message>,
     executor_token: Option<RegistrationToken>,
     rx: Receiver<<P as Program>::Message>,
@@ -238,7 +237,7 @@ impl<P: Program + Send + 'static> IcedElement<P> {
     pub fn new(
         program: P,
         size: impl Into<Size<i32, Logical>>,
-        handle: LoopHandle<'static, GlobalState<SpaceContainer>>,
+        handle: LoopHandle<'static, GlobalState>,
         theme: cosmic::Theme,
     ) -> IcedElement<P> {
         let size = size.into();
@@ -307,7 +306,7 @@ impl<P: Program + Send + 'static> IcedElement<P> {
         Size::from((node.width.ceil() as i32, node.height.ceil() as i32))
     }
 
-    pub fn loop_handle(&self) -> LoopHandle<'static, GlobalState<SpaceContainer>> {
+    pub fn loop_handle(&self) -> LoopHandle<'static, GlobalState> {
         self.0.lock().unwrap().handle.clone()
     }
 
@@ -409,13 +408,8 @@ impl<P: Program + Send + 'static> IcedElementInternal<P> {
     }
 }
 
-impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for IcedElement<P> {
-    fn enter(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-        event: &MotionEvent,
-    ) {
+impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> {
+    fn enter(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &MotionEvent) {
         let mut internal = self.0.lock().unwrap();
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorEntered));
         let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
@@ -424,12 +418,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for
         let _ = internal.update(true);
     }
 
-    fn motion(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-        event: &MotionEvent,
-    ) {
+    fn motion(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &MotionEvent) {
         let mut internal = self.0.lock().unwrap();
         let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorMoved { position }));
@@ -439,18 +428,13 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for
 
     fn relative_motion(
         &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
+        _seat: &Seat<GlobalState>,
+        _data: &mut GlobalState,
         _event: &RelativeMotionEvent,
     ) {
     }
 
-    fn button(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &ButtonEvent) {
         let mut internal = self.0.lock().unwrap();
         let button = match event.button {
             0x110 => MouseButton::Left,
@@ -465,12 +449,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for
         let _ = internal.update(true);
     }
 
-    fn axis(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-        frame: AxisFrame,
-    ) {
+    fn axis(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, frame: AxisFrame) {
         let mut internal = self.0.lock().unwrap();
         internal.state.queue_event(Event::Mouse(MouseEvent::WheelScrolled {
             delta: if let Some(discrete) = frame.v120 {
@@ -482,17 +461,12 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for
         let _ = internal.update(true);
     }
 
-    fn frame(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-    ) {
-    }
+    fn frame(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState) {}
 
     fn leave(
         &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
+        _seat: &Seat<GlobalState>,
+        _data: &mut GlobalState,
         _serial: Serial,
         _time: u32,
     ) {
@@ -503,93 +477,88 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState<SpaceContainer>> for
 
     fn gesture_swipe_begin(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GestureSwipeBeginEvent,
     ) {
     }
 
     fn gesture_swipe_update(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GestureSwipeUpdateEvent,
     ) {
     }
 
     fn gesture_swipe_end(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GestureSwipeEndEvent,
     ) {
     }
 
     fn gesture_pinch_begin(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GesturePinchBeginEvent,
     ) {
     }
 
     fn gesture_pinch_update(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GesturePinchUpdateEvent,
     ) {
     }
 
     fn gesture_pinch_end(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GesturePinchEndEvent,
     ) {
     }
 
     fn gesture_hold_begin(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GestureHoldBeginEvent,
     ) {
     }
 
     fn gesture_hold_end(
         &self,
-        _: &Seat<GlobalState<SpaceContainer>>,
-        _: &mut GlobalState<SpaceContainer>,
+        _: &Seat<GlobalState>,
+        _: &mut GlobalState,
         _: &GestureHoldEndEvent,
     ) {
     }
 }
 
-impl<P: Program + Send + 'static> KeyboardTarget<GlobalState<SpaceContainer>> for IcedElement<P> {
+impl<P: Program + Send + 'static> KeyboardTarget<GlobalState> for IcedElement<P> {
     fn enter(
         &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
+        _seat: &Seat<GlobalState>,
+        _data: &mut GlobalState,
         _keys: Vec<KeysymHandle<'_>>,
         _serial: Serial,
     ) {
         // TODO convert keys
     }
 
-    fn leave(
-        &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
-        _serial: Serial,
-    ) {
+    fn leave(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, _serial: Serial) {
         // TODO remove all held keys
     }
 
     fn key(
         &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
+        _seat: &Seat<GlobalState>,
+        _data: &mut GlobalState,
         _key: KeysymHandle<'_>,
         _state: KeyState,
         _serial: Serial,
@@ -600,8 +569,8 @@ impl<P: Program + Send + 'static> KeyboardTarget<GlobalState<SpaceContainer>> fo
 
     fn modifiers(
         &self,
-        _seat: &Seat<GlobalState<SpaceContainer>>,
-        _data: &mut GlobalState<SpaceContainer>,
+        _seat: &Seat<GlobalState>,
+        _data: &mut GlobalState,
         modifiers: ModifiersState,
         _serial: Serial,
     ) {

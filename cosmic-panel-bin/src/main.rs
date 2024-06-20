@@ -4,7 +4,11 @@ mod minimize;
 mod notifications;
 mod space;
 mod space_container;
+mod xdg_shell_wrapper;
 
+use crate::xdg_shell_wrapper::{
+    client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
+};
 use anyhow::Result;
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
@@ -26,9 +30,6 @@ use std::{
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use xdg_shell_wrapper::{
-    client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
-};
 
 #[derive(Debug)]
 pub enum PanelCalloopMsg {
@@ -42,7 +43,7 @@ fn main() -> Result<()> {
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer =
         EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info")).unwrap();
-    if let Ok(journal_layer) = tracing_journald::layer() {
+    if let Ok(_journal_layer) = tracing_journald::layer() {
         tracing_subscriber::registry().with(fmt_layer).with(filter_layer).init();
     } else {
         tracing_subscriber::registry().with(fmt_layer).with(filter_layer).init();
@@ -101,36 +102,33 @@ fn main() -> Result<()> {
 
     event_loop
         .handle()
-        .insert_source(
-            calloop_rx,
-            move |e, _, state: &mut GlobalState<space_container::SpaceContainer>| {
-                match e {
-                    calloop::channel::Event::Msg(e) => match e {
-                        PanelCalloopMsg::ClientSocketPair(client_id) => {
-                            state.space.cleanup_client(client_id);
-                        },
-                        PanelCalloopMsg::RestartSpace(config, o) => {
-                            state.space.update_space(
-                                config,
-                                &state.client_state.compositor_state,
-                                state.client_state.fractional_scaling_manager.as_ref(),
-                                state.client_state.viewporter_state.as_ref(),
-                                &mut state.client_state.layer_state,
-                                &state.client_state.queue_handle,
-                                Some(o),
-                            );
-                        },
-                        PanelCalloopMsg::UpdateToplevel(toplevel) => {
-                            minimize::update_toplevel(state, toplevel)
-                        },
-                        PanelCalloopMsg::MinimizeRect { output, applet_info } => {
-                            minimize::set_rectangles(state, output, applet_info)
-                        },
+        .insert_source(calloop_rx, move |e, _, state: &mut GlobalState| {
+            match e {
+                calloop::channel::Event::Msg(e) => match e {
+                    PanelCalloopMsg::ClientSocketPair(client_id) => {
+                        state.space.cleanup_client(client_id);
                     },
-                    calloop::channel::Event::Closed => {},
-                };
-            },
-        )
+                    PanelCalloopMsg::RestartSpace(config, o) => {
+                        state.space.update_space(
+                            config,
+                            &state.client_state.compositor_state,
+                            state.client_state.fractional_scaling_manager.as_ref(),
+                            state.client_state.viewporter_state.as_ref(),
+                            &mut state.client_state.layer_state,
+                            &state.client_state.queue_handle,
+                            Some(o),
+                        );
+                    },
+                    PanelCalloopMsg::UpdateToplevel(toplevel) => {
+                        minimize::update_toplevel(state, toplevel)
+                    },
+                    PanelCalloopMsg::MinimizeRect { output, applet_info } => {
+                        minimize::set_rectangles(state, output, applet_info)
+                    },
+                },
+                calloop::channel::Event::Closed => {},
+            };
+        })
         .expect("failed to insert dbus event source");
 
     std::thread::spawn(move || -> anyhow::Result<()> {

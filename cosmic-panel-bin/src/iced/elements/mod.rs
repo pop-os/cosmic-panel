@@ -3,7 +3,7 @@ pub mod overflow_popup;
 
 use std::borrow::Cow;
 
-use overflow_button::{OverflowButton, OverflowButtonElement};
+use overflow_button::OverflowButtonElement;
 use smithay::{
     desktop::Window,
     space_elements,

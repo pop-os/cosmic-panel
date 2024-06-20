@@ -1,5 +1,9 @@
 [workspace]
-members = ["cosmic-panel-bin", "cosmic-panel-config"]
+members = [
+    "cosmic-panel-bin",
+    "cosmic-panel-config",
+    "xdg-shell-wrapper-config",
+]
 resolver = "2"
 
 [profile.dev]
@@ -21,11 +25,11 @@ sctk = { package = "smithay-client-toolkit", version = "0.19.1", features = [
 ] }
 
 
-[patch."https://github.com/pop-os/xdg-shell-wrapper"]
+# [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
 # xdg-shell-wrapper = { path = "../xdg-shell-wrapper" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
+# xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
+# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 
 # [patch."https://github.com/pop-os/libcosmic"]
 # cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }

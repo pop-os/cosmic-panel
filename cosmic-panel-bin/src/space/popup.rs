@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::xdg_shell_wrapper::space::{ClientEglSurface, WrapperPopupState};
 use cctk::wayland_client::Proxy;
 use sctk::shell::xdg::popup;
 use smithay::{
@@ -8,7 +9,6 @@ use smithay::{
     utils::Rectangle,
 };
 use wayland_egl::WlEglSurface;
-use xdg_shell_wrapper::space::{ClientEglSurface, WrapperPopupState};
 
 use super::PanelSpace;
 

@@ -909,12 +909,15 @@ dependencies = [
  "notify",
  "once_cell",
  "ordered-float",
+ "rand",
  "ron",
+ "rustix 0.38.34",
  "sendfd",
  "serde",
  "shlex",
  "smithay",
  "smithay-client-toolkit",
+ "tempfile",
  "tiny-skia",
  "tokio",
  "tracing",
@@ -922,11 +925,11 @@ dependencies = [
  "tracing-journald",
  "tracing-subscriber",
  "transpose",
+ "wayland-backend",
  "wayland-egl",
  "wayland-protocols",
  "wayland-protocols-wlr",
  "xdg",
- "xdg-shell-wrapper",
  "xdg-shell-wrapper-config",
  "zbus 4.3.0",
 ]
@@ -5475,34 +5478,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "xdg-shell-wrapper"
-version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper//?branch=update#524b73d38f2fe655648fa54bab761b6698c882b5"
-dependencies = [
- "anyhow",
- "cosmic-client-toolkit",
- "itertools",
- "libc",
- "once_cell",
- "rand",
- "ron",
- "rustix 0.38.34",
- "serde",
- "shlex",
- "smithay",
- "smithay-client-toolkit",
- "tempfile",
- "tracing",
- "wayland-backend",
- "wayland-egl",
- "wayland-protocols",
- "xdg-shell-wrapper-config",
-]
-
-[[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/xdg-shell-wrapper//?branch=update#524b73d38f2fe655648fa54bab761b6698c882b5"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",

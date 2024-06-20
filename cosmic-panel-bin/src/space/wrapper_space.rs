@@ -8,6 +8,19 @@ use std::{
     time::Instant,
 };
 
+use crate::{
+    space_container::SpaceContainer,
+    xdg_shell_wrapper::{
+        client_state::ClientFocus,
+        server_state::ServerPointerFocus,
+        shared_state::GlobalState,
+        space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
+        util::get_client_sock,
+        wp_fractional_scaling::FractionalScalingManager,
+        wp_security_context::{SecurityContext, SecurityContextManager},
+        wp_viewporter::ViewporterState,
+    },
+};
 use anyhow::bail;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
@@ -50,16 +63,6 @@ use smithay::{
 use tokio::sync::oneshot;
 use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
-use xdg_shell_wrapper::{
-    client_state::ClientFocus,
-    server_state::ServerPointerFocus,
-    shared_state::GlobalState,
-    space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
-    util::get_client_sock,
-    wp_fractional_scaling::FractionalScalingManager,
-    wp_security_context::{SecurityContext, SecurityContextManager},
-    wp_viewporter::ViewporterState,
-};
 
 use crate::{
     iced::elements::CosmicMappedInternal,
@@ -114,13 +117,13 @@ impl WrapperSpace for PanelSpace {
         self.space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
     }
 
-    fn add_popup<W: WrapperSpace>(
+    fn add_popup(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
-        viewport: Option<&ViewporterState<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
         _conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
@@ -260,10 +263,10 @@ impl WrapperSpace for PanelSpace {
         self.config.clone()
     }
 
-    fn spawn_clients<W: WrapperSpace>(
+    fn spawn_clients(
         &mut self,
         mut display: DisplayHandle,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         security_context_manager: Option<SecurityContextManager>,
     ) -> anyhow::Result<()> {
         info!("Spawning applets");
@@ -437,7 +440,7 @@ impl WrapperSpace for PanelSpace {
                 ));
                 if requests_wayland_display {
                     if let Some(security_context_manager) = security_context_manager.as_ref() {
-                        match security_context_manager.create_listener::<W>(qh) {
+                        match security_context_manager.create_listener::<SpaceContainer>(qh) {
                             Ok(security_context) => {
                                 security_context.set_sandbox_engine(NAME.to_string());
                                 security_context.commit();
@@ -524,8 +527,10 @@ impl WrapperSpace for PanelSpace {
                         let security_context = if requests_wayland_display && should_restart {
                             security_context_manager_clone.as_ref().and_then(
                                 |security_context_manager| {
-                                    security_context_manager.create_listener(&qh_clone).ok().map(
-                                        |security_context| {
+                                    security_context_manager
+                                        .create_listener::<SpaceContainer>(&qh_clone)
+                                        .ok()
+                                        .map(|security_context| {
                                             security_context.set_sandbox_engine(NAME.to_string());
                                             security_context.commit();
 
@@ -539,8 +544,7 @@ impl WrapperSpace for PanelSpace {
                                             ));
                                             fds.push(privileged_socket.into());
                                             security_context
-                                        },
-                                    )
+                                        })
                                 },
                             )
                         } else {
@@ -563,13 +567,10 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(
-                                        &key,
-                                        vec![(
-                                            "COSMIC_NOTIFICATIONS".to_string(),
-                                            fd.as_raw_fd().to_string(),
-                                        )],
-                                    )
+                                    .update_process_env(&key, vec![(
+                                        "COSMIC_NOTIFICATIONS".to_string(),
+                                        fd.as_raw_fd().to_string(),
+                                    )])
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);
@@ -712,15 +713,15 @@ impl WrapperSpace for PanelSpace {
         unimplemented!()
     }
 
-    fn setup<W: WrapperSpace>(
+    fn setup(
         &mut self,
         _compositor_state: &CompositorState,
-        _fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        _fractional_scale_manager: Option<&FractionalScalingManager>,
         _security_context_manager: Option<SecurityContextManager>,
-        _viewport: Option<&ViewporterState<W>>,
+        _viewport: Option<&ViewporterState>,
         _layer_state: &mut LayerShell,
         _conn: &Connection,
-        _qh: &QueueHandle<GlobalState<W>>,
+        _qh: &QueueHandle<GlobalState>,
     ) {
     }
 
@@ -1059,14 +1060,14 @@ impl WrapperSpace for PanelSpace {
         Ok(true)
     }
 
-    fn new_output<W: WrapperSpace>(
+    fn new_output(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
-        viewport: Option<&ViewporterState<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
         layer_state: &mut LayerShell,
         _conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         c_output: Option<c_wl_output::WlOutput>,
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
@@ -1159,10 +1160,10 @@ impl WrapperSpace for PanelSpace {
         Ok(())
     }
 
-    fn handle_events<W: WrapperSpace>(
+    fn handle_events(
         &mut self,
         _dh: &DisplayHandle,
-        _qh: &QueueHandle<GlobalState<W>>,
+        _qh: &QueueHandle<GlobalState>,
         _popup_manager: &mut PopupManager,
         _time: u32,
     ) -> Instant {
