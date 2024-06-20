@@ -7,15 +7,13 @@ use cctk::{
     wayland_client::{protocol::wl_output::WlOutput, Connection},
 };
 
-use cosmic_panel_config::{CosmicPanelBackground, PanelAnchor};
+use crate::xdg_shell_wrapper::{
+    client_state::FocusStatus,
+    space::{ToplevelInfoSpace, ToplevelManagerSpace, WrapperSpace},
+};
+use cosmic_panel_config::PanelAnchor;
 use itertools::Itertools;
 use sctk::shell::WaylandSurface;
-use xdg_shell_wrapper::{
-    client_state::FocusStatus,
-    space::{ToplevelInfoSpace, ToplevelManagerSpace, Visibility, WrapperSpace},
-};
-
-use crate::space::PanelSpace;
 
 use super::SpaceContainer;
 

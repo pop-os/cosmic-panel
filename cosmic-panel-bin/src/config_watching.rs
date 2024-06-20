@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::space_container::SpaceContainer;
+use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use anyhow::anyhow;
 use cosmic::{
     cosmic_config::{ConfigGet, CosmicConfigEntry},
@@ -11,7 +11,6 @@ use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
 use smithay::reexports::calloop::{channel, LoopHandle};
 use tracing::{error, info};
-use xdg_shell_wrapper::shared_state::GlobalState;
 
 #[derive(Debug, Clone)]
 enum ConfigUpdate {
@@ -30,7 +29,7 @@ enum ThemeUpdate {
 }
 
 pub fn watch_cosmic_theme(
-    handle: LoopHandle<GlobalState<SpaceContainer>>,
+    handle: LoopHandle<GlobalState>,
 ) -> Result<Vec<RecommendedWatcher>, Box<dyn std::error::Error>> {
     let (entries_tx, entries_rx) = channel::sync_channel::<ThemeUpdate>(30);
     let config_dark_helper = Theme::dark_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -102,7 +101,7 @@ pub fn watch_cosmic_theme(
 
 pub fn watch_config(
     config: &CosmicPanelContainerConfig,
-    handle: LoopHandle<GlobalState<SpaceContainer>>,
+    handle: LoopHandle<GlobalState>,
 ) -> Result<HashMap<String, RecommendedWatcher>, Box<dyn std::error::Error>> {
     let (entries_tx, entries_rx) = channel::sync_channel::<ConfigUpdate>(30);
 

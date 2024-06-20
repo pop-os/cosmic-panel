@@ -22,10 +22,10 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.32.1", features = ["staging"] }
-xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
+# xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
-# xdg-shell-wrapper-config = { path = "../../xdg-shell-wrapper/xdg-shell-wrapper-config" }
+xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper-config" }
 cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "c8d3a1c" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
 wayland-egl = "0.32.1"
@@ -67,9 +67,13 @@ iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic/" }
 tiny-skia = "0.11"
 once_cell = "1.19.0"
 ron = "0.8"
+rand = "0.8.5"
+rustix = "0.38"
 sendfd = "0.4"
 cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }
 # cosmic-notifications-util = { path = "../../cosmic-notifications-daemon/cosmic-notifications-util", default-features = false }
 serde = "1.0"
 bytemuck = "1.13"
+tempfile = "3.3"
+wayland-backend = { version = "0.3.2", features = ["client_system"] }
 zbus = { version = "4.2.1", features = ["tokio", "p2p"] }

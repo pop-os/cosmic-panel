@@ -3,6 +3,15 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use crate::{
     minimize::MinimizeApplet,
     space::{AppletMsg, PanelColors, PanelSpace},
+    xdg_shell_wrapper,
+    xdg_shell_wrapper::{
+        client_state::ClientFocus,
+        shared_state::GlobalState,
+        space::{Visibility, WrapperSpace},
+        wp_fractional_scaling::FractionalScalingManager,
+        wp_security_context::SecurityContextManager,
+        wp_viewporter::ViewporterState,
+    },
     PanelCalloopMsg,
 };
 use cctk::{
@@ -17,7 +26,7 @@ use cosmic_panel_config::{
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
 use sctk::{
-    output::{self, OutputInfo},
+    output::OutputInfo,
     reexports::{
         calloop,
         client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
@@ -35,14 +44,6 @@ use smithay::{
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use wayland_server::Resource;
-use xdg_shell_wrapper::{
-    client_state::ClientFocus,
-    shared_state::GlobalState,
-    space::{Visibility, WrapperSpace},
-    wp_fractional_scaling::FractionalScalingManager,
-    wp_security_context::SecurityContextManager,
-    wp_viewporter::ViewporterState,
-};
 
 pub struct SpaceContainer {
     pub(crate) connection: Option<Connection>,
@@ -65,7 +66,7 @@ pub struct SpaceContainer {
     pub(crate) security_context_manager: Option<SecurityContextManager>,
     /// map from output name to minimized applet info
     pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
-    pub(crate) loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
+    pub(crate) loop_handle: calloop::LoopHandle<'static, GlobalState>,
 }
 
 impl SpaceContainer {
@@ -73,7 +74,7 @@ impl SpaceContainer {
         config: CosmicPanelContainerConfig,
         tx: mpsc::Sender<AppletMsg>,
         panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
-        loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
+        loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
         let is_dark = ThemeMode::config()
             .ok()
@@ -207,14 +208,14 @@ impl SpaceContainer {
     }
 
     /// apply a new or updated entry to the space list
-    pub fn update_space<W: WrapperSpace>(
+    pub fn update_space(
         &mut self,
         mut entry: CosmicPanelConfig,
         compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
-        viewport: Option<&ViewporterState<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
         layer_state: &mut LayerShell,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         force_output: Option<WlOutput>,
     ) {
         // if the output is set to "all", we need to check if the config is the same for
@@ -492,7 +493,7 @@ impl SpaceContainer {
         spaces
     }
 
-    pub fn toggle_overflow_popup(&mut self, id: id::Id) {
+    pub fn toggle_overflow_popup(&mut self, _id: id::Id) {
         // TODO implement
     }
 }

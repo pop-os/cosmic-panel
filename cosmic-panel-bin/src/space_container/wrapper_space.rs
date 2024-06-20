@@ -1,5 +1,14 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
+use crate::xdg_shell_wrapper::{
+    client_state::{ClientFocus, FocusStatus},
+    server_state::ServerPointerFocus,
+    shared_state::GlobalState,
+    space::{Visibility, WrapperSpace},
+    wp_fractional_scaling::FractionalScalingManager,
+    wp_security_context::SecurityContextManager,
+    wp_viewporter::ViewporterState,
+};
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{
@@ -18,15 +27,6 @@ use smithay::{
     desktop::PopupManager,
     output::Output,
     reexports::wayland_server::{self, protocol::wl_surface, Resource},
-};
-use xdg_shell_wrapper::{
-    client_state::{ClientFocus, FocusStatus},
-    server_state::ServerPointerFocus,
-    shared_state::GlobalState,
-    space::{Visibility, WrapperSpace},
-    wp_fractional_scaling::FractionalScalingManager,
-    wp_security_context::SecurityContextManager,
-    wp_viewporter::ViewporterState,
 };
 
 use crate::space::PanelSpace;
@@ -52,15 +52,15 @@ impl WrapperSpace for SpaceContainer {
     }
 
     /// run after the connection is ready
-    fn setup<W: WrapperSpace>(
+    fn setup(
         &mut self,
         compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
         security_context_manager: Option<SecurityContextManager>,
-        viewport: Option<&ViewporterState<W>>,
+        viewport: Option<&ViewporterState>,
         layer_state: &mut LayerShell,
         conn: &Connection,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
     ) {
         self.connection = Some(conn.clone());
         self.security_context_manager = security_context_manager.clone();
@@ -128,14 +128,14 @@ impl WrapperSpace for SpaceContainer {
         );
     }
 
-    fn new_output<W: WrapperSpace>(
+    fn new_output(
         &mut self,
         compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
-        viewport: Option<&ViewporterState<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
         layer_state: &mut LayerShell,
         conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         c_output: Option<WlOutput>,
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
@@ -320,13 +320,13 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
-    fn add_popup<W: WrapperSpace>(
+    fn add_popup(
         &mut self,
         compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager<W>>,
-        viewport: Option<&ViewporterState<W>>,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
         conn: &Connection,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
@@ -385,10 +385,10 @@ impl WrapperSpace for SpaceContainer {
         anyhow::bail!("Failed to find popup with matching client id")
     }
 
-    fn handle_events<W: WrapperSpace>(
+    fn handle_events(
         &mut self,
         dh: &smithay::reexports::wayland_server::DisplayHandle,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
         popup_manager: &mut PopupManager,
         time: u32,
     ) -> std::time::Instant {
@@ -413,10 +413,10 @@ impl WrapperSpace for SpaceContainer {
         self.config.clone()
     }
 
-    fn spawn_clients<W: WrapperSpace>(
+    fn spawn_clients(
         &mut self,
         _display: smithay::reexports::wayland_server::DisplayHandle,
-        _qh: &QueueHandle<GlobalState<W>>,
+        _qh: &QueueHandle<GlobalState>,
         _: Option<SecurityContextManager>,
     ) -> anyhow::Result<()> {
         // spaces spawn their clients when they are created

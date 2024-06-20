@@ -2,14 +2,12 @@ use std::{
     borrow::Cow,
     hash::Hash,
     rc::Rc,
-    sync::{
-        atomic::{self, AtomicBool},
-        Arc,
-    },
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use calloop::LoopHandle;
 // element for rendering a button that toggles the overflow popup when clicked
+use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
     iced::{
         alignment::{Horizontal, Vertical},
@@ -20,11 +18,7 @@ use cosmic::{
     widget::{layer_container, Id},
     Element,
 };
-use smithay::{
-    desktop::space::SpaceElement,
-    utils::{IsAlive, Logical, Point, Rectangle, Size},
-};
-use xdg_shell_wrapper::shared_state::GlobalState;
+use smithay::utils::{Logical, Point, Size};
 
 use crate::iced::{IcedElement, Program};
 
@@ -37,7 +31,7 @@ pub fn overflow_button_element(
     button_padding: Padding,
     selected: Arc<AtomicBool>,
     icon: Cow<'static, str>,
-    handle: LoopHandle<'static, GlobalState<crate::space_container::SpaceContainer>>,
+    handle: LoopHandle<'static, GlobalState>,
     theme: cosmic::Theme,
 ) -> OverflowButtonElement {
     let size = (
@@ -105,10 +99,7 @@ impl Program for OverflowButton {
     fn update(
         &mut self,
         message: Self::Message,
-        loop_handle: &calloop::LoopHandle<
-            'static,
-            xdg_shell_wrapper::shared_state::GlobalState<crate::space_container::SpaceContainer>,
-        >,
+        loop_handle: &calloop::LoopHandle<'static, xdg_shell_wrapper::shared_state::GlobalState>,
     ) -> cosmic::Command<Self::Message> {
         match message {
             Message::TogglePopup => {

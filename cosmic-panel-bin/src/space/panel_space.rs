@@ -7,8 +7,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::xdg_shell_wrapper::{
+    client_state::{ClientFocus, FocusStatus},
+    server_state::{ServerFocus, ServerPtrFocus},
+    shared_state::GlobalState,
+    space::{
+        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
+    },
+    util::smootherstep,
+    wp_security_context::SecurityContextManager,
+};
 use cctk::wayland_client::Connection;
-use cosmic::theme;
+
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -61,22 +71,10 @@ use wayland_protocols::{
     },
     xdg::shell::client::xdg_positioner::ConstraintAdjustment,
 };
-use xdg_shell_wrapper::{
-    client_state::{ClientFocus, FocusStatus},
-    server_state::{ServerFocus, ServerPtrFocus},
-    shared_state::GlobalState,
-    space::{
-        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
-    },
-    util::smootherstep,
-    wp_security_context::SecurityContextManager,
-};
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
-use crate::{
-    iced::elements::CosmicMappedInternal, space_container::SpaceContainer, PanelCalloopMsg,
-};
+use crate::{iced::elements::CosmicMappedInternal, PanelCalloopMsg};
 
 use super::corner_element::{init_shaders, RoundedRectangleSettings};
 
@@ -256,7 +254,7 @@ pub(crate) struct PanelSpace {
     pub(crate) generated_ptr_event_count: usize,
     pub scale_change_retries: u32,
     pub additional_gap: i32,
-    pub loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
+    pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
 }
 
 impl PanelSpace {
@@ -272,7 +270,7 @@ impl PanelSpace {
         conn: &Connection,
         panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
         visibility: Visibility,
-        loop_handle: calloop::LoopHandle<'static, GlobalState<SpaceContainer>>,
+        loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
         Self {
             config,
@@ -738,13 +736,13 @@ impl PanelSpace {
         }
     }
 
-    pub(crate) fn handle_events<W: WrapperSpace>(
+    pub(crate) fn handle_events(
         &mut self,
         _dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
         mut renderer: Option<&mut GlesRenderer>,
-        qh: &QueueHandle<GlobalState<W>>,
+        qh: &QueueHandle<GlobalState>,
     ) -> Instant {
         self.space.refresh();
         self.apply_animation_state();
