@@ -17,18 +17,21 @@ use smithay::{
     },
 };
 
-use crate::xdg_shell_wrapper::{client_state::ClientSeat, shared_state::GlobalState};
+use crate::{
+    iced::elements::{target::SpaceTarget, CosmicMappedInternal},
+    xdg_shell_wrapper::{client_state::ClientSeat, shared_state::GlobalState},
+};
 
 /// list of focused surfaces and the seats that focus them
 
-pub type ServerFocus = Vec<(WlSurface, String)>;
+pub type ServerFocus = Vec<(SpaceTarget, String)>;
 #[allow(missing_debug_implementations)]
 
 /// Information for tracking the server pointer focus
 #[derive(Debug, Clone)]
 pub struct ServerPointerFocus {
     /// focused wl surface
-    pub surface: WlSurface,
+    pub surface: SpaceTarget,
     /// name of the seat which is focusing
     pub seat_name: String,
     /// location in compositor space for the layer shell surface or popup

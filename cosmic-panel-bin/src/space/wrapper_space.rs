@@ -9,12 +9,15 @@ use std::{
 };
 
 use crate::{
+    iced::elements::{target::SpaceTarget, PopupMappedInternal},
     space_container::SpaceContainer,
     xdg_shell_wrapper::{
         client_state::ClientFocus,
         server_state::ServerPointerFocus,
         shared_state::GlobalState,
-        space::{SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace},
+        space::{
+            PanelPopup, SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace,
+        },
         util::get_client_sock,
         wp_fractional_scaling::FractionalScalingManager,
         wp_security_context::{SecurityContext, SecurityContextManager},
@@ -22,6 +25,7 @@ use crate::{
     },
 };
 use anyhow::bail;
+use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::izip;
@@ -44,7 +48,7 @@ use sctk::{
 };
 use shlex::Shlex;
 use smithay::{
-    backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
+    backend::renderer::{damage::OutputDamageTracker, element, gles::GlesRenderer},
     desktop::{
         space::SpaceElement, utils::bbox_from_surface_tree, PopupKind, PopupManager, Window,
     },
@@ -72,7 +76,7 @@ use crate::{
     },
 };
 
-use super::PanelSpace;
+use super::{layout::OverflowSection, PanelSpace};
 
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
@@ -134,11 +138,12 @@ impl WrapperSpace for PanelSpace {
 
         let parent = self.popups.iter().find_map(|p| {
             if s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface()) {
-                Some(p.c_popup.xdg_surface())
+                Some(p.popup.c_popup.xdg_surface())
             } else {
                 None
             }
         });
+        self.overflow_popup = None;
 
         let c_popup = popup::Popup::from_surface(
             parent,
@@ -204,24 +209,26 @@ impl WrapperSpace for PanelSpace {
         let cur_popup_state = Some(WrapperPopupState::WaitConfigure);
 
         self.popups.push(WrapperPopup {
-            damage_tracked_renderer: OutputDamageTracker::new(
-                positioner_state.rect_size.to_f64().to_physical(self.scale).to_i32_round(),
-                1.0,
-                smithay::utils::Transform::Flipped180,
-            ),
-            c_popup,
+            popup: PanelPopup {
+                damage_tracked_renderer: OutputDamageTracker::new(
+                    positioner_state.rect_size.to_f64().to_physical(self.scale).to_i32_round(),
+                    1.0,
+                    smithay::utils::Transform::Flipped180,
+                ),
+                c_popup,
+                egl_surface: None,
+                dirty: false,
+                rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
+                state: cur_popup_state,
+                input_region: Some(input_region),
+                wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
+                positioner,
+                has_frame: true,
+                fractional_scale,
+                viewport,
+                scale: self.scale,
+            },
             s_surface,
-            egl_surface: None,
-            dirty: false,
-            rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
-            state: cur_popup_state,
-            input_region,
-            wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
-            positioner,
-            has_frame: true,
-            fractional_scale,
-            viewport,
-            scale: self.scale,
         });
 
         Ok(())
@@ -237,8 +244,8 @@ impl WrapperSpace for PanelSpace {
             pending.geometry = Rectangle::from_loc_and_size((0, 0), pos_state.rect_size);
         });
         if let Some(p) = self.popups.iter().find(|wp| &wp.s_surface == &popup) {
-            let positioner = &p.positioner;
-            p.c_popup.xdg_surface().set_window_geometry(
+            let positioner = &p.popup.positioner;
+            p.popup.c_popup.xdg_surface().set_window_geometry(
                 0,
                 0,
                 pos_state.rect_size.w.max(1),
@@ -247,9 +254,9 @@ impl WrapperSpace for PanelSpace {
             self.apply_positioner_state(&positioner, pos_state, &p.s_surface);
 
             if positioner.version() >= 3 {
-                p.c_popup.reposition(&positioner, token);
+                p.popup.c_popup.reposition(&positioner, token);
             }
-            p.c_popup.wl_surface().commit();
+            p.popup.c_popup.wl_surface().commit();
             if positioner.version() >= 3 {
                 popup.send_repositioned(token);
             }
@@ -657,6 +664,30 @@ impl WrapperSpace for PanelSpace {
             w.on_commit();
             w.refresh();
         }
+
+        // check unmapped and overflow
+        if let Some(w) =
+            self.unmapped.iter().find(|w| w.wl_surface().is_some_and(|w| w.as_ref() == s))
+        {
+            w.on_commit();
+            w.refresh();
+        }
+
+        if let Some(w) = self
+            .overflow_left
+            .elements()
+            .chain(self.overflow_center.elements().chain(self.overflow_right.elements()))
+            .find_map(|w| {
+                if let PopupMappedInternal::Window(w) = w {
+                    w.wl_surface().is_some_and(|w| w.as_ref() == s).then_some(w)
+                } else {
+                    None
+                }
+            })
+        {
+            w.on_commit();
+            w.refresh();
+        }
     }
 
     fn dirty_popup(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
@@ -670,41 +701,39 @@ impl WrapperSpace for PanelSpace {
                 .to_logical(self.scale)
                 .to_i32_round();
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
-            if p_bbox != p.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
-                p.c_popup.xdg_surface().set_window_geometry(
+            if p_bbox != p.popup.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
+                p.popup.c_popup.xdg_surface().set_window_geometry(
                     p_geo.loc.x,
                     p_geo.loc.y,
                     p_geo.size.w.max(1),
                     p_geo.size.h.max(1),
                 );
-                if let Some(input_regions) = with_states(p.s_surface.wl_surface(), |states| {
-                    states
-                        .cached_state
-                        .current::<SurfaceAttributes>()
-                        .input_region
-                        .as_ref()
-                        .cloned()
-                }) {
-                    p.input_region.subtract(
-                        p_bbox.loc.x,
-                        p_bbox.loc.y,
-                        p_bbox.size.w,
-                        p_bbox.size.h,
-                    );
+                if let Some((input_regions, my_region)) =
+                    with_states(p.s_surface.wl_surface(), |states| {
+                        states
+                            .cached_state
+                            .current::<SurfaceAttributes>()
+                            .input_region
+                            .as_ref()
+                            .cloned()
+                    })
+                    .zip(p.popup.input_region.as_ref())
+                {
+                    my_region.subtract(p_bbox.loc.x, p_bbox.loc.y, p_bbox.size.w, p_bbox.size.h);
                     for r in input_regions.rects {
-                        p.input_region.add(0, 0, r.1.size.w, r.1.size.h);
+                        my_region.add(0, 0, r.1.size.w, r.1.size.h);
                     }
-                    p.c_popup.wl_surface().set_input_region(Some(p.input_region.wl_region()));
+                    p.popup.c_popup.wl_surface().set_input_region(Some(my_region.wl_region()));
                 }
 
-                p.state = Some(WrapperPopupState::Rectangle {
+                p.popup.state = Some(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
                     y: p_bbox.loc.y,
                     width: p_bbox.size.w.max(1),
                     height: p_bbox.size.h.max(1),
                 });
             }
-            p.dirty = true;
+            p.popup.dirty = true;
         }
     }
 
@@ -726,7 +755,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     /// returns false to forward the button press, and true to intercept
-    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<s_WlSurface> {
+    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
 
         if let Some(prev_foc) = {
@@ -747,7 +776,7 @@ impl WrapperSpace for PanelSpace {
             }
             self.s_hovered_surface.iter().find_map(|h| {
                 if h.seat_name.as_str() == seat_name {
-                    Some(h.surface.clone())
+                    Some(h.surface.clone().into())
                 } else {
                     None
                 }
@@ -771,55 +800,50 @@ impl WrapperSpace for PanelSpace {
             self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
+
+        let mut cur_client_hover_id = None;
+        let mut hover_relative_loc = None;
+        let mut hover_geo = None;
+
         let ret = if let Some(p) =
-            self.popups.iter().find(|p| p.c_popup.wl_surface() == &c_wl_surface)
+            self.popups.iter().find(|p| p.popup.c_popup.wl_surface() == &c_wl_surface)
         {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
             // special handling for popup bc they exist on their own client surface
 
             if let Some(prev_foc) = prev_foc {
-                prev_foc.0 = p.s_surface.wl_surface().clone();
+                prev_foc.0 = p.s_surface.wl_surface().clone().into();
             } else {
                 self.s_focused_surface
-                    .push((p.s_surface.wl_surface().clone(), seat_name.to_string()));
+                    .push((p.s_surface.wl_surface().clone().into(), seat_name.to_string()));
             }
             if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                prev_foc.c_pos = p.rectangle.loc;
-                prev_foc.s_pos = (p.rectangle.loc - geo.loc).to_f64();
+                prev_foc.c_pos = p.popup.rectangle.loc;
+                prev_foc.s_pos = (p.popup.rectangle.loc - geo.loc).to_f64();
 
-                prev_foc.surface = p.s_surface.wl_surface().clone();
+                prev_foc.surface = p.s_surface.wl_surface().clone().into();
                 Some(prev_foc.clone())
             } else {
                 self.s_hovered_surface.push(ServerPointerFocus {
-                    surface: p.s_surface.wl_surface().clone(),
+                    surface: p.s_surface.wl_surface().clone().into(),
                     seat_name: seat_name.to_string(),
-                    c_pos: p.rectangle.loc,
-                    s_pos: (p.rectangle.loc - geo.loc).to_f64(),
+                    c_pos: p.popup.rectangle.loc,
+                    s_pos: (p.popup.rectangle.loc - geo.loc).to_f64(),
                 });
                 self.s_hovered_surface.last().cloned()
             }
-        } else {
+        } else if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == c_wl_surface) {
             // if not on this panel's client surface return None
-            if self.layer.as_ref().map(|s| *s.wl_surface() != c_wl_surface).unwrap_or(true) {
-                if self.space.elements().any(|e| {
-                    e.wl_surface()
-                        .zip(prev_hover.as_ref())
-                        .is_some_and(|(s, prev_hover)| s.as_ref() == &prev_hover.1.surface)
-                }) {
-                    let (pos, _) = prev_hover.unwrap();
-                    self.s_hovered_surface.remove(pos);
-                }
-                self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
-                return None;
-            }
+
             // FIXME
             // There has to be a way to avoid messing with the scaling like this...
-            if let Some((w, relative_loc)) = self.space.elements().rev().find_map(|e| {
+            let space_focus = self.space.elements().rev().find_map(|e| {
                 let Some(render_location) = self.space.element_location(e) else {
                     self.generated_ptr_event_count =
                         self.generated_ptr_event_count.saturating_sub(1);
                     return None;
                 };
+
                 let mut bbox = e.bbox().to_f64();
                 bbox.size.w /= self.scale;
                 bbox.size.h /= self.scale;
@@ -830,148 +854,34 @@ impl WrapperSpace for PanelSpace {
                 } else {
                     None
                 }
-            }) {
-                let geo = w.bbox().to_f64().to_physical(1.0).to_logical(self.scale).to_i32_round();
-                if let CosmicMappedInternal::Window(ref w) = w {
-                    if let Some(prev_kbd) = prev_foc {
-                        prev_kbd.0 = w.toplevel().expect("Missing toplevel").wl_surface().clone();
-                    } else {
-                        self.s_focused_surface.push((
-                            w.toplevel().expect("Missing toplevel").wl_surface().clone(),
-                            seat_name.to_string(),
-                        ));
-                    }
-                }
+            });
 
-                let prev_popup_client = self
-                    .popups
-                    .iter()
-                    .next()
-                    .and_then(|p| p.s_surface.wl_surface().client())
-                    .map(|c| c.id());
-
-                let cur_client_hover_id =
-                    w.toplevel().and_then(|t| t.wl_surface().client().map(|c| c.id()));
-                if prev_popup_client.is_some()
-                    && prev_popup_client != cur_client_hover_id
-                    && self.generated_ptr_event_count == 0
-                {
-                    // send press to new client if it hover flag is set
-                    let left_guard = self.clients_left.lock().unwrap();
-                    let center_guard = self.clients_center.lock().unwrap();
-                    let right_guard = self.clients_right.lock().unwrap();
-
-                    if let Some(c) =
-                        left_guard.iter().chain(center_guard.iter()).chain(right_guard.iter()).find(
-                            |c| {
-                                c.auto_popup_hover_press.is_some()
-                                    && Some(c.client.id()) == cur_client_hover_id
-                            },
-                        )
-                    {
-                        let mut p = (x, y);
-                        let effective_anchor = match (
-                            c.auto_popup_hover_press.unwrap(),
-                            self.config.is_horizontal(),
-                        ) {
-                            (AppletAutoClickAnchor::Start, true) => AppletAutoClickAnchor::Left,
-                            (AppletAutoClickAnchor::Start, false) => AppletAutoClickAnchor::Top,
-                            (AppletAutoClickAnchor::End, true) => AppletAutoClickAnchor::Right,
-                            (AppletAutoClickAnchor::End, false) => AppletAutoClickAnchor::Bottom,
-                            (anchor, _) => anchor,
-                        };
-                        match effective_anchor {
-                            AppletAutoClickAnchor::Top => {
-                                // centered on the top edge
-                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
-                                p.1 = relative_loc.y + 4;
-                            },
-                            AppletAutoClickAnchor::Bottom => {
-                                // centered on the bottom edge
-                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
-                                p.1 = relative_loc.y + geo.size.h as i32 - 4;
-                            },
-                            AppletAutoClickAnchor::Left => {
-                                // centered on the left edge
-                                p.0 = relative_loc.x + 4;
-                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            },
-                            AppletAutoClickAnchor::Right => {
-                                // centered on the right edge
-                                p.0 = relative_loc.x + geo.size.w as i32 - 4;
-                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            },
-                            AppletAutoClickAnchor::Center => {
-                                // centered on the center
-                                p.0 = relative_loc.x + geo.size.w as i32 / 2;
-                                p.1 = relative_loc.y + geo.size.h as i32 / 2;
-                            },
-                            AppletAutoClickAnchor::Auto => {
-                                let relative_x = x - relative_loc.x;
-                                let relative_y = y - relative_loc.y;
-                                if relative_x.abs() < 4 {
-                                    p.0 += 4;
-                                } else if (relative_x - geo.size.w as i32).abs() < 4 {
-                                    p.0 -= 4;
-                                }
-                                if relative_y.abs() < 4 {
-                                    p.1 += 4;
-                                } else if (relative_y - geo.size.h as i32).abs() < 4 {
-                                    p.1 -= 4;
-                                }
-                            },
-                            AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
-                                tracing::warn!("Invalid anchor for auto click");
-                                // should be handled above
-                            },
-                        }
-
-                        self.generated_pointer_events = vec![
-                            PointerEvent {
-                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.0 as f64, p.1 as f64),
-                                kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
-                            },
-                            PointerEvent {
-                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.0 as f64, p.1 as f64),
-                                kind: sctk::seat::pointer::PointerEventKind::Press {
-                                    time: 0,
-                                    button: BTN_LEFT,
-                                    serial: 0,
-                                },
-                            },
-                            PointerEvent {
-                                surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                                position: (p.0 as f64, p.1 as f64),
-                                kind: sctk::seat::pointer::PointerEventKind::Release {
-                                    time: 0,
-                                    button: BTN_LEFT,
-                                    serial: 0,
-                                },
-                            },
-                        ];
-                    }
-                } else if prev_popup_client.is_some() && self.generated_ptr_event_count == 0 {
-                    // TODO simulate button press on the overflow button...
-                }
-                if let CosmicMappedInternal::Window(w) = w {
-                    if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                        prev_foc.s_pos = relative_loc.to_f64();
-                        prev_foc.c_pos = geo.loc;
-                        prev_foc.surface = w.wl_surface().map(|w| w.into_owned()).unwrap();
-                        Some(prev_foc.clone())
-                    } else {
-                        self.s_hovered_surface.push(ServerPointerFocus {
-                            surface: w.wl_surface().map(|w| w.into_owned()).unwrap(),
-                            seat_name: seat_name.to_string(),
-                            c_pos: geo.loc,
-                            s_pos: relative_loc.to_f64(),
-                        });
-                        self.s_hovered_surface.last().cloned()
-                    }
+            if let Some((target, relative_loc)) = space_focus {
+                let geo =
+                    target.bbox().to_f64().to_physical(1.0).to_logical(self.scale).to_i32_round();
+                if let Some(prev_kbd) = prev_foc {
+                    prev_kbd.0 = target.clone().into();
                 } else {
-                    None
+                    self.s_focused_surface.push((target.clone().into(), seat_name.to_string()));
+                }
+
+                hover_geo = Some(geo);
+                hover_relative_loc = Some(relative_loc);
+                cur_client_hover_id = target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
+
+                if let Some((_, prev_foc)) = prev_hover.as_mut() {
+                    prev_foc.s_pos = relative_loc.to_f64();
+                    prev_foc.c_pos = geo.loc;
+                    prev_foc.surface = target.into();
+                    Some(prev_foc.clone())
+                } else {
+                    self.s_hovered_surface.push(ServerPointerFocus {
+                        surface: target.into(),
+                        seat_name: seat_name.to_string(),
+                        c_pos: geo.loc,
+                        s_pos: relative_loc.to_f64(),
+                    });
+                    self.s_hovered_surface.last().cloned()
                 }
             } else {
                 if let Some((prev_i, _)) = prev_hover {
@@ -979,7 +889,204 @@ impl WrapperSpace for PanelSpace {
                 }
                 None
             }
+        } else if self
+            .overflow_popup
+            .as_ref()
+            .is_some_and(|p| p.0.c_popup.wl_surface() == &c_wl_surface)
+        {
+            let (popup, section) = self.overflow_popup.as_ref().unwrap();
+            let space = match section {
+                OverflowSection::Left => &self.overflow_left,
+                OverflowSection::Center => &self.overflow_center,
+                OverflowSection::Right => &self.overflow_right,
+            };
+
+            let space_focus = space.elements().rev().find_map(|e| {
+                let Some(w) = (match e {
+                    PopupMappedInternal::Window(w) => w.wl_surface(),
+                    _ => return None,
+                }) else {
+                    return None;
+                };
+                let Some(render_location) = space.element_location(e) else {
+                    self.generated_ptr_event_count =
+                        self.generated_ptr_event_count.saturating_sub(1);
+                    return None;
+                };
+
+                let mut bbox = e.bbox().to_f64();
+                bbox.size.w /= popup.scale;
+                bbox.size.h /= popup.scale;
+                bbox.loc.x = render_location.x as f64;
+                bbox.loc.y = render_location.y as f64;
+                if bbox.contains((x as f64, y as f64)) {
+                    Some((e.bbox().to_f64(), w.into_owned(), render_location))
+                } else {
+                    None
+                }
+            });
+
+            if let Some((bbox, target, relative_loc)) = space_focus {
+                let geo = bbox.to_physical(1.0).to_logical(self.scale).to_i32_round();
+                if let Some(prev_kbd) = prev_foc {
+                    prev_kbd.0 = SpaceTarget::Surface(target.clone());
+                } else {
+                    self.s_focused_surface.push((target.clone().into(), seat_name.to_string()));
+                }
+
+                hover_geo = Some(geo);
+                hover_relative_loc = Some(relative_loc);
+                cur_client_hover_id = target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
+
+                if let Some((_, prev_foc)) = prev_hover.as_mut() {
+                    prev_foc.s_pos = relative_loc.to_f64();
+                    prev_foc.c_pos = geo.loc;
+                    prev_foc.surface = target.into();
+                    Some(prev_foc.clone())
+                } else {
+                    self.s_hovered_surface.push(ServerPointerFocus {
+                        surface: target.into(),
+                        seat_name: seat_name.to_string(),
+                        c_pos: geo.loc,
+                        s_pos: relative_loc.to_f64(),
+                    });
+                    self.s_hovered_surface.last().cloned()
+                }
+            } else {
+                if let Some((prev_i, _)) = prev_hover {
+                    self.s_hovered_surface.swap_remove(prev_i);
+                }
+                None
+            }
+        } else {
+            if self
+                .space
+                .elements()
+                .filter_map(|e| e.wl_surface())
+                .chain(self.overflow_left.elements().filter_map(|e| e.wl_surface()))
+                .any(|e| {
+                    e.wl_surface()
+                        .zip(prev_hover.as_ref().map(|s| s.1.surface.wl_surface()))
+                        .is_some_and(|(s, prev_hover)| Some(s) == prev_hover)
+                })
+            {
+                let (pos, _) = prev_hover.unwrap();
+                self.s_hovered_surface.remove(pos);
+            }
+            self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
+            return None;
         };
+
+        let prev_popup_client = self
+            .popups
+            .iter()
+            .next()
+            .and_then(|p| p.s_surface.wl_surface().client())
+            .map(|c| c.id());
+
+        if prev_popup_client.is_some()
+            && prev_popup_client != cur_client_hover_id
+            && self.generated_ptr_event_count == 0
+        {
+            // send press to new client if it hover flag is set
+            let left_guard = self.clients_left.lock().unwrap();
+            let center_guard = self.clients_center.lock().unwrap();
+            let right_guard = self.clients_right.lock().unwrap();
+
+            if let Some(((c, relative_loc), geo)) = left_guard
+                .iter()
+                .chain(center_guard.iter())
+                .chain(right_guard.iter())
+                .find(|c| {
+                    c.auto_popup_hover_press.is_some() && Some(c.client.id()) == cur_client_hover_id
+                })
+                .zip(hover_relative_loc)
+                .zip(hover_geo)
+            {
+                let mut p = (x, y);
+                let effective_anchor =
+                    match (c.auto_popup_hover_press.unwrap(), self.config.is_horizontal()) {
+                        (AppletAutoClickAnchor::Start, true) => AppletAutoClickAnchor::Left,
+                        (AppletAutoClickAnchor::Start, false) => AppletAutoClickAnchor::Top,
+                        (AppletAutoClickAnchor::End, true) => AppletAutoClickAnchor::Right,
+                        (AppletAutoClickAnchor::End, false) => AppletAutoClickAnchor::Bottom,
+                        (anchor, _) => anchor,
+                    };
+                match effective_anchor {
+                    AppletAutoClickAnchor::Top => {
+                        // centered on the top edge
+                        p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                        p.1 = relative_loc.y + 4;
+                    },
+                    AppletAutoClickAnchor::Bottom => {
+                        // centered on the bottom edge
+                        p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                        p.1 = relative_loc.y + geo.size.h as i32 - 4;
+                    },
+                    AppletAutoClickAnchor::Left => {
+                        // centered on the left edge
+                        p.0 = relative_loc.x + 4;
+                        p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                    },
+                    AppletAutoClickAnchor::Right => {
+                        // centered on the right edge
+                        p.0 = relative_loc.x + geo.size.w as i32 - 4;
+                        p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                    },
+                    AppletAutoClickAnchor::Center => {
+                        // centered on the center
+                        p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                        p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                    },
+                    AppletAutoClickAnchor::Auto => {
+                        let relative_x = x - relative_loc.x;
+                        let relative_y = y - relative_loc.y;
+                        if relative_x.abs() < 4 {
+                            p.0 += 4;
+                        } else if (relative_x - geo.size.w as i32).abs() < 4 {
+                            p.0 -= 4;
+                        }
+                        if relative_y.abs() < 4 {
+                            p.1 += 4;
+                        } else if (relative_y - geo.size.h as i32).abs() < 4 {
+                            p.1 -= 4;
+                        }
+                    },
+                    AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
+                        tracing::warn!("Invalid anchor for auto click");
+                        // should be handled above
+                    },
+                }
+
+                self.generated_pointer_events = vec![
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
+                    },
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Press {
+                            time: 0,
+                            button: BTN_LEFT,
+                            serial: 0,
+                        },
+                    },
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Release {
+                            time: 0,
+                            button: BTN_LEFT,
+                            serial: 0,
+                        },
+                    },
+                ];
+            }
+        } else if prev_popup_client.is_some() && self.generated_ptr_event_count == 0 {
+            // TODO simulate button press on the overflow button...
+        }
         self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
         ret
     }
@@ -1022,7 +1129,7 @@ impl WrapperSpace for PanelSpace {
 
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
         self.popups.retain(|p| {
-            if p.c_popup.wl_surface() == popup.wl_surface() {
+            if p.popup.c_popup.wl_surface() == popup.wl_surface() {
                 if p.s_surface.alive() {
                     p.s_surface.send_popup_done();
                 }
@@ -1150,6 +1257,14 @@ impl WrapperSpace for PanelSpace {
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.is_dirty = true;
+        self.left_overflow_button_id = id::Id::new(format!("left_overflow_button_{}", self.id()));
+        self.right_overflow_button_id = id::Id::new(format!("right_overflow_button_{}", self.id()));
+        self.center_overflow_button_id =
+            id::Id::new(format!("center_overflow_button_{}", self.id()));
+        self.left_overflow_popup_id = id::Id::new(format!("left_overflow_popup_{}", self.id()));
+        self.right_overflow_popup_id = id::Id::new(format!("right_overflow_popup_{}", self.id()));
+        self.center_overflow_popup_id = id::Id::new(format!("center_overflow_popup_{}", self.id()));
+
         if let Err(err) = self.spawn_clients(
             self.s_display.clone().unwrap(),
             &qh,
@@ -1173,8 +1288,10 @@ impl WrapperSpace for PanelSpace {
     fn frame(&mut self, surface: &c_wl_surface::WlSurface, _time: u32) {
         if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
             self.has_frame = true;
-        } else if let Some(p) = self.popups.iter_mut().find(|p| surface == p.c_popup.wl_surface()) {
-            p.has_frame = true;
+        } else if let Some(p) =
+            self.popups.iter_mut().find(|p| surface == p.popup.c_popup.wl_surface())
+        {
+            p.popup.has_frame = true;
         }
     }
 
@@ -1231,13 +1348,13 @@ impl WrapperSpace for PanelSpace {
             }
         }
         for popup in &mut self.popups {
-            if popup.c_popup.wl_surface() != surface {
+            if popup.popup.c_popup.wl_surface() != surface {
                 continue;
             }
-            popup.scale = scale;
-            let Rectangle { loc, size } = popup.rectangle;
-            if popup.state.is_none() {
-                popup.state = Some(WrapperPopupState::Rectangle {
+            popup.popup.scale = scale;
+            let Rectangle { loc, size } = popup.popup.rectangle;
+            if popup.popup.state.is_none() {
+                popup.popup.state = Some(WrapperPopupState::Rectangle {
                     x: loc.x,
                     y: loc.y,
                     width: size.w,

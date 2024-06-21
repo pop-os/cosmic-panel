@@ -7,6 +7,7 @@ use smithay::{
     backend::{egl::EGLSurface, renderer::gles::GlesRenderer},
     desktop::{PopupKind, PopupManager},
     utils::Rectangle,
+    wayland::seat::WaylandFocus,
 };
 use wayland_egl::WlEglSurface;
 
@@ -18,7 +19,9 @@ impl PanelSpace {
             for (p, _) in PopupManager::popups_for_surface(t.wl_surface()) {
                 match p {
                     PopupKind::Xdg(p) => {
-                        if !self.s_hovered_surface.iter().any(|hs| &hs.surface == t.wl_surface()) {
+                        if !self.s_hovered_surface.iter().any(|hs| {
+                            hs.surface.wl_surface().is_some_and(|s| s.as_ref() == t.wl_surface())
+                        }) {
                             p.send_popup_done();
                         }
                     },
@@ -42,8 +45,12 @@ impl PanelSpace {
             return;
         };
 
-        if let Some(p) =
-            self.popups.iter_mut().find(|p| popup.wl_surface() == p.c_popup.wl_surface())
+        if let Some((p, s_popup)) = self
+            .popups
+            .iter_mut()
+            .map(|p| (&mut p.popup, Some(&mut p.s_surface)))
+            .chain(self.overflow_popup.iter_mut().map(|p| (&mut p.0, None)))
+            .find(|(p, _)| popup.wl_surface() == p.c_popup.wl_surface())
         {
             // use the size that we have already
             p.wrapper_rectangle =
@@ -55,7 +62,10 @@ impl PanelSpace {
                 Some(r) => Some(r),
             };
 
-            let _ = p.s_surface.send_configure();
+            if let Some(s) = s_popup {
+                _ = s.send_configure()
+            }
+
             match config.kind {
                 popup::ConfigureKind::Initial => {
                     let wl_egl_surface =

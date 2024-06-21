@@ -1,13 +1,16 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::xdg_shell_wrapper::{
-    client_state::{ClientFocus, FocusStatus},
-    server_state::ServerPointerFocus,
-    shared_state::GlobalState,
-    space::{Visibility, WrapperSpace},
-    wp_fractional_scaling::FractionalScalingManager,
-    wp_security_context::SecurityContextManager,
-    wp_viewporter::ViewporterState,
+use crate::{
+    iced::elements::target::SpaceTarget,
+    xdg_shell_wrapper::{
+        client_state::{ClientFocus, FocusStatus},
+        server_state::ServerPointerFocus,
+        shared_state::GlobalState,
+        space::{Visibility, WrapperSpace},
+        wp_fractional_scaling::FractionalScalingManager,
+        wp_security_context::SecurityContextManager,
+        wp_viewporter::ViewporterState,
+    },
 };
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
@@ -561,7 +564,7 @@ impl WrapperSpace for SpaceContainer {
         ret
     }
 
-    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<wl_surface::WlSurface> {
+    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|(_, s)| !s.popups.is_empty())
         {
@@ -697,12 +700,8 @@ impl WrapperSpace for SpaceContainer {
         popup: &sctk::shell::xdg::popup::Popup,
         config: sctk::shell::xdg::popup::PopupConfigure,
     ) {
-        if let Some(space) = self
-            .space_list
-            .iter_mut()
-            .find(|s| s.popups.iter().any(|p| p.c_popup.wl_surface() == popup.wl_surface()))
-        {
-            space.configure_panel_popup(popup, config, self.renderer.as_mut());
+        for space in &mut self.space_list {
+            space.configure_panel_popup(popup, config.clone(), self.renderer.as_mut());
         }
     }
 
@@ -731,7 +730,7 @@ impl WrapperSpace for SpaceContainer {
         if let Some(space) = self
             .space_list
             .iter_mut()
-            .find(|s| s.popups.iter().any(|p| p.c_popup.wl_surface() == popup.wl_surface()))
+            .find(|s| s.popups.iter().any(|p| p.popup.c_popup.wl_surface() == popup.wl_surface()))
         {
             space.close_popup(popup);
         }
@@ -809,7 +808,7 @@ impl WrapperSpace for SpaceContainer {
     ) {
         for s in &mut self.space_list {
             if s.layer.as_ref().map(|l| l.wl_surface()) == Some(surface)
-                || s.popups.iter().any(|p| p.c_popup.wl_surface() == surface)
+                || s.popups.iter().any(|p| p.popup.c_popup.wl_surface() == surface)
             {
                 s.scale_factor_changed(surface, scale, legacy);
                 break;

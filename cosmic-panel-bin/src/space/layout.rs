@@ -1,34 +1,32 @@
 use std::{
     slice::IterMut,
     sync::{atomic::AtomicBool, Arc, MutexGuard},
+    time::Duration,
 };
 
 use crate::{
     iced::elements::{
         overflow_button::{self, overflow_button_element, OverflowButtonElement},
-        CosmicMappedInternal,
+        overflow_popup::overflow_popup_element,
+        CosmicMappedInternal, PopupMappedInternal,
     },
     minimize::MinimizeApplet,
     space::{corner_element::RoundedRectangleSettings, Alignment},
+    xdg_shell_wrapper::space,
 };
 
 use super::{panel_space::PanelClient, PanelSpace};
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use anyhow::bail;
-use cosmic::iced::id;
 use cosmic_panel_config::PanelAnchor;
 use itertools::{chain, Itertools};
-use once_cell::sync::Lazy;
 use sctk::shell::WaylandSurface;
 use smithay::{
     desktop::{space::SpaceElement, Space, Window},
     reexports::wayland_server::Resource,
     utils::{IsAlive, Physical, Rectangle, Size},
+    wayland::seat::WaylandFocus,
 };
-
-static LEFT_BTN: Lazy<id::Id> = Lazy::new(|| id::Id::new("LEFT_OVERFLOW_BTN"));
-static CENTER_BTN: Lazy<id::Id> = Lazy::new(|| id::Id::new("CENTER_OVERFLOW_BTN"));
-static RIGHT_BTN: Lazy<id::Id> = Lazy::new(|| id::Id::new("RIGHT_OVERFLOW_BTN"));
 
 impl PanelSpace {
     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
@@ -56,7 +54,7 @@ impl PanelSpace {
                     CosmicMappedInternal::Window(w) => w,
                     CosmicMappedInternal::OverflowButton(b)
                         if overflow_button::with_id(&b, |id| {
-                            Lazy::get(&LEFT_BTN).is_some_and(|left_id| left_id == id)
+                            &self.left_overflow_button_id == id
                         }) =>
                     {
                         left_overflow_button = Some(b);
@@ -64,14 +62,14 @@ impl PanelSpace {
                     },
                     CosmicMappedInternal::OverflowButton(b)
                         if overflow_button::with_id(&b, |id| {
-                            Lazy::get(&CENTER_BTN).is_some_and(|center_id| center_id == id)
+                            &self.center_overflow_button_id == id
                         }) =>
                     {
                         return None;
                     },
                     CosmicMappedInternal::OverflowButton(b)
                         if overflow_button::with_id(&b, |id| {
-                            Lazy::get(&RIGHT_BTN).is_some_and(|right_id| right_id == id)
+                            &self.right_overflow_button_id == id
                         }) =>
                     {
                         right_overflow_button = Some(b);
@@ -126,10 +124,9 @@ impl PanelSpace {
                 self.unmapped.push(w);
             }
         } else {
-            self.scale_change_retries -= 1;
+            self.scale_change_retries = self.scale_change_retries.saturating_sub(1);
         }
 
-        self.space.refresh();
         let is_dock = !self.config.expand_to_edges()
             || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
         let mut windows_left = to_map
@@ -194,6 +191,7 @@ impl PanelSpace {
                 .chain(windows_right.drain(..))
                 .collect_vec();
         }
+
         self.layout(
             windows_left,
             windows_center,
@@ -373,21 +371,40 @@ impl PanelSpace {
         let one_half = layer_major as f64 / (2.min(num_lists) as f64);
         let larger_side = left_sum.max(right_sum);
 
-        let target_center_len = (layer_major as f64 - spacing_u32 as f64 * 2. - larger_side * (2.))
-            .max(one_third)
-            .min(layer_major as f64);
-
-        let target_left_len = if windows_center.is_empty() {
-            (layer_major as f64 - right_sum.min(one_half) - spacing_u32 as f64).max(one_half)
+        let mut target_center_len =
+            (layer_major as f64 - larger_side * (2.)).max(one_third).min(layer_major as f64);
+        if num_lists == 1 {
+            target_center_len -= padding_u32 as f64 * 2.;
         } else {
-            (one_half - target_center_len.min(center_sum) / 2.).max(one_third)
+            target_center_len -= spacing_u32 as f64;
+        }
+        let target_left_len = if windows_center.is_empty() {
+            (layer_major as f64
+                - right_sum.min(one_half)
+                - (spacing_u32 as f64) / 2.
+                - padding_u32 as f64)
+                .max(one_half)
+        } else {
+            (one_half
+                - target_center_len.min(center_sum) / 2.
+                - (spacing_u32 as f64) / 2.
+                - padding_u32 as f64)
+                .max(one_third)
         }
         .min(layer_major as f64);
 
         let target_right_len = if windows_center.is_empty() {
-            (layer_major as f64 - left_sum.min(one_half) - spacing_u32 as f64).max(one_half)
+            (layer_major as f64
+                - left_sum.min(one_half)
+                - (spacing_u32 as f64) / 2.
+                - padding_u32 as f64)
+                .max(one_half)
         } else {
-            (one_half - target_center_len.min(center_sum) / 2.).max(one_third)
+            (one_half
+                - target_center_len.min(center_sum) / 2.
+                - (spacing_u32 as f64) / 2.
+                - padding_u32 as f64)
+                .max(one_third)
         }
         .min(layer_major as f64);
 
@@ -396,8 +413,6 @@ impl PanelSpace {
             // check if it can be expanded
             self.relax_overflow_center(center_overflow.abs() as u32)
         } else if center_overflow > 0 {
-            dbg!(center_sum, target_center_len);
-
             let overflow = self.shrink_center((center_sum - target_center_len) as u32);
             bail!("overflow: {}", overflow)
         }
@@ -629,7 +644,73 @@ impl PanelSpace {
         }
         self.space.refresh();
 
+        self.reorder_overflow_space(OverflowSection::Left);
+        self.reorder_overflow_space(OverflowSection::Center);
+        self.reorder_overflow_space(OverflowSection::Right);
+
         Ok(())
+    }
+
+    // reorder overflow space windows, and remove dead windows
+    fn reorder_overflow_space(&mut self, section: OverflowSection) {
+        let (space, clients) = match section {
+            OverflowSection::Left => (&mut self.overflow_left, self.clients_left.lock().unwrap()),
+            OverflowSection::Center => {
+                (&mut self.overflow_center, self.clients_center.lock().unwrap())
+            },
+            OverflowSection::Right => {
+                (&mut self.overflow_right, self.clients_right.lock().unwrap())
+            },
+        };
+
+        let mut overflow_cnt = 0;
+        let mut elements = space.elements().cloned().collect_vec();
+        elements.sort_by(|a, b| {
+            // sort by position in client list
+            let pos_a = clients.iter().position(|c| {
+                if let PopupMappedInternal::Window(w) = a {
+                    w.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
+                    })
+                } else {
+                    false
+                }
+            });
+            let pos_b = clients.iter().position(|c| {
+                if let PopupMappedInternal::Window(w) = b {
+                    w.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
+                    })
+                } else {
+                    false
+                }
+            });
+            pos_a.cmp(&pos_b)
+        });
+
+        for e in elements {
+            match &e {
+                PopupMappedInternal::Window(w) => {
+                    if !w.alive() {
+                        space.unmap_elem(&PopupMappedInternal::Window(w.clone()));
+                    } else {
+                        let applet_size_unit =
+                            self.config.size.get_applet_icon_size_with_padding(true);
+                        let x_i = (overflow_cnt % 8) as i32;
+                        let padding = self.config.padding as i32;
+                        let spacing = self.config.spacing as i32;
+                        let x = padding
+                            + x_i as i32 * applet_size_unit as i32
+                            + (x_i.saturating_sub(1) * spacing);
+                        let y = padding
+                            + (overflow_cnt / 8) as i32 * (applet_size_unit as i32 + spacing);
+                        space.map_element(e, (x, y), false);
+                        overflow_cnt += 1;
+                    }
+                },
+                _ => (),
+            }
+        }
     }
 
     fn shrinkable_clients<'a>(
@@ -706,7 +787,6 @@ impl PanelSpace {
         let mut i = 0;
         let shrinkable = &mut clients.shrinkable;
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
-        // dbg!(overflow, shrinkable.len(), clients.movable.len());
         while overflow > 0 && i < shrinkable.len() {
             let (w, _, min_units) = &mut shrinkable[i];
             let size = w.bbox().size.to_f64().downscale(self.scale).to_i32_round();
@@ -751,7 +831,6 @@ impl PanelSpace {
         clients: OverflowClientPartition,
         section: OverflowSection,
     ) -> u32 {
-        let overflow_0 = overflow;
         let overflow_space = match section {
             OverflowSection::Left => &mut self.overflow_left,
             OverflowSection::Center => &mut self.overflow_center,
@@ -770,12 +849,22 @@ impl PanelSpace {
             if overflow == 0 {
                 break;
             }
-            overflow_cnt += 1;
-            let diff =
-                if is_horizontal { w.0.bbox().size.w as u32 } else { w.0.bbox().size.h as u32 };
+            let bbox = w.0.bbox();
+            if bbox.size.w == 0
+                || bbox.size.h == 0
+                || !w.0.wl_surface().map(|s| s.is_alive()).unwrap_or_default()
+            {
+                continue;
+            }
+            let diff = if is_horizontal { bbox.size.w as u32 } else { bbox.size.h as u32 };
             overflow = overflow.saturating_sub(diff);
-            let x = (overflow_cnt % 8) as i32 * applet_size_unit as i32;
-            let y = (overflow_cnt / 8) as i32 * applet_size_unit as i32;
+            let padding = self.config.padding as i32;
+            let spacing = self.config.spacing;
+            // TODO spacing & padding
+            let x_i = (overflow_cnt % 8) as i32;
+            let x =
+                padding + x_i * applet_size_unit as i32 + (x_i.saturating_sub(1)) * spacing as i32;
+            let y = 30 + (overflow_cnt / 8) as i32 * (applet_size_unit + spacing) as i32;
 
             space.unmap_elem(&CosmicMappedInternal::Window(w.0.clone()));
             // Rows of 8 with configured applet size
@@ -785,20 +874,62 @@ impl PanelSpace {
                 });
                 t.send_pending_configure();
             }
-            overflow_space.map_element(w.0, (x, y), false);
+            overflow_space.map_element(PopupMappedInternal::Window(w.0), (x, y), true);
+            overflow_cnt += 1;
         }
+        overflow_space.refresh();
+        let overflow_cnt = overflow_space
+            .elements()
+            .filter(|e| if let PopupMappedInternal::Window(w) = e { w.alive() } else { false })
+            .count();
 
-        if !had_overflow_prev && overflow != overflow_0 {
-            // TODO use a borrowed bool for selected
+        let space = self.config.spacing as f32;
+        let padding = self.config.padding as f32;
+        let popup_major = overflow_cnt.min(8) as f32 * applet_size_unit as f32
+            + 2. * padding
+            + (overflow_cnt.min(8).saturating_sub(1) as f32) * space;
+        let popup_cross = (overflow_cnt as f32 / 8.).ceil().min(1.0) * applet_size_unit as f32
+            + 2. * padding
+            + ((overflow_cnt / 8).saturating_sub(1)) as f32 * space;
+        let popup = overflow_space
+            .elements()
+            .find(|e| {
+                if let PopupMappedInternal::Popup(b) = e {
+                    b.with_program(|p| {
+                        &p.id
+                            == match section {
+                                OverflowSection::Left => &self.left_overflow_popup_id,
+                                OverflowSection::Center => &self.center_overflow_popup_id,
+                                OverflowSection::Right => &self.right_overflow_popup_id,
+                            }
+                    })
+                } else {
+                    false
+                }
+            })
+            .cloned();
+        let new_popup = || {
+            PopupMappedInternal::Popup(overflow_popup_element(
+                match section {
+                    OverflowSection::Left => self.left_overflow_popup_id.clone(),
+                    OverflowSection::Center => self.center_overflow_popup_id.clone(),
+                    OverflowSection::Right => self.right_overflow_popup_id.clone(),
+                },
+                popup_major,
+                popup_cross,
+                self.loop_handle.clone(),
+                self.colors.theme.clone(),
+                self.space.id(),
+            ))
+        };
+        if !had_overflow_prev && overflow_space.elements().count() > 0 {
             // XXX the location will be adjusted later so this is ok
             let overflow_button_loc = (0, 0);
             let id = match section {
-                OverflowSection::Left => Lazy::force(&LEFT_BTN).clone(),
-                OverflowSection::Center => Lazy::force(&CENTER_BTN).clone(),
-                OverflowSection::Right => Lazy::force(&RIGHT_BTN).clone(),
+                OverflowSection::Left => self.left_overflow_button_id.clone(),
+                OverflowSection::Center => self.center_overflow_button_id.clone(),
+                OverflowSection::Right => self.right_overflow_button_id.clone(),
             };
-            // if there was no overflow before, and there is now, then we need to add the
-            // overflow button
 
             let icon_size = self.config.size.get_applet_icon_size(true);
             let padding = self.config.size.get_applet_padding(true);
@@ -807,20 +938,37 @@ impl PanelSpace {
             } else {
                 "view-more-symbolic"
             };
+            let e = overflow_button_element(
+                id,
+                (0, 0).into(),
+                u16::try_from(icon_size).unwrap_or(32),
+                (padding as f32).into(),
+                Arc::new(AtomicBool::new(false)),
+                icon.into(),
+                self.loop_handle.clone(),
+                self.colors.theme.clone(),
+                self.space.id(),
+            );
+            let output = self.output.as_ref().map(|o| &o.1).unwrap();
+            e.output_enter(&output, Default::default());
+            let new_popup = new_popup();
+            new_popup.output_enter(&output, Default::default());
+            overflow_space.map_element(new_popup, (0, 0), false);
             self.space.map_element(
-                CosmicMappedInternal::OverflowButton(overflow_button_element(
-                    id,
-                    (0, 0).into(),
-                    u16::try_from(icon_size).unwrap_or(32),
-                    (padding as f32).into(),
-                    Arc::new(AtomicBool::new(false)),
-                    icon.into(),
-                    self.loop_handle.clone(),
-                    self.colors.theme.clone(),
-                )),
+                CosmicMappedInternal::OverflowButton(e),
                 overflow_button_loc,
                 false,
-            )
+            );
+
+            self.is_dirty = true;
+            self.space.refresh();
+        } else if let Some(overflow_popup) = popup {
+            let e = new_popup();
+            let output = self.output.as_ref().map(|o| &o.1).unwrap();
+
+            e.output_enter(output, Default::default());
+            overflow_space.unmap_elem(&overflow_popup);
+            overflow_space.map_element(e, (0, 0), false);
         }
 
         overflow
@@ -830,22 +978,41 @@ impl PanelSpace {
         mut extra_space: u32,
         is_horizontal: bool,
         space: &mut Space<CosmicMappedInternal>,
-        overflow_space: &mut Space<Window>,
+        overflow_space: &mut Space<PopupMappedInternal>,
         suggested_size: u32,
     ) -> u32 {
         // TODO move applets until extra_space is as close as possible to 0
         let mut overflow_cnt = overflow_space.elements().count();
+
         while overflow_cnt > 0 && extra_space > suggested_size {
             overflow_cnt -= 1;
 
             let w = overflow_space.elements().next().unwrap().clone();
-            let diff = if is_horizontal { w.bbox().size.w as u32 } else { w.bbox().size.h as u32 };
-            if extra_space >= diff {
-                extra_space = extra_space.saturating_sub(diff);
-                overflow_space.unmap_elem(&w);
-                space.map_element(CosmicMappedInternal::Window(w), (0, 0), false);
+            let applet_len =
+                if is_horizontal { w.bbox().size.w as u32 } else { w.bbox().size.h as u32 };
+            if extra_space >= applet_len {
+                let w = match w {
+                    PopupMappedInternal::Window(w) => w,
+                    _ => continue,
+                };
+                extra_space = extra_space.saturating_sub(applet_len);
+                overflow_space.unmap_elem(&PopupMappedInternal::Window(w.clone()));
+                overflow_space.refresh();
+                space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
+                space.refresh();
+                if let Some(t) = w.toplevel() {
+                    t.with_pending_state(|s| {
+                        if is_horizontal {
+                            s.size = Some((0, suggested_size as i32).into());
+                        } else {
+                            s.size = Some((suggested_size as i32, 0).into());
+                        }
+                    });
+                    t.send_pending_configure();
+                }
             }
         }
+
         extra_space
     }
 
@@ -854,10 +1021,9 @@ impl PanelSpace {
         let mut clients = self.shrinkable_clients(left.iter());
         drop(left);
         if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
-            self.relax_overflow_clients(&mut clients);
-        } else {
             let suggested_size = self.config.size.get_applet_icon_size(true) as u32
                 + self.config.size.get_applet_padding(true) as u32 * 2;
+            let had_extra = self.overflow_left.elements().count() > 0;
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
@@ -865,6 +1031,25 @@ impl PanelSpace {
                 &mut self.overflow_left,
                 suggested_size,
             );
+            if self.overflow_left.elements().count() <= 0 && had_extra {
+                let button = self.space
+                    .elements()
+                    // find with left btn id
+                    .find(|e| {
+                        if let CosmicMappedInternal::OverflowButton(b) = e {
+                            b.with_program(|p| p.id == self.left_overflow_button_id)
+                        } else {
+                            false
+                        }
+                    })
+                    .cloned();
+                if let Some(overflow_button) = button {
+                    self.space.unmap_elem(&overflow_button);
+                    self.space.refresh();
+                }
+            }
+        } else {
+            self.relax_overflow_clients(&mut clients);
         }
     }
 
@@ -873,17 +1058,35 @@ impl PanelSpace {
         let mut clients = self.shrinkable_clients(center.iter());
         drop(center);
         if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
-            self.relax_overflow_clients(&mut clients);
-        } else {
             let suggested_size = self.config.size.get_applet_icon_size(true) as u32
                 + self.config.size.get_applet_padding(true) as u32 * 2;
+            let had_extra = self.overflow_center.elements().count() > 0;
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
                 &mut self.space,
-                &mut self.overflow_left,
+                &mut self.overflow_center,
                 suggested_size,
             );
+            if self.overflow_center.elements().count() <= 0 && had_extra {
+                let button = self.space
+                    .elements()
+                    // find with center btn id
+                    .find(|e| {
+                        if let CosmicMappedInternal::OverflowButton(b) = e {
+                            b.with_program(|p| p.id == self.center_overflow_button_id)
+                        } else {
+                            false
+                        }
+                    })
+                    .cloned();
+                if let Some(overflow_button) = button {
+                    self.space.unmap_elem(&overflow_button);
+                    self.space.refresh();
+                }
+            }
+        } else {
+            self.relax_overflow_clients(&mut clients);
         }
     }
 
@@ -892,17 +1095,34 @@ impl PanelSpace {
         let mut clients = self.shrinkable_clients(right.iter());
         drop(right);
         if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
-            self.relax_overflow_clients(&mut clients);
-        } else {
             let suggested_size = self.config.size.get_applet_icon_size(true) as u32
                 + self.config.size.get_applet_padding(true) as u32 * 2;
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
                 &mut self.space,
-                &mut self.overflow_left,
+                &mut self.overflow_right,
                 suggested_size,
             );
+            if self.overflow_right.elements().count() <= 0 {
+                let button = self.space
+                    .elements()
+                    // find with right btn id
+                    .find(|e| {
+                        if let CosmicMappedInternal::OverflowButton(b) = e {
+                            b.with_program(|p| p.id == self.right_overflow_button_id)
+                        } else {
+                            false
+                        }
+                    })
+                    .cloned();
+                if let Some(overflow_button) = button {
+                    self.space.unmap_elem(&overflow_button);
+                    self.space.refresh();
+                }
+            }
+        } else {
+            self.relax_overflow_clients(&mut clients);
         }
     }
 
@@ -922,6 +1142,40 @@ impl PanelSpace {
                 });
             });
             t.send_pending_configure();
+        }
+    }
+
+    /// Send frame callback to hidden applets
+    pub fn update_hidden_applet_frame(&mut self) {
+        let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
+            return;
+        };
+
+        for w in &self.unmapped {
+            let output_clone = output.clone();
+            if w.toplevel().is_some() {
+                w.send_frame(&output, Duration::from_secs(1), None, |_, _| {
+                    Some(output_clone.clone())
+                });
+                w.refresh();
+                self.is_dirty = true;
+            }
+        }
+
+        for w in self
+            .overflow_left
+            .elements()
+            .chain(self.overflow_center.elements())
+            .chain(self.overflow_right.elements())
+        {
+            let output_clone = output.clone();
+            if let PopupMappedInternal::Window(w) = w {
+                w.send_frame(&output, Duration::from_secs(1), None, |_, _| {
+                    Some(output_clone.clone())
+                });
+                w.refresh();
+                self.is_dirty = true;
+            }
         }
     }
 }

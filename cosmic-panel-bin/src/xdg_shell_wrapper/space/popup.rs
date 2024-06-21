@@ -38,14 +38,21 @@ pub enum WrapperPopupState {
 /// Popup
 #[derive(Debug)]
 pub struct WrapperPopup {
+    /// panel popup
+    pub popup: PanelPopup,
+    /// the embedded popup
+    pub s_surface: PopupSurface,
+}
+
+#[derive(Debug)]
+pub struct PanelPopup {
     // XXX implicitly drops egl_surface first to avoid segfault
     /// the egl surface
     pub egl_surface: Option<Rc<EGLSurface>>,
 
     /// the popup on the layer shell surface
     pub c_popup: Popup,
-    /// the embedded popup
-    pub s_surface: PopupSurface,
+
     /// the state of the popup
     pub state: Option<WrapperPopupState>,
     /// whether or not the popup needs to be rendered
@@ -53,7 +60,7 @@ pub struct WrapperPopup {
     /// full rectangle of the inner popup, including dropshadow borders
     pub rectangle: Rectangle<i32, Logical>,
     /// input region for the popup
-    pub input_region: Region,
+    pub input_region: Option<Region>,
     /// location of the popup wrapper
     pub wrapper_rectangle: Rectangle<i32, Logical>,
     /// positioner
@@ -74,24 +81,26 @@ impl WrapperPopup {
     /// Handles any events that have occurred since the last call, redrawing if
     /// needed. Returns true if the surface is alive.
     pub fn handle_events(&mut self, popup_manager: &mut PopupManager) -> bool {
-        if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = self.state {
-            self.dirty = true;
-            self.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
+        if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = self.popup.state {
+            self.popup.dirty = true;
+            self.popup.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
             let scaled_size: Size<i32, _> =
-                self.rectangle.size.to_f64().to_physical(self.scale).to_i32_round();
-            if let Some(s) = self.egl_surface.as_ref() {
+                self.popup.rectangle.size.to_f64().to_physical(self.popup.scale).to_i32_round();
+            if let Some(s) = self.popup.egl_surface.as_ref() {
                 s.resize(scaled_size.w.max(1), scaled_size.h.max(1), 0, 0);
             }
-            if let Some(viewport) = self.viewport.as_ref() {
-                viewport
-                    .set_destination(self.rectangle.size.w.max(1), self.rectangle.size.h.max(1));
+            if let Some(viewport) = self.popup.viewport.as_ref() {
+                viewport.set_destination(
+                    self.popup.rectangle.size.w.max(1),
+                    self.popup.rectangle.size.h.max(1),
+                );
             }
-            self.damage_tracked_renderer =
+            self.popup.damage_tracked_renderer =
                 OutputDamageTracker::new(scaled_size, 1.0, smithay::utils::Transform::Flipped180);
-            self.c_popup.wl_surface().commit();
+            self.popup.c_popup.wl_surface().commit();
             popup_manager.commit(self.s_surface.wl_surface());
 
-            self.state = None;
+            self.popup.state = None;
         };
         self.s_surface.alive()
     }

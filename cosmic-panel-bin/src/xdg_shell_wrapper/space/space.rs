@@ -29,15 +29,18 @@ use smithay::{
     wayland::shell::xdg::{PopupSurface, PositionerState},
 };
 
-use crate::xdg_shell_wrapper::{
-    client::handlers::{
-        wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
+use crate::{
+    iced::elements::target::SpaceTarget,
+    xdg_shell_wrapper::{
+        client::handlers::{
+            wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
+        },
+        client_state::ClientFocus,
+        config::WrapperConfig,
+        server_state::ServerPointerFocus,
+        shared_state::GlobalState,
+        wp_security_context::SecurityContextManager,
     },
-    client_state::ClientFocus,
-    config::WrapperConfig,
-    server_state::ServerPointerFocus,
-    shared_state::GlobalState,
-    wp_security_context::SecurityContextManager,
 };
 
 /// Space events
@@ -176,7 +179,7 @@ pub trait WrapperSpace {
 
     /// handle a button press or release on a client surface
     /// optionally returns an interacted server wl surface
-    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<s_WlSurface>;
+    fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget>;
 
     /// keyboard focus lost handler
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<wl_surface::WlSurface>);

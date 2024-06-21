@@ -61,10 +61,10 @@ impl KeyboardHandler for GlobalState {
         );
 
         if let Some(s_surface) = s_surface {
-            kbd.set_focus(self, Some(s_surface), SERIAL_COUNTER.next_serial());
+            kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
         } else {
             let s = self.space.keyboard_enter(&seat_name, surface.clone());
-            kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
+            kbd.set_focus(self, s.map(|s| s.into()), SERIAL_COUNTER.next_serial());
         }
     }
 

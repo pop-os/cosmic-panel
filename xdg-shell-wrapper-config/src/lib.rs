@@ -30,13 +30,13 @@ impl From<zwlr_layer_shell_v1::Layer> for Layer {
     }
 }
 
-impl Into<zwlr_layer_shell_v1::Layer> for Layer {
-    fn into(self) -> zwlr_layer_shell_v1::Layer {
-        match self {
-            Self::Background => zwlr_layer_shell_v1::Layer::Background,
-            Self::Bottom => zwlr_layer_shell_v1::Layer::Bottom,
-            Self::Top => zwlr_layer_shell_v1::Layer::Top,
-            Self::Overlay => zwlr_layer_shell_v1::Layer::Overlay,
+impl From<Layer> for zwlr_layer_shell_v1::Layer {
+    fn from(val: Layer) -> Self {
+        match val {
+            Layer::Background => zwlr_layer_shell_v1::Layer::Background,
+            Layer::Bottom => zwlr_layer_shell_v1::Layer::Bottom,
+            Layer::Top => zwlr_layer_shell_v1::Layer::Top,
+            Layer::Overlay => zwlr_layer_shell_v1::Layer::Overlay,
         }
     }
 }
@@ -63,12 +63,12 @@ impl From<zwlr_layer_surface_v1::KeyboardInteractivity> for KeyboardInteractivit
     }
 }
 
-impl Into<zwlr_layer_surface_v1::KeyboardInteractivity> for KeyboardInteractivity {
-    fn into(self) -> zwlr_layer_surface_v1::KeyboardInteractivity {
-        match self {
-            Self::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
-            Self::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
-            Self::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
+impl From<KeyboardInteractivity> for zwlr_layer_surface_v1::KeyboardInteractivity {
+    fn from(val: KeyboardInteractivity) -> Self {
+        match val {
+            KeyboardInteractivity::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
+            KeyboardInteractivity::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
+            KeyboardInteractivity::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
         }
     }
 }
