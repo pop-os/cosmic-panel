@@ -1,61 +1,80 @@
-use crate::space::{ToplevelInfoSpace, ToplevelManagerSpace, WorkspaceHandlerSpace};
-use crate::xdg_shell_wrapper::{
-    server_state::ServerState, shared_state::GlobalState, space::WrapperSpace,
+use crate::{
+    space::{ToplevelInfoSpace, ToplevelManagerSpace, WorkspaceHandlerSpace},
+    xdg_shell_wrapper::{
+        server_state::ServerState, shared_state::GlobalState, space::WrapperSpace,
+    },
 };
-use cctk::workspace::WorkspaceState;
-use cctk::{toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState};
-use sctk::data_device_manager::data_device::DataDevice;
-use sctk::data_device_manager::data_offer::{DragOffer, SelectionOffer};
-use sctk::data_device_manager::data_source::{CopyPasteSource, DragSource};
-use sctk::data_device_manager::DataDeviceManagerState;
-use sctk::reexports::calloop_wayland_source::WaylandSource;
-use sctk::seat::pointer::ThemedPointer;
-use sctk::shell::wlr_layer::LayerSurface;
-use sctk::shell::{wlr_layer::LayerShell, xdg::XdgShell};
-use sctk::shm::Shm;
+use cctk::{
+    toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState,
+    workspace::WorkspaceState,
+};
 use sctk::{
     compositor::CompositorState,
+    data_device_manager::{
+        data_device::DataDevice,
+        data_offer::{DragOffer, SelectionOffer},
+        data_source::{CopyPasteSource, DragSource},
+        DataDeviceManagerState,
+    },
     output::OutputState,
-    reexports::client::{
-        globals::registry_queue_init,
-        protocol::{
-            wl_keyboard,
-            wl_output::WlOutput,
-            wl_seat::WlSeat,
-            wl_surface::{self, WlSurface},
+    reexports::{
+        calloop_wayland_source::WaylandSource,
+        client::{
+            globals::registry_queue_init,
+            protocol::{
+                wl_keyboard,
+                wl_output::WlOutput,
+                wl_seat::WlSeat,
+                wl_surface::{self, WlSurface},
+            },
+            Connection, QueueHandle,
         },
-        Connection, QueueHandle,
     },
     registry::RegistryState,
-    seat::SeatState,
-    shm::multi::MultiPool,
+    seat::{pointer::ThemedPointer, SeatState},
+    shell::{
+        wlr_layer::{LayerShell, LayerSurface},
+        xdg::XdgShell,
+    },
+    shm::{multi::MultiPool, Shm},
 };
-use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::AsRenderElements;
-use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::backend::renderer::{Bind, Unbind};
-use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
-use smithay::wayland::compositor::CompositorClientState;
 use smithay::{
-    backend::egl::EGLSurface,
+    backend::{
+        egl::EGLSurface,
+        renderer::{
+            damage::OutputDamageTracker,
+            element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
+            gles::GlesRenderer,
+            Bind, Unbind,
+        },
+    },
     desktop::LayerSurface as SmithayLayerSurface,
     output::Output,
     reexports::{
         calloop,
-        wayland_server::{backend::GlobalId, protocol::wl_output},
+        wayland_server::{
+            backend::{ClientData, ClientId, DisconnectReason, GlobalId},
+            protocol::wl_output,
+        },
     },
+    wayland::compositor::CompositorClientState,
 };
-use std::fmt::Debug;
-use std::time::Duration;
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 use tracing::error;
-use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
-use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use wayland_protocols::wp::{
+    fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
+    viewporter::client::wp_viewport::WpViewport,
+};
 
-use super::handlers::wp_fractional_scaling::FractionalScalingManager;
-use super::handlers::wp_security_context::SecurityContextManager;
-use super::handlers::wp_viewporter::ViewporterState;
+use super::handlers::{
+    wp_fractional_scaling::FractionalScalingManager, wp_security_context::SecurityContextManager,
+    wp_viewporter::ViewporterState,
+};
 
 #[derive(Debug)]
 pub(crate) struct ClientSeat {
@@ -119,7 +138,7 @@ pub struct ClientState {
     /// data device manager state
     pub data_device_manager: DataDeviceManagerState,
     /// fractional scaling manager
-    pub fractional_scaling_manager: Option<FractionalScalingManager,
+    pub fractional_scaling_manager: Option<FractionalScalingManager>,
     /// viewporter
     pub viewporter_state: Option<ViewporterState>,
     /// toplevel_info_state
@@ -161,7 +180,7 @@ pub struct ClientState {
     )>,
 }
 
-impl< std::fmt::Debug> Debug for ClientState {
+impl Debug for ClientState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientState")
             .field("registry_state", &self.registry_state)
@@ -200,6 +219,7 @@ pub struct WrapperClientCompositorState {
 impl ClientData for WrapperClientCompositorState {
     /// Notification that a client was initialized
     fn initialized(&self, _client_id: ClientId) {}
+
     /// Notification that a client is disconnected
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
@@ -218,9 +238,7 @@ impl ClientState {
         space: &mut W,
         _embedded_server_state: &mut ServerState,
     ) -> anyhow::Result<Self> {
-        /*
-         * Initial setup
-         */
+        // Initial setup
         let connection = Connection::connect_to_env()?;
 
         let (globals, event_queue) = registry_queue_init(&connection).unwrap();
@@ -291,7 +309,7 @@ impl ClientState {
     /// draw the proxied layer shell surfaces
     pub fn draw_layer_surfaces(&mut self, renderer: &mut GlesRenderer, time: u32) {
         let clear_color = &[0.0, 0.0, 0.0, 0.0];
-        for (egl_surface, dmg_tracked_renderer, s_layer, _, state, _, _, _) in
+        for (egl_surface, dmg_tracked_renderer, s_layer, _, state, ..) in
             &mut self.proxied_layer_surfaces
         {
             match state {
@@ -331,7 +349,7 @@ impl ClientState {
     }
 }
 
-impl< ToplevelInfoSpace> ClientState {
+impl<ToplevelInfoSpace> ClientState {
     /// initialize the toplevel info state
     pub fn init_toplevel_info_state(&mut self) {
         self.toplevel_info_state =
@@ -339,7 +357,7 @@ impl< ToplevelInfoSpace> ClientState {
     }
 }
 
-impl< ToplevelManagerSpace> ClientState {
+impl<ToplevelManagerSpace> ClientState {
     /// initialize the toplevel manager state
     pub fn init_toplevel_manager_state(&mut self) {
         self.toplevel_manager_state =
@@ -347,7 +365,7 @@ impl< ToplevelManagerSpace> ClientState {
     }
 }
 
-impl< WorkspaceHandlerSpace> ClientState {
+impl<WorkspaceHandlerSpace> ClientState {
     /// initialize the toplevel manager state
     pub fn init_workspace_state(&mut self) {
         self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.queue_handle));

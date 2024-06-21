@@ -7,18 +7,23 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::xdg_shell_wrapper::{
-    client_state::{ClientFocus, FocusStatus},
-    server_state::{ServerFocus, ServerPtrFocus},
-    shared_state::GlobalState,
-    space::{
-        ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
+use crate::{
+    iced::elements::PopupMappedInternal,
+    xdg_shell_wrapper::{
+        client_state::{ClientFocus, FocusStatus},
+        server_state::{ServerFocus, ServerPtrFocus},
+        shared_state::GlobalState,
+        space::{
+            ClientEglDisplay, ClientEglSurface, PanelPopup, SpaceEvent, Visibility, WrapperPopup,
+            WrapperSpace,
+        },
+        util::smootherstep,
+        wp_security_context::SecurityContextManager,
     },
-    util::smootherstep,
-    wp_security_context::SecurityContextManager,
 };
 use cctk::wayland_client::Connection;
 
+use cosmic::iced::id;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -54,7 +59,7 @@ use smithay::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, Client, DisplayHandle},
     },
-    utils::{Logical, Rectangle, Size},
+    utils::{Logical, Rectangle, Serial, Size, SERIAL_COUNTER},
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -76,7 +81,10 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 use crate::{iced::elements::CosmicMappedInternal, PanelCalloopMsg};
 
-use super::corner_element::{init_shaders, RoundedRectangleSettings};
+use super::{
+    corner_element::{init_shaders, RoundedRectangleSettings},
+    layout::OverflowSection,
+};
 
 pub enum AppletMsg {
     NewProcess(String, Process),
@@ -194,7 +202,7 @@ impl PanelColors {
     }
 }
 
-/// space for the cosmic panel
+// space for the cosmic panel
 #[derive(Debug)]
 pub(crate) struct PanelSpace {
     // XXX implicitly drops egl_surface first to avoid segfault
@@ -207,9 +215,9 @@ pub(crate) struct PanelSpace {
     pub(crate) clients_left: Clients,
     pub(crate) clients_center: Clients,
     pub(crate) clients_right: Clients,
-    pub(crate) overflow_left: Space<Window>,
-    pub(crate) overflow_center: Space<Window>,
-    pub(crate) overflow_right: Space<Window>,
+    pub(crate) overflow_left: Space<PopupMappedInternal>,
+    pub(crate) overflow_center: Space<PopupMappedInternal>,
+    pub(crate) overflow_right: Space<PopupMappedInternal>,
     pub(crate) last_dirty: Option<Instant>,
     // pending size of the panel
     pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
@@ -255,6 +263,13 @@ pub(crate) struct PanelSpace {
     pub scale_change_retries: u32,
     pub additional_gap: i32,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
+    pub left_overflow_button_id: id::Id,
+    pub center_overflow_button_id: id::Id,
+    pub right_overflow_button_id: id::Id,
+    pub left_overflow_popup_id: id::Id,
+    pub center_overflow_popup_id: id::Id,
+    pub right_overflow_popup_id: id::Id,
+    pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
 }
 
 impl PanelSpace {
@@ -272,6 +287,7 @@ impl PanelSpace {
         visibility: Visibility,
         loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
+        let name = format!("{}-{}", config.name, config.output);
         Self {
             config,
             space: Space::default(),
@@ -323,6 +339,13 @@ impl PanelSpace {
             scale_change_retries: 0,
             additional_gap: 0,
             loop_handle,
+            left_overflow_button_id: id::Id::new(format!("{}-left-overflow-button", name)),
+            center_overflow_button_id: id::Id::new(format!("{}-center-overflow-button", name)),
+            right_overflow_button_id: id::Id::new(format!("{}-right-overflow-button", name)),
+            left_overflow_popup_id: id::Id::new(format!("{}-left-overflow-popup", name)),
+            center_overflow_popup_id: id::Id::new(format!("{}-center-overflow-popup", name)),
+            right_overflow_popup_id: id::Id::new(format!("{}-right-overflow-popup", name)),
+            overflow_popup: None,
         }
     }
 
@@ -401,8 +424,11 @@ impl PanelSpace {
                 |acc, (surface, _, f)| {
                     if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
                         || self.popups.iter().any(|p| {
-                            &p.c_popup.wl_surface() == &surface
-                                || self.popups.iter().any(|p| p.c_popup.wl_surface() == surface)
+                            &p.popup.c_popup.wl_surface() == &surface
+                                || self
+                                    .popups
+                                    .iter()
+                                    .any(|p| p.popup.c_popup.wl_surface() == surface)
                         })
                     {
                         match (&acc, &f) {
@@ -608,7 +634,6 @@ impl PanelSpace {
         additional_gap: i32,
         layer_surface: &LayerSurface,
     ) {
-        info!("Setting margin: {} {} {}", anchor, margin, target);
         match anchor {
             PanelAnchor::Left => {
                 layer_surface.set_margin(margin, 0, margin, target + additional_gap)
@@ -820,6 +845,7 @@ impl PanelSpace {
         if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
             self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
+            self.handle_overflow_popup_events();
 
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
@@ -1066,6 +1092,14 @@ impl PanelSpace {
                 duration: Duration::from_millis(300),
             })
         }
+
+        for e in self.space.elements() {
+            let CosmicMappedInternal::OverflowButton(b) = e else {
+                continue;
+            };
+            b.set_theme(colors.theme.clone());
+            b.force_redraw();
+        }
         self.colors = colors;
     }
 
@@ -1073,6 +1107,7 @@ impl PanelSpace {
     pub fn clear(&mut self) {
         self.is_dirty = true;
         self.popups.clear();
+        self.overflow_popup = None;
         self.damage_tracked_renderer = Some(OutputDamageTracker::new(
             self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
             1.0,
@@ -1107,8 +1142,7 @@ impl PanelSpace {
         } else if let Some(p) = self.popups.iter().find(|p| {
             s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface())
         }) {
-            // panic!("Popup parent surface not found in space");
-            p.rectangle.loc
+            p.popup.rectangle.loc
         } else {
             return;
         }; // TODO check overflow popup spaces too

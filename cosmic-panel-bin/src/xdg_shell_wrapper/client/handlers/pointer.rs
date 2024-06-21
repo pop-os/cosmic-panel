@@ -1,10 +1,13 @@
 use std::time::Instant;
 
-use crate::xdg_shell_wrapper::{
-    client_state::FocusStatus,
-    server_state::{SeatPair, ServerPointerFocus},
-    shared_state::GlobalState,
-    space::WrapperSpace,
+use crate::{
+    iced::elements::{target::SpaceTarget, CosmicMappedInternal},
+    xdg_shell_wrapper::{
+        client_state::FocusStatus,
+        server_state::{SeatPair, ServerPointerFocus},
+        shared_state::GlobalState,
+        space::WrapperSpace,
+    },
 };
 use sctk::{delegate_pointer, seat::pointer::PointerHandler, shell::WaylandSurface};
 use smithay::{
@@ -12,6 +15,7 @@ use smithay::{
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::protocol::wl_pointer::AxisSource,
     utils::{Point, SERIAL_COUNTER},
+    wayland::shell::xdg::ToplevelSurface,
 };
 
 impl PointerHandler for GlobalState {
@@ -135,11 +139,15 @@ impl GlobalState {
                         },
                     );
                     if let Some(s_surface) = s_surface {
-                        ptr.motion(self, Some((s_surface, Point::default())), &MotionEvent {
-                            location: Point::from((surface_x, surface_y)),
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time: time.try_into().unwrap(),
-                        });
+                        ptr.motion(
+                            self,
+                            Some((s_surface.into(), Point::default())),
+                            &MotionEvent {
+                                location: Point::from((surface_x, surface_y)),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: time.try_into().unwrap(),
+                            },
+                        );
                         ptr.frame(self);
 
                         continue;
@@ -152,7 +160,8 @@ impl GlobalState {
                             e.surface.clone(),
                         )
                     {
-                        ptr.motion(self, Some((surface.clone(), s_pos)), &MotionEvent {
+                        dbg!("motion");
+                        ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),
                             time: time.try_into().unwrap(),
@@ -192,11 +201,15 @@ impl GlobalState {
                         },
                     );
                     if let Some(s_surface) = s_surface {
-                        ptr.motion(self, Some((s_surface, Point::default())), &MotionEvent {
-                            location: Point::from((surface_x, surface_y)),
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time: time.try_into().unwrap(),
-                        });
+                        ptr.motion(
+                            self,
+                            Some((s_surface.into(), Point::default())),
+                            &MotionEvent {
+                                location: Point::from((surface_x, surface_y)),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: time.try_into().unwrap(),
+                            },
+                        );
                         ptr.frame(self);
                         continue;
                     }
@@ -208,7 +221,8 @@ impl GlobalState {
                             c_focused_surface,
                         )
                     {
-                        ptr.motion(self, Some((surface.clone(), s_pos)), &MotionEvent {
+                        // dbg!("motion", s_pgos, &surface);
+                        ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),
                             time,
@@ -243,7 +257,7 @@ impl GlobalState {
                         },
                     );
                     if let Some(s_surface) = s_surface {
-                        kbd.set_focus(self, Some(s_surface), SERIAL_COUNTER.next_serial());
+                        kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
 
                         ptr.button(self, &ButtonEvent {
                             serial: SERIAL_COUNTER.next_serial(),
@@ -281,7 +295,7 @@ impl GlobalState {
                         },
                     );
                     if let Some(s_surface) = s_surface {
-                        kbd.set_focus(self, Some(s_surface), SERIAL_COUNTER.next_serial());
+                        kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
 
                         ptr.button(self, &ButtonEvent {
                             serial: SERIAL_COUNTER.next_serial(),

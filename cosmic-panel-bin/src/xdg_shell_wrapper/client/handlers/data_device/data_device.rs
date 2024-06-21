@@ -18,13 +18,17 @@ use smithay::{
     input::pointer::GrabStartData,
     reexports::wayland_server::{protocol::wl_data_device_manager::DndAction, Resource},
     utils::SERIAL_COUNTER,
-    wayland::selection::data_device::{
-        set_data_device_focus, set_data_device_selection, start_dnd, SourceMetadata,
+    wayland::{
+        seat::WaylandFocus,
+        selection::data_device::{
+            set_data_device_focus, set_data_device_selection, start_dnd, SourceMetadata,
+        },
     },
 };
 
 use crate::xdg_shell_wrapper::{
-    client_state::FocusStatus, shared_state::GlobalState, space::WrapperSpace,
+    client_state::FocusStatus, server_state::ServerPointerFocus, shared_state::GlobalState,
+    space::WrapperSpace,
 };
 
 impl DataDeviceHandler for GlobalState {
@@ -139,7 +143,7 @@ impl DataDeviceHandler for GlobalState {
                 self,
                 SERIAL_COUNTER.next_serial(),
                 Some(GrabStartData {
-                    focus: server_focus.map(|f| (f.surface, f.s_pos.to_f64())),
+                    focus: server_focus.map(|f| (f.surface.into(), f.s_pos.to_f64())),
                     button: 0x110, // assume left button for now, maybe there is another way..
                     location: (x, y).into(),
                 }),
@@ -228,11 +232,13 @@ impl DataDeviceHandler for GlobalState {
             offer.surface.clone(),
         );
 
-        set_data_device_focus(
-            &self.server_state.display_handle,
-            &seat.server.seat,
-            server_focus.and_then(|f| f.surface.client()),
-        );
+        let client = if let Some(ServerPointerFocus { surface: w, .. }) = server_focus {
+            w.wl_surface().and_then(|s| s.client())
+        } else {
+            None
+        };
+
+        set_data_device_focus(&self.server_state.display_handle, &seat.server.seat, client);
         let motion_event = PointerEvent {
             surface: offer.surface.clone(),
             kind: PointerEventKind::Motion { time: offer.time.unwrap_or_default() },

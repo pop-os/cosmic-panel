@@ -16,7 +16,8 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo, workspace::WorkspaceGroup,
+    toplevel_info::ToplevelInfo, wayland_client::protocol::wl_seat::WlSeat,
+    workspace::WorkspaceGroup,
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
 use cosmic_panel_config::{
@@ -36,10 +37,8 @@ use sctk::{
 use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
-    reexports::wayland_server::{
-        backend::ClientId,
-        {self},
-    },
+    reexports::wayland_server::{self, backend::ClientId},
+    utils::Serial,
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -493,7 +492,47 @@ impl SpaceContainer {
         spaces
     }
 
-    pub fn toggle_overflow_popup(&mut self, _id: id::Id) {
-        // TODO implement
+    pub fn toggle_overflow_popup(
+        &mut self,
+        panel_id: usize,
+        element_id: id::Id,
+        compositor_state: &sctk::compositor::CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
+        qh: &QueueHandle<GlobalState>,
+        xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
+        seat: (u32, WlSeat),
+    ) {
+        for space in &mut self.space_list {
+            if space.space.id() == panel_id {
+                if let Err(err) = space.toggle_overflow_popup(
+                    element_id,
+                    compositor_state,
+                    fractional_scale_manager,
+                    viewport,
+                    qh,
+                    xdg_shell_state,
+                    seat,
+                ) {
+                    error!("Failed to toggle overflow popup: {}", err);
+                }
+                break;
+            }
+        }
+    }
+
+    pub fn iced_request_redraw(&mut self, panel_id: usize) {
+        for space in &mut self.space_list {
+            if space.space.id() == panel_id {
+                space.is_dirty = true;
+                break;
+            }
+        }
+    }
+
+    pub fn update_hidden_applet_frame(&mut self) {
+        for space in &mut self.space_list {
+            space.update_hidden_applet_frame();
+        }
     }
 }

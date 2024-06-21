@@ -64,6 +64,7 @@ use smithay::{
 };
 
 pub mod elements;
+pub mod panel_message;
 
 pub type Element<'a, Message> = cosmic::iced::Element<'a, Message, cosmic::Theme, cosmic::Renderer>;
 
@@ -144,10 +145,12 @@ struct IcedElementInternal<P: Program + Send + 'static> {
     outputs: HashSet<Output>,
     buffers: HashMap<OrderedFloat<f64>, (MemoryRenderBuffer, Option<(Vec<Primitive>, Color)>)>,
     pending_update: Option<Instant>,
+    request_redraws: bool,
 
     // state
     size: Size<i32, Logical>,
     cursor_pos: Option<Point<f64, Logical>>,
+    panel_id: usize,
 
     // iced
     theme: Theme,
@@ -189,6 +192,7 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             &mut renderer,
             &mut debug,
         );
+        let request_redraws = self.request_redraws;
 
         IcedElementInternal {
             outputs: self.outputs.clone(),
@@ -197,6 +201,7 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             size: self.size.clone(),
             cursor_pos: self.cursor_pos.clone(),
             theme: self.theme.clone(),
+            panel_id: self.panel_id,
             renderer,
             state,
             debug,
@@ -204,6 +209,7 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             scheduler,
             executor_token,
             rx,
+            request_redraws,
         }
     }
 }
@@ -239,6 +245,8 @@ impl<P: Program + Send + 'static> IcedElement<P> {
         size: impl Into<Size<i32, Logical>>,
         handle: LoopHandle<'static, GlobalState>,
         theme: cosmic::Theme,
+        panel_id: usize,
+        request_redraws: bool,
     ) -> IcedElement<P> {
         let size = size.into();
         let mut renderer = IcedRenderer::TinySkia(IcedGraphicsRenderer::new(
@@ -278,6 +286,8 @@ impl<P: Program + Send + 'static> IcedElement<P> {
             scheduler,
             executor_token,
             rx,
+            panel_id,
+            request_redraws,
         };
         let _ = internal.update(true);
 
@@ -375,7 +385,6 @@ impl<P: Program + Send + 'static> IcedElementInternal<P> {
             .map(|p| IcedPoint::new(p.x as f32, p.y as f32))
             .map(Cursor::Available)
             .unwrap_or(Cursor::Unavailable);
-
         let actions = self
             .state
             .update(
@@ -411,6 +420,13 @@ impl<P: Program + Send + 'static> IcedElementInternal<P> {
 impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> {
     fn enter(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &MotionEvent) {
         let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+        let panel_id = internal.panel_id;
+        internal.handle.insert_idle(move |state| {
+            let _ = state.space.iced_request_redraw(panel_id);
+        });
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorEntered));
         let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorMoved { position }));
@@ -420,9 +436,19 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
 
     fn motion(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &MotionEvent) {
         let mut internal = self.0.lock().unwrap();
-        let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
-        internal.state.queue_event(Event::Mouse(MouseEvent::CursorMoved { position }));
-        internal.cursor_pos = Some(event.location);
+        let bbox = Rectangle::from_loc_and_size((0, 0), internal.size);
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+
+        if bbox.contains(event.location.to_i32_round()) {
+            internal.cursor_pos = Some(event.location);
+            let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
+            internal.state.queue_event(Event::Mouse(MouseEvent::CursorMoved { position }));
+        } else {
+            internal.cursor_pos = None;
+            internal.state.queue_event(Event::Mouse(MouseEvent::CursorLeft));
+        }
         let _ = internal.update(true);
     }
 
@@ -436,6 +462,9 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
 
     fn button(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &ButtonEvent) {
         let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
         let button = match event.button {
             0x110 => MouseButton::Left,
             0x111 => MouseButton::Right,
@@ -451,6 +480,9 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
 
     fn axis(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, frame: AxisFrame) {
         let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
         internal.state.queue_event(Event::Mouse(MouseEvent::WheelScrolled {
             delta: if let Some(discrete) = frame.v120 {
                 ScrollDelta::Lines { x: discrete.0 as f32 / 120., y: discrete.1 as f32 / 120. }
@@ -471,6 +503,14 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
         _time: u32,
     ) {
         let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+            let panel_id = internal.panel_id;
+            internal.handle.insert_idle(move |state| {
+                let _ = state.space.iced_request_redraw(panel_id);
+            });
+        }
+        internal.cursor_pos = None;
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorLeft));
         let _ = internal.update(true);
     }
@@ -657,6 +697,7 @@ impl<P: Program + Send + 'static> SpaceElement for IcedElement<P> {
         internal_ref.buffers.retain(|scale, _| {
             internal_ref.outputs.iter().any(|o| o.current_scale().fractional_scale() == **scale)
         });
+        let mut changed = false;
         for scale in internal_ref
             .outputs
             .iter()
@@ -665,6 +706,7 @@ impl<P: Program + Send + 'static> SpaceElement for IcedElement<P> {
             .collect::<Vec<_>>()
             .into_iter()
         {
+            changed = true;
             let buffer_size =
                 internal_ref.size.to_f64().to_buffer(*scale, Transform::Normal).to_i32_round();
             internal_ref.buffers.insert(
@@ -681,7 +723,7 @@ impl<P: Program + Send + 'static> SpaceElement for IcedElement<P> {
                 ),
             );
         }
-        internal.update(true);
+        internal.update(changed);
     }
 }
 
@@ -711,6 +753,9 @@ where
         } else {
             false
         };
+        if force {
+            internal_ref.pending_update = None;
+        }
         let _ = internal_ref.update(force);
         if let Some((buffer, ref mut old_primitives)) =
             internal_ref.buffers.get_mut(&OrderedFloat(scale.x))

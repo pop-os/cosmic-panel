@@ -1,11 +1,15 @@
 use std::{
-    borrow::Cow,
+    borrow::{BorrowMut, Cow},
     hash::Hash,
     rc::Rc,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
-use calloop::LoopHandle;
+use calloop::{Idle, LoopHandle};
+use once_cell::sync::OnceCell;
 // element for rendering a button that toggles the overflow popup when clicked
 use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
@@ -33,16 +37,19 @@ pub fn overflow_button_element(
     icon: Cow<'static, str>,
     handle: LoopHandle<'static, GlobalState>,
     theme: cosmic::Theme,
+    panel_id: usize,
 ) -> OverflowButtonElement {
     let size = (
         (icon_size as f32 + button_padding.horizontal()).round() as i32,
         (icon_size as f32 + button_padding.vertical()).round() as i32,
     );
     IcedElement::new(
-        OverflowButton::new(id, pos, icon_size, button_padding, selected, icon),
+        OverflowButton::new(id, pos, icon_size, button_padding, selected, icon, panel_id),
         Size::from(size),
         handle,
         theme,
+        panel_id,
+        true,
     )
 }
 
@@ -57,13 +64,14 @@ pub enum Message {
 
 #[derive(Debug, Clone)]
 pub struct OverflowButton {
-    id: id::Id,
+    pub id: id::Id,
     pos: Point<i32, Logical>,
     icon_size: u16,
     button_padding: Padding,
     /// Selected if the popup is open
     selected: Arc<AtomicBool>,
     icon: Cow<'static, str>,
+    panel_id: usize,
 }
 
 impl OverflowButton {
@@ -74,8 +82,9 @@ impl OverflowButton {
         button_padding: Padding,
         selected: Arc<AtomicBool>,
         icon: Cow<'static, str>,
+        panel_id: usize,
     ) -> Self {
-        Self { id, pos, icon_size, button_padding, selected, icon }
+        Self { id, pos, icon_size, button_padding, selected, icon, panel_id }
     }
 }
 
@@ -104,8 +113,23 @@ impl Program for OverflowButton {
         match message {
             Message::TogglePopup => {
                 let id = self.id.clone();
-                loop_handle.insert_idle(move |state| {
-                    state.space.toggle_overflow_popup(id);
+                let panel_id = self.panel_id;
+
+                _ = loop_handle.insert_idle(move |state| {
+                    let Some(seat) = state.server_state.seats.get(0) else {
+                        return;
+                    };
+                    let c_seat = (seat.client.last_pointer_press.0, seat.client._seat.clone());
+                    state.space.toggle_overflow_popup(
+                        panel_id,
+                        id.clone(),
+                        &state.client_state.compositor_state,
+                        state.client_state.fractional_scaling_manager.as_ref(),
+                        state.client_state.viewporter_state.as_ref(),
+                        &state.client_state.queue_handle,
+                        &mut state.client_state.xdg_shell_state,
+                        c_seat,
+                    );
                 });
             },
         }
@@ -130,6 +154,7 @@ impl Program for OverflowButton {
                 .width(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal()))
                 .height(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal())),
             )
+            .selected(self.selected.load(Ordering::Relaxed))
             .style(Button::AppletIcon)
             .on_press(Message::TogglePopup),
         )

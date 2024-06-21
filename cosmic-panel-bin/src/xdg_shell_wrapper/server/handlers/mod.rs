@@ -24,6 +24,7 @@ use smithay::{
         compositor::{with_states, SurfaceAttributes},
         dmabuf::{DmabufHandler, ImportNotifier},
         output::OutputHandler,
+        seat::WaylandFocus,
         selection::{
             data_device::{
                 set_data_device_focus, with_source_metadata, ClientDndGrabHandler,
@@ -39,10 +40,13 @@ use smithay::{
 use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
-use crate::xdg_shell_wrapper::{
-    shared_state::GlobalState,
-    space::{ClientEglSurface, WrapperSpace},
-    util::write_and_attach_buffer,
+use crate::{
+    iced::elements::target::SpaceTarget,
+    xdg_shell_wrapper::{
+        shared_state::GlobalState,
+        space::{ClientEglSurface, WrapperSpace},
+        util::write_and_attach_buffer,
+    },
 };
 
 pub(crate) mod compositor;
@@ -63,8 +67,8 @@ delegate_primary_selection!(GlobalState);
 //
 
 impl SeatHandler for GlobalState {
-    type KeyboardFocus = WlSurface;
-    type PointerFocus = WlSurface;
+    type KeyboardFocus = SpaceTarget;
+    type PointerFocus = SpaceTarget;
     type TouchFocus = WlSurface;
 
     fn seat_state(&mut self) -> &mut SeatState<Self> {
@@ -77,9 +81,12 @@ impl SeatHandler for GlobalState {
         focused: Option<&Self::KeyboardFocus>,
     ) {
         let dh = &self.server_state.display_handle;
-        if let Some(client) = focused.and_then(|s| dh.get_client(s.id()).ok()) {
+        let Some(id) = focused.and_then(|s| s.wl_surface()).map(|s| s.id()) else {
+            return;
+        };
+        if let Some(client) = dh.get_client(id.clone()).ok() {
             set_data_device_focus(dh, seat, Some(client));
-            let client2 = focused.and_then(|s| dh.get_client(s.id()).ok()).unwrap();
+            let client2 = dh.get_client(id).unwrap();
             set_primary_focus(dh, seat, Some(client2))
         }
     }
