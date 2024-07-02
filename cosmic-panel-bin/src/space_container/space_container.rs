@@ -502,6 +502,7 @@ impl SpaceContainer {
         qh: &QueueHandle<GlobalState>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         seat: (u32, WlSeat),
+        force_hide: bool,
     ) {
         for space in &mut self.space_list {
             if space.space.id() == panel_id {
@@ -513,6 +514,7 @@ impl SpaceContainer {
                     qh,
                     xdg_shell_state,
                     seat,
+                    force_hide,
                 ) {
                     error!("Failed to toggle overflow popup: {}", err);
                 }

@@ -38,13 +38,30 @@ pub fn overflow_button_element(
     handle: LoopHandle<'static, GlobalState>,
     theme: cosmic::Theme,
     panel_id: usize,
+    scale: f32,
 ) -> OverflowButtonElement {
+    let icon_size = icon_size as f32 * scale;
+    let Padding { top, right, bottom, left } = button_padding;
+    let button_padding = Padding {
+        top: top * scale,
+        right: right * scale,
+        bottom: bottom * scale,
+        left: left * scale,
+    };
     let size = (
         (icon_size as f32 + button_padding.horizontal()).round() as i32,
         (icon_size as f32 + button_padding.vertical()).round() as i32,
     );
     IcedElement::new(
-        OverflowButton::new(id, pos, icon_size, button_padding, selected, icon, panel_id),
+        OverflowButton::new(
+            id,
+            pos,
+            icon_size.round() as u16,
+            button_padding,
+            selected,
+            icon,
+            panel_id,
+        ),
         Size::from(size),
         handle,
         theme,
@@ -60,6 +77,7 @@ pub fn with_id<T>(b: &OverflowButtonElement, f: impl Fn(&Id) -> T) -> T {
 #[derive(Debug, Clone, Copy)]
 pub enum Message {
     TogglePopup,
+    HidePopup,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +147,29 @@ impl Program for OverflowButton {
                         &state.client_state.queue_handle,
                         &mut state.client_state.xdg_shell_state,
                         c_seat,
+                        false,
+                    );
+                });
+            },
+            Message::HidePopup => {
+                let id = self.id.clone();
+                let panel_id = self.panel_id;
+
+                _ = loop_handle.insert_idle(move |state| {
+                    let Some(seat) = state.server_state.seats.get(0) else {
+                        return;
+                    };
+                    let c_seat = (seat.client.last_pointer_press.0, seat.client._seat.clone());
+                    state.space.toggle_overflow_popup(
+                        panel_id,
+                        id.clone(),
+                        &state.client_state.compositor_state,
+                        state.client_state.fractional_scaling_manager.as_ref(),
+                        state.client_state.viewporter_state.as_ref(),
+                        &state.client_state.queue_handle,
+                        &mut state.client_state.xdg_shell_state,
+                        c_seat,
+                        true,
                     );
                 });
             },
