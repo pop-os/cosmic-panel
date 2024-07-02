@@ -544,7 +544,7 @@ impl PanelSpace {
                             );
                             layer_shell_wl_surface.commit();
                         }
-                        self.close_popups();
+                        self.close_popups([]);
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: now,
                             progress,
@@ -571,7 +571,7 @@ impl PanelSpace {
 
                 if let FocusStatus::LastFocused(_) = cur_hover {
                     // start transition to visible
-                    self.close_popups();
+                    self.close_popups([]);
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,
                         progress: total_t.checked_sub(progress).unwrap_or_default(),
@@ -934,26 +934,14 @@ impl PanelSpace {
                         let egl_context = EGLContext::new_with_config(
                             &new_egl_display,
                             GlAttributes {
-                                version: (3, 0),
+                                version: (2, 0),
                                 profile: None,
                                 debug: cfg!(debug_assertions),
                                 vsync: false,
                             },
                             PixelFormatRequirements::_8_bit(),
                         )
-                        .unwrap_or_else(|_| {
-                            EGLContext::new_with_config(
-                                &new_egl_display,
-                                GlAttributes {
-                                    version: (2, 0),
-                                    profile: None,
-                                    debug: cfg!(debug_assertions),
-                                    vsync: false,
-                                },
-                                PixelFormatRequirements::_8_bit(),
-                            )
-                            .expect("Failed to create EGL context")
-                        });
+                        .expect("Failed to create EGL context");
 
                         let mut new_renderer = if let Some(renderer) = renderer.take() {
                             renderer
@@ -1143,9 +1131,26 @@ impl PanelSpace {
             s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface())
         }) {
             p.popup.rectangle.loc
+        } else if let Some(p) = self.overflow_popup.as_ref().and_then(|(_, section)| {
+            let space = match section {
+                OverflowSection::Left => &self.overflow_left,
+                OverflowSection::Center => &self.overflow_center,
+                OverflowSection::Right => &self.overflow_right,
+            };
+            space
+                .elements()
+                .find(|w| {
+                    s_surface
+                        .get_parent_surface()
+                        .is_some_and(|s| w.wl_surface().is_some_and(|w| w.as_ref() == &s))
+                })
+                .map(|w| space.element_location(w).unwrap_or_else(|| (0, 0).into()))
+        }) {
+            p
         } else {
-            return;
-        }; // TODO check overflow popup spaces too
+            tracing::warn!("No parent surface found for popup");
+            (0, 0).into()
+        };
 
         positioner.set_size(rect_size.w.max(1), rect_size.h.max(1));
         positioner.set_anchor_rect(

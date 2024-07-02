@@ -1,7 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
-    fs,
+    fs, mem,
     os::{fd::OwnedFd, unix::prelude::AsRawFd},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -66,6 +66,7 @@ use smithay::{
 };
 use tokio::sync::oneshot;
 use tracing::{error, error_span, info, info_span, trace};
+use wayland_backend::server::{ClientId, ObjectId};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use crate::{
@@ -133,20 +134,64 @@ impl WrapperSpace for PanelSpace {
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
     ) -> anyhow::Result<()> {
+        tracing::info!("adding popup");
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
+        let mut clear_exclude = Vec::new();
+        let mut parent_parents = Vec::new();
 
-        let parent = self.popups.iter().find_map(|p| {
-            if s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface()) {
-                Some(p.popup.c_popup.xdg_surface())
-            } else {
-                None
+        let parent = self
+            .popups
+            .iter()
+            .find_map(|p| {
+                if s_surface.get_parent_surface().is_some_and(|s| &s == p.s_surface.wl_surface()) {
+                    clear_exclude.push(p.popup.c_popup.clone());
+                    parent_parents.push(p.popup.parent.clone());
+                    Some(p.popup.c_popup.clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                let (p, space) = match self.overflow_popup.as_ref() {
+                    Some((p, OverflowSection::Left)) => (p, &self.overflow_left),
+                    Some((p, OverflowSection::Center)) => (p, &self.overflow_center),
+                    Some((p, OverflowSection::Right)) => (p, &self.overflow_right),
+                    _ => return None,
+                };
+                if space.elements().any(|e| {
+                    if let PopupMappedInternal::Window(w) = e {
+                        s_surface
+                            .get_parent_surface()
+                            .zip(w.wl_surface())
+                            .is_some_and(|(a, b)| &a == b.as_ref())
+                    } else {
+                        false
+                    }
+                }) {
+                    clear_exclude.push(p.c_popup.clone());
+                    parent_parents.push(p.parent.clone());
+                    Some(p.c_popup.clone())
+                } else {
+                    None
+                }
+            });
+
+        // TODO maybe extract this to a function if it's needed elsewhere
+        while !parent_parents.is_empty() {
+            for p in
+                self.popups.iter().map(|p| &p.popup).chain(self.overflow_popup.iter().map(|p| &p.0))
+            {
+                for w in mem::take(&mut parent_parents) {
+                    if &w == p.c_popup.wl_surface() {
+                        parent_parents.push(p.parent.clone());
+                    }
+                }
             }
-        });
-        self.overflow_popup = None;
-
+        }
+        self.close_popups(clear_exclude);
         let c_popup = popup::Popup::from_surface(
-            parent,
+            parent.as_ref().map(|p| p.xdg_surface()),
             &positioner,
             qh,
             c_wl_surface.clone(),
@@ -207,7 +252,7 @@ impl WrapperSpace for PanelSpace {
         c_wl_surface.commit();
 
         let cur_popup_state = Some(WrapperPopupState::WaitConfigure);
-
+        tracing::info!("adding popup to popups");
         self.popups.push(WrapperPopup {
             popup: PanelPopup {
                 damage_tracked_renderer: OutputDamageTracker::new(
@@ -227,6 +272,9 @@ impl WrapperSpace for PanelSpace {
                 fractional_scale,
                 viewport,
                 scale: self.scale,
+                parent: parent
+                    .map(|p| p.wl_surface().clone())
+                    .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
             },
             s_surface,
         });
@@ -767,21 +815,24 @@ impl WrapperSpace for PanelSpace {
                 .find(|(_, f)| f.1 == seat_name)
                 .map(|(i, f)| (i, f.0.clone()))
         } {
-            // close popups when panel is pressed
-            if self.layer.as_ref().map(|s| s.wl_surface()) == Some(&prev_foc.1)
-                && !self.popups.is_empty()
-                && press
-            {
-                self.close_popups();
-            }
-            self.s_hovered_surface.iter().find_map(|h| {
+            let target = self.s_hovered_surface.iter().find_map(|h| {
                 if h.seat_name.as_str() == seat_name {
                     Some(h.surface.clone().into())
                 } else {
                     None
                 }
-            })
+            });
+            if target.is_none() {
+                // close popups when panel is pressed
+                if self.layer.as_ref().map(|s| s.wl_surface()) == Some(&prev_foc.1) && press {
+                    self.close_popups([]);
+                }
+            }
+            target
         } else {
+            if press {
+                self.close_popups([]);
+            }
             // no hover found
             // if has keyboard focus remove it and close popups
             self.keyboard_leave(seat_name, None);
@@ -800,8 +851,14 @@ impl WrapperSpace for PanelSpace {
             self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        pub enum HoverId {
+            Client(ClientId),
+            Overflow(id::Id),
+        }
 
-        let mut cur_client_hover_id = None;
+        let mut cur_client_hover_id: Option<HoverId> = None;
+        let mut overflow_client_hover_id = None;
         let mut hover_relative_loc = None;
         let mut hover_geo = None;
 
@@ -838,19 +895,23 @@ impl WrapperSpace for PanelSpace {
             // FIXME
             // There has to be a way to avoid messing with the scaling like this...
             let space_focus = self.space.elements().rev().find_map(|e| {
-                let Some(render_location) = self.space.element_location(e) else {
+                let Some(location) = self.space.element_location(e) else {
                     self.generated_ptr_event_count =
                         self.generated_ptr_event_count.saturating_sub(1);
                     return None;
                 };
 
-                let mut bbox = e.bbox().to_f64();
-                bbox.size.w /= self.scale;
-                bbox.size.h /= self.scale;
-                bbox.loc.x = render_location.x as f64;
-                bbox.loc.y = render_location.y as f64;
+                // XXX e.bbox seems to include the popup
+                let mut size = match e {
+                    CosmicMappedInternal::OverflowButton(b) => b.bbox().size,
+                    CosmicMappedInternal::Window(w) => w.bbox().size,
+                    _ => return None,
+                }
+                .to_f64();
+                size = size.downscale(self.scale);
+                let bbox = Rectangle::from_loc_and_size(location.to_f64(), size);
                 if bbox.contains((x as f64, y as f64)) {
-                    Some((e.clone(), render_location))
+                    Some((e.clone(), location))
                 } else {
                     None
                 }
@@ -867,7 +928,18 @@ impl WrapperSpace for PanelSpace {
 
                 hover_geo = Some(geo);
                 hover_relative_loc = Some(relative_loc);
-                cur_client_hover_id = target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
+                match &target {
+                    CosmicMappedInternal::Window(w) => {
+                        cur_client_hover_id = w
+                            .wl_surface()
+                            .and_then(|t| t.client().map(|c| HoverId::Client(c.id())));
+                    },
+                    CosmicMappedInternal::OverflowButton(b) => {
+                        cur_client_hover_id =
+                            Some(HoverId::Overflow(b.with_program(|p| p.id.clone())));
+                    },
+                    _ => {},
+                };
 
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = relative_loc.to_f64();
@@ -936,7 +1008,8 @@ impl WrapperSpace for PanelSpace {
 
                 hover_geo = Some(geo);
                 hover_relative_loc = Some(relative_loc);
-                cur_client_hover_id = target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
+                overflow_client_hover_id =
+                    target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
 
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = relative_loc.to_f64();
@@ -984,25 +1057,69 @@ impl WrapperSpace for PanelSpace {
             .and_then(|p| p.s_surface.wl_surface().client())
             .map(|c| c.id());
 
-        if prev_popup_client.is_some()
-            && prev_popup_client != cur_client_hover_id
-            && self.generated_ptr_event_count == 0
+        if prev_popup_client.is_some() && matches!(cur_client_hover_id, Some(HoverId::Overflow(_)))
         {
+            self.close_popups([]);
+            if let Some((relative_loc, geo)) = hover_relative_loc.zip(hover_geo) {
+                // place in center
+                let mut p = (x, y);
+                p.0 = relative_loc.x + geo.size.w as i32 / 2;
+                p.1 = relative_loc.y + geo.size.h as i32 / 2;
+                self.generated_pointer_events = vec![
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
+                    },
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Press {
+                            time: 0,
+                            button: BTN_LEFT,
+                            serial: 0,
+                        },
+                    },
+                    PointerEvent {
+                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
+                        position: (p.0 as f64, p.1 as f64),
+                        kind: sctk::seat::pointer::PointerEventKind::Release {
+                            time: 0,
+                            button: BTN_LEFT,
+                            serial: 0,
+                        },
+                    },
+                ];
+            }
+        } else if ((prev_popup_client
+            .as_ref()
+            .zip(cur_client_hover_id.as_ref())
+            .is_some_and(|(a, b)| &HoverId::Client(a.clone()) != b))
+            || self.overflow_popup.is_some())
+            && self.generated_ptr_event_count == 0
+            && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
+        {
+            self.overflow_popup = None;
             // send press to new client if it hover flag is set
             let left_guard = self.clients_left.lock().unwrap();
             let center_guard = self.clients_center.lock().unwrap();
             let right_guard = self.clients_right.lock().unwrap();
-
-            if let Some(((c, relative_loc), geo)) = left_guard
+            let client = left_guard
                 .iter()
                 .chain(center_guard.iter())
                 .chain(right_guard.iter())
                 .find(|c| {
-                    c.auto_popup_hover_press.is_some() && Some(c.client.id()) == cur_client_hover_id
+                    c.auto_popup_hover_press.is_some()
+                        && (Some(HoverId::Client(c.client.id())) == cur_client_hover_id
+                            || Some(c.client.id()) == overflow_client_hover_id)
+                })
+                .or_else(|| {
+                    // overflow button
+                    None
                 })
                 .zip(hover_relative_loc)
-                .zip(hover_geo)
-            {
+                .zip(hover_geo);
+            if let Some(((c, relative_loc), geo)) = client {
                 let mut p = (x, y);
                 let effective_anchor =
                     match (c.auto_popup_hover_press.unwrap(), self.config.is_horizontal()) {
@@ -1057,7 +1174,6 @@ impl WrapperSpace for PanelSpace {
                         // should be handled above
                     },
                 }
-
                 self.generated_pointer_events = vec![
                     PointerEvent {
                         surface: self.layer.as_ref().unwrap().wl_surface().clone(),
@@ -1084,20 +1200,15 @@ impl WrapperSpace for PanelSpace {
                     },
                 ];
             }
-        } else if prev_popup_client.is_some() && self.generated_ptr_event_count == 0 {
-            // TODO simulate button press on the overflow button...
         }
         self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
         ret
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
-        let prev_len = self.s_focused_surface.len();
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
 
-        if prev_len != self.s_focused_surface.len() {
-            self.close_popups();
-        }
+        self.close_popups([]);
     }
 
     fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
@@ -1186,6 +1297,10 @@ impl WrapperSpace for PanelSpace {
             (c_output.as_ref(), s_output.as_ref(), output_info.as_ref())
         {
             self.space.map_output(s_output, output_info.location);
+            self.overflow_center.map_output(s_output, output_info.location);
+            self.overflow_left.map_output(s_output, output_info.location);
+            self.overflow_right.map_output(s_output, output_info.location);
+
             match &self.config.output {
                 CosmicPanelOuput::Active => {
                     bail!("output does not match config")
@@ -1344,6 +1459,45 @@ impl WrapperSpace for PanelSpace {
                             fractional_scale.set_preferred_scale(scale);
                         });
                     });
+                }
+            }
+        }
+        // check overflow popup
+        if let Some((popup, _)) = self.overflow_popup.as_mut() {
+            if popup.c_popup.wl_surface() == surface {
+                popup.scale = scale;
+                let Rectangle { loc, size } = popup.rectangle;
+                if popup.state.is_none() {
+                    popup.state = Some(WrapperPopupState::Rectangle {
+                        x: loc.x,
+                        y: loc.y,
+                        width: size.w,
+                        height: size.h,
+                    });
+                }
+
+                for surface in self
+                    .overflow_left
+                    .elements()
+                    .filter_map(|e| e.wl_surface().clone())
+                    .chain(self.overflow_center.elements().filter_map(|e| e.wl_surface().clone()))
+                    .chain(self.overflow_right.elements().filter_map(|e| e.wl_surface().clone()))
+                {
+                    if legacy {
+                        popup.c_popup.wl_surface().set_buffer_scale(scale as i32);
+                    } else {
+                        popup.c_popup.wl_surface().set_buffer_scale(1);
+
+                        if let Some(viewport) = popup.viewport.as_ref() {
+                            viewport.set_destination(size.w.max(1), size.h.max(1));
+                        }
+
+                        with_states(&surface, |states| {
+                            with_fractional_scale(states, |fractional_scale| {
+                                fractional_scale.set_preferred_scale(scale);
+                            });
+                        });
+                    }
                 }
             }
         }

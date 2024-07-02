@@ -172,45 +172,29 @@ impl PanelSpace {
                                     .to_f64()
                                     .to_physical(self.scale)
                                     .to_i32_round();
+
                                 if let CosmicMappedInternal::OverflowButton(b) = w {
                                     return Some(
-                                        b.render_elements(renderer, loc, self.scale.into(), 1.0)
+                                        b.render_elements(renderer, loc, 1.0.into(), 1.0)
                                             .into_iter()
                                             .map(|r| PanelRenderElement::Iced(r))
                                             .collect::<Vec<_>>(),
                                     );
                                 }
-
                                 w.toplevel().map(|t| {
                                     render_elements_from_surface_tree(
                                         renderer,
                                         t.wl_surface(),
                                         loc,
-                                        self.scale,
+                                        1.0,
                                         1.0,
                                         smithay::backend::renderer::element::Kind::Unspecified,
                                     )
                                     .into_iter()
                                     .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                        let mut src = r.src();
-                                        let mut geo = r.geometry(self.scale.into());
-                                        if let Some(size) = t.current_state().size {
-                                            let scaled_size = size
-                                                .to_f64()
-                                                .to_buffer(
-                                                    self.scale,
-                                                    smithay::utils::Transform::Normal,
-                                                )
-                                                .to_i32_ceil();
-                                            if size.w > 0 && scaled_size.w < src.size.w {
-                                                src.size.w = scaled_size.w;
-                                                geo.size.w = scaled_size.w.ceil() as i32;
-                                            }
-                                            if size.h > 0 && scaled_size.h < src.size.h {
-                                                src.size.h = scaled_size.h;
-                                                geo.size.h = scaled_size.h.ceil() as i32;
-                                            }
-                                        }
+                                        let src = r.src();
+                                        let geo = r.geometry(1.0.into());
+
                                         PanelRenderElement::Wayland(r, src, geo)
                                     })
                                     .collect::<Vec<_>>()
@@ -266,7 +250,7 @@ impl PanelSpace {
                 renderer,
                 p.s_surface.wl_surface(),
                 (0, 0),
-                self.scale,
+                1.0,
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );
@@ -307,7 +291,7 @@ impl PanelSpace {
                     crate::iced::elements::PopupMappedInternal::Popup(e) => {
                         // move to bg_render_element
                         bg_render_element = Some(
-                            e.render_elements(renderer, (0, 0).into(), self.scale.into(), 1.0)
+                            e.render_elements(renderer, (0, 0).into(), 1.0.into(), 1.0)
                                 .into_iter()
                                 .map(|r| PanelRenderElement::Iced(r))
                                 .collect::<Vec<_>>(),
@@ -330,28 +314,15 @@ impl PanelSpace {
                                 renderer,
                                 t.wl_surface(),
                                 loc,
-                                self.scale,
+                                1.0,
                                 1.0,
                                 smithay::backend::renderer::element::Kind::Unspecified,
                             )
                             .into_iter()
                             .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                let mut src = r.src();
-                                let mut geo = r.geometry(self.scale.into());
-                                if let Some(size) = t.current_state().size {
-                                    let scaled_size = size
-                                        .to_f64()
-                                        .to_buffer(self.scale, smithay::utils::Transform::Normal)
-                                        .to_i32_ceil();
-                                    if size.w > 0 && scaled_size.w < src.size.w {
-                                        src.size.w = scaled_size.w;
-                                        geo.size.w = scaled_size.w.ceil() as i32;
-                                    }
-                                    if size.h > 0 && scaled_size.h < src.size.h {
-                                        src.size.h = scaled_size.h;
-                                        geo.size.h = scaled_size.h.ceil() as i32;
-                                    }
-                                }
+                                let src = r.src();
+                                let geo = r.geometry(1.0.into());
+
                                 PanelRenderElement::Wayland(r, src, geo)
                             })
                             .collect::<Vec<_>>(),

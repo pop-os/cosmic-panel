@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use cctk::wayland_client::protocol::wl_surface::WlSurface;
 use sctk::{
     compositor::Region,
     shell::xdg::{popup::Popup, XdgPositioner},
@@ -75,6 +76,8 @@ pub struct PanelPopup {
     pub scale: f64,
     /// damage tracking renderer
     pub damage_tracked_renderer: OutputDamageTracker,
+    /// parent of the popup
+    pub parent: WlSurface,
 }
 
 impl WrapperPopup {

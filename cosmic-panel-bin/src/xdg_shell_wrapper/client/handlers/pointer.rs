@@ -160,7 +160,6 @@ impl GlobalState {
                             e.surface.clone(),
                         )
                     {
-                        dbg!("motion");
                         ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),
@@ -221,7 +220,6 @@ impl GlobalState {
                             c_focused_surface,
                         )
                     {
-                        // dbg!("motion", s_pgos, &surface);
                         ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),

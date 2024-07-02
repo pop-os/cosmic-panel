@@ -14,6 +14,7 @@ use cctk::{
 use cosmic::iced::id;
 
 use cosmic_panel_config::PanelAnchor;
+use sctk::shell::WaylandSurface;
 use smithay::{
     backend::{
         egl::EGLSurface,
@@ -56,9 +57,10 @@ impl PanelSpace {
         qh: &QueueHandle<GlobalState>,
         xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
         seat: (u32, WlSeat),
+        force_hide: bool,
     ) -> anyhow::Result<()> {
-        self.popups.clear();
-        if self.overflow_popup.is_some() {
+        if force_hide || self.overflow_popup.is_some() {
+            tracing::info!("removing overflow popup");
             self.overflow_popup = None;
             return Ok(());
         }
@@ -71,10 +73,13 @@ impl PanelSpace {
         else {
             bail!("No element found with id: {:?}", element_id);
         };
+        tracing::info!("adding overflow popup");
         let loc = self.space.element_location(&element).unwrap_or_default();
         let bbox = element.bbox();
         let positioner = XdgPositioner::new(xdg_shell_state).unwrap();
-        let popup_bbox = popup_element.bbox();
+        let popup_bbox = popup_element.bbox().to_f64().downscale(self.scale).to_i32_round();
+        let popup_bbox_upscale: Rectangle<i32, Logical> =
+            popup_bbox.to_f64().upscale(self.scale).to_i32_round();
         positioner.set_anchor_rect(loc.x, loc.y, bbox.size.w, bbox.size.h);
         let pixel_offset = 8;
         let (offset, anchor, gravity) = match self.config.anchor {
@@ -130,7 +135,7 @@ impl PanelSpace {
         self.overflow_popup = Some((
             PanelPopup {
                 damage_tracked_renderer: OutputDamageTracker::new(
-                    popup_bbox.size.to_f64().to_physical(self.scale).to_i32_round(),
+                    popup_bbox.to_f64().to_physical(self.scale).to_i32_round().size,
                     1.0,
                     smithay::utils::Transform::Flipped180,
                 ),
@@ -146,6 +151,7 @@ impl PanelSpace {
                 viewport,
                 scale: self.scale,
                 input_region: None,
+                parent: self.layer.as_ref().unwrap().wl_surface().clone(),
             },
             section,
         ));
