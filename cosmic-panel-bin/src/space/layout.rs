@@ -1,15 +1,19 @@
 use std::slice::IterMut;
 
-use crate::minimize::MinimizeApplet;
-use crate::space::corner_element::RoundedRectangleSettings;
-use crate::space::Alignment;
+use crate::{
+    minimize::MinimizeApplet,
+    space::{corner_element::RoundedRectangleSettings, Alignment},
+};
 
 use super::PanelSpace;
 use cosmic_panel_config::PanelAnchor;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
-use smithay::utils::{IsAlive, Physical, Size};
-use smithay::{desktop::Window, reexports::wayland_server::Resource, utils::Rectangle};
+use smithay::{
+    desktop::Window,
+    reexports::wayland_server::Resource,
+    utils::{IsAlive, Physical, Rectangle, Size},
+};
 
 impl PanelSpace {
     pub(crate) fn layout(&mut self) -> anyhow::Result<()> {

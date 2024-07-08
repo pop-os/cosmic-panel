@@ -178,15 +178,13 @@ impl Default for CosmicPanelContainerConfig {
                     output: CosmicPanelOuput::All,
                     background: CosmicPanelBackground::ThemeDefault,
                     plugins_wings: None,
-                    plugins_center: Some(
-                        vec![
-                            "com.system76.CosmicPanelLauncherButton".to_string(),
-                            "com.system76.CosmicPanelWorkspacesButton".to_string(),
-                            "com.system76.CosmicPanelAppButton".to_string(),
-                            "com.system76.CosmicAppList".to_string(),
-                            "com.system76.CosmicAppletMinimize".to_string(),
-                        ]
-                    ),
+                    plugins_center: Some(vec![
+                        "com.system76.CosmicPanelLauncherButton".to_string(),
+                        "com.system76.CosmicPanelWorkspacesButton".to_string(),
+                        "com.system76.CosmicPanelAppButton".to_string(),
+                        "com.system76.CosmicAppList".to_string(),
+                        "com.system76.CosmicAppletMinimize".to_string(),
+                    ]),
                     expand_to_edges: false,
                     padding: 0,
                     spacing: 4,
