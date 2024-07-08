@@ -32,7 +32,9 @@ use sctk::{
 use shlex::Shlex;
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
-    desktop::{utils::bbox_from_surface_tree, PopupKind, PopupManager, Window},
+    desktop::{
+        space::SpaceElement, utils::bbox_from_surface_tree, PopupKind, PopupManager, Window,
+    },
     output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
@@ -40,11 +42,11 @@ use smithay::{
     utils::{Logical, Rectangle, Size},
     wayland::{
         compositor::{with_states, SurfaceAttributes},
+        fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
     },
 };
-use smithay::{desktop::space::SpaceElement, wayland::fractional_scale::with_fractional_scale};
 use tokio::sync::oneshot;
 use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;

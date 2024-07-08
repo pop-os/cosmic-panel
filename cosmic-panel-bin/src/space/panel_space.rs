@@ -30,7 +30,9 @@ use smithay::{
     backend::{
         egl::{
             context::{GlAttributes, PixelFormatRequirements},
+            display::EGLDisplay,
             ffi::egl::SwapInterval,
+            surface::EGLSurface,
             EGLContext,
         },
         renderer::{
@@ -38,39 +40,30 @@ use smithay::{
             element::{
                 surface::WaylandSurfaceRenderElement, Element, RenderElement, UnderlyingStorage,
             },
-            gles::{GlesError, GlesFrame},
+            gles::{GlesError, GlesFrame, GlesRenderer},
             Bind, Unbind,
         },
     },
+    desktop::{PopupManager, Space, Window},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
-        wayland_server::{backend::ClientId, DisplayHandle},
+        wayland_server::{backend::ClientId, Client, DisplayHandle},
     },
-    utils::{Buffer, Physical, Rectangle},
+    utils::{Buffer, Logical, Physical, Rectangle, Size},
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
     },
 };
-use smithay::{
-    backend::{
-        egl::{display::EGLDisplay, surface::EGLSurface},
-        renderer::gles::GlesRenderer,
-    },
-    desktop::{PopupManager, Space, Window},
-    reexports::wayland_server::Client,
-    utils::{Logical, Size},
-};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
-use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use wayland_protocols::wp::{
     fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
     security_context::v1::client::wp_security_context_v1::WpSecurityContextV1,
+    viewporter::client::wp_viewport::WpViewport,
 };
-use xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 use xdg_shell_wrapper::{
     client_state::{ClientFocus, FocusStatus},
     server_state::{ServerFocus, ServerPtrFocus},
@@ -79,6 +72,7 @@ use xdg_shell_wrapper::{
         ClientEglDisplay, ClientEglSurface, SpaceEvent, Visibility, WrapperPopup, WrapperSpace,
     },
     util::smootherstep,
+    wp_security_context::SecurityContextManager,
 };
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
