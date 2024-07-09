@@ -1441,18 +1441,38 @@ impl WrapperSpace for PanelSpace {
                 .and_then(|o| o.2.name.clone())
                 .unwrap_or_else(|| "None".to_string())
         );
-        if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface()) {
-            self.scale_change_retries = 10;
+        if Some(surface) == self.layer.as_ref().map(|l| l.wl_surface())
+            || self.overflow_popup.as_ref().is_some_and(|p| p.0.c_popup.wl_surface() == surface)
+        {
             self.scale = scale;
-            self.is_dirty = true;
+            self.damage_tracked_renderer = Some(OutputDamageTracker::new(
+                self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
+                1.0,
+                smithay::utils::Transform::Flipped180,
+            ));
             if legacy && self.layer_fractional_scale.is_none() {
                 surface.set_buffer_scale(scale as i32);
+                if let Some(output) = self.output.as_ref() {
+                    output.1.change_current_state(
+                        None,
+                        None,
+                        Some(smithay::output::Scale::Integer(scale as i32)),
+                        None,
+                    );
+                }
             } else {
                 surface.set_buffer_scale(1);
+                if let Some(output) = self.output.as_ref() {
+                    output.1.change_current_state(
+                        None,
+                        None,
+                        Some(smithay::output::Scale::Fractional(scale)),
+                        None,
+                    );
+                }
                 if let Some(viewport) = self.layer_viewport.as_ref() {
                     viewport.set_destination(self.actual_size.w.max(1), self.actual_size.h.max(1));
                 }
-
                 for surface in self.space.elements().filter_map(|e| e.wl_surface().clone()) {
                     with_states(&surface, |states| {
                         with_fractional_scale(states, |fractional_scale| {
@@ -1460,11 +1480,72 @@ impl WrapperSpace for PanelSpace {
                         });
                     });
                 }
+
+                let overflow = self
+                    .overflow_left
+                    .elements()
+                    .cloned()
+                    .chain(self.overflow_center.elements().cloned())
+                    .chain(self.overflow_right.elements().cloned())
+                    .collect::<Vec<_>>();
+
+                for e in overflow {
+                    self.overflow_left.unmap_elem(&e);
+                    self.overflow_center.unmap_elem(&e);
+                    self.overflow_right.unmap_elem(&e);
+                    let window = match e {
+                        PopupMappedInternal::Window(w) => w,
+                        _ => continue,
+                    };
+                    let Some(wl_surface) = window.wl_surface() else {
+                        continue;
+                    };
+                    with_states(&wl_surface, |states| {
+                        with_fractional_scale(states, |fractional_scale| {
+                            fractional_scale.set_preferred_scale(scale);
+                        });
+                    });
+                    self.space.map_element(CosmicMappedInternal::Window(window), (0, 0), false);
+                }
+                // remove all button elements from the space
+                let buttons = self
+                    .space
+                    .elements()
+                    .cloned()
+                    .filter_map(|e| {
+                        if let CosmicMappedInternal::OverflowButton(b) = e {
+                            Some(b)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                for b in buttons {
+                    self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(b.clone()));
+                }
             }
-        }
-        // check overflow popup
-        if let Some((popup, _)) = self.overflow_popup.as_mut() {
-            if popup.c_popup.wl_surface() == surface {
+
+            // request a new size for the layer surface with suggested cross-wise size and 0
+            // for length
+            if let Some(layer) = self.layer.as_ref() {
+                let suggested_size = self.config.get_applet_icon_size(true)
+                    + self.config.get_applet_padding(true) as u32 * 2;
+                let suggested_size = (suggested_size as f64 * scale).round() as u32;
+                let size = if self.config.is_horizontal() {
+                    (0, suggested_size)
+                } else {
+                    (suggested_size, 0)
+                };
+
+                layer.set_size(size.0, size.1);
+                layer.commit();
+                self.pending_dimensions = Some(Size::from((size.0 as i32, size.1 as i32)));
+                self.space.refresh();
+            }
+
+            // check overflow popup
+            if let Some((popup, _)) = self.overflow_popup.as_mut() {
                 popup.scale = scale;
                 let Rectangle { loc, size } = popup.rectangle;
                 if popup.state.is_none() {
@@ -1476,27 +1557,13 @@ impl WrapperSpace for PanelSpace {
                     });
                 }
 
-                for surface in self
-                    .overflow_left
-                    .elements()
-                    .filter_map(|e| e.wl_surface().clone())
-                    .chain(self.overflow_center.elements().filter_map(|e| e.wl_surface().clone()))
-                    .chain(self.overflow_right.elements().filter_map(|e| e.wl_surface().clone()))
-                {
-                    if legacy {
-                        popup.c_popup.wl_surface().set_buffer_scale(scale as i32);
-                    } else {
-                        popup.c_popup.wl_surface().set_buffer_scale(1);
+                if legacy {
+                    popup.c_popup.wl_surface().set_buffer_scale(scale as i32);
+                } else {
+                    popup.c_popup.wl_surface().set_buffer_scale(1);
 
-                        if let Some(viewport) = popup.viewport.as_ref() {
-                            viewport.set_destination(size.w.max(1), size.h.max(1));
-                        }
-
-                        with_states(&surface, |states| {
-                            with_fractional_scale(states, |fractional_scale| {
-                                fractional_scale.set_preferred_scale(scale);
-                            });
-                        });
+                    if let Some(viewport) = popup.viewport.as_ref() {
+                        viewport.set_destination(size.w.max(1), size.h.max(1));
                     }
                 }
             }

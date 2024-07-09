@@ -175,7 +175,7 @@ impl PanelSpace {
 
                                 if let CosmicMappedInternal::OverflowButton(b) = w {
                                     return Some(
-                                        b.render_elements(renderer, loc, 1.0.into(), 1.0)
+                                        b.render_elements(renderer, loc, self.scale.into(), 1.0)
                                             .into_iter()
                                             .map(|r| PanelRenderElement::Iced(r))
                                             .collect::<Vec<_>>(),
@@ -291,7 +291,7 @@ impl PanelSpace {
                     crate::iced::elements::PopupMappedInternal::Popup(e) => {
                         // move to bg_render_element
                         bg_render_element = Some(
-                            e.render_elements(renderer, (0, 0).into(), 1.0.into(), 1.0)
+                            e.render_elements(renderer, (0, 0).into(), self.scale.into(), 1.0)
                                 .into_iter()
                                 .map(|r| PanelRenderElement::Iced(r))
                                 .collect::<Vec<_>>(),
