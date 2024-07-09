@@ -75,11 +75,10 @@ impl PanelSpace {
         };
         tracing::info!("adding overflow popup");
         let loc = self.space.element_location(&element).unwrap_or_default();
-        let bbox = element.bbox();
+        let bbox = element.bbox().to_f64().downscale(self.scale).to_i32_round();
         let positioner = XdgPositioner::new(xdg_shell_state).unwrap();
         let popup_bbox = popup_element.bbox().to_f64().downscale(self.scale).to_i32_round();
-        let popup_bbox_upscale: Rectangle<i32, Logical> =
-            popup_bbox.to_f64().upscale(self.scale).to_i32_round();
+
         positioner.set_anchor_rect(loc.x, loc.y, bbox.size.w, bbox.size.h);
         let pixel_offset = 8;
         let (offset, anchor, gravity) = match self.config.anchor {
