@@ -67,8 +67,12 @@ impl From<KeyboardInteractivity> for zwlr_layer_surface_v1::KeyboardInteractivit
     fn from(val: KeyboardInteractivity) -> Self {
         match val {
             KeyboardInteractivity::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
-            KeyboardInteractivity::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
-            KeyboardInteractivity::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
+            KeyboardInteractivity::Exclusive => {
+                zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive
+            },
+            KeyboardInteractivity::OnDemand => {
+                zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand
+            },
         }
     }
 }

@@ -1,9 +1,6 @@
 use std::time::Duration;
 
-use crate::{
-    iced::elements::{CosmicMappedInternal, PopupMappedInternal},
-    xdg_shell_wrapper::space::PanelPopup,
-};
+use crate::iced::elements::{CosmicMappedInternal, PopupMappedInternal};
 
 use super::{
     corner_element::{RoundedRectangleShader, RoundedRectangleShaderElement},
@@ -26,7 +23,6 @@ use smithay::{
         Bind, Frame, Renderer, Unbind,
     },
     utils::{Buffer, Physical, Rectangle},
-    wayland::seat::WaylandFocus,
 };
 pub(crate) enum PanelRenderElement {
     Wayland(
@@ -104,7 +100,7 @@ impl PanelSpace {
         time: u32,
         qh: &QueueHandle<GlobalState>,
     ) -> anyhow::Result<()> {
-        if self.space_event.get() != None && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
+        if self.space_event.get().is_some() && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
         {
             return Ok(());
         }
@@ -114,6 +110,7 @@ impl PanelSpace {
         }
 
         if self.is_dirty && self.has_frame {
+            tracing::trace!("Rendering space");
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
                 None => return Ok(()),
@@ -177,7 +174,7 @@ impl PanelSpace {
                                     return Some(
                                         b.render_elements(renderer, loc, self.scale.into(), 1.0)
                                             .into_iter()
-                                            .map(|r| PanelRenderElement::Iced(r))
+                                            .map(PanelRenderElement::Iced)
                                             .collect::<Vec<_>>(),
                                     );
                                 }
@@ -293,7 +290,7 @@ impl PanelSpace {
                         bg_render_element = Some(
                             e.render_elements(renderer, (0, 0).into(), self.scale.into(), 1.0)
                                 .into_iter()
-                                .map(|r| PanelRenderElement::Iced(r))
+                                .map(PanelRenderElement::Iced)
                                 .collect::<Vec<_>>(),
                         );
                         None
@@ -328,7 +325,7 @@ impl PanelSpace {
                             .collect::<Vec<_>>(),
                         )
                     },
-                    crate::iced::elements::PopupMappedInternal::_GenericCatcher(_) => return None,
+                    crate::iced::elements::PopupMappedInternal::_GenericCatcher(_) => None,
                 })
                 .flatten()
                 .collect();

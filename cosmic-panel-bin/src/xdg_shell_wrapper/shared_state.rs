@@ -3,10 +3,7 @@
 use std::time::Duration;
 
 use itertools::Itertools;
-use sctk::{
-    reexports::client::protocol::{wl_output as c_wl_output, wl_surface::WlSurface},
-    shell::WaylandSurface,
-};
+use sctk::{reexports::client::protocol::wl_surface::WlSurface, shell::WaylandSurface};
 use smithay::{
     backend::renderer::{
         element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
@@ -14,8 +11,7 @@ use smithay::{
         Bind, ImportDma, ImportEgl, Unbind,
     },
     desktop::utils::send_frames_surface_tree,
-    output::Output,
-    reexports::wayland_server::{backend::GlobalId, DisplayHandle},
+    reexports::wayland_server::DisplayHandle,
     wayland::{
         compositor::with_states, dmabuf::DmabufState, fractional_scale::with_fractional_scale,
     },
@@ -28,9 +24,6 @@ use crate::{
         client_state::ClientState, server_state::ServerState, space::WrapperSpace,
     },
 };
-
-/// group of info for an output
-pub type OutputGroup = (Output, GlobalId, String, c_wl_output::WlOutput);
 
 /// the  global state for the embedded server state
 #[allow(missing_debug_implementations)]
@@ -88,7 +81,7 @@ impl GlobalState {
             if let Err(err) = res {
                 error!("{:?}", err);
             } else {
-                let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect_vec();
+                let dmabuf_formats = renderer.dmabuf_formats().collect_vec();
                 let mut state = DmabufState::new();
                 let global = state.create_global::<GlobalState>(dh, dmabuf_formats);
                 self.server_state.dmabuf_state.replace((state, global));

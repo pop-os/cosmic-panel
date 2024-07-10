@@ -23,7 +23,7 @@ impl LayerShellHandler for GlobalState {
             .client_state
             .proxied_layer_surfaces
             .iter()
-            .position(|(_, _, _, s, _, _, ..)| s.wl_surface() == layer.wl_surface())
+            .position(|(_, _, _, s, ..)| s.wl_surface() == layer.wl_surface())
         {
             self.client_state.proxied_layer_surfaces.remove(i);
         } else {
@@ -39,11 +39,11 @@ impl LayerShellHandler for GlobalState {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if let Some((_, _, s_layer_surface, c_layer_surface, mut state, _, ..)) = self
+        if let Some((_, _, s_layer_surface, c_layer_surface, mut state, ..)) = self
             .client_state
             .proxied_layer_surfaces
             .iter_mut()
-            .find(|(_, _, _, s, _, _, ..)| s.wl_surface() == layer.wl_surface())
+            .find(|(_, _, _, s, ..)| s.wl_surface() == layer.wl_surface())
         {
             match state {
                 SurfaceState::Waiting => {

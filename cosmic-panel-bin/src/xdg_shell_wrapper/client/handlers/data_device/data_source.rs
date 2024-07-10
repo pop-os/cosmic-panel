@@ -1,8 +1,6 @@
 use std::os::fd::AsFd;
 
-use crate::xdg_shell_wrapper::{
-    client_state::FocusStatus, shared_state::GlobalState, space::WrapperSpace,
-};
+use crate::xdg_shell_wrapper::{client_state::FocusStatus, shared_state::GlobalState};
 use sctk::{
     data_device_manager::data_source::DataSourceHandler,
     reexports::client::protocol::{
@@ -56,10 +54,8 @@ impl DataSourceHandler for GlobalState {
             if let Some(dnd_source) = seat.server.dnd_source.as_ref() {
                 dnd_source.send(mime, fd.as_fd());
             }
-        } else {
-            if let Some(selection) = seat.server.selection_source.as_ref() {
-                selection.send(mime, fd.as_fd());
-            }
+        } else if let Some(selection) = seat.server.selection_source.as_ref() {
+            selection.send(mime, fd.as_fd());
         }
     }
 
@@ -132,7 +128,7 @@ impl DataSourceHandler for GlobalState {
             seat.server.dnd_icon = None;
             seat.server.seat.get_pointer().unwrap().unset_grab(
                 self,
-                SERIAL_COUNTER.next_serial().into(),
+                SERIAL_COUNTER.next_serial(),
                 0,
             );
         }
@@ -178,7 +174,7 @@ impl DataSourceHandler for GlobalState {
             seat.client.next_dnd_offer_is_mine = false;
             seat.server.seat.get_pointer().unwrap().unset_grab(
                 self,
-                SERIAL_COUNTER.next_serial().into(),
+                SERIAL_COUNTER.next_serial(),
                 0,
             );
         }

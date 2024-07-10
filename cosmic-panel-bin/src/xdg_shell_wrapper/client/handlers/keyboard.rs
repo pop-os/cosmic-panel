@@ -51,7 +51,7 @@ impl KeyboardHandler for GlobalState {
             }
         }
         let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-            |(_, _, s, c, _, _, ..)| {
+            |(_, _, s, c, ..)| {
                 if c.wl_surface() == surface {
                     Some(s.wl_surface().clone())
                 } else {
@@ -104,12 +104,10 @@ impl KeyboardHandler for GlobalState {
             .client_state
             .proxied_layer_surfaces
             .iter_mut()
-            .any(|(_, _, _, c, _, _, ..)| c.wl_surface() == surface);
+            .any(|(_, _, _, c, ..)| c.wl_surface() == surface);
 
-        if kbd_focus {
-            if !s_surface {
-                self.space.keyboard_leave(&name, Some(surface.clone()));
-            }
+        if kbd_focus && !s_surface {
+            self.space.keyboard_leave(&name, Some(surface.clone()));
         }
         kbd.set_focus(self, None, SERIAL_COUNTER.next_serial());
     }

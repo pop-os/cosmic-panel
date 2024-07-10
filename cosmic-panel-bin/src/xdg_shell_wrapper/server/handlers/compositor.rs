@@ -81,7 +81,7 @@ impl CompositorHandler for GlobalState {
 
                 let output =
                     self.client_state.outputs.iter().find(|o| {
-                        output.as_ref().map(|output| o.1.owns(&output)).unwrap_or_default()
+                        output.as_ref().map(|output| o.1.owns(output)).unwrap_or_default()
                     });
                 let surface = self
                     .client_state
@@ -215,11 +215,8 @@ impl CompositorHandler for GlobalState {
                 if let Some(viewport) = viewport {
                     viewport.set_destination(size.w, size.h);
                 }
-                match state {
-                    SurfaceState::WaitingFirst => {
-                        return;
-                    },
-                    _ => {},
+                if let SurfaceState::WaitingFirst = state {
+                    return;
                 };
                 *state = SurfaceState::Dirty;
                 if old_bbox != bbox {

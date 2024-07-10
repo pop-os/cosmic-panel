@@ -5,7 +5,6 @@ use cctk::wayland_client::Proxy;
 use sctk::shell::xdg::popup::{self, Popup};
 use smithay::{
     backend::{egl::EGLSurface, renderer::gles::GlesRenderer},
-    desktop::{PopupKind, PopupManager},
     utils::Rectangle,
 };
 use wayland_egl::WlEglSurface;

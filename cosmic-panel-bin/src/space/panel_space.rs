@@ -59,8 +59,10 @@ use smithay::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
         wayland_server::{backend::ClientId, Client, DisplayHandle},
     },
-    utils::{Logical, Rectangle, Serial, Size, SERIAL_COUNTER},
+    utils::{Logical, Rectangle, Size},
     wayland::{
+        compositor::with_states,
+        fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
     },
@@ -107,9 +109,25 @@ pub struct PanelClient {
     pub requests_wayland_display: Option<bool>,
     pub is_notification_applet: Option<bool>,
     pub shrink_priority: Option<u32>,
-    pub shrink_min_size: Option<u32>,
+    pub shrink_min_size: Option<ClientShrinkSize>,
     /// If there is an existing popup, this applet with be pressed when hovered.
     pub auto_popup_hover_press: Option<AppletAutoClickAnchor>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ClientShrinkSize {
+    AppletUnit(u32),
+    Pixel(u32),
+}
+
+impl ClientShrinkSize {
+    pub fn to_pixels(&self, applet_size: u32) -> u32 {
+        match self {
+            // TODO get spacing / padding from the theme or panel config?
+            Self::AppletUnit(units) => 4 + applet_size * units + 4 * units.saturating_sub(1),
+            Self::Pixel(pixels) => *pixels,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -204,62 +222,62 @@ impl PanelColors {
 
 // space for the cosmic panel
 #[derive(Debug)]
-pub(crate) struct PanelSpace {
+pub struct PanelSpace {
     // XXX implicitly drops egl_surface first to avoid segfault
-    pub(crate) egl_surface: Option<Rc<EGLSurface>>,
-    pub(crate) c_display: Option<WlDisplay>,
+    pub egl_surface: Option<Rc<EGLSurface>>,
+    pub c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
-    pub(crate) space: Space<CosmicMappedInternal>,
-    pub(crate) unmapped: Vec<Window>,
-    pub(crate) damage_tracked_renderer: Option<OutputDamageTracker>,
-    pub(crate) clients_left: Clients,
-    pub(crate) clients_center: Clients,
-    pub(crate) clients_right: Clients,
-    pub(crate) overflow_left: Space<PopupMappedInternal>,
-    pub(crate) overflow_center: Space<PopupMappedInternal>,
-    pub(crate) overflow_right: Space<PopupMappedInternal>,
-    pub(crate) last_dirty: Option<Instant>,
+    pub space: Space<CosmicMappedInternal>,
+    pub unmapped: Vec<Window>,
+    pub damage_tracked_renderer: Option<OutputDamageTracker>,
+    pub clients_left: Clients,
+    pub clients_center: Clients,
+    pub clients_right: Clients,
+    pub overflow_left: Space<PopupMappedInternal>,
+    pub overflow_center: Space<PopupMappedInternal>,
+    pub overflow_right: Space<PopupMappedInternal>,
+    pub last_dirty: Option<Instant>,
     // pending size of the panel
-    pub(crate) pending_dimensions: Option<Size<i32, Logical>>,
+    pub pending_dimensions: Option<Size<i32, Logical>>,
     // suggested length of the panel
-    pub(crate) suggested_length: Option<u32>,
+    pub suggested_length: Option<u32>,
     // size of the panel
-    pub(crate) actual_size: Size<i32, Logical>,
+    pub actual_size: Size<i32, Logical>,
     /// dimensions of the layer surface
     /// this will be the same as the output size on the major axis of the panel
-    pub(crate) dimensions: Size<i32, Logical>,
+    pub dimensions: Size<i32, Logical>,
     // Logical size of the panel, with the applied animation state
-    pub(crate) container_length: i32,
-    pub(crate) is_dirty: bool,
-    pub(crate) space_event: Rc<Cell<Option<SpaceEvent>>>,
-    pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
-    pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
-    pub(crate) s_focused_surface: ServerFocus,
-    pub(crate) s_hovered_surface: ServerPtrFocus,
-    pub(crate) visibility: Visibility,
-    pub(crate) output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
-    pub(crate) s_display: Option<DisplayHandle>,
-    pub(crate) layer: Option<LayerSurface>,
-    pub(crate) layer_fractional_scale: Option<WpFractionalScaleV1>,
-    pub(crate) layer_viewport: Option<WpViewport>,
-    pub(crate) popups: Vec<WrapperPopup>,
-    pub(crate) start_instant: Instant,
+    pub container_length: i32,
+    pub is_dirty: bool,
+    pub space_event: Rc<Cell<Option<SpaceEvent>>>,
+    pub c_focused_surface: Rc<RefCell<ClientFocus>>,
+    pub c_hovered_surface: Rc<RefCell<ClientFocus>>,
+    pub s_focused_surface: ServerFocus,
+    pub s_hovered_surface: ServerPtrFocus,
+    pub visibility: Visibility,
+    pub output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
+    pub s_display: Option<DisplayHandle>,
+    pub layer: Option<LayerSurface>,
+    pub layer_fractional_scale: Option<WpFractionalScaleV1>,
+    pub layer_viewport: Option<WpViewport>,
+    pub popups: Vec<WrapperPopup>,
+    pub start_instant: Instant,
     pub colors: PanelColors,
-    pub(crate) applet_tx: mpsc::Sender<AppletMsg>,
-    pub(crate) input_region: Option<Region>,
-    pub(crate) panel_changed: bool,
-    pub(crate) has_frame: bool,
-    pub(crate) scale: f64,
-    pub(crate) output_has_toplevel: bool,
-    pub(crate) security_context_manager: Option<SecurityContextManager>,
-    pub(crate) animate_state: Option<AnimateState>,
+    pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub input_region: Option<Region>,
+    pub panel_changed: bool,
+    pub has_frame: bool,
+    pub scale: f64,
+    pub output_has_toplevel: bool,
+    pub security_context_manager: Option<SecurityContextManager>,
+    pub animate_state: Option<AnimateState>,
     pub maximized: bool,
     pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
-    pub(crate) minimize_applet_rect: Rectangle<i32, Logical>,
-    pub(crate) panel_rect_settings: RoundedRectangleSettings,
-    pub(crate) generated_pointer_events: Vec<PointerEvent>,
+    pub minimize_applet_rect: Rectangle<i32, Logical>,
+    pub panel_rect_settings: RoundedRectangleSettings,
+    pub generated_pointer_events: Vec<PointerEvent>,
     // Counter for handling of generated pointer events
-    pub(crate) generated_ptr_event_count: usize,
+    pub generated_ptr_event_count: usize,
     pub scale_change_retries: u32,
     pub additional_gap: i32,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
@@ -270,6 +288,7 @@ pub(crate) struct PanelSpace {
     pub center_overflow_popup_id: id::Id,
     pub right_overflow_popup_id: id::Id,
     pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
+    pub remap_attempts: u32,
 }
 
 impl PanelSpace {
@@ -346,6 +365,7 @@ impl PanelSpace {
             center_overflow_popup_id: id::Id::new(format!("{}-center-overflow-popup", name)),
             right_overflow_popup_id: id::Id::new(format!("{}-right-overflow-popup", name)),
             overflow_popup: None,
+            remap_attempts: 0,
         }
     }
 
@@ -381,7 +401,7 @@ impl PanelSpace {
         }
     }
 
-    pub(crate) fn id(&self) -> String {
+    pub fn id(&self) -> String {
         let id = format!(
             "panel-{}-{}-{}",
             self.config.name,
@@ -391,7 +411,7 @@ impl PanelSpace {
         id
     }
 
-    pub(crate) fn handle_focus(&mut self) {
+    pub fn handle_focus(&mut self) {
         let (layer_surface, layer_shell_wl_surface) =
             if let Some(layer_surface) = self.layer.as_ref() {
                 (layer_surface, layer_surface.wl_surface())
@@ -624,7 +644,6 @@ impl PanelSpace {
                 }
             },
         }
-        return;
     }
 
     fn set_margin(
@@ -650,7 +669,7 @@ impl PanelSpace {
         };
     }
 
-    pub(crate) fn constrain_dim(
+    pub fn constrain_dim(
         &self,
         size: Size<i32, Logical>,
         active_gap: Option<u32>,
@@ -675,7 +694,7 @@ impl PanelSpace {
             h = h.clamp(h_range.start as i32, h_range.end as i32 - 1);
         }
 
-        (w as i32, h as i32).into()
+        (w, h).into()
     }
 
     fn apply_animation_state(&mut self) {
@@ -726,7 +745,7 @@ impl PanelSpace {
                         * progress))
                     .round() as u32,
                 expanded: animation_state.start.expanded
-                    + ((animation_state.end.expanded - animation_state.start.expanded) as f32
+                    + ((animation_state.end.expanded - animation_state.start.expanded)
                         * progress),
                 gap: (animation_state.start.gap as f32
                     + ((animation_state.end.gap as f32 - animation_state.start.gap as f32)
@@ -761,7 +780,7 @@ impl PanelSpace {
         }
     }
 
-    pub(crate) fn handle_events(
+    pub fn handle_events(
         &mut self,
         _dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
@@ -781,6 +800,7 @@ impl PanelSpace {
                 info!("root layer shell surface removed.");
             },
             Some(SpaceEvent::WaitConfigure { first, width, height }) => {
+                tracing::info!("Waiting for configure event");
                 self.space_event.replace(Some(SpaceEvent::WaitConfigure { first, width, height }));
             },
             None => {
@@ -831,6 +851,7 @@ impl PanelSpace {
                         width: size.w,
                         height: size.h,
                     }));
+                    info!("{:?}", self.space_event);
                 } else if self.layer.is_some() {
                     should_render = if self.is_dirty {
                         let update_res = self.layout_();
@@ -898,7 +919,7 @@ impl PanelSpace {
                         height = 1;
                     }
                     let dim = self.constrain_dim(
-                        (width as i32, height as i32).into(),
+                        (width, height).into(),
                         Some(self.gap() as u32),
                     );
 
@@ -1025,7 +1046,7 @@ impl PanelSpace {
                     height = 1;
                 }
                 let dim = self
-                    .constrain_dim((width as i32, height as i32).into(), Some(self.gap() as u32));
+                    .constrain_dim((width, height).into(), Some(self.gap() as u32));
 
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
@@ -1200,7 +1221,7 @@ impl PanelSpace {
                     -1
                 };
 
-                l.set_exclusive_zone(list_thickness as i32);
+                l.set_exclusive_zone(list_thickness);
                 needs_commit = true;
             }
         }
@@ -1213,7 +1234,7 @@ impl PanelSpace {
                     PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
                     PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
                 };
-                l.set_exclusive_zone(list_thickness as i32);
+                l.set_exclusive_zone(list_thickness);
                 let (width, height) = if self.config.is_horizontal() {
                     (0, self.dimensions.h)
                 } else {
@@ -1222,13 +1243,11 @@ impl PanelSpace {
                 l.set_size(width as u32, height as u32);
                 needs_commit = true;
             }
-        } else {
-            if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
-                if let Some(l) = self.layer.as_ref() {
-                    let margin = config.get_effective_anchor_gap() as i32;
-                    Self::set_margin(config.anchor, margin, 0, self.additional_gap, l);
-                    needs_commit = true;
-                }
+        } else if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
+            if let Some(l) = self.layer.as_ref() {
+                let margin = config.get_effective_anchor_gap() as i32;
+                Self::set_margin(config.anchor, margin, 0, self.additional_gap, l);
+                needs_commit = true;
             }
         }
 
@@ -1261,11 +1280,13 @@ impl PanelSpace {
                 if let Some(l) = self.suggested_length {
                     self.dimensions.w = l as i32;
                 }
-            } else {
-                if let Some(l) = self.suggested_length {
-                    self.dimensions.h = l as i32;
-                }
+            } else if let Some(l) = self.suggested_length {
+                self.dimensions.h = l as i32;
             }
+        }
+
+        if self.config.expand_to_edges != config.expand_to_edges {
+            self.reset_overflow();
         }
 
         if needs_commit {
@@ -1307,6 +1328,68 @@ impl PanelSpace {
         self.config = config;
 
         self.clear();
+    }
+
+    pub fn reset_overflow(&mut self) {
+        // re-map all windows to the main space from overflow
+        // remove all overflow buttons and popups
+        let overflow = self
+            .overflow_left
+            .elements()
+            .cloned()
+            .chain(self.overflow_center.elements().cloned())
+            .chain(self.overflow_right.elements().cloned())
+            .collect::<Vec<_>>();
+
+        for e in overflow {
+            self.overflow_left.unmap_elem(&e);
+            self.overflow_center.unmap_elem(&e);
+            self.overflow_right.unmap_elem(&e);
+            let window = match e {
+                PopupMappedInternal::Window(w) => w,
+                _ => continue,
+            };
+            let Some(wl_surface) = window.wl_surface() else {
+                continue;
+            };
+            with_states(&wl_surface, |states| {
+                with_fractional_scale(states, |fractional_scale| {
+                    fractional_scale.set_preferred_scale(self.scale);
+                });
+            });
+            self.space.map_element(CosmicMappedInternal::Window(window), (0, 0), false);
+        }
+        // remove all button elements from the space
+        let buttons = self
+            .space
+            .elements()
+            .cloned()
+            .filter_map(|e| {
+                if let CosmicMappedInternal::OverflowButton(b) = e {
+                    Some(b)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for b in buttons {
+            self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(b.clone()));
+        }
+
+        // send None for configure to force re-configure all windows
+        let elements = self.space.elements().cloned().collect::<Vec<_>>();
+        for e in elements {
+            if let CosmicMappedInternal::Window(w) = e {
+                if let Some(t) = w.toplevel() {
+                    t.with_pending_state(|s| {
+                        s.size = None;
+                    });
+                    t.send_pending_configure();
+                }
+            }
+        }
+        self.close_popups([]);
     }
 
     pub fn set_maximized(&mut self, maximized: bool, config: CosmicPanelConfig, opacity: f32) {

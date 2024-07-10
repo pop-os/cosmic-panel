@@ -9,7 +9,6 @@ use cosmic::{
     widget::horizontal_space,
     Theme,
 };
-use cosmic_theme::palette::white_point::B;
 
 use crate::{
     iced::{Element, IcedElement, Program},
@@ -62,7 +61,7 @@ impl Program for OverflowPopup {
                 .height(Length::Fixed(height))
                 .style(theme::Container::custom(move |theme| {
                     let cosmic = theme.cosmic();
-                    let mut radius_m = cosmic.corner_radii.radius_m.clone();
+                    let mut radius_m = cosmic.corner_radii.radius_m;
                     for r in radius_m.iter_mut() {
                         *r *= scale;
                     }

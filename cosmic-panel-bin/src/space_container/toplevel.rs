@@ -9,7 +9,7 @@ use cctk::{
 
 use crate::xdg_shell_wrapper::{
     client_state::FocusStatus,
-    space::{ToplevelInfoSpace, ToplevelManagerSpace, WrapperSpace},
+    space::{ToplevelInfoSpace, ToplevelManagerSpace},
 };
 use cosmic_panel_config::PanelAnchor;
 use itertools::Itertools;
