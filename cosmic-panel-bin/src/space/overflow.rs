@@ -1,39 +1,19 @@
-use std::rc::Rc;
-
 use anyhow::bail;
 use cctk::{
-    sctk::{
-        compositor::Region,
-        shell::xdg::{
-            popup::{self, Popup},
-            XdgPositioner,
-        },
-    },
-    wayland_client::{protocol::wl_seat::WlSeat, Proxy, QueueHandle},
+    sctk::shell::xdg::{popup, XdgPositioner},
+    wayland_client::{protocol::wl_seat::WlSeat, QueueHandle},
 };
 use cosmic::iced::id;
 
 use cosmic_panel_config::PanelAnchor;
 use sctk::shell::WaylandSurface;
 use smithay::{
-    backend::{
-        egl::EGLSurface,
-        renderer::{damage::OutputDamageTracker, element},
-    },
+    self,
+    backend::renderer::damage::OutputDamageTracker,
     desktop::space::SpaceElement,
-    utils::{Logical, Rectangle, Size},
-    wayland::{
-        compositor::{with_states, SurfaceAttributes},
-        shell::xdg::SurfaceCachedState,
-    },
+    utils::{Rectangle, Size},
 };
-use wayland_protocols::{
-    wp::{
-        fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
-        viewporter::client::wp_viewport::WpViewport,
-    },
-    xdg::shell::client::xdg_positioner::{self, Anchor, Gravity},
-};
+use wayland_protocols::xdg::shell::client::xdg_positioner::{self, Anchor, Gravity};
 
 use crate::{
     iced::elements::{CosmicMappedInternal, PopupMappedInternal},
@@ -117,10 +97,10 @@ impl PanelSpace {
         self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
 
         let fractional_scale =
-            fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, &qh));
+            fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
 
         let viewport = viewport.map(|v| {
-            let viewport = v.get_viewport(&c_wl_surface, &qh);
+            let viewport = v.get_viewport(&c_wl_surface, qh);
             viewport.set_destination(popup_bbox.size.w.max(1), popup_bbox.size.h.max(1));
             viewport
         });
@@ -161,7 +141,7 @@ impl PanelSpace {
     fn overflow_elements_for_id(
         &self,
         element_id: &id::Id,
-    ) -> (Option<(CosmicMappedInternal, OverflowSection)>, Option<(PopupMappedInternal)>) {
+    ) -> (Option<(CosmicMappedInternal, OverflowSection)>, Option<PopupMappedInternal>) {
         let element = self.space.elements().find_map(|e| match e {
             CosmicMappedInternal::OverflowButton(b) => b.with_program(|p| {
                 (&p.id == element_id).then_some((

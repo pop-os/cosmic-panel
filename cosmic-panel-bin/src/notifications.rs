@@ -5,7 +5,7 @@ use smithay::reexports::rustix::{
     {self},
 };
 use std::os::{
-    fd::{FromRawFd, OwnedFd, RawFd},
+    fd::{FromRawFd, RawFd},
     unix::net::UnixStream,
 };
 use tracing::info;
@@ -30,7 +30,7 @@ pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
 
     let daemon_stream = match res {
         // CLOEXEC worked and we can startup with session IPC
-        Ok(_) => UnixStream::from(OwnedFd::from(fd)),
+        Ok(_) => UnixStream::from(fd),
         // CLOEXEC didn't work, something is wrong with the fd, just close it
         Err(err) => {
             return Err(err).with_context(|| "Failed to setup session socket");

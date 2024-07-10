@@ -1,13 +1,10 @@
 use std::time::Instant;
 
-use crate::{
-    iced::elements::{target::SpaceTarget, CosmicMappedInternal},
-    xdg_shell_wrapper::{
-        client_state::FocusStatus,
-        server_state::{SeatPair, ServerPointerFocus},
-        shared_state::GlobalState,
-        space::WrapperSpace,
-    },
+use crate::xdg_shell_wrapper::{
+    client_state::FocusStatus,
+    server_state::{SeatPair, ServerPointerFocus},
+    shared_state::GlobalState,
+    space::WrapperSpace,
 };
 use sctk::{delegate_pointer, seat::pointer::PointerHandler, shell::WaylandSurface};
 use smithay::{
@@ -15,7 +12,6 @@ use smithay::{
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::protocol::wl_pointer::AxisSource,
     utils::{Point, SERIAL_COUNTER},
-    wayland::shell::xdg::ToplevelSurface,
 };
 
 impl PointerHandler for GlobalState {
@@ -160,7 +156,7 @@ impl GlobalState {
                             e.surface.clone(),
                         )
                     {
-                        ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
+                        ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),
                             time: time.try_into().unwrap(),
@@ -191,7 +187,7 @@ impl GlobalState {
 
                     // check tracked layer shell surface
                     let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, _, _, ..)| {
+                        |(_, _, s, c, ..)| {
                             if c.wl_surface() == &e.surface {
                                 Some(s.wl_surface().clone())
                             } else {
@@ -220,7 +216,7 @@ impl GlobalState {
                             c_focused_surface,
                         )
                     {
-                        ptr.motion(self, Some((surface.into(), s_pos)), &MotionEvent {
+                        ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
                             location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                             serial: SERIAL_COUNTER.next_serial(),
                             time,
@@ -246,7 +242,7 @@ impl GlobalState {
                     seat.client.last_pointer_press = (serial, time);
                     // check tracked layer shell surface
                     let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, _, _, ..)| {
+                        |(_, _, s, c, ..)| {
                             if c.wl_surface() == &e.surface {
                                 Some(s.wl_surface().clone())
                             } else {
@@ -259,7 +255,7 @@ impl GlobalState {
 
                         ptr.button(self, &ButtonEvent {
                             serial: SERIAL_COUNTER.next_serial(),
-                            time: time as u32,
+                            time,
                             button,
                             state: ButtonState::Pressed,
                         });
@@ -273,7 +269,7 @@ impl GlobalState {
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
                     ptr.button(self, &ButtonEvent {
                         serial: SERIAL_COUNTER.next_serial(),
-                        time: time as u32,
+                        time,
                         button,
                         state: ButtonState::Pressed,
                     });
@@ -284,7 +280,7 @@ impl GlobalState {
 
                     // check tracked layer shell surface
                     let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, _, _, ..)| {
+                        |(_, _, s, c, ..)| {
                             if c.wl_surface() == &e.surface {
                                 Some(s.wl_surface().clone())
                             } else {
@@ -297,7 +293,7 @@ impl GlobalState {
 
                         ptr.button(self, &ButtonEvent {
                             serial: SERIAL_COUNTER.next_serial(),
-                            time: time as u32,
+                            time,
                             button,
                             state: ButtonState::Released,
                         });
@@ -311,7 +307,7 @@ impl GlobalState {
 
                     ptr.button(self, &ButtonEvent {
                         serial: SERIAL_COUNTER.next_serial(),
-                        time: time as u32,
+                        time,
                         button,
                         state: ButtonState::Released,
                     });

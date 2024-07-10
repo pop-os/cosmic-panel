@@ -38,7 +38,6 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
     reexports::wayland_server::{self, backend::ClientId},
-    utils::Serial,
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -84,11 +83,11 @@ impl SpaceContainer {
         let light = Theme::light_config()
             .ok()
             .and_then(|c| Theme::get_entry(&c).ok())
-            .unwrap_or_else(|| Theme::light_default());
+            .unwrap_or_else(Theme::light_default);
         let dark = Theme::dark_config()
             .ok()
             .and_then(|c| Theme::get_entry(&c).ok())
-            .unwrap_or_else(|| Theme::dark_default());
+            .unwrap_or_else(Theme::dark_default);
 
         Self {
             connection: None,
@@ -226,7 +225,7 @@ impl SpaceContainer {
             self.space_list.iter().filter(|s| s.config.name == entry.name).count()
         };
 
-        if !force_output.is_some()
+        if force_output.is_none()
             && self.space_list.iter_mut().any(|s| {
                 let ret = if matches!(entry.output, CosmicPanelOuput::All) {
                     entry.output = s.config.output.clone();
@@ -239,7 +238,7 @@ impl SpaceContainer {
                 if ret {
                     output_count -= 1;
                 }
-                return output_count <= 0;
+                output_count <= 0
             })
         {
             info!("config unchanged, skipping");

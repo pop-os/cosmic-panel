@@ -53,7 +53,7 @@ pub fn watch_cosmic_theme(
 
     let entries_tx_clone = entries_tx.clone();
     let theme_watcher_mode = config_mode_helper
-        .watch(move |helper, _keys| match ThemeMode::get_entry(&helper) {
+        .watch(move |helper, _keys| match ThemeMode::get_entry(helper) {
             Ok(entry) => {
                 entries_tx_clone.send(ThemeUpdate::Mode(entry.is_dark)).unwrap();
             },
@@ -68,7 +68,7 @@ pub fn watch_cosmic_theme(
 
     let entries_tx_clone = entries_tx.clone();
     let theme_watcher_light = config_light_helper
-        .watch(move |helper, _keys| match Theme::get_entry(&helper) {
+        .watch(move |helper, _keys| match Theme::get_entry(helper) {
             Ok(entry) => {
                 entries_tx_clone.send(ThemeUpdate::Light(entry)).unwrap();
             },
@@ -83,7 +83,7 @@ pub fn watch_cosmic_theme(
 
     let entries_tx_clone = entries_tx.clone();
     let theme_watcher_dark = config_dark_helper
-        .watch(move |helper, _keys| match Theme::get_entry(&helper) {
+        .watch(move |helper, _keys| match Theme::get_entry(helper) {
             Ok(entry) => {
                 entries_tx_clone.send(ThemeUpdate::Dark(entry)).unwrap();
             },
@@ -112,8 +112,7 @@ pub fn watch_config(
             channel::Event::Msg(ConfigUpdate::Entries(entries)) => {
                 let to_update = entries
                     .iter()
-                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c))
-                    .map(|c| c.clone())
+                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c)).cloned()
                     .collect::<Vec<String>>();
                 info!("Received entries: {:?}", to_update);
                 for entry in to_update {
@@ -141,7 +140,7 @@ pub fn watch_config(
                         .expect("Failed to load cosmic config");
                     let watcher = helper
                         .watch(move |helper, _keys| {
-                            let new = match CosmicPanelConfig::get_entry(&helper) {
+                            let new = match CosmicPanelConfig::get_entry(helper) {
                                 Ok(entry) => entry,
                                 Err((err, entry)) => {
                                     for error in err {
@@ -224,7 +223,7 @@ pub fn watch_config(
         let watcher = helper
             .watch(move |helper, keys| {
                 info!("Entry changed: {:?}", keys);
-                let new = match CosmicPanelConfig::get_entry(&helper) {
+                let new = match CosmicPanelConfig::get_entry(helper) {
                     Ok(entry) => entry,
                     Err((err, entry)) => {
                         for error in err {

@@ -56,7 +56,7 @@ fn main() -> Result<()> {
 
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer =
-        EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info")).unwrap();
+        EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("warn")).unwrap();
     if let Ok(_journal_layer) = tracing_journald::layer() {
         tracing_subscriber::registry().with(fmt_layer).with(filter_layer).init();
     } else {
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
                 match msg {
                     space::AppletMsg::NewProcess(id, process) => {
                         if let Ok(key) = process_manager.start(process).await {
-                            let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
+                            let entry = process_ids.entry(id).or_default();
                             entry.push(key);
                         }
                     },
@@ -238,7 +238,7 @@ fn main() -> Result<()> {
                         process = process.with_env(env);
                         info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
-                            let entry = process_ids.entry(id).or_insert_with(|| Vec::new());
+                            let entry = process_ids.entry(id).or_default();
                             entry.push(key);
                         }
                     },

@@ -18,7 +18,7 @@ use smithay::{
 };
 
 use crate::{
-    iced::elements::{target::SpaceTarget, CosmicMappedInternal},
+    iced::elements::target::SpaceTarget,
     xdg_shell_wrapper::{client_state::ClientSeat, shared_state::GlobalState},
 };
 

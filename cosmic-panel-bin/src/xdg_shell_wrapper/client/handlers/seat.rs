@@ -41,7 +41,7 @@ impl SeatHandler for GlobalState {
                     qh,
                     &seat,
                     self.client_state.shm_state.wl_shm(),
-                    self.client_state.compositor_state.create_surface(&qh),
+                    self.client_state.compositor_state.create_surface(qh),
                     ThemeSpec::System,
                 ) {
                     Some(ptr)
@@ -160,7 +160,7 @@ impl SeatHandler for GlobalState {
                         qh,
                         &seat,
                         self.client_state.shm_state.wl_shm(),
-                        self.client_state.compositor_state.create_surface(&qh),
+                        self.client_state.compositor_state.create_surface(qh),
                         ThemeSpec::System,
                     ) {
                         sp.client.ptr.replace(ptr);

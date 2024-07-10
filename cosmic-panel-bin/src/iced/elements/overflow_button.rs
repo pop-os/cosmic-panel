@@ -1,5 +1,5 @@
 use std::{
-    borrow::{BorrowMut, Cow},
+    borrow::Cow,
     hash::Hash,
     rc::Rc,
     sync::{
@@ -8,8 +8,7 @@ use std::{
     },
 };
 
-use calloop::{Idle, LoopHandle};
-use once_cell::sync::OnceCell;
+use calloop::LoopHandle;
 // element for rendering a button that toggles the overflow popup when clicked
 use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
@@ -49,8 +48,8 @@ pub fn overflow_button_element(
         left: left * scale,
     };
     let size = (
-        (icon_size as f32 + button_padding.horizontal()).round() as i32,
-        (icon_size as f32 + button_padding.vertical()).round() as i32,
+        (icon_size + button_padding.horizontal()).round() as i32,
+        (icon_size + button_padding.vertical()).round() as i32,
     );
     IcedElement::new(
         OverflowButton::new(
@@ -134,7 +133,7 @@ impl Program for OverflowButton {
                 let panel_id = self.panel_id;
 
                 _ = loop_handle.insert_idle(move |state| {
-                    let Some(seat) = state.server_state.seats.get(0) else {
+                    let Some(seat) = state.server_state.seats.first() else {
                         return;
                     };
                     let c_seat = (seat.client.last_pointer_press.0, seat.client._seat.clone());
@@ -156,7 +155,7 @@ impl Program for OverflowButton {
                 let panel_id = self.panel_id;
 
                 _ = loop_handle.insert_idle(move |state| {
-                    let Some(seat) = state.server_state.seats.get(0) else {
+                    let Some(seat) = state.server_state.seats.first() else {
                         return;
                     };
                     let c_seat = (seat.client.last_pointer_press.0, seat.client._seat.clone());

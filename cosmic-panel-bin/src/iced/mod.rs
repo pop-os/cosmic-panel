@@ -197,9 +197,9 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
         IcedElementInternal {
             outputs: self.outputs.clone(),
             buffers: self.buffers.clone(),
-            pending_update: self.pending_update.clone(),
-            size: self.size.clone(),
-            cursor_pos: self.cursor_pos.clone(),
+            pending_update: self.pending_update,
+            size: self.size,
+            cursor_pos: self.cursor_pos,
             theme: self.theme.clone(),
             panel_id: self.panel_id,
             renderer,
@@ -425,7 +425,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
         }
         let panel_id = internal.panel_id;
         internal.handle.insert_idle(move |state| {
-            let _ = state.space.iced_request_redraw(panel_id);
+            state.space.iced_request_redraw(panel_id);
         });
         internal.state.queue_event(Event::Mouse(MouseEvent::CursorEntered));
         let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
@@ -507,7 +507,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
             internal.pending_update = Some(Instant::now());
             let panel_id = internal.panel_id;
             internal.handle.insert_idle(move |state| {
-                let _ = state.space.iced_request_redraw(panel_id);
+                state.space.iced_request_redraw(panel_id);
             });
         }
         internal.cursor_pos = None;
@@ -657,6 +657,7 @@ impl<P: Program + Send + 'static> SpaceElement for IcedElement<P> {
         let _ = internal.update(true); // TODO
     }
 
+    #[allow(clippy::map_entry)]
     fn output_enter(&self, output: &Output, _overlap: Rectangle<i32, Logical>) {
         let mut internal = self.0.lock().unwrap();
         let scale = output.current_scale().fractional_scale();
@@ -826,7 +827,7 @@ where
             if let Ok(buffer) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
                 location.to_f64(),
-                &buffer,
+                buffer,
                 Some(alpha),
                 Some(Rectangle::from_loc_and_size(
                     (0., 0.),

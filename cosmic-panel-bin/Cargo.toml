@@ -47,9 +47,9 @@ anyhow = "1.0.63"
 shlex = "1.1.0"
 log-panics = { version = "2", features = ["with-backtrace"] }
 libc = "0.2.132"
-freedesktop-desktop-entry = "0.5.0"
+freedesktop-desktop-entry = "0.6.2"
 xdg = "2.4.1"
-itertools = "0.12"
+itertools = "0.13"
 notify = "6.1"
 tokio = { version = "1", features = [
     "process",
@@ -60,9 +60,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 csscolorparser = "0.6.2"
-libcosmic = { git = "https://github.com/pop-os/libcosmic", features = [
-    "dbus-config",
-] }
+libcosmic = { git = "https://github.com/pop-os/libcosmic" }
 iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic/" }
 tiny-skia = "0.11"
 once_cell = "1.19.0"

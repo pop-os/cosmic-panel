@@ -84,7 +84,7 @@ impl SeatHandler for GlobalState {
         let Some(id) = focused.and_then(|s| s.wl_surface()).map(|s| s.id()) else {
             return;
         };
-        if let Some(client) = dh.get_client(id.clone()).ok() {
+        if let Ok(client) = dh.get_client(id.clone()) {
             set_data_device_focus(dh, seat, Some(client));
             let client2 = dh.get_client(id).unwrap();
             set_primary_focus(dh, seat, Some(client2))
@@ -136,23 +136,23 @@ impl SeatHandler for GlobalState {
 
                 let last_enter = seat_pair.client.last_enter;
 
-                let _ = with_states(&surface, |data| {
+                with_states(&surface, |data| {
                     let surface_attributes = data.cached_state.current::<SurfaceAttributes>();
                     let buf = RefMut::map(surface_attributes, |s| &mut s.buffer);
                     if let Some(hotspot) = data
                         .data_map
                         .get::<Mutex<CursorImageAttributes>>()
                         .and_then(|m| m.lock().ok())
-                        .map(|attr| (*attr).hotspot)
+                        .map(|attr| attr.hotspot)
                     {
                         trace!("Setting cursor {:?}", hotspot);
                         let ptr = ptr.pointer();
-                        ptr.set_cursor(last_enter, Some(&cursor_surface), hotspot.x, hotspot.y);
+                        ptr.set_cursor(last_enter, Some(cursor_surface), hotspot.x, hotspot.y);
                         self.client_state.multipool_ctr += 1;
 
                         if let Err(e) = write_and_attach_buffer(
                             buf.as_ref().unwrap(),
-                            &cursor_surface,
+                            cursor_surface,
                             self.client_state.multipool_ctr,
                             multipool,
                         ) {
@@ -185,7 +185,7 @@ impl ClientDndGrabHandler for GlobalState {
 
         if let Some(source) = source.as_ref() {
             seat.client.next_dnd_offer_is_mine = true;
-            let metadata = with_source_metadata(&source, |metadata| metadata.clone()).unwrap();
+            let metadata = with_source_metadata(source, |metadata| metadata.clone()).unwrap();
             let mut actions = ClientDndAction::empty();
             if metadata.dnd_action.contains(DndAction::Copy) {
                 actions |= ClientDndAction::Copy;
@@ -234,7 +234,7 @@ impl ClientDndGrabHandler for GlobalState {
 
                     let egl_surface = Rc::new(unsafe {
                         EGLSurface::new(
-                            &renderer.egl_context().display(),
+                            renderer.egl_context().display(),
                             renderer
                                 .egl_context()
                                 .pixel_format()

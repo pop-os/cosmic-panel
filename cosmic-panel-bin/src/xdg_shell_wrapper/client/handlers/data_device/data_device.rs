@@ -143,7 +143,7 @@ impl DataDeviceHandler for GlobalState {
                 self,
                 SERIAL_COUNTER.next_serial(),
                 Some(GrabStartData {
-                    focus: server_focus.map(|f| (f.surface.into(), f.s_pos.to_f64())),
+                    focus: server_focus.map(|f| (f.surface, f.s_pos.to_f64())),
                     button: 0x110, // assume left button for now, maybe there is another way..
                     location: (x, y).into(),
                 }),
@@ -194,7 +194,7 @@ impl DataDeviceHandler for GlobalState {
             position: (0.0, 0.0),
         };
         if let Some(s) = s_ptr {
-            s.unset_grab(self, SERIAL_COUNTER.next_serial().into(), 0);
+            s.unset_grab(self, SERIAL_COUNTER.next_serial(), 0);
         }
 
         if let Some(pointer) = c_ptr {
