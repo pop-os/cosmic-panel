@@ -9,7 +9,8 @@ export INSTALL_DIR := base-dir / 'share'
 
 default-schema-target := INSTALL_DIR / 'cosmic'
 
-bin-src := 'target' / 'release' / name
+cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
+bin-src := cargo-target-dir / 'release' / name
 bin-dst := base-dir / 'bin' / name
 
 # Default recipe which runs `just build-release`
