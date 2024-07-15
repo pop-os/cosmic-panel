@@ -36,7 +36,7 @@ use smithay::{
         compositor::with_states, fractional_scale::with_fractional_scale, seat::WaylandFocus,
     },
 };
-use tracing::{error, info};
+use tracing::info;
 
 impl PanelSpace {
     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
@@ -138,7 +138,7 @@ impl PanelSpace {
                 let unmap = constrained.h < size.h || constrained.w < size.w;
 
                 if unmap {
-                    error!(
+                    tracing::warn!(
                         "Window {size:?} is too large for what panel configuration allows \
                          {constrained:?}. It will be unmapped.",
                     );
@@ -455,9 +455,12 @@ impl PanelSpace {
                 .max(one_third)
         }
         .min(layer_major as f64);
-
+        let suggested_size = ((self.config.size.get_applet_icon_size(true) as f64
+            + self.config.size.get_applet_padding(true) as f64 * 2.)
+            * -1.5 // allows some wiggle room
+            * self.scale) as i32;
         let center_overflow = (center_sum - target_center_len) as i32;
-        if center_overflow < 0 {
+        if center_overflow < suggested_size {
             // check if it can be expanded
             self.relax_overflow_center(center_overflow.unsigned_abs(), &mut center_overflow_button)
         } else if center_overflow > 0 {
@@ -467,7 +470,7 @@ impl PanelSpace {
 
         if !is_dock {
             let left_overflow = (left_sum - target_left_len) as i32;
-            if left_overflow <= 0 {
+            if left_overflow < suggested_size {
                 // check if it can be expanded
                 self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
             } else if left_overflow > 0 {
@@ -476,10 +479,13 @@ impl PanelSpace {
             }
 
             let right_overflow = (right_sum - target_right_len) as i32;
-            if right_overflow <= 0 {
+            if right_overflow < suggested_size {
                 // check if it can be expanded
-                self.relax_overflow_right(right_overflow.unsigned_abs(), &mut right_overflow_button);
-            } else {
+                self.relax_overflow_right(
+                    right_overflow.unsigned_abs(),
+                    &mut right_overflow_button,
+                );
+            } else if right_overflow > 0 {
                 let overflow = self.shrink_right(right_overflow as u32);
                 bail!("right overflow: {} {}", right_overflow, overflow)
             }
@@ -847,7 +853,6 @@ impl PanelSpace {
                     None
                 }
             }) else {
-                // tracing::warn!("Client not found in space {:?}", c.name);
                 continue;
             };
             if let Some(shrink_min_size) = c.shrink_min_size {
@@ -904,15 +909,13 @@ impl PanelSpace {
     ) -> u32 {
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
 
-        let shrinkable = &mut clients.shrinkable;
-
-        for (w, _, min_units) in shrinkable.iter_mut() {
+        for (w, _, min_units) in clients.shrinkable.iter_mut() {
             if overflow == 0 {
                 break;
             }
             let size = w.bbox().size.to_f64().downscale(self.scale);
             let major_dim = if self.config.is_horizontal() { size.w } else { size.h };
-            if major_dim < min_units.to_pixels(unit_size) as f64 {
+            if major_dim < min_units.to_pixels(unit_size) as f64 && !force_smaller {
                 continue;
             }
             let new_dim = (major_dim as u32).saturating_sub(overflow);
@@ -949,7 +952,7 @@ impl PanelSpace {
             );
         }
         if overflow > 0 && !force_smaller {
-            tracing::warn!(
+            tracing::info!(
                 "Overflow not resolved {}. Forcing lowest priority shrinkable applets to be \
                  smaller than configured...",
                 overflow
