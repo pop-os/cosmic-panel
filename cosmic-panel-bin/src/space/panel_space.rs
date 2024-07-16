@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    iced::elements::PopupMappedInternal,
+    iced::elements::{background::BackgroundElement, PopupMappedInternal},
     xdg_shell_wrapper::{
         client_state::{ClientFocus, FocusStatus},
         server_state::{ServerFocus, ServerPtrFocus},
@@ -269,7 +269,6 @@ pub struct PanelSpace {
     pub colors: PanelColors,
     pub applet_tx: mpsc::Sender<AppletMsg>,
     pub input_region: Option<Region>,
-    pub panel_changed: bool,
     pub has_frame: bool,
     pub scale: f64,
     pub output_has_toplevel: bool,
@@ -293,6 +292,7 @@ pub struct PanelSpace {
     pub right_overflow_popup_id: id::Id,
     pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
     pub remap_attempts: u32,
+    pub background_element: Option<BackgroundElement>,
 }
 
 impl PanelSpace {
@@ -346,7 +346,6 @@ impl PanelSpace {
             input_region: None,
             damage_tracked_renderer: None,
             is_dirty: false,
-            panel_changed: false,
             has_frame: true,
             scale: 1.0,
             output_has_toplevel: false,
@@ -370,6 +369,7 @@ impl PanelSpace {
             right_overflow_popup_id: id::Id::new(format!("{}-right-overflow-popup", name)),
             overflow_popup: None,
             remap_attempts: 0,
+            background_element: None,
         }
     }
 
@@ -708,7 +708,6 @@ impl PanelSpace {
                 1.0,
                 smithay::utils::Transform::Flipped180,
             ));
-            self.panel_changed = true;
             let progress = (Instant::now().duration_since(animation_state.started_at).as_millis()
                 as f32)
                 / animation_state.duration.as_millis() as f32;
@@ -749,8 +748,7 @@ impl PanelSpace {
                         * progress))
                     .round() as u32,
                 expanded: animation_state.start.expanded
-                    + ((animation_state.end.expanded - animation_state.start.expanded)
-                        * progress),
+                    + ((animation_state.end.expanded - animation_state.start.expanded) * progress),
                 gap: (animation_state.start.gap as f32
                     + ((animation_state.end.gap as f32 - animation_state.start.gap as f32)
                         * progress))
@@ -922,10 +920,7 @@ impl PanelSpace {
                     if height <= 0 {
                         height = 1;
                     }
-                    let dim = self.constrain_dim(
-                        (width, height).into(),
-                        Some(self.gap() as u32),
-                    );
+                    let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 
                     if first {
                         if self.additional_gap != 0 {
@@ -1053,8 +1048,7 @@ impl PanelSpace {
                 if height == 0 {
                     height = 1;
                 }
-                let dim = self
-                    .constrain_dim((width, height).into(), Some(self.gap() as u32));
+                let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_ref())
@@ -1130,6 +1124,7 @@ impl PanelSpace {
             1.0,
             smithay::utils::Transform::Flipped180,
         ));
+        self.background_element = None;
         self.space.refresh();
     }
 

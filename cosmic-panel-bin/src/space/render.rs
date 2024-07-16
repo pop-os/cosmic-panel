@@ -8,6 +8,7 @@ use super::{
     PanelSpace,
 };
 use cctk::wayland_client::{Proxy, QueueHandle};
+use itertools::Itertools;
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use sctk::shell::WaylandSurface;
@@ -100,14 +101,13 @@ impl PanelSpace {
         time: u32,
         qh: &QueueHandle<GlobalState>,
     ) -> anyhow::Result<()> {
-        if self.space_event.get().is_some() && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
+        if self.space_event.get().is_some()
+            && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
         {
             return Ok(());
         }
-        let mut bg_color = self.bg_color();
-        for c in 0..3 {
-            bg_color[c] *= bg_color[3];
-        }
+
+        let clear_color = [0., 0., 0., 0.];
 
         if self.is_dirty && self.has_frame {
             tracing::trace!("Rendering space");
@@ -117,7 +117,6 @@ impl PanelSpace {
             };
             renderer.unbind()?;
             renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
-            let clear_color = bg_color;
             // if not visible, just clear and exit early
             let not_visible = self.config.autohide.is_some()
                 && matches!(self.visibility, crate::xdg_shell_wrapper::space::Visibility::Hidden);
@@ -148,8 +147,8 @@ impl PanelSpace {
             }
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let elements: Vec<PanelRenderElement> = (self.panel_changed
-                    && (self.config.anchor_gap || self.config.border_radius > 0))
+                let mut elements: Vec<PanelRenderElement> = (self.config.anchor_gap
+                    || self.config.border_radius > 0)
                     .then(|| {
                         PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
                             renderer,
@@ -199,7 +198,16 @@ impl PanelSpace {
                             })
                             .flatten(),
                     )
-                    .collect();
+                    .collect_vec();
+
+                if let Some(bg) = self.background_element.as_ref().map(|e| {
+                    let pos = e.with_program(|p| p.logical_pos);
+                    e.render_elements(renderer, pos.into(), self.scale.into(), 1.0)
+                        .into_iter()
+                        .map(PanelRenderElement::Iced)
+                }) {
+                    elements.extend(bg);
+                };
 
                 _ = my_renderer.render_output(
                     renderer,

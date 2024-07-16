@@ -7,6 +7,7 @@ use std::{
 use crate::{
     iced::{
         elements::{
+            background::background_element,
             overflow_button::{
                 self, overflow_button_element, OverflowButton, OverflowButtonElement,
             },
@@ -25,6 +26,7 @@ use super::{
 };
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use anyhow::bail;
+use cosmic::widget::{canvas::path::lyon_path::geom::euclid::num::Round, Id};
 use cosmic_panel_config::PanelAnchor;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
@@ -347,7 +349,6 @@ impl PanelSpace {
                 .map(|(_, _, _, thickness)| thickness)
                 .max()
                 .unwrap_or(0) as f64) as i32;
-        let old_actual = self.actual_size;
 
         self.actual_size = Size::<i32, Physical>::from(if self.config.is_horizontal() {
             (new_list_length, new_list_thickness)
@@ -385,10 +386,6 @@ impl PanelSpace {
         } else {
             (new_dim.h, new_dim.w)
         };
-
-        self.panel_changed |= old_actual != self.actual_size
-            || new_list_thickness_dim != list_cross
-            || self.animate_state.is_some();
 
         let left_sum = left_sum_scaled / self.scale;
         let center_sum = center_sum_scaled / self.scale;
@@ -496,75 +493,6 @@ impl PanelSpace {
             (Some(r), Some(layer)) => (r, layer),
             _ => panic!("input region or layer missing"),
         };
-        if self.panel_changed {
-            {
-                let gap = self.gap() as f64 * self.scale;
-                let border_radius = self.border_radius() as f64 * self.scale;
-
-                let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
-                let container_length = self.container_length as f64 * self.scale;
-                let container_lengthwise_pos = container_lengthwise_pos as f32 * self.scale as f32;
-                if self.config.is_horizontal() {
-                    panel_size.w = container_length;
-                } else {
-                    panel_size.h = container_length;
-                }
-
-                let border_radius = border_radius.min(panel_size.w / 2.).min(panel_size.h / 2.);
-                let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, self.gap()) {
-                    (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
-                    (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
-                    (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
-                    (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
-                    _ => (border_radius, border_radius, border_radius, border_radius),
-                };
-                let loc = match self.config.anchor {
-                    PanelAnchor::Left => [gap as f32, container_lengthwise_pos],
-                    PanelAnchor::Right => [0., container_lengthwise_pos],
-                    PanelAnchor::Top => [container_lengthwise_pos, 0.],
-                    PanelAnchor::Bottom => [container_lengthwise_pos, gap as f32],
-                };
-                self.panel_rect_settings = RoundedRectangleSettings {
-                    rad_tl: rad_tl as f32,
-                    rad_tr: rad_tr as f32,
-                    rad_bl: rad_bl as f32,
-                    rad_br: rad_br as f32,
-                    loc,
-                    rect_size: [panel_size.w as f32, panel_size.h as f32],
-                    border_width: 0.0,
-                    drop_shadow: 0.0,
-                    bg_color: [0.0, 0.0, 0.0, 1.0],
-                    border_color: [0.0, 0.0, 0.0, 0.0],
-                };
-            }
-
-            input_region.subtract(
-                0,
-                0,
-                self.dimensions.w.max(new_dim.w),
-                self.dimensions.h.max(new_dim.h),
-            );
-
-            if is_dock {
-                let (layer_length, actual_length) = if self.config.is_horizontal() {
-                    (new_dim.w, self.actual_size.w)
-                } else {
-                    (new_dim.h, self.actual_size.h)
-                };
-                let side = (layer_length as u32 - actual_length as u32) / 2;
-
-                let (loc, size) = if self.config.is_horizontal() {
-                    ((side as i32, 0), (self.actual_size.w, new_dim.h))
-                } else {
-                    ((0, side as i32), (new_dim.w, self.actual_size.h))
-                };
-
-                input_region.add(loc.0, loc.1, size.0, size.1);
-            } else {
-                input_region.add(0, 0, new_dim.w, new_dim.h);
-            }
-            layer.wl_surface().set_input_region(Some(input_region.wl_region()));
-        }
 
         // must use logical coordinates for layout here
 
@@ -705,6 +633,109 @@ impl PanelSpace {
         }
         self.space.refresh();
 
+        let border_radius = self
+            .border_radius()
+            .min(self.actual_size.w as u32 / 2)
+            .min(self.actual_size.h as u32 / 2);
+        let radius = match (self.config.anchor, self.gap()) {
+            (PanelAnchor::Right, 0) => [border_radius, 0, 0, border_radius],
+            (PanelAnchor::Left, 0) => [0, border_radius, border_radius, 0],
+            (PanelAnchor::Bottom, 0) => [border_radius, border_radius, 0, 0],
+            (PanelAnchor::Top, 0) => [0, 0, border_radius, border_radius],
+            _ => [border_radius, border_radius, border_radius, border_radius],
+        };
+        let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
+        let container_length = self.container_length as f64 * self.scale;
+        let container_lengthwise_pos = container_lengthwise_pos as f32 * self.scale as f32;
+        if self.config.is_horizontal() {
+            panel_size.w = container_length;
+        } else {
+            panel_size.h = container_length;
+        }
+        if !self.background_element.as_ref().is_some_and(|e| {
+            e.with_program(|p| {
+                p.logical_height == panel_size.h.round() as i32
+                    && p.logical_width == panel_size.w.round() as i32
+                    && self.bg_color() == p.color
+            })
+        }) || self.animate_state.as_ref().is_some()
+        {
+            let gap = self.gap() as f64 * self.scale;
+            let border_radius = self.border_radius() as f64 * self.scale;
+
+            let border_radius = border_radius.min(panel_size.w / 2.).min(panel_size.h / 2.);
+            let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, self.gap()) {
+                (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
+                (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
+                (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
+                (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
+                _ => (border_radius, border_radius, border_radius, border_radius),
+            };
+            let loc = match self.config.anchor {
+                PanelAnchor::Left => [gap as f32, container_lengthwise_pos],
+                PanelAnchor::Right => [0., container_lengthwise_pos],
+                PanelAnchor::Top => [container_lengthwise_pos, 0.],
+                PanelAnchor::Bottom => [container_lengthwise_pos, gap as f32],
+            };
+            self.panel_rect_settings = RoundedRectangleSettings {
+                rad_tl: rad_tl as f32,
+                rad_tr: rad_tr as f32,
+                rad_bl: rad_bl as f32,
+                rad_br: rad_br as f32,
+                loc,
+                rect_size: [panel_size.w as f32, panel_size.h as f32],
+                border_width: 0.0,
+                drop_shadow: 0.0,
+                bg_color: [0.0, 0.0, 0.0, 1.0],
+                border_color: [0.0, 0.0, 0.0, 0.0],
+            };
+
+            input_region.subtract(
+                0,
+                0,
+                self.dimensions.w.max(new_dim.w),
+                self.dimensions.h.max(new_dim.h),
+            );
+
+            if is_dock {
+                let (layer_length, actual_length) = if self.config.is_horizontal() {
+                    (new_dim.w, self.actual_size.w)
+                } else {
+                    (new_dim.h, self.actual_size.h)
+                };
+                let side = (layer_length as u32 - actual_length as u32) / 2;
+
+                let (loc, size) = if self.config.is_horizontal() {
+                    ((side as i32, 0), (self.actual_size.w, new_dim.h))
+                } else {
+                    ((0, side as i32), (new_dim.w, self.actual_size.h))
+                };
+
+                input_region.add(loc.0, loc.1, size.0, size.1);
+            } else {
+                input_region.add(0, 0, new_dim.w, new_dim.h);
+            }
+            layer.wl_surface().set_input_region(Some(input_region.wl_region()));
+
+            let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
+                bail!("output missing");
+            };
+
+            let bg = background_element(
+                Id::new("panel_bg"),
+                panel_size.w.round() as i32,
+                panel_size.h.round() as i32,
+                radius,
+                self.loop_handle.clone(),
+                self.colors.theme.clone(),
+                self.space.id(),
+                loc,
+                self.bg_color(),
+            );
+            bg.output_enter(&output, Rectangle::default());
+            self.background_element = Some(bg.clone());
+            self.space.map_element(CosmicMappedInternal::Background(bg), (0, 0), false);
+        }
         self.reorder_overflow_space(OverflowSection::Left);
         self.reorder_overflow_space(OverflowSection::Center);
         self.reorder_overflow_space(OverflowSection::Right);
