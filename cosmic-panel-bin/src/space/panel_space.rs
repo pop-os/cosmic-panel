@@ -51,7 +51,11 @@ use smithay::{
             surface::EGLSurface,
             EGLContext,
         },
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Unbind},
+        renderer::{
+            damage::OutputDamageTracker,
+            gles::{Capability, GlesRenderer},
+            Bind, Unbind,
+        },
     },
     desktop::{PopupManager, Space, Window},
     output::Output,
@@ -968,7 +972,11 @@ impl PanelSpace {
                             renderer
                         } else {
                             unsafe {
-                                GlesRenderer::new(egl_context)
+                                let mut capabilities =
+                                    GlesRenderer::supported_capabilities(&egl_context)
+                                        .expect("Failed to query EGL Context");
+                                capabilities.retain(|cap| *cap != Capability::ColorTransformations);
+                                GlesRenderer::with_capabilities(egl_context, capabilities)
                                     .expect("Failed to create EGL Surface")
                             }
                         };
