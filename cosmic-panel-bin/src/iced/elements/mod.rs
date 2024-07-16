@@ -1,9 +1,11 @@
+pub mod background;
 pub mod overflow_button;
 pub mod overflow_popup;
 pub mod target;
 
 use std::borrow::Cow;
 
+use background::BackgroundElement;
 use overflow_button::OverflowButtonElement;
 use overflow_popup::OverflowPopupElement;
 use smithay::{
@@ -16,7 +18,8 @@ space_elements! {
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub CosmicMappedInternal;
     OverflowButton=OverflowButtonElement,
-    Window=Window
+    Window=Window,
+    Background=BackgroundElement
 }
 
 impl CosmicMappedInternal {

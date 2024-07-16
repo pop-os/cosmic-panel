@@ -1,6 +1,7 @@
 use super::{overflow_button::OverflowButtonElement, CosmicMappedInternal};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
+use anyhow::bail;
 use smithay::{
     input::{keyboard::KeyboardTarget, pointer::PointerTarget},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -14,14 +15,17 @@ pub enum SpaceTarget {
     OverflowButton(OverflowButtonElement),
 }
 
-impl From<CosmicMappedInternal> for SpaceTarget {
-    fn from(internal: CosmicMappedInternal) -> Self {
-        match internal {
+impl TryFrom<CosmicMappedInternal> for SpaceTarget {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CosmicMappedInternal) -> Result<Self, Self::Error> {
+        match value {
             CosmicMappedInternal::Window(w) => {
-                SpaceTarget::Surface(w.toplevel().unwrap().wl_surface().clone())
+                Ok(SpaceTarget::Surface(w.toplevel().unwrap().wl_surface().clone()))
             },
-            CosmicMappedInternal::OverflowButton(b) => SpaceTarget::OverflowButton(b),
-            CosmicMappedInternal::_GenericCatcher(_) => unreachable!(),
+            CosmicMappedInternal::OverflowButton(b) => Ok(SpaceTarget::OverflowButton(b)),
+            CosmicMappedInternal::_GenericCatcher(_) => bail!("Cannot convert generic catcher"),
+            CosmicMappedInternal::Background(_) => bail!("Cannot convert background"),
         }
     }
 }

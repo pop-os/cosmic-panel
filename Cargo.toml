@@ -13,13 +13,13 @@ opt-level = 1
 lto = "thin"
 
 [workspace.dependencies]
-sctk = { package = "smithay-client-toolkit", version = "0.19.1", features = [
+sctk = { package = "smithay-client-toolkit", version = "0.19.2", features = [
     "calloop",
     "xkbcommon",
 ] }
 
 [patch."https://github.com/Smithay/client-toolkit"]
-sctk = { package = "smithay-client-toolkit", version = "0.19.1", features = [
+sctk = { package = "smithay-client-toolkit", version = "0.19.2", features = [
     "calloop",
     "xkbcommon",
 ] }

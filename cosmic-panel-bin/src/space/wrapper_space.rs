@@ -626,10 +626,13 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(&key, vec![(
-                                        "COSMIC_NOTIFICATIONS".to_string(),
-                                        fd.as_raw_fd().to_string(),
-                                    )])
+                                    .update_process_env(
+                                        &key,
+                                        vec![(
+                                            "COSMIC_NOTIFICATIONS".to_string(),
+                                            fd.as_raw_fd().to_string(),
+                                        )],
+                                    )
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);
@@ -915,19 +918,19 @@ impl WrapperSpace for PanelSpace {
                 size = size.downscale(self.scale);
                 let bbox = Rectangle::from_loc_and_size(location.to_f64(), size);
                 if bbox.contains((x as f64, y as f64)) {
-                    Some((e.clone(), location))
+                    SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
                 } else {
                     None
                 }
             });
 
-            if let Some((target, relative_loc)) = space_focus {
+            if let Some((target, relative_loc, space_target)) = space_focus {
                 let geo =
                     target.bbox().to_f64().to_physical(1.0).to_logical(self.scale).to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
-                    prev_kbd.0 = target.clone().into();
+                    prev_kbd.0 = space_target.clone();
                 } else {
-                    self.s_focused_surface.push((target.clone().into(), seat_name.to_string()));
+                    self.s_focused_surface.push((space_target.clone(), seat_name.to_string()));
                 }
 
                 hover_geo = Some(geo);
@@ -948,11 +951,11 @@ impl WrapperSpace for PanelSpace {
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
                     prev_foc.s_pos = relative_loc.to_f64();
                     prev_foc.c_pos = geo.loc;
-                    prev_foc.surface = target.into();
+                    prev_foc.surface = space_target;
                     Some(prev_foc.clone())
                 } else {
                     self.s_hovered_surface.push(ServerPointerFocus {
-                        surface: target.into(),
+                        surface: space_target,
                         seat_name: seat_name.to_string(),
                         c_pos: geo.loc,
                         s_pos: relative_loc.to_f64(),
@@ -1054,10 +1057,8 @@ impl WrapperSpace for PanelSpace {
             return None;
         };
 
-        let prev_popup_client = self
-            .popups.first()
-            .and_then(|p| p.s_surface.wl_surface().client())
-            .map(|c| c.id());
+        let prev_popup_client =
+            self.popups.first().and_then(|p| p.s_surface.wl_surface().client()).map(|c| c.id());
 
         if prev_popup_client.is_some() && matches!(cur_client_hover_id, Some(HoverId::Overflow(_)))
         {
@@ -1353,8 +1354,8 @@ impl WrapperSpace for PanelSpace {
         client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
         self.input_region.replace(input_region);
 
-        let fractional_scale = fractional_scale_manager
-            .map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
+        let fractional_scale =
+            fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
 
         let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), qh));
 
@@ -1538,7 +1539,9 @@ impl WrapperSpace for PanelSpace {
                 // remove all buttons from space
                 let buttons = self
                     .space
-                    .elements().filter(|&b| matches!(b, CosmicMappedInternal::OverflowButton(_))).cloned()
+                    .elements()
+                    .filter(|&b| matches!(b, CosmicMappedInternal::OverflowButton(_)))
+                    .cloned()
                     .collect::<Vec<_>>();
                 for e in buttons {
                     self.space.unmap_elem(&e);
@@ -1547,16 +1550,8 @@ impl WrapperSpace for PanelSpace {
                 self.reset_overflow();
             }
 
-            // request a new size for the layer surface with suggested cross-wise size and 0
-            // for length
-            let suggested_size = self.config.get_applet_icon_size(true)
-                + self.config.get_applet_padding(true) as u32 * 2;
-            let suggested_size = (suggested_size as f64).round() as u32;
-            let size =
-                if self.config.is_horizontal() { (0, suggested_size) } else { (suggested_size, 0) };
             self.clear();
             self.has_frame = true;
-            self.pending_dimensions = Some(Size::from((size.0 as i32, size.1 as i32)));
 
             // check overflow popup
             if let Some((popup, _)) = self.overflow_popup.as_mut() {
