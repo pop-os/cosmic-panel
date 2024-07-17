@@ -720,6 +720,12 @@ impl PanelSpace {
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
                 bail!("output missing");
             };
+            let loc = match self.config.anchor {
+                PanelAnchor::Left => [gap as f32, container_lengthwise_pos],
+                PanelAnchor::Right => [0., container_lengthwise_pos],
+                PanelAnchor::Bottom => [container_lengthwise_pos, 0.],
+                PanelAnchor::Top => [container_lengthwise_pos, gap as f32],
+            };
 
             let bg = background_element(
                 Id::new("panel_bg"),
