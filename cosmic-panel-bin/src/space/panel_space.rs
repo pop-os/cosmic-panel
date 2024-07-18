@@ -1111,6 +1111,18 @@ impl PanelSpace {
             b.set_theme(colors.theme.clone());
             b.force_redraw();
         }
+        for e in self
+            .overflow_center
+            .elements()
+            .chain(self.overflow_left.elements())
+            .chain(self.overflow_right.elements())
+        {
+            let PopupMappedInternal::Popup(e) = e else {
+                continue;
+            };
+            e.set_theme(colors.theme.clone());
+            e.force_redraw();
+        }
         self.colors = colors;
     }
 
