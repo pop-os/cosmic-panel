@@ -897,8 +897,8 @@ impl PanelSpace {
             } else if c.shrink_priority.is_some() {
                 overflow_partition.movable.push(w);
             } else {
-                // make movable if no shrink priority with lowest priority so it is moved last
-                overflow_partition.movable.push((w.0, 0));
+                // make shrinkable if no shrink priority with lowest priority so it is moved last
+                overflow_partition.shrinkable.push((w.0, 0, ClientShrinkSize::AppletUnit(1)));
             }
         }
         // sort by priority
