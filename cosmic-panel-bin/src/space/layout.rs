@@ -893,12 +893,12 @@ impl PanelSpace {
                 continue;
             };
             if let Some(shrink_min_size) = c.shrink_min_size {
-                overflow_partition.shrinkable.push((w.0, w.1, shrink_min_size));
+                overflow_partition.shrinkable.push((w.0, w.1 as i32, shrink_min_size));
             } else if c.shrink_priority.is_some() {
                 overflow_partition.movable.push(w);
             } else {
                 // make shrinkable if no shrink priority with lowest priority so it is moved last
-                overflow_partition.shrinkable.push((w.0, 0, ClientShrinkSize::AppletUnit(1)));
+                overflow_partition.shrinkable.push((w.0, -1, ClientShrinkSize::AppletUnit(1)));
             }
         }
         // sort by priority
@@ -946,13 +946,15 @@ impl PanelSpace {
     ) -> u32 {
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
 
-        for (w, _, min_units) in clients.shrinkable.iter_mut() {
+        for (w, priority, min_units) in clients.shrinkable.iter_mut() {
             if overflow == 0 {
                 break;
             }
             let size = w.bbox().size.to_f64().downscale(self.scale);
             let major_dim = if self.config.is_horizontal() { size.w } else { size.h };
-            if major_dim < min_units.to_pixels(unit_size) as f64 && !force_smaller {
+            if (major_dim < min_units.to_pixels(unit_size) as f64 || *priority < 0)
+                && !force_smaller
+            {
                 continue;
             }
             let new_dim = (major_dim as u32).saturating_sub(overflow);
@@ -1433,7 +1435,7 @@ pub enum OverflowSection {
 pub struct OverflowClientPartition {
     /// windows for clients that can be shrunk, but not moved to the overflow
     /// popup
-    pub(crate) shrinkable: Vec<(Window, u32, ClientShrinkSize)>,
+    pub(crate) shrinkable: Vec<(Window, i32, ClientShrinkSize)>,
     /// windows for clients that can be moved to the overflow popup, but not
     /// shrunk
     pub(crate) movable: Vec<(Window, u32)>,
@@ -1441,7 +1443,7 @@ pub struct OverflowClientPartition {
 }
 
 impl OverflowClientPartition {
-    fn constrained_shrinkables(&self, is_horizontal: bool) -> Vec<(Window, u32, ClientShrinkSize)> {
+    fn constrained_shrinkables(&self, is_horizontal: bool) -> Vec<(Window, i32, ClientShrinkSize)> {
         self.shrinkable
             .iter()
             .filter(|(w, ..)| {
