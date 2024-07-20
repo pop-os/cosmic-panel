@@ -232,7 +232,6 @@ pub struct PanelSpace {
     pub c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
     pub space: Space<CosmicMappedInternal>,
-    pub unmapped: Vec<Window>,
     pub damage_tracked_renderer: Option<OutputDamageTracker>,
     pub clients_left: Clients,
     pub clients_center: Clients,
@@ -317,7 +316,6 @@ impl PanelSpace {
             overflow_left: Space::default(),
             overflow_center: Space::default(),
             overflow_right: Space::default(),
-            unmapped: Vec::new(),
             clients_left: Default::default(),
             clients_center: Default::default(),
             clients_right: Default::default(),
@@ -873,16 +871,6 @@ impl PanelSpace {
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, qh) {
                     error!("Failed to render, error: {:?}", e);
-                }
-            } else {
-                for w in &self.unmapped {
-                    let output = self.output.as_ref().unwrap().1.clone();
-                    w.send_frame(
-                        &output,
-                        Duration::from_millis(time as u64),
-                        Some(Duration::from_millis(time as u64)),
-                        |_, _| Some(output.clone()),
-                    );
                 }
             }
         }

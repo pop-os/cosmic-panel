@@ -110,6 +110,11 @@ impl WrapperSpace for PanelSpace {
                 } else {
                     (suggested_size, 0).into()
                 });
+                state.bounds = Some(if is_horizontal {
+                    (0, suggested_size).into()
+                } else {
+                    (suggested_size, 0).into()
+                });
             });
             t.send_pending_configure();
         }
@@ -720,14 +725,6 @@ impl WrapperSpace for PanelSpace {
             w.refresh();
         }
 
-        // check unmapped and overflow
-        if let Some(w) =
-            self.unmapped.iter().find(|w| w.wl_surface().is_some_and(|w| w.as_ref() == s))
-        {
-            w.on_commit();
-            w.refresh();
-        }
-
         if let Some(w) = self
             .overflow_left
             .elements()
@@ -908,14 +905,22 @@ impl WrapperSpace for PanelSpace {
                     return None;
                 };
 
-                // XXX e.bbox seems to include the popup
                 let mut size = match e {
                     CosmicMappedInternal::OverflowButton(b) => b.bbox().size,
                     CosmicMappedInternal::Window(w) => w.bbox().size,
                     _ => return None,
                 }
                 .to_f64();
+
                 size = size.downscale(self.scale);
+                if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
+                    if configured_size.w > 0 {
+                        size.w = size.w.min(configured_size.w as f64);
+                    }
+                    if configured_size.h > 0 {
+                        size.h = size.h.min(configured_size.h as f64);
+                    }
+                }
                 let bbox = Rectangle::from_loc_and_size(location.to_f64(), size);
                 if bbox.contains((x as f64, y as f64)) {
                     SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
@@ -987,7 +992,7 @@ impl WrapperSpace for PanelSpace {
                 }) else {
                     return None;
                 };
-                let Some(render_location) = space.element_location(e) else {
+                let Some(space_location) = space.element_location(e) else {
                     self.generated_ptr_event_count =
                         self.generated_ptr_event_count.saturating_sub(1);
                     return None;
@@ -996,10 +1001,10 @@ impl WrapperSpace for PanelSpace {
                 let mut bbox = e.bbox().to_f64();
                 bbox.size.w /= popup.scale;
                 bbox.size.h /= popup.scale;
-                bbox.loc.x = render_location.x as f64;
-                bbox.loc.y = render_location.y as f64;
+                bbox.loc.x = space_location.x as f64;
+                bbox.loc.y = space_location.y as f64;
                 if bbox.contains((x as f64, y as f64)) {
-                    Some((e.bbox().to_f64(), w.into_owned(), render_location))
+                    Some((e.bbox().to_f64(), w.into_owned(), space_location))
                 } else {
                     None
                 }
@@ -1475,6 +1480,7 @@ impl WrapperSpace for PanelSpace {
                 for surface in self.space.elements().filter_map(|e| e.toplevel()) {
                     surface.with_pending_state(|s| {
                         s.size = None;
+                        s.bounds = None;
                     });
                     with_states(surface.wl_surface(), |states| {
                         with_fractional_scale(states, |fractional_scale| {
@@ -1482,22 +1488,6 @@ impl WrapperSpace for PanelSpace {
                         });
                     });
                     surface.send_configure();
-                }
-
-                for w in &self.unmapped {
-                    let Some(toplevel) = w.toplevel() else {
-                        continue;
-                    };
-                    toplevel.with_pending_state(|s| {
-                        s.size = None;
-                    });
-                    with_states(toplevel.wl_surface(), |states| {
-                        with_fractional_scale(states, |fractional_scale| {
-                            fractional_scale.set_preferred_scale(scale);
-                        });
-                    });
-                    toplevel.send_configure();
-                    self.space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
                 }
 
                 for o in self
@@ -1514,6 +1504,7 @@ impl WrapperSpace for PanelSpace {
                     };
                     toplevel.with_pending_state(|s| {
                         s.size = None;
+                        s.bounds = None;
                     });
                     with_states(toplevel.wl_surface(), |states| {
                         with_fractional_scale(states, |fractional_scale| {

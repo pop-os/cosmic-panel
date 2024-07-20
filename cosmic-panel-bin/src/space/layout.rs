@@ -26,7 +26,7 @@ use super::{
 };
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use anyhow::bail;
-use cosmic::widget::{canvas::path::lyon_path::geom::euclid::num::Round, Id};
+use cosmic::widget::Id;
 use cosmic_panel_config::PanelAnchor;
 use itertools::{chain, Itertools};
 use sctk::shell::WaylandSurface;
@@ -43,7 +43,6 @@ use tracing::info;
 impl PanelSpace {
     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
         self.remap_attempts = self.remap_attempts.saturating_sub(1);
-        let gap = self.gap();
 
         let make_indices_contiguous = |windows: &mut Vec<(usize, Window, Option<u32>)>| {
             windows.sort_by(|(a_i, ..), (b_i, ..)| a_i.cmp(b_i));
@@ -51,44 +50,12 @@ impl PanelSpace {
                 *i = j;
             }
         };
-        let mut to_map: Vec<Window> = Vec::with_capacity(self.space.elements().count());
-        // must handle unmapped windows, and unmap windows that are too large for the
-        // current configuration.
-        let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
-            bail!("output missing")
-        };
-        for w in self.unmapped.drain(..).collect_vec() {
-            let size = w.bbox().size.to_f64().downscale(self.scale).to_i32_round();
-            let mut constrained = self.constrain_dim(size, Some(gap as u32));
-            let suggested = w.toplevel().and_then(|w| w.current_state().size);
-            if let Some(suggested) = suggested {
-                if suggested.w > 0 {
-                    constrained.w = constrained.w.min(suggested.w);
-                }
-                if suggested.h > 0 {
-                    constrained.h = constrained.h.min(suggested.h);
-                }
-            }
 
-            if w.alive() && { constrained.h >= size.h && constrained.w >= size.w } {
-                info!("Remapping window {:?} {:?}", size, constrained);
-                self.space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
-                w.output_enter(&output, Rectangle::default());
-                if let Some(t) = w.toplevel() {
-                    t.with_pending_state(|s| {
-                        s.size = Some(constrained);
-                    });
-                    t.send_configure();
-                }
-            } else {
-                self.unmapped.push(w);
-            }
-        }
         let mut left_overflow_button = None;
         let mut right_overflow_button = None;
         let mut center_overflow_button = None;
 
-        let to_unmap = self
+        let to_map = self
             .space
             .elements()
             .cloned()
@@ -122,42 +89,9 @@ impl PanelSpace {
                     _ => return None,
                 };
 
-                if !w.alive() {
-                    return Some(w);
-                }
-                let size = w.bbox().size.to_f64().downscale(self.scale).to_i32_round();
-
-                let mut constrained = self.constrain_dim(size, Some(gap as u32));
-                let suggested = w.toplevel().and_then(|w| w.current_state().size);
-                if let Some(suggested) = suggested {
-                    if suggested.w > 0 {
-                        constrained.w = constrained.w.min(suggested.w);
-                    }
-                    if suggested.h > 0 {
-                        constrained.h = constrained.h.min(suggested.h);
-                    }
-                }
-                let unmap = constrained.h < size.h || constrained.w < size.w;
-
-                if unmap {
-                    tracing::warn!(
-                        "Window {size:?} is too large for what panel configuration allows \
-                         {constrained:?}. It will be unmapped.",
-                    );
-                    Some(w)
-                } else {
-                    to_map.push(w.clone());
-                    None
-                }
+                w.alive().then_some(w)
             })
             .collect_vec();
-        if !to_unmap.is_empty() {
-            self.remap_attempts = 3;
-        }
-        for w in to_unmap {
-            self.space.unmap_elem(&CosmicMappedInternal::Window(w.clone()));
-            self.unmapped.push(w);
-        }
 
         let is_dock = !self.config.expand_to_edges()
             || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
@@ -293,16 +227,34 @@ impl PanelSpace {
             (i, w, _): &(usize, Window, Option<u32>),
             anchor: PanelAnchor,
             alignment: Alignment,
+            scale: f64,
         ) -> (Alignment, usize, i32, i32) {
+            let mut size = w.toplevel().and_then(|t| t.current_state().size).unwrap_or_default();
             let bbox = w.bbox().size;
 
+            if size.w == 0 {
+                size.w = bbox.w;
+            } else {
+                size.w = ((size.w as f64) * scale).round() as i32;
+            }
+            size.w = size.w.min(bbox.w);
+            if size.h == 0 {
+                size.h = bbox.h;
+            } else {
+                size.h = ((size.h as f64) * scale).round() as i32;
+            }
+            size.h = size.h.min(bbox.h);
+
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, bbox.h, bbox.w),
-                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, bbox.w, bbox.h),
+                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, size.h, size.w),
+                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, size.w, size.h),
             }
         }
 
-        let left = windows_left.iter().map(|e| map_fn(e, anchor, Alignment::Left));
+        let left = windows_left.iter().map(|e| {
+            let l = map_fn(e, anchor, Alignment::Left, self.scale);
+            l
+        });
 
         let left_sum_scaled = left.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
             + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
@@ -315,7 +267,8 @@ impl PanelSpace {
             left_sum_scaled
         };
 
-        let center = windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center));
+        let center =
+            windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
         let center_sum_scaled = center.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
             + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
@@ -327,7 +280,7 @@ impl PanelSpace {
             center_sum_scaled
         };
 
-        let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right));
+        let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
         let right_sum_scaled = right.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
             + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
@@ -468,7 +421,6 @@ impl PanelSpace {
         if !is_dock {
             let left_overflow = (left_sum - target_left_len) as i32;
             if left_overflow < suggested_size {
-                // check if it can be expanded
                 self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
             } else if left_overflow > 0 {
                 let overflow = self.shrink_left(left_overflow as u32);
@@ -477,7 +429,6 @@ impl PanelSpace {
 
             let right_overflow = (right_sum - target_right_len) as i32;
             if right_overflow < suggested_size {
-                // check if it can be expanded
                 self.relax_overflow_right(
                     right_overflow.unsigned_abs(),
                     &mut right_overflow_button,
@@ -556,8 +507,15 @@ impl PanelSpace {
             for (_, w, minimize_priority) in windows {
                 // XXX this is a hack to get the logical size of the window
                 // TODO improve how this is done
-                let size = w.bbox().size.to_f64().downscale(self.scale);
-
+                let mut size = w.bbox().size.to_f64().downscale(self.scale);
+                let configured_size =
+                    w.toplevel().and_then(|t| t.current_state().size).unwrap_or_default();
+                if configured_size.w != 0 {
+                    size.w = size.w.min(configured_size.w as f64);
+                }
+                if configured_size.h != 0 {
+                    size.h = size.h.min(configured_size.h as f64);
+                }
                 let cur: f64 = prev;
                 let (x, y);
 
@@ -875,6 +833,11 @@ impl PanelSpace {
         clients: impl Iterator<Item = &'a PanelClient>,
     ) -> OverflowClientPartition {
         let mut overflow_partition = OverflowClientPartition::default();
+        overflow_partition.suggested_size =
+            ((self.config.size.get_applet_icon_size_with_padding(true) as f64
+                + 2. * self.config.get_applet_padding(true) as f64)
+                * self.scale)
+                .round() as u32;
         for c in clients {
             let Some(w) = self.space.elements().find_map(|e| {
                 let CosmicMappedInternal::Window(w) = e else {
@@ -944,13 +907,26 @@ impl PanelSpace {
         section: OverflowSection,
         force_smaller: bool,
     ) -> u32 {
+        info!("Overflow: {overflow} in section {section:?}");
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
 
         for (w, priority, min_units) in clients.shrinkable.iter_mut() {
             if overflow == 0 {
                 break;
             }
-            let size = w.bbox().size.to_f64().downscale(self.scale);
+            let mut size = w.bbox().size.to_f64().downscale(self.scale);
+            let configured_size = w
+                .toplevel()
+                .and_then(|t| t.current_state().size)
+                .map(|s| s.to_f64())
+                .unwrap_or(size);
+            if configured_size.w >= 1. {
+                size.w = size.w.min(configured_size.w as f64);
+            }
+            if configured_size.h >= 1. {
+                size.h = size.h.min(configured_size.h as f64);
+            }
+
             let major_dim = if self.config.is_horizontal() { size.w } else { size.h };
             if (major_dim < min_units.to_pixels(unit_size) as f64 || *priority < 0)
                 && !force_smaller
@@ -965,17 +941,19 @@ impl PanelSpace {
             }
             .max(1);
             let diff = (major_dim as u32).saturating_sub(new_dim);
+            tracing::info!("Shrinking window {:?} by {}", size, diff);
             if diff == 0 {
                 continue;
             }
-            tracing::info!("Shrinking window {:?} by {}", size, diff);
 
             if let Some(t) = w.toplevel() {
                 t.with_pending_state(|s| {
                     if self.config.is_horizontal() {
                         s.size = Some((new_dim as i32, 0).into());
+                        s.bounds = Some((new_dim as i32, 0).into());
                     } else {
                         s.size = Some((0, new_dim as i32).into());
+                        s.bounds = Some((0, new_dim as i32).into());
                     }
                 });
                 t.send_pending_configure();
@@ -1060,6 +1038,7 @@ impl PanelSpace {
             if let Some(t) = w.0.toplevel() {
                 t.with_pending_state(|s| {
                     s.size = Some((applet_size_unit as i32, applet_size_unit as i32).into());
+                    s.bounds = Some((applet_size_unit as i32, applet_size_unit as i32).into());
                 });
                 with_states(t.wl_surface(), |states| {
                     with_fractional_scale(states, |fractional_scale| {
@@ -1210,6 +1189,7 @@ impl PanelSpace {
                 if let Some(t) = w.toplevel() {
                     t.with_pending_state(|s| {
                         s.size = None;
+                        s.bounds = None;
                     });
                     t.send_pending_configure();
                 }
@@ -1229,7 +1209,7 @@ impl PanelSpace {
         drop(left);
         let suggested_size = self.config.size.get_applet_icon_size(true)
             + self.config.size.get_applet_padding(true) as u32 * 2;
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
+        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
@@ -1257,7 +1237,7 @@ impl PanelSpace {
         let center: MutexGuard<Vec<PanelClient>> = self.clients_center.lock().unwrap();
         let mut clients = self.shrinkable_clients(center.iter());
         drop(center);
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
+        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             let suggested_size = self.config.size.get_applet_icon_size(true)
                 + self.config.size.get_applet_padding(true) as u32 * 2;
             Self::move_from_overflow(
@@ -1287,7 +1267,7 @@ impl PanelSpace {
         let right = self.clients_right.lock().unwrap();
         let mut clients = self.shrinkable_clients(right.iter());
 
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal()) {
+        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             let suggested_size = self.config.size.get_applet_icon_size(true)
                 + self.config.size.get_applet_padding(true) as u32 * 2;
             Self::move_from_overflow(
@@ -1313,7 +1293,8 @@ impl PanelSpace {
         if self.remap_attempts > 0 {
             return;
         }
-        for (w, ..) in clients.constrained_shrinkables(self.config.is_horizontal()).drain(..).rev()
+        for (w, ..) in
+            clients.constrained_shrinkables(self.config.is_horizontal(), self.scale).drain(..).rev()
         {
             let expand = extra_space as i32;
             tracing::info!(
@@ -1368,17 +1349,6 @@ impl PanelSpace {
         let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
             return;
         };
-
-        for w in &self.unmapped {
-            let output_clone = output.clone();
-            if w.toplevel().is_some() {
-                w.send_frame(&output, Duration::from_secs(1), None, |_, _| {
-                    Some(output_clone.clone())
-                });
-                w.refresh();
-                self.is_dirty = true;
-            }
-        }
 
         for w in self
             .overflow_left
@@ -1443,7 +1413,11 @@ pub struct OverflowClientPartition {
 }
 
 impl OverflowClientPartition {
-    fn constrained_shrinkables(&self, is_horizontal: bool) -> Vec<(Window, i32, ClientShrinkSize)> {
+    fn constrained_shrinkables(
+        &self,
+        is_horizontal: bool,
+        scale: f64,
+    ) -> Vec<(Window, i32, ClientShrinkSize)> {
         self.shrinkable
             .iter()
             .filter(|(w, ..)| {
@@ -1452,10 +1426,18 @@ impl OverflowClientPartition {
                     let cur_size = w.bbox().size;
                     if is_horizontal {
                         state.size.is_none()
-                            || state.size.is_some_and(|s| s.w != 0 || cur_size.w > 99999)
+                            || state.size.is_some_and(|s| {
+                                s.w != 0
+                                    || cur_size.w.saturating_sub((s.w as f64 * scale) as i32)
+                                        > self.suggested_size as i32
+                            })
                     } else {
                         state.size.is_none()
-                            || state.size.is_some_and(|s| s.h != 0 || cur_size.w > 99999)
+                            || state.size.is_some_and(|s| {
+                                s.h != 0
+                                    || cur_size.h.saturating_sub((s.h as f64 * scale) as i32)
+                                        > self.suggested_size as i32
+                            })
                     }
                 })
             })
@@ -1463,7 +1445,7 @@ impl OverflowClientPartition {
             .collect_vec()
     }
 
-    fn shrinkable_is_relaxed(&self, is_horizontal: bool) -> bool {
+    fn shrinkable_is_relaxed(&self, is_horizontal: bool, scale: f64) -> bool {
         self.shrinkable.is_empty() || {
             self.shrinkable.iter().all(|(w, ..)| {
                 w.toplevel().is_some_and(|t| {
@@ -1473,15 +1455,19 @@ impl OverflowClientPartition {
                         state.size.is_none()
                             || state.size.is_some_and(|s| {
                                 s.w == 0
-                                    || cur_size.w.saturating_sub(s.w)
-                                        > 10 * self.suggested_size as i32
+                                    || cur_size
+                                        .w
+                                        .saturating_sub((s.w as f64 * scale).round() as i32)
+                                        > self.suggested_size as i32
                             })
                     } else {
                         state.size.is_none()
                             || state.size.is_some_and(|s| {
                                 s.h == 0
-                                    || cur_size.h.saturating_sub(s.h)
-                                        > 10 * self.suggested_size as i32
+                                    || cur_size
+                                        .h
+                                        .saturating_sub((s.h as f64 * scale).round() as i32)
+                                        > self.suggested_size as i32
                             })
                     }
                 })

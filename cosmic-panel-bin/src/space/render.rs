@@ -18,7 +18,8 @@ use smithay::{
         element::{
             memory::MemoryRenderBufferRenderElement,
             surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            AsRenderElements, Element, RenderElement, UnderlyingStorage,
+            utils::CropRenderElement,
+            AsRenderElements, RenderElement, UnderlyingStorage,
         },
         gles::{GlesError, GlesFrame, GlesRenderer},
         Bind, Frame, Renderer, Unbind,
@@ -26,11 +27,8 @@ use smithay::{
     utils::{Buffer, Physical, Rectangle},
 };
 pub(crate) enum PanelRenderElement {
-    Wayland(
-        WaylandSurfaceRenderElement<GlesRenderer>,
-        Rectangle<f64, Buffer>,
-        Rectangle<i32, Physical>,
-    ),
+    Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
+    Crop(CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>),
     RoundedRectangle(RoundedRectangleShaderElement),
     Iced(MemoryRenderBufferRenderElement<GlesRenderer>),
 }
@@ -39,6 +37,7 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
     fn id(&self) -> &smithay::backend::renderer::element::Id {
         match self {
             Self::Wayland(e, ..) => e.id(),
+            Self::Crop(e) => e.id(),
             Self::RoundedRectangle(e) => e.id(),
             Self::Iced(e) => e.id(),
         }
@@ -47,6 +46,7 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
     fn current_commit(&self) -> smithay::backend::renderer::utils::CommitCounter {
         match self {
             Self::Wayland(e, ..) => e.current_commit(),
+            Self::Crop(e) => e.current_commit(),
             Self::RoundedRectangle(e) => e.current_commit(),
             Self::Iced(e) => e.current_commit(),
         }
@@ -54,7 +54,8 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
 
     fn src(&self) -> Rectangle<f64, Buffer> {
         match self {
-            Self::Wayland(_e, src, ..) => *src,
+            Self::Wayland(e) => e.src(),
+            Self::Crop(e) => e.src(),
             Self::RoundedRectangle(e) => e.src(),
             Self::Iced(e) => e.src(),
         }
@@ -62,7 +63,8 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
 
     fn geometry(&self, scale: smithay::utils::Scale<f64>) -> Rectangle<i32, Physical> {
         match self {
-            Self::Wayland(_e, _, geo) => *geo,
+            Self::Wayland(e) => e.geometry(scale),
+            Self::Crop(e) => e.geometry(scale),
             Self::RoundedRectangle(e) => e.geometry(scale),
             Self::Iced(e) => e.geometry(scale),
         }
@@ -80,6 +82,7 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
     ) -> Result<(), GlesError> {
         match self {
             Self::Wayland(e, ..) => e.draw(frame, src, dst, damage, opaque_regions),
+            Self::Crop(e) => e.draw(frame, src, dst, damage, opaque_regions),
             Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage, opaque_regions),
             Self::Iced(e) => e.draw(frame, src, dst, damage, opaque_regions),
         }
@@ -88,6 +91,7 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
     fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
         match self {
             PanelRenderElement::Wayland(e, ..) => e.underlying_storage(renderer),
+            PanelRenderElement::Crop(e) => e.underlying_storage(renderer),
             PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
             PanelRenderElement::Iced(e) => e.underlying_storage(renderer),
         }
@@ -178,6 +182,24 @@ impl PanelSpace {
                                     );
                                 }
                                 w.toplevel().map(|t| {
+                                    let configured_size = t.current_state().size.map(|s| {
+                                        let mut r = Rectangle::from_loc_and_size(
+                                            self.space
+                                                .element_location(w)
+                                                .unwrap_or_default()
+                                                .to_f64()
+                                                .to_physical_precise_round(self.scale),
+                                            s.to_f64().to_physical_precise_round(self.scale),
+                                        );
+                                        if r.size.w == 0 {
+                                            r.size.w = i32::MAX;
+                                        }
+                                        if r.size.h == 0 {
+                                            r.size.h = i32::MAX;
+                                        }
+                                        r
+                                    });
+
                                     render_elements_from_surface_tree(
                                         renderer,
                                         t.wl_surface(),
@@ -187,11 +209,17 @@ impl PanelSpace {
                                         smithay::backend::renderer::element::Kind::Unspecified,
                                     )
                                     .into_iter()
-                                    .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                        let src = r.src();
-                                        let geo = r.geometry(1.0.into());
+                                    .filter_map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
+                                        if let Some(configured_size) = configured_size {
+                                            return CropRenderElement::from_element(
+                                                r,
+                                                1.,
+                                                configured_size,
+                                            )
+                                            .map(PanelRenderElement::Crop);
+                                        }
 
-                                        PanelRenderElement::Wayland(r, src, geo)
+                                        Some(PanelRenderElement::Wayland(r))
                                     })
                                     .collect::<Vec<_>>()
                                 })
@@ -325,10 +353,7 @@ impl PanelSpace {
                             )
                             .into_iter()
                             .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                let src = r.src();
-                                let geo = r.geometry(1.0.into());
-
-                                PanelRenderElement::Wayland(r, src, geo)
+                                PanelRenderElement::Wayland(r)
                             })
                             .collect::<Vec<_>>(),
                         )
