@@ -342,6 +342,20 @@ impl PanelSpace {
                             .to_f64()
                             .to_physical(self.scale)
                             .to_i32_round();
+
+                        let configured_size = t.current_state().size.map(|s| {
+                            let mut r = Rectangle::from_loc_and_size(
+                                loc,
+                                s.to_f64().to_physical_precise_round(self.scale),
+                            );
+                            if r.size.w == 0 {
+                                r.size.w = i32::MAX;
+                            }
+                            if r.size.h == 0 {
+                                r.size.h = i32::MAX;
+                            }
+                            r
+                        });
                         Some(
                             render_elements_from_surface_tree(
                                 renderer,
@@ -352,8 +366,13 @@ impl PanelSpace {
                                 smithay::backend::renderer::element::Kind::Unspecified,
                             )
                             .into_iter()
-                            .map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                PanelRenderElement::Wayland(r)
+                            .filter_map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
+                                if let Some(configured_size) = configured_size {
+                                    return CropRenderElement::from_element(r, 1., configured_size)
+                                        .map(PanelRenderElement::Crop);
+                                }
+
+                                Some(PanelRenderElement::Wayland(r))
                             })
                             .collect::<Vec<_>>(),
                         )
