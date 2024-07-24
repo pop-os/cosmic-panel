@@ -1107,6 +1107,8 @@ impl WrapperSpace for PanelSpace {
             && self.generated_ptr_event_count == 0
             && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
         {
+            self.close_popups([]);
+
             self.overflow_popup = None;
             // send press to new client if it hover flag is set
             let left_guard = self.clients_left.lock().unwrap();
