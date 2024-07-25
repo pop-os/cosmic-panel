@@ -955,11 +955,7 @@ impl PanelSpace {
                             renderer
                         } else {
                             unsafe {
-                                let mut capabilities =
-                                    GlesRenderer::supported_capabilities(&egl_context)
-                                        .expect("Failed to query EGL Context");
-                                capabilities.retain(|cap| *cap != Capability::ColorTransformations);
-                                GlesRenderer::with_capabilities(egl_context, capabilities)
+                                GlesRenderer::new(egl_context)
                                     .expect("Failed to create EGL Surface")
                             }
                         };
@@ -1212,6 +1208,15 @@ impl PanelSpace {
             return;
         }
 
+        // can't animate anchor changes
+        // return early
+        if config.anchor() != self.config.anchor() {
+            panic!(
+                "Can't apply anchor changes when orientation changes. Requires re-creation of \
+                     the panel."
+            );
+        }
+
         let mut needs_commit = false;
         if config.exclusive_zone != self.config.exclusive_zone {
             if let Some(l) = self.layer.as_ref() {
@@ -1252,30 +1257,6 @@ impl PanelSpace {
                 Self::set_margin(config.anchor, margin, 0, self.additional_gap, l);
                 needs_commit = true;
             }
-        }
-
-        // can't animate anchor changes
-        // return early
-        if config.anchor() != self.config.anchor() {
-            if config.is_horizontal() != self.config.is_horizontal() {
-                panic!(
-                    "Can't apply anchor changes when orientation changes. Requires re-creation of \
-                     the panel."
-                );
-            }
-            if let Some(l) = self.layer.as_ref() {
-                l.set_anchor(config.anchor().into());
-                let (width, height) = if config.is_horizontal() {
-                    (0, self.dimensions.h)
-                } else {
-                    (self.dimensions.w, 0)
-                };
-                l.set_size(width as u32, height as u32);
-                l.commit();
-            }
-            self.config = config;
-            self.clear();
-            return;
         }
 
         if config.anchor_gap != self.config.anchor_gap {
