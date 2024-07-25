@@ -40,20 +40,6 @@ pub enum PanelCalloopMsg {
 }
 
 fn main() -> Result<()> {
-    // write XDG_SESSION_TYPE XDG_CURRENT_DESKTOP to a debug file in HOME
-    // this is useful for debugging the session type and desktop environment
-    // of the current session
-
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let _ = std::fs::write(
-        format!("{}/.cosmic-panel-debug", home),
-        format!(
-            "XDG_SESSION_TYPE: {}\nXDG_CURRENT_DESKTOP: {}\n",
-            std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "None".to_string()),
-            std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_else(|_| "None".to_string())
-        ),
-    );
-
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer =
         EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("warn")).unwrap();
