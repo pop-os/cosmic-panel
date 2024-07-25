@@ -97,25 +97,40 @@ impl SpaceContainer {
         toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
+        let pre_maximixed_outputs = self.maximized_outputs();
         self.maximized_toplevels.push((toplevel.clone(), info.clone()));
-        for output in &info.output {
-            self.apply_maximized(output, true);
+        let post_maximized_outputs = self.maximized_outputs();
+        let outputs = self.outputs.clone();
+        for (o, ..) in &outputs {
+            let max_pre = pre_maximixed_outputs.iter().contains(o);
+            let max_post = post_maximized_outputs.iter().contains(o);
+            if max_post && !max_pre {
+                self.apply_maximized(o, true);
+            } else if !max_post && max_pre {
+                self.apply_maximized(o, false);
+            }
         }
     }
 
     fn remove_maximized(&mut self, toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1) {
-        let (_, info) =
-            if let Some(pos) = self.maximized_toplevels.iter().position(|(h, _)| h == toplevel) {
-                self.maximized_toplevels.remove(pos)
-            } else {
-                return;
-            };
-
-        for output in &info.output {
-            if !self.maximized_toplevels.iter().any(|(_, info)| info.output.contains(output)) {
-                self.apply_maximized(output, false);
+        let pre_maximixed_outputs = self.maximized_outputs();
+        if let Some(pos) = self.maximized_toplevels.iter().position(|(h, _)| h == toplevel) {
+            self.maximized_toplevels.remove(pos);
+        } else {
+            return;
+        };
+        let post_maximized_outputs = self.maximized_outputs();
+        let outputs = self.outputs.clone();
+        for (o, ..) in &outputs {
+            let max_pre = pre_maximixed_outputs.iter().contains(o);
+            let max_post = post_maximized_outputs.iter().contains(o);
+            if max_post && !max_pre {
+                self.apply_maximized(o, true);
+            } else if !max_post && max_pre {
+                self.apply_maximized(o, false);
             }
         }
+        self.apply_toplevel_changes();
     }
 
     pub(crate) fn apply_maximized(&mut self, output: &WlOutput, maximized: bool) {
