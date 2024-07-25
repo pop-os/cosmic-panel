@@ -618,6 +618,9 @@ impl PanelSpace {
             })
         }) || self.animate_state.as_ref().is_some()
         {
+            if let Some(bg) = self.background_element.take() {
+                self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
+            }
             let gap = self.gap() as f64 * self.scale;
             let border_radius = self.border_radius() as f64 * self.scale;
 
