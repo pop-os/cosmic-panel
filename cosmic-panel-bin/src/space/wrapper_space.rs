@@ -808,8 +808,6 @@ impl WrapperSpace for PanelSpace {
 
     /// returns false to forward the button press, and true to intercept
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
-        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
-
         if let Some(prev_foc) = {
             let c_hovered_surface: &ClientFocus = &self.c_hovered_surface.borrow();
 
@@ -850,9 +848,10 @@ impl WrapperSpace for PanelSpace {
         (x, y): (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus> {
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
         let mut prev_hover =
             self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
+        let mut generated_pointer_events = Vec::new();
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
         // first check if the motion is on a popup's client surface
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -900,8 +899,6 @@ impl WrapperSpace for PanelSpace {
             // There has to be a way to avoid messing with the scaling like this...
             let space_focus = self.space.elements().rev().find_map(|e| {
                 let Some(location) = self.space.element_location(e) else {
-                    self.generated_ptr_event_count =
-                        self.generated_ptr_event_count.saturating_sub(1);
                     return None;
                 };
 
@@ -993,8 +990,6 @@ impl WrapperSpace for PanelSpace {
                     return None;
                 };
                 let Some(space_location) = space.element_location(e) else {
-                    self.generated_ptr_event_count =
-                        self.generated_ptr_event_count.saturating_sub(1);
                     return None;
                 };
 
@@ -1058,7 +1053,6 @@ impl WrapperSpace for PanelSpace {
                 let (pos, _) = prev_hover.unwrap();
                 self.s_hovered_surface.remove(pos);
             }
-            self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
             return None;
         };
 
@@ -1073,7 +1067,7 @@ impl WrapperSpace for PanelSpace {
                 let mut p = (x, y);
                 p.0 = relative_loc.x + geo.size.w / 2;
                 p.1 = relative_loc.y + geo.size.h / 2;
-                self.generated_pointer_events = vec![
+                generated_pointer_events = vec![
                     PointerEvent {
                         surface: self.layer.as_ref().unwrap().wl_surface().clone(),
                         position: (p.0 as f64, p.1 as f64),
@@ -1104,7 +1098,6 @@ impl WrapperSpace for PanelSpace {
             .zip(cur_client_hover_id.as_ref())
             .is_some_and(|(a, b)| &HoverId::Client(a.clone()) != b))
             || self.overflow_popup.is_some())
-            && self.generated_ptr_event_count == 0
             && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
         {
             self.close_popups(|_| false);
@@ -1184,7 +1177,7 @@ impl WrapperSpace for PanelSpace {
                         // should be handled above
                     },
                 }
-                self.generated_pointer_events = vec![
+                generated_pointer_events = vec![
                     PointerEvent {
                         surface: self.layer.as_ref().unwrap().wl_surface().clone(),
                         position: (p.0 as f64, p.1 as f64),
@@ -1211,8 +1204,7 @@ impl WrapperSpace for PanelSpace {
                 ];
             }
         }
-        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
-        ret
+        ret.map(|f| (f, generated_pointer_events))
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
@@ -1226,8 +1218,6 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn pointer_leave(&mut self, seat_name: &str, _s: Option<c_wl_surface::WlSurface>) {
-        self.generated_ptr_event_count = self.generated_ptr_event_count.saturating_sub(1);
-
         self.s_hovered_surface.retain(|focus| focus.seat_name != seat_name);
     }
 
@@ -1236,7 +1226,7 @@ impl WrapperSpace for PanelSpace {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus> {
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
         self.update_pointer(dim, seat_name, c_wl_surface)
     }
 
@@ -1602,10 +1592,5 @@ impl WrapperSpace for PanelSpace {
         _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
-    }
-
-    fn generate_pointer_events(&mut self) -> Vec<PointerEvent> {
-        self.generated_ptr_event_count = self.generated_pointer_events.len();
-        std::mem::take(&mut self.generated_pointer_events)
     }
 }

@@ -158,7 +158,7 @@ pub trait WrapperSpace {
         dim: (i32, i32),
         seat_name: &str,
         surface: wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus>;
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)>;
 
     /// add a top level window to the space
     fn add_window(&mut self, s_top_level: Window);
@@ -201,7 +201,7 @@ pub trait WrapperSpace {
         dim: (i32, i32),
         seat_name: &str,
         surface: wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus>;
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)>;
 
     /// repositions a popup
     fn reposition_popup(
@@ -296,9 +296,4 @@ pub trait WrapperSpace {
     /// get the scale factor for a surface
     /// returns none if the surface is not tracked by this space
     fn get_scale_factor(&self, surface: &s_WlSurface) -> Option<f64>;
-
-    /// Generate Pointer events for clients
-    fn generate_pointer_events(&mut self) -> Vec<PointerEvent> {
-        Vec::new()
-    }
 }

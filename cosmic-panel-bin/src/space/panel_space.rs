@@ -277,9 +277,6 @@ pub struct PanelSpace {
     pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
     pub minimize_applet_rect: Rectangle<i32, Logical>,
     pub panel_rect_settings: RoundedRectangleSettings,
-    pub generated_pointer_events: Vec<PointerEvent>,
-    // Counter for handling of generated pointer events
-    pub generated_ptr_event_count: usize,
     pub scale_change_retries: u32,
     pub additional_gap: i32,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
@@ -354,8 +351,6 @@ impl PanelSpace {
             minimize_applet_rect: Default::default(),
             container_length: 0,
             panel_rect_settings: RoundedRectangleSettings::default(),
-            generated_pointer_events: Vec::new(),
-            generated_ptr_event_count: 0,
             scale_change_retries: 0,
             additional_gap: 0,
             loop_handle,
