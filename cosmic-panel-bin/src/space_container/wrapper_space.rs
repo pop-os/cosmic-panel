@@ -21,6 +21,7 @@ use sctk::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
+    seat::pointer::PointerEvent,
     shell::{
         wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,
@@ -489,7 +490,7 @@ impl WrapperSpace for SpaceContainer {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus> {
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
         let mut anchor_output = None;
         let ret = if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|s| !s.1.popups.is_empty())
@@ -534,7 +535,7 @@ impl WrapperSpace for SpaceContainer {
             for s in stacked {
                 if s.s_hovered_surface
                     .iter()
-                    .any(|f| ret.as_ref().is_some_and(|ret| &f.surface == &ret.surface))
+                    .any(|f| ret.as_ref().is_some_and(|ret| &f.surface == &ret.0.surface))
                 {
                     continue;
                 }
@@ -679,7 +680,7 @@ impl WrapperSpace for SpaceContainer {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<ServerPointerFocus> {
+    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
         if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|(_, s)| !s.popups.is_empty())
         {
@@ -829,13 +830,5 @@ impl WrapperSpace for SpaceContainer {
         _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
-    }
-
-    fn generate_pointer_events(&mut self) -> Vec<sctk::seat::pointer::PointerEvent> {
-        let mut events = Vec::new();
-        for s in &mut self.space_list {
-            events.append(&mut s.generate_pointer_events());
-        }
-        events
     }
 }

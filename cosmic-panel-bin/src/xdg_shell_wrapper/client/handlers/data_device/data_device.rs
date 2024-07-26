@@ -137,13 +137,14 @@ impl DataDeviceHandler for GlobalState {
         seat.client.dnd_offer = Some(offer);
         // TODO: touch vs pointer start data
         if !seat.client.next_dnd_offer_is_mine {
+            let focus = server_focus.map(|f| f.0);
             start_dnd(
                 &self.server_state.display_handle.clone(),
                 &seat.server.seat.clone(),
                 self,
                 SERIAL_COUNTER.next_serial(),
                 Some(GrabStartData {
-                    focus: server_focus.map(|f| (f.surface, f.s_pos.to_f64())),
+                    focus: focus.map(|f| (f.surface, f.s_pos.to_f64())),
                     button: 0x110, // assume left button for now, maybe there is another way..
                     location: (x, y).into(),
                 }),
@@ -232,7 +233,7 @@ impl DataDeviceHandler for GlobalState {
             offer.surface.clone(),
         );
 
-        let client = if let Some(ServerPointerFocus { surface: w, .. }) = server_focus {
+        let client = if let Some((ServerPointerFocus { surface: w, .. }, _)) = server_focus {
             w.wl_surface().and_then(|s| s.client())
         } else {
             None

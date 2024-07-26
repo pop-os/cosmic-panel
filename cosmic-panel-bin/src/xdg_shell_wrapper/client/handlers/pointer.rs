@@ -6,10 +6,14 @@ use crate::xdg_shell_wrapper::{
     shared_state::GlobalState,
     space::WrapperSpace,
 };
-use sctk::{delegate_pointer, seat::pointer::PointerHandler, shell::WaylandSurface};
+use sctk::{
+    delegate_pointer,
+    seat::pointer::{PointerEvent, PointerHandler},
+    shell::WaylandSurface,
+};
 use smithay::{
     backend::input::{self, Axis, ButtonState},
-    input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
+    input::pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
     reexports::wayland_server::protocol::wl_pointer::AxisSource,
     utils::{Point, SERIAL_COUNTER},
 };
@@ -22,43 +26,41 @@ impl PointerHandler for GlobalState {
         pointer: &sctk::reexports::client::protocol::wl_pointer::WlPointer,
         events: &[sctk::seat::pointer::PointerEvent],
     ) {
-        self.pointer_frame_inner(conn, qh, pointer, events);
-        let mut generated_events = self.space.generate_pointer_events();
-        if !generated_events.is_empty() {
-            for e in &mut generated_events {
-                match &mut e.kind {
-                    sctk::seat::pointer::PointerEventKind::Enter { serial } => {
-                        *serial = SERIAL_COUNTER.next_serial().into();
-                    },
-                    sctk::seat::pointer::PointerEventKind::Leave { serial } => {
-                        *serial = SERIAL_COUNTER.next_serial().into();
-                    },
-                    sctk::seat::pointer::PointerEventKind::Motion { time } => {
-                        *time = self.start_time.elapsed().as_millis().try_into().unwrap();
-                    },
-                    sctk::seat::pointer::PointerEventKind::Press { time, serial, .. } => {
-                        *time = self.start_time.elapsed().as_millis().try_into().unwrap();
-                        *serial = SERIAL_COUNTER.next_serial().into();
-                    },
-                    sctk::seat::pointer::PointerEventKind::Release { time, serial, .. } => {
-                        *time = self.start_time.elapsed().as_millis().try_into().unwrap();
-                        *serial = SERIAL_COUNTER.next_serial().into();
-                    },
-                    sctk::seat::pointer::PointerEventKind::Axis { time, .. } => {
-                        *time = self.start_time.elapsed().as_millis().try_into().unwrap();
-                    },
-                }
-            }
-            self.pointer_frame_inner(conn, qh, pointer, &generated_events);
-        }
+        self.pointer_frame_inner(conn, pointer, events);
     }
 }
 
 impl GlobalState {
+    fn update_generated_event_serial(&self, events: &mut Vec<PointerEvent>) {
+        for e in events {
+            match &mut e.kind {
+                sctk::seat::pointer::PointerEventKind::Enter { serial } => {
+                    *serial = SERIAL_COUNTER.next_serial().into();
+                },
+                sctk::seat::pointer::PointerEventKind::Leave { serial } => {
+                    *serial = SERIAL_COUNTER.next_serial().into();
+                },
+                sctk::seat::pointer::PointerEventKind::Motion { time } => {
+                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                },
+                sctk::seat::pointer::PointerEventKind::Press { time, serial, .. } => {
+                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *serial = SERIAL_COUNTER.next_serial().into();
+                },
+                sctk::seat::pointer::PointerEventKind::Release { time, serial, .. } => {
+                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *serial = SERIAL_COUNTER.next_serial().into();
+                },
+                sctk::seat::pointer::PointerEventKind::Axis { time, .. } => {
+                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                },
+            }
+        }
+    }
+
     fn pointer_frame_inner(
         &mut self,
         conn: &sctk::reexports::client::Connection,
-        _qh: &sctk::reexports::client::QueueHandle<Self>,
         pointer: &sctk::reexports::client::protocol::wl_pointer::WlPointer,
         events: &[sctk::seat::pointer::PointerEvent],
     ) {
@@ -148,23 +150,29 @@ impl GlobalState {
                         continue;
                     }
 
-                    if let Some(ServerPointerFocus { surface, c_pos, s_pos, .. }) =
-                        self.space.pointer_enter(
-                            (surface_x as i32, surface_y as i32),
-                            &seat_name,
-                            e.surface.clone(),
-                        )
-                    {
-                        ptr.motion(
-                            self,
-                            Some((surface, s_pos)),
-                            &MotionEvent {
-                                location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time: time.try_into().unwrap(),
-                            },
-                        );
-                        ptr.frame(self);
+                    if let Some((
+                        ServerPointerFocus { surface, c_pos, s_pos, .. },
+                        mut generated_events,
+                    )) = self.space.pointer_enter(
+                        (surface_x as i32, surface_y as i32),
+                        &seat_name,
+                        e.surface.clone(),
+                    ) {
+                        if generated_events.is_empty() {
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time: time.try_into().unwrap(),
+                                },
+                            );
+                            ptr.frame(self);
+                        } else {
+                            self.update_generated_event_serial(&mut generated_events);
+                            self.pointer_frame_inner(conn, pointer, &generated_events);
+                        }
                     } else {
                         ptr.motion(
                             self,
@@ -216,23 +224,29 @@ impl GlobalState {
                         continue;
                     }
 
-                    if let Some(ServerPointerFocus { surface, c_pos, s_pos, .. }) =
-                        self.space.update_pointer(
-                            (surface_x as i32, surface_y as i32),
-                            &seat_name,
-                            c_focused_surface,
-                        )
-                    {
-                        ptr.motion(
-                            self,
-                            Some((surface, s_pos)),
-                            &MotionEvent {
-                                location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time,
-                            },
-                        );
-                        ptr.frame(self);
+                    if let Some((
+                        ServerPointerFocus { surface, c_pos, s_pos, .. },
+                        mut generated_events,
+                    )) = self.space.update_pointer(
+                        (surface_x as i32, surface_y as i32),
+                        &seat_name,
+                        c_focused_surface,
+                    ) {
+                        if generated_events.is_empty() {
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time,
+                                },
+                            );
+                            ptr.frame(self);
+                        } else {
+                            self.update_generated_event_serial(&mut generated_events);
+                            self.pointer_frame_inner(conn, pointer, &generated_events);
+                        }
                     } else {
                         ptr.motion(
                             self,
