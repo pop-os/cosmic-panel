@@ -9,6 +9,9 @@ resolver = "2"
 [profile.dev]
 opt-level = 1
 
+[workspace.package]
+license = "GPL-3.0-only"
+
 [profile.release]
 lto = "thin"
 
