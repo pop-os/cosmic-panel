@@ -15,7 +15,7 @@ impl PanelSpace {
     pub(crate) fn close_popups<'a>(&mut self, exclude: impl AsRef<[Popup]>) {
         tracing::info!("Closing popups");
         let exclude = exclude.as_ref();
-
+        let mut to_destroy = Vec::with_capacity(self.popups.len());
         self.popups.retain_mut(|p| {
             if exclude.iter().any(|e| e == &p.popup.c_popup) {
                 return true;
@@ -23,15 +23,19 @@ impl PanelSpace {
 
             tracing::info!("Closing popup: {:?}", p.popup.c_popup.wl_surface());
             p.s_surface.send_popup_done();
-            p.popup.c_popup.xdg_popup().destroy();
-            p.popup.c_popup.wl_surface().destroy();
+            to_destroy
+                .push((p.popup.c_popup.xdg_popup().clone(), p.popup.c_popup.wl_surface().clone()));
             false
         });
         if self.overflow_popup.as_ref().is_some_and(|(p, _)| !exclude.contains(&p.c_popup)) {
             let (popup, _) = self.overflow_popup.take().unwrap();
             tracing::info!("Closing overflow popup: {:?}", popup.c_popup.wl_surface());
-            popup.c_popup.xdg_popup().destroy();
-            popup.c_popup.wl_surface().destroy();
+            to_destroy
+                .push((popup.c_popup.xdg_popup().clone(), popup.c_popup.wl_surface().clone()));
+        }
+        for (popup, surface) in to_destroy {
+            popup.destroy();
+            surface.destroy();
         }
     }
 
