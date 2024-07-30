@@ -38,14 +38,11 @@ use smithay::{
     },
 };
 use tracing::{error, trace};
-use wayland_egl::WlEglSurface;
 
 use crate::{
     iced::elements::target::SpaceTarget,
     xdg_shell_wrapper::{
-        shared_state::GlobalState,
-        space::{ClientEglSurface, WrapperSpace},
-        util::write_and_attach_buffer,
+        shared_state::GlobalState, space::WrapperSpace, util::write_and_attach_buffer,
     },
 };
 
@@ -219,36 +216,11 @@ impl ClientDndGrabHandler for GlobalState {
                 if let Some(client_surface) = c_icon_surface.as_ref() {
                     client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
                     client_surface.commit();
-                    let renderer = if let Some(r) = self.space.renderer() {
-                        r
-                    } else {
-                        tracing::error!("No renderer available");
-                        return;
-                    };
-                    let client_egl_surface = unsafe {
-                        ClientEglSurface::new(
-                            WlEglSurface::new(client_surface.id(), 1, 1).unwrap(), /* TODO remove unwrap */
-                            client_surface.clone(),
-                        )
-                    };
-
-                    let egl_surface = Rc::new(unsafe {
-                        EGLSurface::new(
-                            renderer.egl_context().display(),
-                            renderer
-                                .egl_context()
-                                .pixel_format()
-                                .expect("Failed to get pixel format from EGL context "),
-                            renderer.egl_context().config_id(),
-                            client_egl_surface,
-                        )
-                        .expect("Failed to create EGL Surface")
-                    });
 
                     seat.client.dnd_icon = Some((
-                        egl_surface,
+                        None,
                         client_surface.clone(),
-                        OutputDamageTracker::new((1, 1), 1.0, Transform::Flipped180),
+                        OutputDamageTracker::new((32, 32), 1.0, Transform::Flipped180),
                         false,
                         Some(0),
                     ));

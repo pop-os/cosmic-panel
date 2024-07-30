@@ -16,7 +16,7 @@ use smithay::{
         compositor::with_states, dmabuf::DmabufState, fractional_scale::with_fractional_scale,
     },
 };
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
     space_container::SpaceContainer,
@@ -92,19 +92,23 @@ impl GlobalState {
     /// draw the dnd icon if it exists and is ready
     pub fn draw_dnd_icon(&mut self) {
         // TODO proxied layer surfaces
-        if let Some(dnd_icon) = self
+        if let Some((
+            (egl_surface, wl_surface, ref mut dmg_tracked_renderer, is_dirty, has_frame),
+            s_icon,
+        )) = self
             .server_state
             .seats
             .iter_mut()
-            .find(|s| s.client.dnd_icon.is_some() && s.server.dnd_icon.is_some())
+            .find_map(|s| s.client.dnd_icon.as_mut().zip(s.server.dnd_icon.as_mut()))
         {
-            let (egl_surface, wl_surface, ref mut dmg_tracked_renderer, is_dirty, has_frame) =
-                dnd_icon.client.dnd_icon.as_mut().unwrap();
-            if !*is_dirty || !has_frame.is_some() {
+            if !*is_dirty || has_frame.is_none() {
                 return;
             }
-            *is_dirty = false;
-            let time = has_frame.take().unwrap();
+            let Some(egl_surface) = egl_surface.as_ref() else {
+                return;
+            };
+            info!("draw_dnd_icon actually happening");
+
             let clear_color = &[0.0, 0.0, 0.0, 0.0];
             let renderer = match self.space.renderer() {
                 Some(r) => r,
@@ -113,9 +117,10 @@ impl GlobalState {
                     return;
                 },
             };
-            let s_icon = dnd_icon.server.dnd_icon.as_ref().unwrap();
+            info!("draw_dnd_icon got renderer");
             let _ = renderer.unbind();
             let _ = renderer.bind(egl_surface.clone());
+            info!("draw_dnd_icon bound renderer");
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
                 render_elements_from_surface_tree(
                     renderer,
@@ -125,14 +130,13 @@ impl GlobalState {
                     1.0,
                     smithay::backend::renderer::element::Kind::Unspecified,
                 );
-            dmg_tracked_renderer
-                .render_output(
-                    renderer,
-                    egl_surface.buffer_age().unwrap_or_default() as usize,
-                    &elements,
-                    *clear_color,
-                )
-                .unwrap();
+
+            _ = dmg_tracked_renderer.render_output(
+                renderer,
+                egl_surface.buffer_age().unwrap_or_default() as usize,
+                &elements,
+                *clear_color,
+            );
             egl_surface.swap_buffers(None).unwrap();
             // FIXME: damage tracking issues on integrated graphics but not nvidia
             // self.egl_surface
@@ -147,13 +151,16 @@ impl GlobalState {
                 send_frames_surface_tree(
                     s_icon,
                     &o.1,
-                    Duration::from_millis(time as u64),
+                    Duration::from_millis(16),
                     None,
                     move |_, _| Some(output.clone()),
                 );
             }
             wl_surface.frame(&self.client_state.queue_handle, wl_surface.clone());
             wl_surface.commit();
+
+            *is_dirty = false;
+            *has_frame = None;
         }
     }
 }
