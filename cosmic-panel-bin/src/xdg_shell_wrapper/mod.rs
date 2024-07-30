@@ -147,6 +147,8 @@ pub fn run(
                 global_state.start_time.elapsed().as_millis().try_into()?,
             );
         }
+        global_state.draw_dnd_icon();
+
         if let Some(renderer) = global_state.space.renderer() {
             global_state.client_state.draw_layer_surfaces(
                 renderer,

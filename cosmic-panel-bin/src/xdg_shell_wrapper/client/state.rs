@@ -92,7 +92,7 @@ pub(crate) struct ClientSeat {
     pub(crate) next_selection_offer_is_mine: bool,
     pub(crate) next_dnd_offer_is_mine: bool,
     pub(crate) dnd_icon:
-        Option<(Rc<EGLSurface>, WlSurface, OutputDamageTracker, bool, Option<u32>)>,
+        Option<(Option<Rc<EGLSurface>>, WlSurface, OutputDamageTracker, bool, Option<u32>)>,
 }
 
 impl ClientSeat {

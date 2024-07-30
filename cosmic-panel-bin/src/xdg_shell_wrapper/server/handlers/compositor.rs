@@ -23,7 +23,7 @@ use smithay::{
         shm::{ShmHandler, ShmState},
     },
 };
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use wayland_egl::WlEglSurface;
 
 use crate::xdg_shell_wrapper::{
@@ -231,6 +231,7 @@ impl CompositorHandler for GlobalState {
                 }
             }
         } else if role == "dnd_icon".into() {
+            info!("dnd_icon commit");
             // render dnd icon to the active dnd icon surface
             on_commit_buffer_handler::<GlobalState>(surface);
             let seat = match self
@@ -247,19 +248,55 @@ impl CompositorHandler for GlobalState {
             };
             if let Some(c_icon) = seat.client.dnd_icon.as_mut() {
                 let size = bbox_from_surface_tree(surface, (0, 0)).size;
+
                 if let Some(renderer) = self.space.renderer() {
+                    _ = renderer.unbind();
+
+                    match c_icon.0.clone() {
+                        Some(egl_surface) => {
+                            _ = renderer.bind(egl_surface.clone());
+                            if !egl_surface.resize(size.w.max(1), size.h.max(1), 0, 0) {
+                                error!("Failed to resize egl surface");
+                            }
+                        },
+                        None => {
+                            let c_surface = &c_icon.1;
+                            let client_egl_surface = unsafe {
+                                ClientEglSurface::new(
+                                    WlEglSurface::new(c_surface.id(), size.w.max(1), size.h.max(1))
+                                        .unwrap(), /* TODO remove unwrap */
+                                    c_surface.clone(),
+                                )
+                            };
+
+                            let egl_surface = Rc::new(unsafe {
+                                EGLSurface::new(
+                                    renderer.egl_context().display(),
+                                    renderer
+                                        .egl_context()
+                                        .pixel_format()
+                                        .expect("Failed to get pixel format from EGL context "),
+                                    renderer.egl_context().config_id(),
+                                    client_egl_surface,
+                                )
+                                .expect("Failed to create EGL Surface")
+                            });
+                            _ = renderer.bind(egl_surface.clone());
+                            c_icon.0 = Some(egl_surface);
+                        },
+                    };
+
                     let _ = renderer.unbind();
-                    let _ = renderer.bind(c_icon.0.clone());
-                    c_icon.0.resize(size.w.max(1), size.h.max(1), 0, 0);
-                    let _ = renderer.unbind();
+                    c_icon.2 = OutputDamageTracker::new(
+                        (size.w.max(1), size.h.max(1)),
+                        1.0,
+                        Transform::Flipped180,
+                    );
                 }
-                c_icon.2 = OutputDamageTracker::new(
-                    (size.w.max(1), size.h.max(1)),
-                    1.0,
-                    Transform::Flipped180,
-                );
+
                 c_icon.3 = true;
-                self.draw_dnd_icon();
+                c_icon.1.commit();
+                c_icon.1.frame(&self.client_state.queue_handle, c_icon.1.clone());
             }
         } else {
             trace!("{:?}", surface);
