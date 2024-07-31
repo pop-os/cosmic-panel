@@ -36,6 +36,8 @@ pub struct GlobalState {
     pub server_state: ServerState,
     /// instant that the panel was started
     pub start_time: std::time::Instant,
+    /// iter count
+    pub iter_count: u128,
 }
 
 impl GlobalState {
@@ -45,7 +47,7 @@ impl GlobalState {
         space: SpaceContainer,
         start_time: std::time::Instant,
     ) -> Self {
-        Self { space, client_state, server_state, start_time }
+        Self { space, client_state, server_state, start_time, iter_count: 0 }
     }
 
     /// set the scale factor for a surface
