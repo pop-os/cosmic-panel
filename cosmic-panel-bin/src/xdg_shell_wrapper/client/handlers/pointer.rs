@@ -6,6 +6,7 @@ use crate::xdg_shell_wrapper::{
     shared_state::GlobalState,
     space::WrapperSpace,
 };
+use cctk::cosmic_protocols::image_source::v1::client;
 use sctk::{
     delegate_pointer,
     seat::pointer::{PointerEvent, PointerHandler},
@@ -16,13 +17,14 @@ use smithay::{
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
     reexports::wayland_server::protocol::wl_pointer::AxisSource,
     utils::{Point, SERIAL_COUNTER},
+    wayland::seat::WaylandFocus,
 };
 
 impl PointerHandler for GlobalState {
     fn pointer_frame(
         &mut self,
         conn: &sctk::reexports::client::Connection,
-        qh: &sctk::reexports::client::QueueHandle<Self>,
+        _qh: &sctk::reexports::client::QueueHandle<Self>,
         pointer: &sctk::reexports::client::protocol::wl_pointer::WlPointer,
         events: &[sctk::seat::pointer::PointerEvent],
     ) {
@@ -58,7 +60,7 @@ impl GlobalState {
         }
     }
 
-    fn pointer_frame_inner(
+    pub fn pointer_frame_inner(
         &mut self,
         conn: &sctk::reexports::client::Connection,
         pointer: &sctk::reexports::client::protocol::wl_pointer::WlPointer,
@@ -107,6 +109,7 @@ impl GlobalState {
                         f.2 = FocusStatus::LastFocused(Instant::now());
                     }
                     drop(c_hovered_surface);
+                    self.client_state.delayed_surface_motion.clear();
 
                     self.space.pointer_leave(&seat_name, Some(e.surface.clone()));
                 },
@@ -159,19 +162,32 @@ impl GlobalState {
                         e.surface.clone(),
                     ) {
                         if generated_events.is_empty() {
-                            ptr.motion(
-                                self,
-                                Some((surface, s_pos)),
-                                &MotionEvent {
-                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                    serial: SERIAL_COUNTER.next_serial(),
-                                    time: time.try_into().unwrap(),
-                                },
-                            );
-                            ptr.frame(self);
+                            if let Some(ev) = surface.wl_surface().and_then(|s| {
+                                self.client_state.delayed_surface_motion.get_mut(s.as_ref())
+                            }) {
+                                *ev = (e.clone(), pointer.clone(), ev.2);
+                            } else {
+                                ptr.motion(
+                                    self,
+                                    Some((surface, s_pos)),
+                                    &MotionEvent {
+                                        location: c_pos.to_f64()
+                                            + Point::from((surface_x, surface_y)),
+                                        serial: SERIAL_COUNTER.next_serial(),
+                                        time: time.try_into().unwrap(),
+                                    },
+                                );
+                                ptr.frame(self);
+                            }
                         } else {
                             self.update_generated_event_serial(&mut generated_events);
                             self.pointer_frame_inner(conn, pointer, &generated_events);
+                            if let Some(s) = surface.wl_surface() {
+                                self.client_state.delayed_surface_motion.insert(
+                                    s.into_owned(),
+                                    (e.clone(), pointer.clone(), self.iter_count),
+                                );
+                            }
                         }
                     } else {
                         ptr.motion(
@@ -233,19 +249,32 @@ impl GlobalState {
                         c_focused_surface,
                     ) {
                         if generated_events.is_empty() {
-                            ptr.motion(
-                                self,
-                                Some((surface, s_pos)),
-                                &MotionEvent {
-                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                    serial: SERIAL_COUNTER.next_serial(),
-                                    time,
-                                },
-                            );
-                            ptr.frame(self);
+                            if let Some(ev) = surface.wl_surface().and_then(|s| {
+                                self.client_state.delayed_surface_motion.get_mut(s.as_ref())
+                            }) {
+                                *ev = (e.clone(), pointer.clone(), ev.2);
+                            } else {
+                                ptr.motion(
+                                    self,
+                                    Some((surface, s_pos)),
+                                    &MotionEvent {
+                                        location: c_pos.to_f64()
+                                            + Point::from((surface_x, surface_y)),
+                                        serial: SERIAL_COUNTER.next_serial(),
+                                        time,
+                                    },
+                                );
+                                ptr.frame(self);
+                            }
                         } else {
                             self.update_generated_event_serial(&mut generated_events);
                             self.pointer_frame_inner(conn, pointer, &generated_events);
+                            if let Some(s) = surface.wl_surface() {
+                                self.client_state.delayed_surface_motion.insert(
+                                    s.into_owned(),
+                                    (e.clone(), pointer.clone(), self.iter_count),
+                                );
+                            }
                         }
                     } else {
                         ptr.motion(
