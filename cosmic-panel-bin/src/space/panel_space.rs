@@ -846,11 +846,7 @@ impl PanelSpace {
                         );
                     }
                     layer_surface.wl_surface().commit();
-                    self.space_event.replace(Some(SpaceEvent::WaitConfigure {
-                        first: false,
-                        width: size.w,
-                        height: size.h,
-                    }));
+
                     info!("{:?}", self.space_event);
                 } else if self.layer.is_some() {
                     should_render = if self.is_dirty {
