@@ -463,13 +463,12 @@ impl PanelSpace {
         } as i32;
 
         if let Some(right_button) = right_overflow_button {
-            let margin_offset_scaled = (margin_offset as f64 * self.scale).round() as i32;
             let size = right_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
             } else {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
             };
 
@@ -483,13 +482,12 @@ impl PanelSpace {
         };
 
         if let Some(center_button) = center_overflow_button {
-            let margin_offset_scaled = (margin_offset as f64 * self.scale).round() as i32;
             let size = center_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
             } else {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
             };
             let loc = if self.config().is_horizontal() {
@@ -573,13 +571,12 @@ impl PanelSpace {
         map_windows(windows_right.iter_mut(), right_pos);
         // if there is a left overflow_button, map it
         if let Some(left_button) = left_overflow_button {
-            let margin_offset_scaled = (margin_offset as f64 * self.scale).round() as i32;
             let size = left_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
             } else {
-                margin_offset_scaled
+                margin_offset
                     + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
             };
             let loc = if self.config().is_horizontal() {
