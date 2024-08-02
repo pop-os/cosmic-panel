@@ -1283,8 +1283,13 @@ impl WrapperSpace for PanelSpace {
         info: OutputInfo,
     ) -> anyhow::Result<bool> {
         self.output.replace((c_output, s_output, info));
-        self.dimensions = self.constrain_dim(self.dimensions, Some(self.gap() as u32));
-        self.is_dirty = true;
+        let (width, height) = if self.config.is_horizontal() {
+            (0, self.dimensions.h)
+        } else {
+            (self.dimensions.w, 0)
+        };
+        self.pending_dimensions = Some((width, height).into());
+        self.clear();
         Ok(true)
     }
 
