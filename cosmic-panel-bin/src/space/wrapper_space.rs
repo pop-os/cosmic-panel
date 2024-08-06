@@ -1273,14 +1273,17 @@ impl WrapperSpace for PanelSpace {
         s_output: Output,
         info: OutputInfo,
     ) -> anyhow::Result<bool> {
-        self.output.replace((c_output, s_output, info));
-        let (width, height) = if self.config.is_horizontal() {
-            (0, self.dimensions.h)
-        } else {
-            (self.dimensions.w, 0)
-        };
-        self.pending_dimensions = Some((width, height).into());
-        self.clear();
+        let old = self.output.replace((c_output, s_output, info.clone()));
+
+        if old.is_some_and(|old| old.2.logical_size != info.logical_size) {
+            let (width, height) = if self.config.is_horizontal() {
+                (0, self.dimensions.h)
+            } else {
+                (self.dimensions.w, 0)
+            };
+            self.pending_dimensions = Some((width, height).into());
+            self.clear();
+        }
         Ok(true)
     }
 
@@ -1539,8 +1542,11 @@ impl WrapperSpace for PanelSpace {
                 self.reset_overflow();
             }
 
+            let scaled = self.dimensions.to_f64().downscale(scale);
+            self.dimensions = scaled.to_i32_round();
+            self.pending_dimensions =
+                Some(if self.config.is_horizontal() { (0, 1) } else { (1, 0) }.into());
             self.clear();
-            self.has_frame = true;
 
             // check overflow popup
             if let Some((popup, _)) = self.overflow_popup.as_mut() {
