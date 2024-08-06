@@ -196,7 +196,7 @@ impl WrapperSpace for PanelSpace {
             }
         }
 
-        self.close_popups(clear_exclude);
+        self.close_popups(|p| clear_exclude.contains(&p.c_popup));
         let c_popup = popup::Popup::from_surface(
             parent.as_ref().map(|p| p.xdg_surface()),
             &positioner,
@@ -829,13 +829,13 @@ impl WrapperSpace for PanelSpace {
             if target.is_none() {
                 // close popups when panel is pressed
                 if self.layer.as_ref().map(|s| s.wl_surface()) == Some(&prev_foc.1) && press {
-                    self.close_popups([]);
+                    self.close_popups(|_| false);
                 }
             }
             target
         } else {
             if press {
-                self.close_popups([]);
+                self.close_popups(|_| false);
             }
             // no hover found
             // if has keyboard focus remove it and close popups
@@ -1067,7 +1067,7 @@ impl WrapperSpace for PanelSpace {
 
         if prev_popup_client.is_some() && matches!(cur_client_hover_id, Some(HoverId::Overflow(_)))
         {
-            self.close_popups([]);
+            self.close_popups(|_| false);
             if let Some((relative_loc, geo)) = hover_relative_loc.zip(hover_geo) {
                 // place in center
                 let mut p = (x, y);
@@ -1107,7 +1107,7 @@ impl WrapperSpace for PanelSpace {
             && self.generated_ptr_event_count == 0
             && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
         {
-            self.close_popups([]);
+            self.close_popups(|_| false);
 
             self.overflow_popup = None;
             // send press to new client if it hover flag is set
@@ -1218,7 +1218,7 @@ impl WrapperSpace for PanelSpace {
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
 
-        self.close_popups([]);
+        self.close_popups(|_| false);
     }
 
     fn keyboard_enter(&mut self, _: &str, _: c_wl_surface::WlSurface) -> Option<s_WlSurface> {
@@ -1249,16 +1249,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
-        self.popups.retain(|p| {
-            if p.popup.c_popup.wl_surface() == popup.wl_surface() {
-                if p.s_surface.alive() {
-                    p.s_surface.send_popup_done();
-                }
-                false
-            } else {
-                true
-            }
-        });
+        self.close_popups(|p| p.c_popup.wl_surface() == popup.wl_surface());
     }
 
     // handled by custom method with access to renderer instead

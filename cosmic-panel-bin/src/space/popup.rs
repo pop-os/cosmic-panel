@@ -1,39 +1,55 @@
 use std::rc::Rc;
 
-use crate::xdg_shell_wrapper::space::{ClientEglSurface, WrapperPopupState};
+use crate::xdg_shell_wrapper::space::{ClientEglSurface, PanelPopup, WrapperPopupState};
 use cctk::wayland_client::Proxy;
-use sctk::shell::xdg::popup::{self, Popup};
+use sctk::shell::xdg::popup::{self};
 use smithay::{
     backend::{egl::EGLSurface, renderer::gles::GlesRenderer},
     utils::Rectangle,
+    wayland::seat::WaylandFocus,
 };
 use wayland_egl::WlEglSurface;
 
 use super::PanelSpace;
 
 impl PanelSpace {
-    pub(crate) fn close_popups<'a>(&mut self, exclude: impl AsRef<[Popup]>) {
+    pub(crate) fn close_popups<'a>(&mut self, exclude: impl Fn(&PanelPopup) -> bool) {
         tracing::info!("Closing popups");
-        let exclude = exclude.as_ref();
         let mut to_destroy = Vec::with_capacity(self.popups.len());
         self.popups.retain_mut(|p| {
-            if exclude.iter().any(|e| e == &p.popup.c_popup) {
+            if exclude(&p.popup) {
                 return true;
             }
 
             tracing::info!("Closing popup: {:?}", p.popup.c_popup.wl_surface());
             p.s_surface.send_popup_done();
-            to_destroy
-                .push((p.popup.c_popup.xdg_popup().clone(), p.popup.c_popup.wl_surface().clone()));
+            to_destroy.push((
+                p.popup.c_popup.xdg_popup().clone(),
+                p.popup.c_popup.wl_surface().clone(),
+                Some(p.s_surface.wl_surface().clone()),
+            ));
             false
         });
-        if self.overflow_popup.as_ref().is_some_and(|(p, _)| !exclude.contains(&p.c_popup)) {
+        if self.overflow_popup.as_ref().is_some_and(|(p, _)| !exclude(&p)) {
             let (popup, _) = self.overflow_popup.take().unwrap();
             tracing::info!("Closing overflow popup: {:?}", popup.c_popup.wl_surface());
-            to_destroy
-                .push((popup.c_popup.xdg_popup().clone(), popup.c_popup.wl_surface().clone()));
+            to_destroy.push((
+                popup.c_popup.xdg_popup().clone(),
+                popup.c_popup.wl_surface().clone(),
+                None,
+            ));
         }
-        for (popup, surface) in to_destroy {
+
+        for (popup, surface, s_surface) in to_destroy {
+            self.c_focused_surface.borrow_mut().retain(|s| &s.0 != &surface);
+            self.c_hovered_surface.borrow_mut().retain(|s| &s.0 != &surface);
+
+            if let Some(s_surface) = s_surface {
+                self.s_focused_surface
+                    .retain(|s| !s.0.wl_surface().is_some_and(|s| s.as_ref() == &s_surface));
+                self.s_hovered_surface
+                    .retain(|s| !s.surface.wl_surface().is_some_and(|s| s.as_ref() == &s_surface));
+            }
             popup.destroy();
             surface.destroy();
         }

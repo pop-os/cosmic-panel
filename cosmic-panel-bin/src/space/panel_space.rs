@@ -420,6 +420,7 @@ impl PanelSpace {
             } else {
                 return;
             };
+
         let cur_hover = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
@@ -444,14 +445,15 @@ impl PanelSpace {
                     FocusStatus::LastFocused(self.start_instant)
                 },
                 |acc, (surface, _, f)| {
-                    if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
-                        || self.popups.iter().any(|p| {
-                            &p.popup.c_popup.wl_surface() == &surface
-                                || self
-                                    .popups
-                                    .iter()
-                                    .any(|p| p.popup.c_popup.wl_surface() == surface)
-                        })
+                    if surface.is_alive()
+                        && (self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
+                            || self.popups.iter().any(|p| {
+                                &p.popup.c_popup.wl_surface() == &surface
+                                    || self
+                                        .popups
+                                        .iter()
+                                        .any(|p| p.popup.c_popup.wl_surface() == surface)
+                            }))
                     {
                         match (&acc, &f) {
                             (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => {
@@ -470,7 +472,6 @@ impl PanelSpace {
                 },
             )
         };
-
         match self.visibility {
             Visibility::Hidden => {
                 if let FocusStatus::Focused = cur_hover {
@@ -566,7 +567,7 @@ impl PanelSpace {
                             );
                             layer_shell_wl_surface.commit();
                         }
-                        self.close_popups([]);
+                        self.close_popups(|_| false);
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: now,
                             progress,
@@ -593,7 +594,7 @@ impl PanelSpace {
 
                 if let FocusStatus::LastFocused(_) = cur_hover {
                     // start transition to visible
-                    self.close_popups([]);
+                    self.close_popups(|_| false);
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,
                         progress: total_t.checked_sub(progress).unwrap_or_default(),
@@ -799,11 +800,11 @@ impl PanelSpace {
             Some(SpaceEvent::Quit) => {
                 info!("root layer shell surface removed.");
             },
-            Some(SpaceEvent::WaitConfigure { first, width, height }) => {
+            Some(SpaceEvent::WaitConfigure { first, width, height }) if first => {
                 tracing::info!("Waiting for configure event");
                 self.space_event.replace(Some(SpaceEvent::WaitConfigure { first, width, height }));
             },
-            None => {
+            _ => {
                 if let (Some(size), Some(layer_surface)) =
                     (self.pending_dimensions.take(), self.layer.as_ref())
                 {
@@ -1373,7 +1374,7 @@ impl PanelSpace {
                 }
             }
         }
-        self.close_popups([]);
+        self.close_popups(|_| false);
     }
 
     pub fn set_maximized(&mut self, maximized: bool, config: CosmicPanelConfig, opacity: f32) {
