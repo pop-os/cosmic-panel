@@ -57,7 +57,7 @@ use smithay::{
             Bind, Unbind,
         },
     },
-    desktop::{PopupManager, Space, Window},
+    desktop::{PopupManager, Space},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
@@ -847,6 +847,7 @@ impl PanelSpace {
                         );
                     }
                     layer_surface.wl_surface().commit();
+                    layer_surface.wl_surface().frame(qh, layer_surface.wl_surface().clone());
 
                     info!("{:?}", self.space_event);
                 } else if self.layer.is_some() {
@@ -1114,7 +1115,7 @@ impl PanelSpace {
     /// clear the panel
     pub fn clear(&mut self) {
         self.is_dirty = true;
-        self.popups.clear();
+        self.close_popups(|_| false);
         self.overflow_popup = None;
         self.damage_tracked_renderer = Some(OutputDamageTracker::new(
             self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
