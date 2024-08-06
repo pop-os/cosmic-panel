@@ -44,7 +44,20 @@ impl CompositorHandler for GlobalState {
 
         if role == "xdg_toplevel".into() {
             on_commit_buffer_handler::<GlobalState>(surface);
-            self.space.dirty_window(&dh, surface)
+            self.space.dirty_window(&dh, surface);
+            // check for pending motion events and send them now
+            if let Some((pending_event, pointer, iter_count)) =
+                self.client_state.delayed_surface_motion.remove(surface)
+            {
+                if iter_count == self.iter_count {
+                    self.client_state
+                        .delayed_surface_motion
+                        .insert(surface.clone(), (pending_event, pointer, iter_count));
+                    return;
+                }
+                let conn = &self.client_state.connection.clone();
+                self.pointer_frame_inner(conn, &pointer, &[pending_event]);
+            }
         } else if role == "xdg_popup".into() {
             on_commit_buffer_handler::<GlobalState>(surface);
             self.server_state.popup_manager.commit(surface);

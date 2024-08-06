@@ -161,5 +161,6 @@ pub fn run(
             server_display.dispatch_clients(&mut global_state)?;
             server_display.flush_clients()?;
         }
+        global_state.iter_count += 1;
     }
 }

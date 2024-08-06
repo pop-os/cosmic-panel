@@ -6,7 +6,7 @@ use crate::{
 };
 use cctk::{
     toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState,
-    workspace::WorkspaceState,
+    wayland_client::protocol::wl_pointer::WlPointer, workspace::WorkspaceState,
 };
 use sctk::{
     compositor::CompositorState,
@@ -31,7 +31,10 @@ use sctk::{
         },
     },
     registry::RegistryState,
-    seat::{pointer::ThemedPointer, SeatState},
+    seat::{
+        pointer::{PointerEvent, ThemedPointer},
+        SeatState,
+    },
     shell::{
         wlr_layer::{LayerShell, LayerSurface},
         xdg::XdgShell,
@@ -54,13 +57,14 @@ use smithay::{
         calloop,
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, GlobalId},
-            protocol::wl_output,
+            protocol::{wl_output, wl_surface::WlSurface as SmithayWlSurface},
         },
     },
     wayland::compositor::CompositorClientState,
 };
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fmt::Debug,
     rc::Rc,
     time::{Duration, Instant},
@@ -162,6 +166,8 @@ pub struct ClientState {
     pub(crate) multipool_ctr: usize,
     pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
+
+    pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
 
     pub(crate) pending_layer_surfaces: Vec<(
         smithay::wayland::shell::wlr_layer::LayerSurface,
@@ -299,6 +305,7 @@ impl ClientState {
             toplevel_manager_state: None,
             workspace_state: None,
             security_context_manager,
+            delayed_surface_motion: HashMap::new(),
         };
 
         WaylandSource::new(connection, event_queue).insert(loop_handle).unwrap();
