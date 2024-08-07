@@ -61,7 +61,7 @@ impl DataDeviceHandler for GlobalState {
         let wl_offer = offer.inner();
 
         let mime_types = wl_offer.data::<DataOfferData>().unwrap().with_mime_types(|m| m.to_vec());
-
+        seat.client.selection_offer = Some(offer);
         set_data_device_selection(
             &self.server_state.display_handle,
             &seat.server.seat,

@@ -11,7 +11,9 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
-        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
+        selection::{
+            data_device::DataDeviceState, primary_selection::PrimarySelectionState, SelectionSource,
+        },
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
     },
@@ -89,7 +91,7 @@ impl ServerState {
 
 pub(crate) struct ServerSeat {
     pub(crate) seat: Seat<GlobalState>,
-    pub(crate) selection_source: Option<WlDataSource>,
+    pub(crate) selection_source: Option<SelectionSource>,
     pub(crate) dnd_source: Option<WlDataSource>,
     pub(crate) dnd_icon: Option<WlSurface>,
 }

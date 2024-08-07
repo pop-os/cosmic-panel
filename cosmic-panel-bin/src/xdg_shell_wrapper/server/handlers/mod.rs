@@ -350,7 +350,9 @@ impl SelectionHandler for GlobalState {
                 .client_state
                 .data_device_manager
                 .create_copy_paste_source(&self.client_state.queue_handle, mime_types);
+            copy_paste_source.set_selection(&seat.client.data_device, serial);
             seat.client.copy_paste_source = Some(copy_paste_source);
+            seat.server.selection_source = Some(source);
         } else {
             seat.client.data_device.unset_selection(serial)
         }
