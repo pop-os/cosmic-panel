@@ -10,6 +10,7 @@ use sctk::{
 };
 use smithay::{
     reexports::wayland_server::protocol::wl_data_device_manager::DndAction, utils::SERIAL_COUNTER,
+    wayland::selection::data_device::request_data_device_client_selection,
 };
 
 impl DataSourceHandler for GlobalState {
@@ -54,8 +55,8 @@ impl DataSourceHandler for GlobalState {
             if let Some(dnd_source) = seat.server.dnd_source.as_ref() {
                 dnd_source.send(mime, fd.as_fd());
             }
-        } else if let Some(selection) = seat.server.selection_source.as_ref() {
-            selection.send(mime, fd.as_fd());
+        } else if let Some(_) = seat.server.selection_source.as_ref() {
+            _ = request_data_device_client_selection(&seat.server.seat, mime, fd.into());
         }
     }
 
