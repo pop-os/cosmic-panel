@@ -1,6 +1,9 @@
 // Author: Ashley Wulber
 // Title: Rounded rectangle
+#ifdef GL_OES_standard_derivatives
 #extension GL_OES_standard_derivatives:enable
+#endif
+
 #ifdef GL_ES
 precision mediump float;
 #endif
@@ -26,6 +29,14 @@ float sdRoundBox(in vec2 p,in vec2 b,in vec4 r)
     r.x=(p.y>0.)?r.x:r.y;
     vec2 q=abs(p)-b+r.x;
     return min(max(q.x,q.y),0.)+length(max(q,0.))-r.x;
+}
+
+float myfwidth(float x){
+    #ifdef GL_OES_standard_derivatives
+    return fwidth(x);
+    #else
+    return 0.;
+    #endif
 }
 
 void main()
@@ -63,13 +74,13 @@ void main()
     vec4 calc_bg_color;
     
     if(d_tl<=rad_tl){
-        delta=(ra.z-d_tl)/rad_tl*fwidth(d)/2.;
+        delta=(ra.z-d_tl)/rad_tl*myfwidth(d)/2.;
     }else if(d_tr<=rad_tr){
-        delta=(ra.x-d_tr)/rad_tr*fwidth(d)/2.;
+        delta=(ra.x-d_tr)/rad_tr*myfwidth(d)/2.;
     }else if(d_bl<=rad_bl){
-        delta=(ra.w-d_bl)/rad_bl*fwidth(d)/2.;
+        delta=(ra.w-d_bl)/rad_bl*myfwidth(d)/2.;
     }else if(d_br<=rad_br){
-        delta=(ra.y-d_br)/rad_br*fwidth(d)/2.;
+        delta=(ra.y-d_br)/rad_br*myfwidth(d)/2.;
     }
     
     float a=1.-smoothstep(1.-5.*delta/6.,1.+delta/6.,1.+d);
