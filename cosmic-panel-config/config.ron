@@ -65,7 +65,7 @@
                 transition_time: 200,
                 handle_size: 2,
             )),
-            border_radius: 160,
+            border_radius: 16,
             margin: 0,
             opacity: 1.0
         ),
