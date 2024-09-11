@@ -223,7 +223,7 @@ impl SpaceContainer {
             self.outputs.len()
         } else {
             self.space_list.iter().filter(|s| s.config.name == entry.name).count()
-        };
+        } as isize;
 
         if force_output.is_none()
             && self.space_list.iter_mut().any(|s| {
