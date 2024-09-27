@@ -6,7 +6,6 @@ use crate::xdg_shell_wrapper::{
     shared_state::GlobalState,
     space::WrapperSpace,
 };
-use cctk::cosmic_protocols::image_source::v1::client;
 use sctk::{
     delegate_pointer,
     seat::pointer::{PointerEvent, PointerHandler},
@@ -14,7 +13,7 @@ use sctk::{
 };
 use smithay::{
     backend::input::{self, Axis, ButtonState},
-    input::pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
+    input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::protocol::wl_pointer::AxisSource,
     utils::{Point, SERIAL_COUNTER},
     wayland::seat::WaylandFocus,
