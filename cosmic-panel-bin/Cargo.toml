@@ -26,7 +26,7 @@ wayland-protocols = { version = "0.32.1", features = ["staging"] }
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
 # xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
 xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper-config" }
-cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "c8d3a1c" }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "1eaeece" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
 wayland-egl = "0.32.1"
 wayland-protocols-wlr = { version = "0.3.1", features = ["client"] }

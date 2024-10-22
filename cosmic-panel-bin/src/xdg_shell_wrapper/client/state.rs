@@ -358,13 +358,13 @@ impl ClientState {
     /// initialize the toplevel info state
     pub fn init_toplevel_info_state(&mut self) {
         self.toplevel_info_state =
-            Some(ToplevelInfoState::new(&self.registry_state, &self.queue_handle));
+            ToplevelInfoState::try_new(&self.registry_state, &self.queue_handle);
     }
 
     /// initialize the toplevel manager state
     pub fn init_toplevel_manager_state(&mut self) {
         self.toplevel_manager_state =
-            Some(ToplevelManagerState::new(&self.registry_state, &self.queue_handle));
+            ToplevelManagerState::try_new(&self.registry_state, &self.queue_handle);
     }
 
     /// initialize the toplevel manager state
