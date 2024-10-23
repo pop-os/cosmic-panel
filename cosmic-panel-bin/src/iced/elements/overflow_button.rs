@@ -18,7 +18,7 @@ use cosmic::{
     },
     iced_core::id,
     theme::{self, Button},
-    widget::{layer_container, Id},
+    widget::{button, layer_container, Id},
     Element,
 };
 use smithay::utils::{Logical, Point, Size};
@@ -178,7 +178,7 @@ impl Program for OverflowButton {
 
     fn view(&self) -> crate::iced::Element<'_, Self::Message> {
         Element::from(
-            cosmic::widget::button(
+            button::custom(
                 layer_container(
                     cosmic::widget::icon(cosmic::widget::icon::from_name(self.icon.clone()).into())
                         .style(theme::Svg::Custom(Rc::new(|theme| {

@@ -1,5 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
+    fmt::Debug,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
     str::FromStr,
@@ -98,6 +99,25 @@ pub enum AppletMsg {
     NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
+}
+
+impl Debug for AppletMsg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NewProcess(arg0, _) => f.debug_tuple("NewProcess").field(arg0).finish(),
+            Self::NewNotificationsProcess(arg0, _, arg2, arg3) => f
+                .debug_tuple("NewNotificationsProcess")
+                .field(arg0)
+                .field(arg2)
+                .field(arg3)
+                .finish(),
+            Self::NeedNewNotificationFd(arg0) => {
+                f.debug_tuple("NeedNewNotificationFd").field(arg0).finish()
+            },
+            Self::ClientSocketPair(arg0) => f.debug_tuple("ClientSocketPair").field(arg0).finish(),
+            Self::Cleanup(arg0) => f.debug_tuple("Cleanup").field(arg0).finish(),
+        }
+    }
 }
 
 pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
@@ -289,6 +309,7 @@ pub struct PanelSpace {
     pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
     pub remap_attempts: u32,
     pub background_element: Option<BackgroundElement>,
+    pub last_minimize_update: Instant,
 }
 
 impl PanelSpace {
@@ -363,6 +384,7 @@ impl PanelSpace {
             overflow_popup: None,
             remap_attempts: 0,
             background_element: None,
+            last_minimize_update: Instant::now() - Duration::from_secs(1),
         }
     }
 
@@ -846,12 +868,10 @@ impl PanelSpace {
 
                     info!("{:?}", self.space_event);
                 } else if self.layer.is_some() {
-                    should_render = if self.is_dirty {
-                        let update_res = self.layout_();
-                        update_res.is_ok()
-                    } else {
-                        true
-                    };
+                    should_render = true;
+                    if self.is_dirty {
+                        _ = self.layout_();
+                    }
                 }
             },
         }
@@ -951,7 +971,7 @@ impl PanelSpace {
                                 let mut capabilities =
                                     GlesRenderer::supported_capabilities(&egl_context)
                                         .expect("Failed to query EGL Context");
-                                capabilities.retain(|cap| *cap != Capability::ColorTransformations);
+                                // capabilities.retain(|cap| *cap != Capability::);
                                 GlesRenderer::with_capabilities(egl_context, capabilities)
                                     .expect("Failed to create EGL Surface")
                             }

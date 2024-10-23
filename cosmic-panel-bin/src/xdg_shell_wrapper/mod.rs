@@ -23,6 +23,7 @@ pub use server::state as server_state;
 use server::state::ServerState;
 use shared_state::GlobalState;
 use space::{Visibility, WrapperSpace};
+use tracing::info;
 pub use xdg_shell_wrapper_config as config;
 
 use crate::space_container::SpaceContainer;
@@ -120,7 +121,7 @@ pub fn run(
         if let Some((key_pressed, kbd)) = press {
             kbd.input::<(), _>(
                 &mut global_state,
-                key_pressed.1 .0,
+                key_pressed.1 .0.into(),
                 KeyState::Released,
                 SERIAL_COUNTER.next_serial(),
                 key_pressed.1 .1.wrapping_add(1),
@@ -134,6 +135,7 @@ pub fn run(
         } else {
             Duration::from_millis(16)
         };
+
         event_loop.dispatch(dur, &mut global_state)?;
 
         // rendering
