@@ -9,7 +9,7 @@ name = "cosmic-panel"
 path = "src/main.rs"
 
 [dependencies]
-calloop = { version = "0.13.0", features = ["executor"] }
+calloop = { version = "0.14.0", features = ["executor"] }
 ordered-float = "4.2.0"
 smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = [
     "use_system_lib",
@@ -17,27 +17,28 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
     "backend_egl",
     "backend_drm",
     "renderer_gl",
-], rev = "fe654453b032020cb26861a38b245ba12842ba8f" }
+], rev = "df79eeb" }
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-protocols = { version = "0.32.1", features = ["staging"] }
-# xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-# xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper" }
-# xdg-shell-wrapper = { path = "../../xdg-shell-wrapper" }
+
 xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper-config" }
 cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "1eaeece" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
 wayland-egl = "0.32.1"
 wayland-protocols-wlr = { version = "0.3.1", features = ["client"] }
-tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.16", features = [
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "env-filter",
+    "registry",
     "fmt",
     "env-filter",
     "ansi",
 ] }
-tracing-journald = "0.3.0"
-tracing-futures = "0.2.5"
+tracing-journald = "0.3"
+tracing-futures = "0.2"
 launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
 # launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }

@@ -134,8 +134,9 @@ impl SeatHandler for GlobalState {
                 let last_enter = seat_pair.client.last_enter;
 
                 with_states(&surface, |data| {
-                    let surface_attributes = data.cached_state.current::<SurfaceAttributes>();
-                    let buf = RefMut::map(surface_attributes, |s| &mut s.buffer);
+                    let mut guard = data.cached_state.get::<SurfaceAttributes>();
+                    let surface_attributes = guard.current();
+                    let buf = surface_attributes.buffer.as_mut();
                     if let Some(hotspot) = data
                         .data_map
                         .get::<Mutex<CursorImageAttributes>>()

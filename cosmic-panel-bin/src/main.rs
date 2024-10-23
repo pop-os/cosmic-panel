@@ -105,6 +105,8 @@ fn main() -> Result<()> {
         .insert_source(
             calloop::timer::Timer::from_duration(Duration::from_secs(1)),
             |_, _, state: &mut GlobalState| {
+                tracing::trace!("Updating hidden applets");
+
                 state.space.update_hidden_applet_frame();
                 calloop::timer::TimeoutAction::ToDuration(Duration::from_secs(1))
             },
@@ -114,6 +116,7 @@ fn main() -> Result<()> {
     event_loop
         .handle()
         .insert_source(calloop_rx, move |e, _, state: &mut GlobalState| {
+            tracing::trace!("Panel Event: {e:?}");
             match e {
                 calloop::channel::Event::Msg(e) => match e {
                     PanelCalloopMsg::ClientSocketPair(client_id) => {
@@ -165,6 +168,7 @@ fn main() -> Result<()> {
                 };
 
             while let Some(msg) = applet_rx.recv().await {
+                tracing::trace!("Applet Message: {msg:?}");
                 match msg {
                     space::AppletMsg::NewProcess(id, process) => {
                         if let Ok(key) = process_manager.start(process).await {

@@ -50,15 +50,14 @@ impl KeyboardHandler for GlobalState {
                 ));
             }
         }
-        let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-            |(_, _, s, c, ..)| {
+        let s_surface =
+            self.client_state.proxied_layer_surfaces.iter_mut().find_map(|(_, _, s, c, ..)| {
                 if c.wl_surface() == surface {
                     Some(s.wl_surface().clone())
                 } else {
                     None
                 }
-            },
-        );
+            });
 
         if let Some(s_surface) = s_surface {
             kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
@@ -160,7 +159,7 @@ impl KeyboardHandler for GlobalState {
 
         let _ = kbd.input::<(), _>(
             self,
-            event.raw_code,
+            event.raw_code.into(),
             KeyState::Pressed,
             SERIAL_COUNTER.next_serial(),
             event.time,
@@ -196,7 +195,7 @@ impl KeyboardHandler for GlobalState {
 
         kbd.input::<(), _>(
             self,
-            event.raw_code,
+            event.raw_code.into(),
             KeyState::Released,
             SERIAL_COUNTER.next_serial(),
             event.time,

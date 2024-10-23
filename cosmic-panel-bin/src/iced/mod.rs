@@ -732,7 +732,7 @@ impl<P, R> AsRenderElements<R> for IcedElement<P>
 where
     P: Program + Send + 'static,
     R: Renderer + ImportMem,
-    <R as Renderer>::TextureId: 'static + Clone,
+    <R as Renderer>::TextureId: 'static + Clone + Send,
 {
     type RenderElement = MemoryRenderBufferRenderElement<R>;
 

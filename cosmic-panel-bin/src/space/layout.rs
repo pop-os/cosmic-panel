@@ -1,7 +1,7 @@
 use std::{
     slice::IterMut,
     sync::{atomic::AtomicBool, Arc, MutexGuard},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -55,7 +55,7 @@ impl PanelSpace {
         let mut right_overflow_button = None;
         let mut center_overflow_button = None;
 
-        let to_map = self
+        let mut to_map = self
             .space
             .elements()
             .cloned()
@@ -228,16 +228,26 @@ impl PanelSpace {
             anchor: PanelAnchor,
             alignment: Alignment,
             scale: f64,
-        ) -> (Alignment, usize, i32, i32) {
-            let mut size = w.toplevel().and_then(|t| t.current_state().size).unwrap_or_default();
+        ) -> (Alignment, usize, i32, i32, i32) {
+            let (mut size, mut suggested_bounds) = w
+                .toplevel()
+                .map(|t| {
+                    let s = t.current_state();
+                    (s.size.unwrap_or_default(), s.bounds.unwrap_or_default())
+                })
+                .unwrap_or_default();
             let bbox = w.bbox().size;
 
+            if bbox.w > 0 {
+                info!("MAPFN {i} {anchor:?} {suggested_bounds:?} {size:?} {bbox:?}");
+            }
             if size.w == 0 {
                 size.w = bbox.w;
             } else {
                 size.w = ((size.w as f64) * scale).round() as i32;
             }
             size.w = size.w.min(bbox.w);
+
             if size.h == 0 {
                 size.h = bbox.h;
             } else {
@@ -245,9 +255,21 @@ impl PanelSpace {
             }
             size.h = size.h.min(bbox.h);
 
+            if suggested_bounds.w == 0 {
+                suggested_bounds.w = size.w;
+            }
+            if suggested_bounds.h == 0 {
+                suggested_bounds.h = size.h;
+            }
+            info!("MAPFN2 {i} {anchor:?} {suggested_bounds:?} {size:?} {bbox:?}");
+
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => (alignment, *i, size.h, size.w),
-                PanelAnchor::Top | PanelAnchor::Bottom => (alignment, *i, size.w, size.h),
+                PanelAnchor::Left | PanelAnchor::Right => {
+                    (alignment, *i, size.h, size.w, suggested_bounds.h)
+                },
+                PanelAnchor::Top | PanelAnchor::Bottom => {
+                    (alignment, *i, size.w, size.h, suggested_bounds.w)
+                },
             }
         }
 
@@ -256,8 +278,9 @@ impl PanelSpace {
             l
         });
 
-        let left_sum_scaled = left.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
+        let left_sum_scaled =
+            left.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>() as f64
+                + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
         let left_sum_scaled = if let Some(left_button) = left_overflow_button.as_ref() {
             let size = left_button.bbox().size.to_f64();
             left_sum_scaled
@@ -269,8 +292,10 @@ impl PanelSpace {
 
         let center =
             windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
-        let center_sum_scaled = center.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
+        let center_sum_scaled =
+            center.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>()
+                as f64
+                + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
             let size = center_button.bbox().size.to_f64();
             center_sum_scaled
@@ -281,8 +306,10 @@ impl PanelSpace {
         };
 
         let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
-        let right_sum_scaled = right.clone().map(|(_, _, length, _)| length).sum::<i32>() as f64
-            + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
+        let right_sum_scaled =
+            right.clone().map(|(_, _, _length, _, suggested_length)| suggested_length).sum::<i32>()
+                as f64
+                + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
             let size = right_button.bbox().size.to_f64();
             right_sum_scaled
@@ -299,7 +326,7 @@ impl PanelSpace {
             as i32;
         let new_list_thickness = (2.0 * padding_scaled
             + chain!(left.clone(), center.clone(), right.clone())
-                .map(|(_, _, _, thickness)| thickness)
+                .map(|(_, _, _, thickness, _)| thickness)
                 .max()
                 .unwrap_or(0) as f64) as i32;
 
@@ -319,11 +346,14 @@ impl PanelSpace {
             self.actual_size.w = actual_size_constrained.w;
         }
 
-        let (new_logical_length, new_logical_thickness) = if self.config.is_horizontal() {
+        let (new_logical_length, new_logical_crosswise_dim) = if self.config.is_horizontal() {
             (self.actual_size.w, self.actual_size.h)
         } else {
             (self.actual_size.h, self.actual_size.w)
         };
+        if new_logical_crosswise_dim == 0 {
+            tracing::warn!("Invalid crosswise dimension.");
+        }
         let new_dim = if self.config.is_horizontal() {
             let mut dim = actual_size_constrained;
             dim.h += gap as i32;
@@ -409,6 +439,7 @@ impl PanelSpace {
             + self.config.size.get_applet_padding(true) as f64 * 2.)
             * -1.5 // allows some wiggle room
             * self.scale) as i32;
+
         let center_overflow = (center_sum - target_center_len) as i32;
         if center_overflow < suggested_size {
             // check if it can be expanded
@@ -420,9 +451,11 @@ impl PanelSpace {
 
         if !is_dock {
             let left_overflow = (left_sum - target_left_len) as i32;
+
             if left_overflow < suggested_size {
                 self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
             } else if left_overflow > 0 {
+                info!("target: {target_left_len}, actual: {left_sum}");
                 let overflow = self.shrink_left(left_overflow as u32);
                 bail!("left overflow: {} {}", left_overflow, overflow)
             }
@@ -466,10 +499,10 @@ impl PanelSpace {
             let size = right_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
             } else {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
             };
 
             let loc = if self.config().is_horizontal() {
@@ -485,10 +518,10 @@ impl PanelSpace {
             let size = center_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
             } else {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
             };
             let loc = if self.config().is_horizontal() {
                 (center_pos.round() as i32, crosswise_pos)
@@ -507,7 +540,7 @@ impl PanelSpace {
                 // TODO improve how this is done
                 let mut size = w.bbox().size.to_f64().downscale(self.scale);
                 let configured_size =
-                    w.toplevel().and_then(|t| t.current_state().size).unwrap_or_default();
+                    w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_default();
                 if configured_size.w != 0 {
                     size.w = size.w.min(configured_size.w as f64);
                 }
@@ -522,7 +555,7 @@ impl PanelSpace {
                         cur,
                         margin_offset
                             + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
+                                new_logical_crosswise_dim.try_into().unwrap(),
                                 size.h as u32,
                             ),
                     );
@@ -533,7 +566,7 @@ impl PanelSpace {
                     let cur = (
                         margin_offset
                             + center_in_bar(
-                                new_logical_thickness.try_into().unwrap(),
+                                new_logical_crosswise_dim.try_into().unwrap(),
                                 size.w as u32,
                             ),
                         cur,
@@ -547,8 +580,12 @@ impl PanelSpace {
                         loc: (x, y).into(),
                         size: ((size.w.ceil() as i32).max(1), (size.w.ceil() as i32).max(1)).into(),
                     };
-                    if new_rect != self.minimize_applet_rect {
+                    if new_rect != self.minimize_applet_rect
+                        && self.last_minimize_update.duration_since(Instant::now())
+                            > Duration::from_secs(1)
+                    {
                         self.minimize_applet_rect = new_rect;
+                        self.last_minimize_update = Instant::now();
                         let output = self.output.as_ref().map(|o| o.1.name()).unwrap_or_default();
                         _ = self.panel_tx.send(crate::PanelCalloopMsg::MinimizeRect {
                             output,
@@ -574,10 +611,10 @@ impl PanelSpace {
             let size = left_button.bbox().size.to_f64().downscale(self.scale);
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.h as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
             } else {
                 margin_offset
-                    + center_in_bar(new_logical_thickness.try_into().unwrap(), size.w as u32)
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
             };
             let loc = if self.config().is_horizontal() {
                 (left_pos.round() as i32, crosswise_pos)
@@ -848,7 +885,9 @@ impl PanelSpace {
                         t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
                     })
                 {
-                    Some((w.clone(), c.shrink_priority.unwrap_or_default()))
+                    let w_clone = w.clone();
+                    w_clone.refresh();
+                    Some((w_clone, c.shrink_priority.unwrap_or_default()))
                 } else {
                     None
                 }
@@ -910,11 +949,26 @@ impl PanelSpace {
         info!("Overflow: {overflow} in section {section:?}");
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
 
+        let mut sum = 0.;
         for (w, priority, min_units) in clients.shrinkable.iter_mut() {
             if overflow == 0 {
                 break;
             }
+            let suggested_bounds = w
+                .toplevel()
+                .map(|t| {
+                    let s = t.current_state();
+                    s.bounds.unwrap_or_default()
+                })
+                .unwrap();
+
             let mut size = w.bbox().size.to_f64().downscale(self.scale);
+            if size.w < 1. {
+                size.w = 1.;
+            }
+            if size.h < 1. {
+                size.h = 1.;
+            }
             let configured_size = w
                 .toplevel()
                 .and_then(|t| t.current_state().size)
@@ -927,7 +981,12 @@ impl PanelSpace {
                 size.h = size.h.min(configured_size.h as f64);
             }
 
-            let major_dim = if self.config.is_horizontal() { size.w } else { size.h };
+            let (major_dim, suggested_dim) = if self.config.is_horizontal() {
+                (size.w, suggested_bounds.w)
+            } else {
+                (size.h, suggested_bounds.h)
+            };
+            sum += major_dim;
             if (major_dim < min_units.to_pixels(unit_size) as f64 || *priority < 0)
                 && !force_smaller
             {
@@ -941,19 +1000,19 @@ impl PanelSpace {
             }
             .max(1);
             let diff = (major_dim as u32).saturating_sub(new_dim);
-            tracing::info!("Shrinking window {:?} by {}", size, diff);
-            if diff == 0 {
+            if diff == 0 && suggested_dim as u32 == new_dim {
                 continue;
             }
+            tracing::info!("Shrinking window {size:?} by {diff} to {new_dim} {suggested_dim}");
 
             if let Some(t) = w.toplevel() {
                 t.with_pending_state(|s| {
                     if self.config.is_horizontal() {
-                        s.size = Some((new_dim as i32, 0).into());
-                        s.bounds = Some((new_dim as i32, 0).into());
+                        s.size = None;
+                        s.bounds = Some((new_dim as i32, unit_size as i32).into());
                     } else {
-                        s.size = Some((0, new_dim as i32).into());
-                        s.bounds = Some((0, new_dim as i32).into());
+                        s.size = None;
+                        s.bounds = Some((unit_size as i32, new_dim as i32).into());
                     }
                 });
                 t.send_pending_configure();
@@ -970,9 +1029,8 @@ impl PanelSpace {
         }
         if overflow > 0 && !force_smaller {
             tracing::info!(
-                "Overflow not resolved {}. Forcing lowest priority shrinkable applets to be \
+                "Overflow not resolved {sum:.1} {overflow}. Forcing lowest priority shrinkable applets to be \
                  smaller than configured...",
-                overflow
             );
             return self.shrink_clients(overflow, clients, section, true);
         }
@@ -991,7 +1049,7 @@ impl PanelSpace {
             tracing::info!("No movable clients to move to overflow space");
             return overflow;
         }
-        info!("Moving clients to overflow space {:?} {overflow}", section);
+        info!("Moving clients to overflow space {section:?} {overflow}");
         let overflow_space = match section {
             OverflowSection::Left => &mut self.overflow_left,
             OverflowSection::Center => &mut self.overflow_center,
@@ -1007,11 +1065,14 @@ impl PanelSpace {
         }
         let space = &mut self.space;
 
+        tracing::info!("Number of movable clients {}", clients.movable.len());
         for w in clients.movable {
             if overflow == 0 {
                 break;
             }
             let bbox = w.0.bbox();
+            tracing::info!("Moving applet with bbox: {bbox:?}");
+
             if bbox.size.w == 0
                 || bbox.size.h == 0
                 || !w.0.wl_surface().map(|s| s.is_alive()).unwrap_or_default()
@@ -1313,7 +1374,8 @@ impl PanelSpace {
             let is_horizontal: bool = self.config.is_horizontal();
 
             let skip = t.with_pending_state(|state| {
-                if let Some(size) = &mut state.size {
+                state.size = None;
+                if let Some(size) = &mut state.bounds {
                     info!("Old size: {:?}", size);
                     if is_horizontal {
                         size.h = 0;
@@ -1425,15 +1487,15 @@ impl OverflowClientPartition {
                     let state = t.current_state();
                     let cur_size = w.bbox().size;
                     if is_horizontal {
-                        state.size.is_none()
-                            || state.size.is_some_and(|s| {
+                        state.bounds.is_none()
+                            || state.bounds.is_some_and(|s| {
                                 s.w != 0
                                     || cur_size.w.saturating_sub((s.w as f64 * scale) as i32)
                                         > self.suggested_size as i32
                             })
                     } else {
-                        state.size.is_none()
-                            || state.size.is_some_and(|s| {
+                        state.bounds.is_none()
+                            || state.bounds.is_some_and(|s| {
                                 s.h != 0
                                     || cur_size.h.saturating_sub((s.h as f64 * scale) as i32)
                                         > self.suggested_size as i32
@@ -1452,8 +1514,8 @@ impl OverflowClientPartition {
                     let state = t.current_state();
                     let cur_size = w.bbox().size;
                     if is_horizontal {
-                        state.size.is_none()
-                            || state.size.is_some_and(|s| {
+                        state.bounds.is_none()
+                            || state.bounds.is_some_and(|s| {
                                 s.w == 0
                                     || cur_size
                                         .w
@@ -1461,8 +1523,8 @@ impl OverflowClientPartition {
                                         > self.suggested_size as i32
                             })
                     } else {
-                        state.size.is_none()
-                            || state.size.is_some_and(|s| {
+                        state.bounds.is_none()
+                            || state.bounds.is_some_and(|s| {
                                 s.h == 0
                                     || cur_size
                                         .h

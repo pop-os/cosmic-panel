@@ -83,7 +83,7 @@ impl GlobalState {
             if let Err(err) = res {
                 error!("{:?}", err);
             } else {
-                let dmabuf_formats = renderer.dmabuf_formats().collect_vec();
+                let dmabuf_formats = renderer.dmabuf_formats().into_iter().collect_vec();
                 let mut state = DmabufState::new();
                 let global = state.create_global::<GlobalState>(dh, dmabuf_formats);
                 self.server_state.dmabuf_state.replace((state, global));

@@ -16,6 +16,7 @@ use smithay::{
         },
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
+        viewporter::ViewporterState,
     },
 };
 
@@ -65,6 +66,7 @@ pub struct ServerState {
     pub(crate) primary_selection_state: PrimarySelectionState,
     pub(crate) layer_shell_state: WlrLayerShellState,
     pub(crate) _fractional_scale_state: FractionalScaleManagerState,
+    pub(crate) _viewporter_state: ViewporterState,
 }
 
 impl ServerState {
@@ -84,6 +86,8 @@ impl ServerState {
             primary_selection_state: PrimarySelectionState::new::<GlobalState>(&dh),
             layer_shell_state: WlrLayerShellState::new::<GlobalState>(&dh),
             _fractional_scale_state: FractionalScaleManagerState::new::<GlobalState>(&dh),
+            _viewporter_state: ViewporterState::new::<GlobalState>(&dh),
+
             dmabuf_state: None,
         }
     }

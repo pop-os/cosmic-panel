@@ -105,16 +105,8 @@ impl WrapperSpace for PanelSpace {
                 + self.config.size.get_applet_padding(true) as i32 * 2;
             let is_horizontal = self.config.is_horizontal();
             t.with_pending_state(|state| {
-                state.size = Some(if is_horizontal {
-                    (0, suggested_size).into()
-                } else {
-                    (suggested_size, 0).into()
-                });
-                state.bounds = Some(if is_horizontal {
-                    (0, suggested_size).into()
-                } else {
-                    (suggested_size, 0).into()
-                });
+                state.size = None;
+                state.bounds = None;
             });
             t.send_pending_configure();
         }
@@ -124,6 +116,17 @@ impl WrapperSpace for PanelSpace {
                     fractional_scale.set_preferred_scale(self.scale);
                 });
             });
+        }
+        let to_unmap = self
+            .space
+            .elements()
+            .find(|my_window| {
+                w.toplevel().and_then(|t| t.wl_surface().client().map(|c| c.id()))
+                    == my_window.toplevel().and_then(|t| t.wl_surface().client().map(|c| c.id()))
+            })
+            .cloned();
+        if let Some(w) = to_unmap {
+            self.space.unmap_elem(&w);
         }
         self.space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
     }
@@ -209,15 +212,11 @@ impl WrapperSpace for PanelSpace {
 
         if let (Some(s_window_geometry), Some(input_regions)) =
             with_states(s_surface.wl_surface(), |states| {
-                (
-                    states.cached_state.current::<SurfaceCachedState>().geometry,
-                    states
-                        .cached_state
-                        .current::<SurfaceAttributes>()
-                        .input_region
-                        .as_ref()
-                        .cloned(),
-                )
+                let mut guard = states.cached_state.get::<SurfaceCachedState>();
+                let mut guard_attr = states.cached_state.get::<SurfaceAttributes>();
+                let cached = guard.current();
+                let attr = guard_attr.current();
+                (cached.geometry, attr.input_region.clone())
             })
         {
             c_popup.xdg_surface().set_window_geometry(
@@ -497,7 +496,6 @@ impl WrapperSpace for PanelSpace {
                 }
                 let mut fds = Vec::with_capacity(2);
                 let mut applet_env = Vec::new();
-
                 applet_env.push((
                     "X_MINIMIZE_APPLET".to_string(),
                     panel_client.minimize_priority.is_some().to_string(),
@@ -575,16 +573,23 @@ impl WrapperSpace for PanelSpace {
                         }
                     })
                     .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                        let client_id_clone = client_id.clone();
+                        let id_clone = id_clone.clone();
+
                         if let Some(err_code) = err_code {
-                            error!("Exited with error code {}", err_code)
+                            error_span!("stderr", client = ?client_id).in_scope(|| {
+                                error!("{}: exited with code {}", id_clone, err_code);
+                            });
+                        } else {
+                            info_span!("stderr", client = ?client_id).in_scope(|| {
+                                error!("{}: exited without error", id_clone);
+                            });
                         }
                         let my_list = my_list.clone();
                         let mut display_handle = display_handle.clone();
-                        let id_clone = id_clone.clone();
                         let applet_tx_clone = applet_tx_clone.clone();
                         let (c, client_socket) = get_client_sock(&mut display_handle);
                         let raw_client_socket = client_socket.as_raw_fd();
-                        let client_id_clone = client_id.clone();
                         let mut applet_env = Vec::with_capacity(1);
                         let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
                         let should_restart = is_restarting && err_code.is_some();
@@ -762,12 +767,8 @@ impl WrapperSpace for PanelSpace {
                 );
                 if let Some((input_regions, my_region)) =
                     with_states(p.s_surface.wl_surface(), |states| {
-                        states
-                            .cached_state
-                            .current::<SurfaceAttributes>()
-                            .input_region
-                            .as_ref()
-                            .cloned()
+                        let mut guard = states.cached_state.get::<SurfaceAttributes>();
+                        guard.current().input_region.as_ref().cloned()
                     })
                     .zip(p.popup.input_region.as_ref())
                 {
