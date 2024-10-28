@@ -318,6 +318,10 @@ pub struct CosmicPanelConfig {
     pub plugins_wings: Option<(Vec<String>, Vec<String>)>,
     /// list of plugins in the center of the panel
     pub plugins_center: Option<Vec<String>>,
+    /// optional size override for wings
+    pub size_wings: Option<(Option<PanelSize>, Option<PanelSize>)>,
+    /// optional size override for center
+    pub size_center: Option<PanelSize>,
     /// whether the panel should stretch to the edges of output
     pub expand_to_edges: bool,
     /// padding around the panel
@@ -349,6 +353,8 @@ impl PartialEq for CosmicPanelConfig {
             && self.background == other.background
             && self.plugins_wings == other.plugins_wings
             && self.plugins_center == other.plugins_center
+            && self.size_center == other.size_center
+            && self.size_wings == other.size_wings
             && self.expand_to_edges == other.expand_to_edges
             && self.padding == other.padding
             && self.spacing == other.spacing
@@ -374,6 +380,8 @@ impl Default for CosmicPanelConfig {
             background: CosmicPanelBackground::ThemeDefault,
             plugins_wings: Default::default(),
             plugins_center: Default::default(),
+            size_wings: Default::default(),
+            size_center: Default::default(),
             expand_to_edges: true,
             padding: 4,
             spacing: 4,
@@ -386,8 +394,41 @@ impl Default for CosmicPanelConfig {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum Side {
+    WingStart,
+    Center,
+    WingEnd,
+}
+
 #[cfg(feature = "wayland-rs")]
 impl CosmicPanelConfig {
+    /// get the applet size given its side
+    pub fn get_effective_applet_size(&self, side: Side) -> PanelSize {
+        match side {
+            Side::WingStart => {
+                if let Some((Some(size), _)) = &self.size_wings {
+                    size.clone()
+                } else {
+                    self.size.clone()
+                }
+            },
+            Side::Center => {
+                if let Some(size) = &self.size_center {
+                    size.clone()
+                } else {
+                    self.size.clone()
+                }
+            },
+            Side::WingEnd => {
+                if let Some((_, Some(size))) = &self.size_wings {
+                    size.clone()
+                } else {
+                    self.size.clone()
+                }
+            },
+        }
+    }
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
         self.size.get_applet_icon_size(is_symbolic)

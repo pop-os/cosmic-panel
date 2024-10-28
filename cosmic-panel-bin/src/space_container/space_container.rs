@@ -290,6 +290,8 @@ impl SpaceContainer {
         || self.config.config_list.iter().any(|c| {
             // size changed
             c.name == entry.name && c.size != entry.size
+            // size overrides changed
+            || (c.name == entry.name && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
