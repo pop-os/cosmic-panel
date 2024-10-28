@@ -721,7 +721,7 @@ impl PanelSpace {
         if let Some(animation_state) = self.animate_state.as_mut() {
             self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                 self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
-                1.0,
+                self.scale,
                 smithay::utils::Transform::Flipped180,
             ));
             let progress = (Instant::now().duration_since(animation_state.started_at).as_millis()
@@ -1022,7 +1022,7 @@ impl PanelSpace {
                     self.dimensions = (dim.w, dim.h).into();
                     self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                         dim.to_f64().to_physical(self.scale).to_i32_round(),
-                        1.0,
+                        self.scale,
                         smithay::utils::Transform::Flipped180,
                     ));
                 },
@@ -1066,7 +1066,7 @@ impl PanelSpace {
                 self.dimensions = (dim.w, dim.h).into();
                 self.damage_tracked_renderer = Some(OutputDamageTracker::new(
                     dim.to_f64().to_physical(self.scale).to_i32_round(),
-                    1.0,
+                    self.scale,
                     smithay::utils::Transform::Flipped180,
                 ));
             },
@@ -1134,7 +1134,7 @@ impl PanelSpace {
         self.overflow_popup = None;
         self.damage_tracked_renderer = Some(OutputDamageTracker::new(
             self.dimensions.to_f64().to_physical(self.scale).to_i32_round(),
-            1.0,
+            self.scale,
             smithay::utils::Transform::Flipped180,
         ));
         self.background_element = None;

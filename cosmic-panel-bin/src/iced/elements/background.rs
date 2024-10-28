@@ -2,9 +2,8 @@
 
 use calloop::LoopHandle;
 use cosmic::{
-    iced::{id, Color, Length},
+    iced::{id, Color, Length, Radius},
     iced_core::Shadow,
-    iced_style::container,
     theme,
     widget::horizontal_space,
     Theme,
@@ -21,7 +20,7 @@ pub fn background_element(
     id: id::Id,
     logical_width: i32,
     logical_height: i32,
-    radius: [u32; 4],
+    radius: [f32; 4],
     loop_handle: LoopHandle<'static, GlobalState>,
     theme: Theme,
     panel_id: usize,
@@ -49,7 +48,7 @@ pub struct Background {
     pub id: id::Id,
     pub logical_width: i32,
     pub logical_height: i32,
-    pub radius: [u32; 4],
+    pub radius: [f32; 4],
     pub logical_pos: (i32, i32),
     pub color: [f32; 4],
 }
@@ -60,19 +59,17 @@ impl Program for Background {
     fn view(&self) -> Element<'_, ()> {
         let width = self.logical_width as f32;
         let height = self.logical_height as f32;
-        let mut radius_arr: [f32; 4] = [0.; 4];
-        for (r, arr_r) in self.radius.clone().into_iter().zip(radius_arr.iter_mut()) {
-            *arr_r = r as f32;
-        }
+        let radius_arr: [f32; 4] = self.radius.clone();
+
         let color = self.color;
         Element::from(
-            cosmic::widget::container(horizontal_space(Length::Fixed(width)))
+            cosmic::widget::container(horizontal_space().width(Length::Fixed(width)))
                 .width(Length::Fixed(width))
                 .height(Length::Fixed(height))
-                .style(theme::Container::custom(move |theme| {
+                .class(theme::Container::custom(move |theme| {
                     let cosmic = theme.cosmic();
 
-                    container::Appearance {
+                    cosmic::widget::container::Style {
                         text_color: Some(cosmic.background.on.into()),
                         background: Some(Color::from(color).into()),
                         border: cosmic::iced::Border {

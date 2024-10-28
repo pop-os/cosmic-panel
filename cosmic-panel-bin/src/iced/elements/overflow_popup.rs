@@ -4,9 +4,8 @@ use calloop::LoopHandle;
 use cosmic::{
     iced::{id, Color, Length},
     iced_core::Shadow,
-    iced_style::container,
     theme,
-    widget::horizontal_space,
+    widget::{container, horizontal_space},
     Theme,
 };
 
@@ -27,11 +26,10 @@ pub fn overflow_popup_element(
     theme: Theme,
     panel_id: usize,
     count: usize,
-    scale: f32,
 ) -> OverflowPopupElement {
     IcedElement::new(
-        OverflowPopup { id, logical_width, logical_height, scale, count },
-        ((logical_width * scale).round() as i32, (logical_height * scale).round() as i32),
+        OverflowPopup { id, logical_width, logical_height, count },
+        ((logical_width).round() as i32, (logical_height).round() as i32),
         loop_handle,
         theme,
         panel_id,
@@ -43,7 +41,6 @@ pub struct OverflowPopup {
     pub id: id::Id,
     pub logical_width: f32,
     pub logical_height: f32,
-    pub scale: f32,
     pub count: usize,
 }
 
@@ -51,21 +48,18 @@ impl Program for OverflowPopup {
     type Message = ();
 
     fn view(&self) -> Element<'_, ()> {
-        let width = self.logical_width * self.scale;
-        let height = self.logical_height * self.scale;
-        let border_width = BORDER_WIDTH as f32 * self.scale;
-        let scale = self.scale;
+        let width = self.logical_width;
+        let height = self.logical_height;
+        let border_width = BORDER_WIDTH as f32;
         Element::from(
-            cosmic::widget::container(horizontal_space(Length::Fixed(width)))
+            cosmic::widget::container(horizontal_space().width(Length::Fixed(width)))
                 .width(Length::Fixed(width))
                 .height(Length::Fixed(height))
-                .style(theme::Container::custom(move |theme| {
+                .class(theme::Container::custom(move |theme| {
                     let cosmic = theme.cosmic();
-                    let mut radius_m = cosmic.corner_radii.radius_m;
-                    for r in radius_m.iter_mut() {
-                        *r *= scale;
-                    }
-                    container::Appearance {
+                    let radius_m = cosmic.corner_radii.radius_m;
+
+                    container::Style {
                         text_color: Some(cosmic.background.on.into()),
                         background: Some(Color::from(cosmic.background.base).into()),
                         border: cosmic::iced::Border {

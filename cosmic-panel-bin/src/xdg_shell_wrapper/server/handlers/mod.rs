@@ -221,7 +221,7 @@ impl ClientDndGrabHandler for GlobalState {
                     seat.client.dnd_icon = Some((
                         None,
                         client_surface.clone(),
-                        OutputDamageTracker::new((32, 32), 1.0, Transform::Flipped180),
+                        OutputDamageTracker::new((32, 32), 1., Transform::Flipped180),
                         false,
                         Some(0),
                     ));

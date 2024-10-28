@@ -148,7 +148,6 @@ impl WrapperSpace for PanelSpace {
         let c_wl_surface = compositor_state.create_surface(qh);
         let mut clear_exclude = Vec::new();
         let mut parent_parents = Vec::new();
-
         let parent = self
             .popups
             .iter()
@@ -263,7 +262,7 @@ impl WrapperSpace for PanelSpace {
             popup: PanelPopup {
                 damage_tracked_renderer: OutputDamageTracker::new(
                     positioner_state.rect_size.to_f64().to_physical(self.scale).to_i32_round(),
-                    1.0,
+                    self.scale,
                     smithay::utils::Transform::Flipped180,
                 ),
                 c_popup,
@@ -299,13 +298,19 @@ impl WrapperSpace for PanelSpace {
         });
         if let Some(p) = self.popups.iter().find(|wp| &wp.s_surface == &popup) {
             let positioner = &p.popup.positioner;
+            let rect_size = pos_state.rect_size.to_f64().upscale(self.scale).to_i32_round::<i32>();
             p.popup.c_popup.xdg_surface().set_window_geometry(
                 0,
                 0,
-                pos_state.rect_size.w.max(1),
-                pos_state.rect_size.h.max(1),
+                rect_size.w.max(1),
+                rect_size.h.max(1),
             );
             self.apply_positioner_state(positioner, pos_state, &p.s_surface);
+
+            if let Some(viewport) = &p.popup.viewport {
+                viewport
+                    .set_destination(pos_state.rect_size.w.max(1), pos_state.rect_size.h.max(1));
+            }
 
             if positioner.version() >= 3 {
                 p.popup.c_popup.reposition(positioner, token);
@@ -752,11 +757,7 @@ impl WrapperSpace for PanelSpace {
         self.space.refresh();
 
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
-            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0))
-                .to_physical(1)
-                .to_f64()
-                .to_logical(self.scale)
-                .to_i32_round();
+            let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
             let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
             if p_bbox != p.popup.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
                 p.popup.c_popup.xdg_surface().set_window_geometry(
@@ -778,6 +779,10 @@ impl WrapperSpace for PanelSpace {
                     }
                     p.popup.c_popup.wl_surface().set_input_region(Some(my_region.wl_region()));
                 }
+                if let Some(viewport) = &p.popup.viewport {
+                    viewport.set_destination(p_geo.size.w.max(1), p_geo.size.h.max(1));
+                }
+                p.popup.c_popup.wl_surface().commit();
 
                 p.popup.state = Some(WrapperPopupState::Rectangle {
                     x: p_bbox.loc.x,
@@ -910,7 +915,6 @@ impl WrapperSpace for PanelSpace {
                 }
                 .to_f64();
 
-                size = size.downscale(self.scale);
                 if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
                     if configured_size.w > 0 {
                         size.w = size.w.min(configured_size.w as f64);
@@ -1533,7 +1537,7 @@ impl WrapperSpace for PanelSpace {
                 self.reset_overflow();
             }
 
-            let scaled = self.dimensions.to_f64().downscale(scale);
+            let scaled = self.dimensions.to_f64();
             self.dimensions = scaled.to_i32_round();
             self.pending_dimensions =
                 Some(if self.config.is_horizontal() { (0, 1) } else { (1, 0) }.into());

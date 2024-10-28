@@ -55,7 +55,7 @@ impl PanelSpace {
         let mut right_overflow_button = None;
         let mut center_overflow_button = None;
 
-        let mut to_map = self
+        let to_map = self
             .space
             .elements()
             .cloned()
@@ -237,21 +237,18 @@ impl PanelSpace {
                 })
                 .unwrap_or_default();
             let bbox = w.bbox().size;
+            // dbg!(bbox, size, suggested_bounds, scale);
 
             if bbox.w > 0 {
                 info!("MAPFN {i} {anchor:?} {suggested_bounds:?} {size:?} {bbox:?}");
             }
             if size.w == 0 {
                 size.w = bbox.w;
-            } else {
-                size.w = ((size.w as f64) * scale).round() as i32;
             }
             size.w = size.w.min(bbox.w);
 
             if size.h == 0 {
                 size.h = bbox.h;
-            } else {
-                size.h = ((size.h as f64) * scale).round() as i32;
             }
             size.h = size.h.min(bbox.h);
 
@@ -280,6 +277,7 @@ impl PanelSpace {
 
         let left_sum_scaled =
             left.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>() as f64
+                * self.scale
                 + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
         let left_sum_scaled = if let Some(left_button) = left_overflow_button.as_ref() {
             let size = left_button.bbox().size.to_f64();
@@ -295,6 +293,7 @@ impl PanelSpace {
         let center_sum_scaled =
             center.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>()
                 as f64
+                * self.scale
                 + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
             let size = center_button.bbox().size.to_f64();
@@ -309,6 +308,7 @@ impl PanelSpace {
         let right_sum_scaled =
             right.clone().map(|(_, _, _length, _, suggested_length)| suggested_length).sum::<i32>()
                 as f64
+                * self.scale
                 + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
             let size = right_button.bbox().size.to_f64();
@@ -328,7 +328,8 @@ impl PanelSpace {
             + chain!(left.clone(), center.clone(), right.clone())
                 .map(|(_, _, _, thickness, _)| thickness)
                 .max()
-                .unwrap_or(0) as f64) as i32;
+                .unwrap_or(0) as f64
+                * self.scale) as i32;
 
         self.actual_size = Size::<i32, Physical>::from(if self.config.is_horizontal() {
             (new_list_length, new_list_thickness)
@@ -389,10 +390,8 @@ impl PanelSpace {
         let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
 
         let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
-
-        let mut right_pos = container_lengthwise_pos as f64 + container_length as f64
-            - padding_u32 as f64
-            - right_sum;
+        let mut right_pos =
+            new_list_dim_length as f64 - container_lengthwise_pos as f64 - right_sum;
 
         let one_third = (layer_major as f64 - (spacing_u32 * num_lists.saturating_sub(1)) as f64)
             / (3.min(num_lists) as f64);
@@ -496,7 +495,7 @@ impl PanelSpace {
         } as i32;
 
         if let Some(right_button) = right_overflow_button {
-            let size = right_button.bbox().size.to_f64().downscale(self.scale);
+            let size = right_button.bbox().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -515,7 +514,7 @@ impl PanelSpace {
         };
 
         if let Some(center_button) = center_overflow_button {
-            let size = center_button.bbox().size.to_f64().downscale(self.scale);
+            let size = center_button.bbox().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -538,7 +537,7 @@ impl PanelSpace {
             for (_, w, minimize_priority) in windows {
                 // XXX this is a hack to get the logical size of the window
                 // TODO improve how this is done
-                let mut size = w.bbox().size.to_f64().downscale(self.scale);
+                let mut size = w.bbox().size.to_f64();
                 let configured_size =
                     w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_default();
                 if configured_size.w != 0 {
@@ -608,7 +607,7 @@ impl PanelSpace {
         map_windows(windows_right.iter_mut(), right_pos);
         // if there is a left overflow_button, map it
         if let Some(left_button) = left_overflow_button {
-            let size = left_button.bbox().size.to_f64().downscale(self.scale);
+            let size = left_button.bbox().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -625,37 +624,33 @@ impl PanelSpace {
         }
         self.space.refresh();
 
-        let border_radius = self
-            .border_radius()
-            .min(self.actual_size.w as u32 / 2)
-            .min(self.actual_size.h as u32 / 2);
-        let radius = match (self.config.anchor, self.gap()) {
-            (PanelAnchor::Right, 0) => [border_radius, 0, 0, border_radius],
-            (PanelAnchor::Left, 0) => [0, border_radius, border_radius, 0],
-            (PanelAnchor::Bottom, 0) => [border_radius, border_radius, 0, 0],
-            (PanelAnchor::Top, 0) => [0, 0, border_radius, border_radius],
-            _ => [border_radius, border_radius, border_radius, border_radius],
-        };
         let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
-        let container_length = self.container_length as f64 * self.scale;
-        let container_lengthwise_pos = container_lengthwise_pos as f32 * self.scale as f32;
+        let container_length_scaled = self.container_length as f64 * self.scale;
+        let container_lengthwise_pos_scaled = container_lengthwise_pos as f32 * self.scale as f32;
         if self.config.is_horizontal() {
-            panel_size.w = container_length;
+            panel_size.w = container_length_scaled;
         } else {
-            panel_size.h = container_length;
+            panel_size.h = container_length_scaled;
         }
+        let (w, h) = if is_dock {
+            if self.config.is_horizontal() {
+                (container_length, new_logical_crosswise_dim)
+            } else {
+                (new_logical_crosswise_dim, container_length)
+            }
+        } else {
+            (new_dim.w, new_dim.h)
+        };
         if !self.background_element.as_ref().is_some_and(|e| {
             e.with_program(|p| {
-                p.logical_height == panel_size.h.round() as i32
-                    && p.logical_width == panel_size.w.round() as i32
-                    && self.bg_color() == p.color
+                p.logical_height == h && p.logical_width == w && self.bg_color() == p.color
             })
         }) || self.animate_state.as_ref().is_some()
         {
             if let Some(bg) = self.background_element.take() {
                 self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
             }
-            let gap = self.gap() as f64 * self.scale;
+            let gap_scaled = self.gap() as f64 * self.scale;
             let border_radius = self.border_radius() as f64 * self.scale;
 
             let border_radius = border_radius.min(panel_size.w / 2.).min(panel_size.h / 2.);
@@ -667,10 +662,10 @@ impl PanelSpace {
                 _ => (border_radius, border_radius, border_radius, border_radius),
             };
             let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap as f32, container_lengthwise_pos],
-                PanelAnchor::Right => [0., container_lengthwise_pos],
-                PanelAnchor::Top => [container_lengthwise_pos, 0.],
-                PanelAnchor::Bottom => [container_lengthwise_pos, gap as f32],
+                PanelAnchor::Left => [gap_scaled as f32, container_lengthwise_pos_scaled],
+                PanelAnchor::Right => [0., container_lengthwise_pos_scaled],
+                PanelAnchor::Top => [container_lengthwise_pos_scaled, 0.],
+                PanelAnchor::Bottom => [container_lengthwise_pos_scaled, gap_scaled as f32],
             };
             self.panel_rect_settings = RoundedRectangleSettings {
                 rad_tl: rad_tl as f32,
@@ -700,32 +695,42 @@ impl PanelSpace {
                 };
                 let side = (layer_length as u32 - actual_length as u32) / 2;
 
-                let (loc, size) = if self.config.is_horizontal() {
-                    ((side as i32, 0), (self.actual_size.w, new_dim.h))
-                } else {
-                    ((0, side as i32), (new_dim.w, self.actual_size.h))
-                };
+                let loc =
+                    if self.config.is_horizontal() { (side as i32, 0) } else { (0, side as i32) };
 
-                input_region.add(loc.0, loc.1, size.0, size.1);
+                input_region.add(loc.0, loc.1, new_dim.w, new_dim.h);
             } else {
                 input_region.add(0, 0, new_dim.w, new_dim.h);
-            }
+            };
             layer.wl_surface().set_input_region(Some(input_region.wl_region()));
 
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
                 bail!("output missing");
             };
             let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap as f32, container_lengthwise_pos],
-                PanelAnchor::Right => [0., container_lengthwise_pos],
-                PanelAnchor::Bottom => [container_lengthwise_pos, 0.],
-                PanelAnchor::Top => [container_lengthwise_pos, gap as f32],
+                PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
+                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
+                PanelAnchor::Bottom => [container_lengthwise_pos as f32, 0.],
+                PanelAnchor::Top => [container_lengthwise_pos as f32, gap as f32],
             };
 
+            let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
+            let radius = match (self.config.anchor, self.gap()) {
+                (PanelAnchor::Right, 0) => [border_radius as f32, 0., 0., border_radius as f32],
+                (PanelAnchor::Left, 0) => [0., border_radius as f32, border_radius as f32, 0.],
+                (PanelAnchor::Bottom, 0) => [border_radius as f32, border_radius as f32, 0., 0.],
+                (PanelAnchor::Top, 0) => [0., 0., border_radius as f32, border_radius as f32],
+                _ => [
+                    border_radius as f32,
+                    border_radius as f32,
+                    border_radius as f32,
+                    border_radius as f32,
+                ],
+            };
             let bg = background_element(
                 Id::new("panel_bg"),
-                panel_size.w.round() as i32,
-                panel_size.h.round() as i32,
+                w,
+                h,
                 radius,
                 self.loop_handle.clone(),
                 self.colors.theme.clone(),
@@ -853,7 +858,6 @@ impl PanelSpace {
                             self.colors.theme.clone(),
                             self.space.id(),
                             actual,
-                            self.scale as f32,
                         ));
                         space.unmap_elem(&PopupMappedInternal::Popup(p.clone()));
                         new_popup.output_enter(&output, Rectangle::default());
@@ -962,7 +966,7 @@ impl PanelSpace {
                 })
                 .unwrap();
 
-            let mut size = w.bbox().size.to_f64().downscale(self.scale);
+            let mut size = w.bbox().size.to_f64();
             if size.w < 1. {
                 size.w = 1.;
             }
@@ -1158,7 +1162,6 @@ impl PanelSpace {
                 self.colors.theme.clone(),
                 self.space.id(),
                 count,
-                self.scale as f32,
             ))
         };
 
@@ -1205,7 +1208,6 @@ impl PanelSpace {
                 self.loop_handle.clone(),
                 self.colors.theme.clone(),
                 self.space.id(),
-                self.scale as f32,
             );
             let output = self.output.as_ref().map(|o| &o.1).unwrap();
             e.output_enter(output, Default::default());
@@ -1234,7 +1236,7 @@ impl PanelSpace {
             if extra_space < suggested_size {
                 break;
             }
-            let size: Size<i32, _> = w.bbox().size.to_f64().downscale(scale).to_i32_round();
+            let size: Size<i32, _> = w.bbox().size;
 
             let applet_len = if is_horizontal { size.w as u32 } else { size.h as u32 };
             if extra_space >= applet_len {
@@ -1358,10 +1360,7 @@ impl PanelSpace {
             clients.constrained_shrinkables(self.config.is_horizontal(), self.scale).drain(..).rev()
         {
             let expand = extra_space as i32;
-            tracing::info!(
-                "Relaxing overflow client by {expand}, {:?}",
-                w.bbox().size.to_f64().downscale(self.scale).to_i32_round::<i32>()
-            );
+            tracing::info!("Relaxing overflow client by {expand}, {:?}", w.bbox().size);
             if extra_space == 0 {
                 tracing::info!("No more space to relax");
                 break;
