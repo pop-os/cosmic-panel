@@ -9,6 +9,7 @@ use std::{
 };
 
 use calloop::LoopHandle;
+use cctk::wayland_client::protocol::wl_subsurface::WlSubsurface;
 // element for rendering a button that toggles the overflow popup when clicked
 use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
@@ -37,16 +38,10 @@ pub fn overflow_button_element(
     handle: LoopHandle<'static, GlobalState>,
     theme: cosmic::Theme,
     panel_id: usize,
-    scale: f32,
 ) -> OverflowButtonElement {
-    let icon_size = icon_size as f32 * scale;
+    let icon_size = icon_size as f32;
     let Padding { top, right, bottom, left } = button_padding;
-    let button_padding = Padding {
-        top: top * scale,
-        right: right * scale,
-        bottom: bottom * scale,
-        left: left * scale,
-    };
+    let button_padding = Padding { top, right, bottom, left };
     let size = (
         (icon_size + button_padding.horizontal()).round() as i32,
         (icon_size + button_padding.vertical()).round() as i32,
@@ -126,7 +121,7 @@ impl Program for OverflowButton {
         &mut self,
         message: Self::Message,
         loop_handle: &calloop::LoopHandle<'static, xdg_shell_wrapper::shared_state::GlobalState>,
-    ) -> cosmic::Command<Self::Message> {
+    ) -> cosmic::Task<Self::Message> {
         match message {
             Message::TogglePopup => {
                 let id = self.id.clone();
@@ -173,7 +168,7 @@ impl Program for OverflowButton {
                 });
             },
         }
-        cosmic::Command::none()
+        cosmic::Task::none()
     }
 
     fn view(&self) -> crate::iced::Element<'_, Self::Message> {
@@ -181,8 +176,8 @@ impl Program for OverflowButton {
             button::custom(
                 layer_container(
                     cosmic::widget::icon(cosmic::widget::icon::from_name(self.icon.clone()).into())
-                        .style(theme::Svg::Custom(Rc::new(|theme| {
-                            cosmic::iced_style::svg::Appearance {
+                        .class(theme::Svg::Custom(Rc::new(|theme| {
+                            cosmic::iced_widget::svg::Style {
                                 color: Some(theme.cosmic().background.on.into()),
                             }
                         })))
@@ -195,7 +190,7 @@ impl Program for OverflowButton {
                 .height(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal())),
             )
             .selected(self.selected.load(Ordering::Relaxed))
-            .style(Button::AppletIcon)
+            .class(Button::AppletIcon)
             .on_press(Message::TogglePopup),
         )
     }

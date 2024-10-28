@@ -66,7 +66,8 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
             Self::Wayland(e) => e.geometry(scale),
             Self::Crop(e) => e.geometry(scale),
             Self::RoundedRectangle(e) => e.geometry(scale),
-            Self::Iced(e) => e.geometry(scale),
+            // XXX hack don't know how else to avoid scaling twice
+            Self::Iced(e) => e.geometry(1.0.into()),
         }
     }
 }
@@ -142,8 +143,11 @@ impl PanelSpace {
                     wl_surface.frame(qh, wl_surface.clone());
                     wl_surface.commit();
                     // reset the damage tracker
-                    *my_renderer =
-                        OutputDamageTracker::new(dim, 1.0, smithay::utils::Transform::Flipped180);
+                    *my_renderer = OutputDamageTracker::new(
+                        dim,
+                        self.scale,
+                        smithay::utils::Transform::Flipped180,
+                    );
                 }
 
                 renderer.unbind()?;
@@ -153,17 +157,18 @@ impl PanelSpace {
             }
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let mut elements: Vec<PanelRenderElement> = (self.config.anchor_gap
-                    || self.config.border_radius > 0)
-                    .then(|| {
-                        PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
-                            renderer,
-                            Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
-                            self.panel_rect_settings,
-                        ))
-                    })
-                    .into_iter()
-                    .chain(
+                let mut elements: Vec<PanelRenderElement> = 
+                // (self.config.anchor_gap
+                //     || self.config.border_radius > 0)
+                    // .then(|| {
+                    //     PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
+                    //         renderer,
+                    //         Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
+                    //         self.panel_rect_settings,
+                    //     ))
+                    // })
+                    // .into_iter()
+                    // .chain(
                         self.space
                             .elements()
                             .filter_map(|w| {
@@ -177,10 +182,15 @@ impl PanelSpace {
 
                                 if let CosmicMappedInternal::OverflowButton(b) = w {
                                     return Some(
-                                        b.render_elements(renderer, loc, self.scale.into(), 1.0)
-                                            .into_iter()
-                                            .map(PanelRenderElement::Iced)
-                                            .collect::<Vec<_>>(),
+                                        b.render_elements(
+                                            renderer,
+                                            loc,
+                                            smithay::utils::Scale::from(self.scale),
+                                            1.0,
+                                        )
+                                        .into_iter()
+                                        .map(PanelRenderElement::Iced)
+                                        .collect::<Vec<_>>(),
                                     );
                                 }
                                 w.toplevel().map(|t| {
@@ -206,7 +216,7 @@ impl PanelSpace {
                                         renderer,
                                         t.wl_surface(),
                                         loc,
-                                        1.0,
+                                        self.scale,
                                         1.0,
                                         smithay::backend::renderer::element::Kind::Unspecified,
                                     )
@@ -215,7 +225,7 @@ impl PanelSpace {
                                         if let Some(configured_size) = configured_size {
                                             return CropRenderElement::from_element(
                                                 r,
-                                                1.,
+                                                self.scale,
                                                 configured_size,
                                             )
                                             .map(PanelRenderElement::Crop);
@@ -226,15 +236,21 @@ impl PanelSpace {
                                     .collect::<Vec<_>>()
                                 })
                             })
-                            .flatten(),
-                    )
+                            .flatten()
+                    // )
                     .collect_vec();
 
                 if let Some(bg) = self.background_element.as_ref().map(|e| {
                     let pos = e.with_program(|p| p.logical_pos);
-                    e.render_elements(renderer, pos.into(), self.scale.into(), 1.0)
-                        .into_iter()
-                        .map(PanelRenderElement::Iced)
+                    e.render_elements(
+                        renderer,
+                        ((pos.0 as f64 * self.scale) as i32, (pos.1 as f64 * self.scale) as i32)
+                            .into(),
+                        self.scale.into(),
+                        1.0,
+                    )
+                    .into_iter()
+                    .map(PanelRenderElement::Iced)
                 }) {
                     elements.extend(bg);
                 };
@@ -285,7 +301,7 @@ impl PanelSpace {
                 renderer,
                 p.s_surface.wl_surface(),
                 (0, 0),
-                1.0,
+                self.scale,
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );
@@ -363,15 +379,19 @@ impl PanelSpace {
                                 renderer,
                                 t.wl_surface(),
                                 loc,
-                                1.0,
+                                self.scale,
                                 1.0,
                                 smithay::backend::renderer::element::Kind::Unspecified,
                             )
                             .into_iter()
                             .filter_map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
                                 if let Some(configured_size) = configured_size {
-                                    return CropRenderElement::from_element(r, 1., configured_size)
-                                        .map(PanelRenderElement::Crop);
+                                    return CropRenderElement::from_element(
+                                        r,
+                                        self.scale,
+                                        configured_size,
+                                    )
+                                    .map(PanelRenderElement::Crop);
                                 }
 
                                 Some(PanelRenderElement::Wayland(r))
@@ -392,11 +412,13 @@ impl PanelSpace {
                 &elements,
                 clear_color,
             );
-
             p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
             let wl_surface = p.c_popup.wl_surface();
             wl_surface.frame(qh, wl_surface.clone());
             wl_surface.commit();
+        }
+        if self.overflow_popup.is_some() {
+            self.update_hidden_applet_frame();
         }
 
         renderer.unbind()?;

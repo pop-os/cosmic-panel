@@ -186,7 +186,7 @@ impl CompositorHandler for GlobalState {
                     egl_surface,
                     OutputDamageTracker::new(
                         (size.w.max(1), size.h.max(1)),
-                        1.0,
+                        1.,
                         Transform::Flipped180,
                     ),
                     server_surface,
@@ -237,7 +237,7 @@ impl CompositorHandler for GlobalState {
                     c_layer_surface.set_size(size.w as u32, size.h as u32);
                     *renderer = OutputDamageTracker::new(
                         (bbox.w.max(1), bbox.h.max(1)),
-                        1.0,
+                        1.,
                         Transform::Flipped180,
                     );
                     c_layer_surface.wl_surface().commit();
@@ -302,7 +302,7 @@ impl CompositorHandler for GlobalState {
                     let _ = renderer.unbind();
                     c_icon.2 = OutputDamageTracker::new(
                         (size.w.max(1), size.h.max(1)),
-                        1.0,
+                        1.,
                         Transform::Flipped180,
                     );
                 }

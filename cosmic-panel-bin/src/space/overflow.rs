@@ -55,9 +55,9 @@ impl PanelSpace {
         };
         tracing::info!("adding overflow popup");
         let loc = self.space.element_location(&element).unwrap_or_default();
-        let bbox = element.bbox().to_f64().downscale(self.scale).to_i32_round();
+        let bbox = element.bbox();
         let positioner = XdgPositioner::new(xdg_shell_state).unwrap();
-        let popup_bbox = popup_element.bbox().to_f64().downscale(self.scale).to_i32_round();
+        let popup_bbox = popup_element.bbox();
 
         positioner.set_anchor_rect(loc.x, loc.y, bbox.size.w, bbox.size.h);
         let pixel_offset = 8;
@@ -115,7 +115,7 @@ impl PanelSpace {
             PanelPopup {
                 damage_tracked_renderer: OutputDamageTracker::new(
                     popup_bbox.to_f64().to_physical(self.scale).to_i32_round().size,
-                    1.0,
+                    self.scale,
                     smithay::utils::Transform::Flipped180,
                 ),
                 c_popup,
@@ -188,7 +188,7 @@ impl PanelSpace {
                     }
                     p.damage_tracked_renderer = OutputDamageTracker::new(
                         scaled_size,
-                        1.0,
+                        self.scale,
                         smithay::utils::Transform::Flipped180,
                     );
                     p.c_popup.wl_surface().commit();

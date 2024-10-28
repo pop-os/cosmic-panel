@@ -98,8 +98,11 @@ impl WrapperPopup {
                     self.popup.rectangle.size.h.max(1),
                 );
             }
-            self.popup.damage_tracked_renderer =
-                OutputDamageTracker::new(scaled_size, 1.0, smithay::utils::Transform::Flipped180);
+            self.popup.damage_tracked_renderer = OutputDamageTracker::new(
+                scaled_size,
+                self.popup.scale,
+                smithay::utils::Transform::Flipped180,
+            );
             self.popup.c_popup.wl_surface().commit();
             popup_manager.commit(self.s_surface.wl_surface());
 
