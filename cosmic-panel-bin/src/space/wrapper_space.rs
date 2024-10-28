@@ -27,7 +27,7 @@ use crate::{
 };
 use anyhow::bail;
 use cosmic::iced::id;
-use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME};
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::izip;
 use launch_pad::process::Process;
@@ -382,9 +382,13 @@ impl WrapperSpace for PanelSpace {
 
             let mut desktop_ids: Vec<_> = left_guard
                 .iter_mut()
-                .map(|c| (c, self.clients_left.clone()))
-                .chain(center_guard.iter_mut().map(|c| (c, self.clients_center.clone())))
-                .chain(right_guard.iter_mut().map(|c| (c, self.clients_right.clone())))
+                .map(|c| (c, self.clients_left.clone(), Side::WingStart))
+                .chain(
+                    center_guard.iter_mut().map(|c| (c, self.clients_center.clone(), Side::Center)),
+                )
+                .chain(
+                    right_guard.iter_mut().map(|c| (c, self.clients_right.clone(), Side::WingEnd)),
+                )
                 .collect();
 
             let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
@@ -396,7 +400,6 @@ impl WrapperSpace for PanelSpace {
             let config_name = self.config.name.clone();
             let env_vars = vec![
                 ("COSMIC_PANEL_NAME".to_string(), config_name),
-                ("COSMIC_PANEL_SIZE".to_string(), config_size),
                 ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
@@ -406,7 +409,7 @@ impl WrapperSpace for PanelSpace {
 
             let mut max_minimize_priority: u32 = 0;
 
-            let mut panel_clients: Vec<(&mut PanelClient, Arc<Mutex<Vec<PanelClient>>>)> =
+            let mut panel_clients: Vec<(&mut PanelClient, Arc<Mutex<Vec<PanelClient>>>, Side)> =
                 Vec::new();
             let locales = freedesktop_desktop_entry::get_languages_from_env();
 
@@ -418,7 +421,7 @@ impl WrapperSpace for PanelSpace {
                         Some(OsString::from(name).as_os_str()) == path.file_stem()
                     })
                 {
-                    let (panel_client, my_list) = desktop_ids.remove(position);
+                    let (panel_client, my_list, panel_side) = desktop_ids.remove(position);
                     info!(panel_client.name);
 
                     if let Ok(bytes) = fs::read_to_string(&path) {
@@ -457,7 +460,7 @@ impl WrapperSpace for PanelSpace {
                                 panel_client.is_notification_applet =
                                     Some(entry.desktop_entry("X-NotificationsApplet").is_some());
 
-                                panel_clients.push((panel_client, my_list));
+                                panel_clients.push((panel_client, my_list, panel_side));
                             }
                         }
                     }
@@ -467,7 +470,7 @@ impl WrapperSpace for PanelSpace {
             // only allow 1 per panel
             let mut has_minimize = false;
 
-            for (panel_client, my_list) in panel_clients {
+            for (panel_client, my_list, panel_side) in panel_clients {
                 if panel_client.exec.is_none() {
                     continue;
                 }
@@ -505,6 +508,10 @@ impl WrapperSpace for PanelSpace {
                     "X_MINIMIZE_APPLET".to_string(),
                     panel_client.minimize_priority.is_some().to_string(),
                 ));
+                let config_size =
+                    ron::ser::to_string(&self.config.get_effective_applet_size(panel_side))
+                        .unwrap_or_default();
+                applet_env.push(("COSMIC_PANEL_SIZE".to_string(), config_size));
                 if requests_wayland_display {
                     if let Some(security_context_manager) = security_context_manager.as_ref() {
                         match security_context_manager.create_listener::<SpaceContainer>(qh) {
