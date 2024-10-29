@@ -105,7 +105,6 @@ impl WrapperPopup {
             );
             self.popup.c_popup.wl_surface().commit();
             popup_manager.commit(self.s_surface.wl_surface());
-
             self.popup.state = None;
         };
         self.s_surface.alive()
