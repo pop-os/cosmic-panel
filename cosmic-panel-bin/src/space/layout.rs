@@ -237,11 +237,7 @@ impl PanelSpace {
                 })
                 .unwrap_or_default();
             let bbox = w.bbox().size;
-            // dbg!(bbox, size, suggested_bounds, scale);
 
-            if bbox.w > 0 {
-                info!("MAPFN {i} {anchor:?} {suggested_bounds:?} {size:?} {bbox:?}");
-            }
             if size.w == 0 {
                 size.w = bbox.w;
             }
@@ -1013,10 +1009,10 @@ impl PanelSpace {
                 t.with_pending_state(|s| {
                     if self.config.is_horizontal() {
                         s.size = None;
-                        s.bounds = Some((new_dim as i32, unit_size as i32).into());
+                        s.bounds = Some((new_dim as i32, 0).into());
                     } else {
                         s.size = None;
-                        s.bounds = Some((unit_size as i32, new_dim as i32).into());
+                        s.bounds = Some((0, new_dim as i32).into());
                     }
                 });
                 t.send_pending_configure();

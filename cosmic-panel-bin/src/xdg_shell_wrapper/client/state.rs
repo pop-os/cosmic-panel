@@ -327,7 +327,7 @@ impl ClientState {
             let _ = renderer.unbind();
             let _ = renderer.bind(egl_surface.clone());
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                s_layer.render_elements(renderer, (0, 0).into(), 1.0.into(), 1.0);
+                s_layer.render_elements(renderer, (0, 0).into(), 1.25.into(), 1.0);
             dmg_tracked_renderer
                 .render_output(
                     renderer,

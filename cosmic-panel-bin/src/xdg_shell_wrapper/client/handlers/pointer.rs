@@ -225,6 +225,7 @@ impl GlobalState {
                             }
                         },
                     );
+
                     if let Some(s_surface) = s_surface {
                         ptr.motion(
                             self,
