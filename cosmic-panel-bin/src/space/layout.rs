@@ -386,8 +386,10 @@ impl PanelSpace {
         let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
 
         let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
-        let mut right_pos =
-            new_list_dim_length as f64 - container_lengthwise_pos as f64 - right_sum;
+        let mut right_pos = new_list_dim_length as f64
+            - container_lengthwise_pos as f64
+            - right_sum
+            - padding_u32 as f64;
 
         let one_third = (layer_major as f64 - (spacing_u32 * num_lists.saturating_sub(1)) as f64)
             / (3.min(num_lists) as f64);
@@ -871,9 +873,8 @@ impl PanelSpace {
     ) -> OverflowClientPartition {
         let mut overflow_partition = OverflowClientPartition::default();
         overflow_partition.suggested_size =
-            ((self.config.size.get_applet_icon_size_with_padding(true) as f64
+            (self.config.size.get_applet_icon_size_with_padding(true) as f64
                 + 2. * self.config.get_applet_padding(true) as f64)
-                * self.scale)
                 .round() as u32;
         for c in clients {
             let Some(w) = self.space.elements().find_map(|e| {
@@ -1097,15 +1098,16 @@ impl PanelSpace {
             overflow_space.map_element(PopupMappedInternal::Window(w.0.clone()), (x, y), true);
             // Rows of 8 with configured applet size
             if let Some(t) = w.0.toplevel() {
-                t.with_pending_state(|s| {
-                    s.size = Some((applet_size_unit as i32, applet_size_unit as i32).into());
-                    s.bounds = Some((applet_size_unit as i32, applet_size_unit as i32).into());
-                });
                 with_states(t.wl_surface(), |states| {
                     with_fractional_scale(states, |fractional_scale| {
                         fractional_scale.set_preferred_scale(self.scale);
                     });
                 });
+                t.with_pending_state(|s| {
+                    s.size = Some((applet_size_unit as i32, applet_size_unit as i32).into());
+                    s.bounds = Some((applet_size_unit as i32, applet_size_unit as i32).into());
+                });
+
                 t.send_pending_configure();
             }
             overflow_cnt += 1;

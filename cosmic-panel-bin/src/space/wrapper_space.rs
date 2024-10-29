@@ -999,8 +999,6 @@ impl WrapperSpace for PanelSpace {
                 };
 
                 let mut bbox = e.bbox().to_f64();
-                bbox.size.w /= popup.scale;
-                bbox.size.h /= popup.scale;
                 bbox.loc.x = space_location.x as f64;
                 bbox.loc.y = space_location.y as f64;
                 if bbox.contains((x as f64, y as f64)) {
@@ -1011,7 +1009,9 @@ impl WrapperSpace for PanelSpace {
             });
 
             if let Some((bbox, target, relative_loc)) = space_focus {
-                let geo = bbox.to_physical(1.0).to_logical(self.scale).to_i32_round();
+                dbg!(bbox, x, y);
+
+                let geo = bbox.to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = SpaceTarget::Surface(target.clone());
                 } else {
