@@ -737,6 +737,7 @@ impl PanelSpace {
                     self.colors.color_override = None;
                 }
                 self.animate_state = None;
+                self.relax_all();
                 return;
             }
 
