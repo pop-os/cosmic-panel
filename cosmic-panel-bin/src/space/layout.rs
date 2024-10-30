@@ -254,7 +254,6 @@ impl PanelSpace {
             if suggested_bounds.h == 0 {
                 suggested_bounds.h = size.h;
             }
-            info!("MAPFN2 {i} {anchor:?} {suggested_bounds:?} {size:?} {bbox:?}");
 
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
