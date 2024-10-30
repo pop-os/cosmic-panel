@@ -576,7 +576,7 @@ impl PanelSpace {
                         size: ((size.w.ceil() as i32).max(1), (size.w.ceil() as i32).max(1)).into(),
                     };
                     if new_rect != self.minimize_applet_rect
-                        && self.last_minimize_update.duration_since(Instant::now())
+                        && Instant::now().duration_since(self.last_minimize_update)
                             > Duration::from_secs(1)
                     {
                         self.minimize_applet_rect = new_rect;
