@@ -157,19 +157,17 @@ impl PanelSpace {
             }
 
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let mut elements: Vec<PanelRenderElement> = 
-                // FIXME
-                // (self.config.anchor_gap
-                //     || self.config.border_radius > 0)
-                    // .then(|| {
-                    //     PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
-                    //         renderer,
-                    //         Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
-                    //         self.panel_rect_settings,
-                    //     ))
-                    // })
-                    // .into_iter()
-                    // .chain(
+                let mut elements: Vec<PanelRenderElement> = (self.config.anchor_gap
+                    || self.config.border_radius > 0)
+                    .then(|| {
+                        PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
+                            renderer,
+                            Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
+                            self.panel_rect_settings,
+                        ))
+                    })
+                    .into_iter()
+                    .chain(
                         self.space
                             .elements()
                             .filter_map(|w| {
@@ -237,8 +235,8 @@ impl PanelSpace {
                                     .collect::<Vec<_>>()
                                 })
                             })
-                            .flatten()
-                    // )
+                            .flatten(),
+                    )
                     .collect_vec();
 
                 if let Some(bg) = self.background_element.as_ref().map(|e| {
