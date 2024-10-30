@@ -693,10 +693,19 @@ impl PanelSpace {
                 };
                 let side = (layer_length as u32 - actual_length as u32) / 2;
 
-                let loc =
-                    if self.config.is_horizontal() { (side as i32, 0) } else { (0, side as i32) };
+                let (loc, size) = if self.config.is_horizontal() {
+                    (
+                        (side as i32, 0),
+                        (container_length, new_logical_crosswise_dim + self.gap() as i32),
+                    )
+                } else {
+                    (
+                        (0, side as i32),
+                        (new_logical_crosswise_dim + self.gap() as i32, container_length),
+                    )
+                };
 
-                input_region.add(loc.0, loc.1, new_dim.w, new_dim.h);
+                input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
                 input_region.add(0, 0, new_dim.w, new_dim.h);
             };
