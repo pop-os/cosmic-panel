@@ -1053,8 +1053,8 @@ impl PanelSpace {
         clients: OverflowClientPartition,
         section: OverflowSection,
     ) -> u32 {
-        if clients.movable.is_empty() {
-            tracing::info!("No movable clients to move to overflow space");
+        if clients.movable.len() <= 1 {
+            tracing::info!("Needs at least 2 movable clients to move to overflow space.");
             return overflow;
         }
         info!("Moving clients to overflow space {section:?} {overflow}");
