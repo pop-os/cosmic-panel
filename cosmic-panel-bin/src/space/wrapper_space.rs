@@ -1009,8 +1009,6 @@ impl WrapperSpace for PanelSpace {
             });
 
             if let Some((bbox, target, relative_loc)) = space_focus {
-                dbg!(bbox, x, y);
-
                 let geo = bbox.to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = SpaceTarget::Surface(target.clone());

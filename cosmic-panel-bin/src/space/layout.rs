@@ -2,6 +2,7 @@ use std::{
     slice::IterMut,
     sync::{atomic::AtomicBool, Arc, MutexGuard},
     time::{Duration, Instant},
+    u32,
 };
 
 use crate::{
@@ -227,7 +228,6 @@ impl PanelSpace {
             (i, w, _): &(usize, Window, Option<u32>),
             anchor: PanelAnchor,
             alignment: Alignment,
-            scale: f64,
         ) -> (Alignment, usize, i32, i32, i32) {
             let (mut size, mut suggested_bounds) = w
                 .toplevel()
@@ -257,16 +257,16 @@ impl PanelSpace {
 
             match anchor {
                 PanelAnchor::Left | PanelAnchor::Right => {
-                    (alignment, *i, size.h, size.w, suggested_bounds.h)
+                    (alignment, *i, size.h, size.w, suggested_bounds.h.min(size.h))
                 },
                 PanelAnchor::Top | PanelAnchor::Bottom => {
-                    (alignment, *i, size.w, size.h, suggested_bounds.w)
+                    (alignment, *i, size.w, size.h, suggested_bounds.w.min(suggested_bounds.w))
                 },
             }
         }
 
         let left = windows_left.iter().map(|e| {
-            let l = map_fn(e, anchor, Alignment::Left, self.scale);
+            let l = map_fn(e, anchor, Alignment::Left);
             l
         });
 
@@ -283,8 +283,7 @@ impl PanelSpace {
             left_sum_scaled
         };
 
-        let center =
-            windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center, self.scale));
+        let center = windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center));
         let center_sum_scaled =
             center.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>()
                 as f64
@@ -299,7 +298,7 @@ impl PanelSpace {
             center_sum_scaled
         };
 
-        let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right, self.scale));
+        let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right));
         let right_sum_scaled =
             right.clone().map(|(_, _, _length, _, suggested_length)| suggested_length).sum::<i32>()
                 as f64
@@ -445,7 +444,7 @@ impl PanelSpace {
             bail!("overflow: {}", overflow)
         }
 
-        if !is_dock {
+        if !is_dock && self.animate_state.is_none() {
             let left_overflow = (left_sum - target_left_len) as i32;
 
             if left_overflow < suggested_size {
@@ -1234,7 +1233,6 @@ impl PanelSpace {
         space: &mut Space<CosmicMappedInternal>,
         overflow_space: &mut Space<PopupMappedInternal>,
         suggested_size: u32,
-        scale: f64,
     ) -> u32 {
         // TODO move applets until extra_space is as close as possible to 0
         let overflow_elements = overflow_space.elements().cloned().collect_vec();
@@ -1285,7 +1283,6 @@ impl PanelSpace {
                 &mut self.space,
                 &mut self.overflow_left,
                 suggested_size,
-                self.scale,
             );
             if self.overflow_left.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_))) {
                 if let Some(overflow_button) = left_overflow_button.take() {
@@ -1315,7 +1312,6 @@ impl PanelSpace {
                 &mut self.space,
                 &mut self.overflow_center,
                 suggested_size,
-                self.scale,
             );
             if self.overflow_center.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_))) {
                 if let Some(overflow_button) = center_overflow_button.take() {
@@ -1328,6 +1324,58 @@ impl PanelSpace {
         }
     }
 
+    pub(crate) fn relax_all(&mut self) {
+        let mut left_overflow_button = None;
+        let mut right_overflow_button = None;
+        let mut center_overflow_button = None;
+
+        for w in self.space.elements().cloned() {
+            match w {
+                CosmicMappedInternal::OverflowButton(b)
+                    if overflow_button::with_id(&b, |id| &self.left_overflow_button_id == id) =>
+                {
+                    left_overflow_button = Some(b);
+                },
+                CosmicMappedInternal::OverflowButton(b)
+                    if overflow_button::with_id(&b, |id| &self.center_overflow_button_id == id) =>
+                {
+                    center_overflow_button = Some(b);
+                },
+                CosmicMappedInternal::OverflowButton(b)
+                    if overflow_button::with_id(&b, |id| &self.right_overflow_button_id == id) =>
+                {
+                    right_overflow_button = Some(b);
+                },
+                _ => {},
+            };
+        }
+        let suggested_size = self.config.size.get_applet_icon_size(true)
+            + self.config.size.get_applet_padding(true) as u32 * 2;
+        self.relax_overflow_left(u32::MAX, &mut left_overflow_button);
+        self.relax_overflow_center(u32::MAX, &mut center_overflow_button);
+        self.relax_overflow_right(u32::MAX, &mut right_overflow_button);
+        PanelSpace::move_from_overflow(
+            u32::MAX,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_left,
+            suggested_size,
+        );
+        PanelSpace::move_from_overflow(
+            u32::MAX,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_center,
+            suggested_size,
+        );
+        PanelSpace::move_from_overflow(
+            u32::MAX,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_right,
+            suggested_size,
+        );
+    }
     fn relax_overflow_right(
         &mut self,
         extra_space: u32,
@@ -1345,7 +1393,6 @@ impl PanelSpace {
                 &mut self.space,
                 &mut self.overflow_right,
                 suggested_size,
-                self.scale,
             );
             if self.overflow_right.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_))) {
                 if let Some(overflow_button) = right_overflow_button.take() {
