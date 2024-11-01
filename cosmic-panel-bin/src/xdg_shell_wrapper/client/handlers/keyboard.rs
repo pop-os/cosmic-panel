@@ -6,7 +6,7 @@ use crate::xdg_shell_wrapper::{
 };
 use sctk::{
     delegate_keyboard,
-    seat::keyboard::{KeyboardHandler, Keysym, RepeatInfo},
+    seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RepeatInfo},
     shell::WaylandSurface,
 };
 use smithay::{backend::input::KeyState, input::keyboard::FilterResult, utils::SERIAL_COUNTER};
@@ -159,7 +159,7 @@ impl KeyboardHandler for GlobalState {
 
         let _ = kbd.input::<(), _>(
             self,
-            event.raw_code.into(),
+            KeyCode::new(event.raw_code.saturating_add(8)),
             KeyState::Pressed,
             SERIAL_COUNTER.next_serial(),
             event.time,
@@ -195,7 +195,7 @@ impl KeyboardHandler for GlobalState {
 
         kbd.input::<(), _>(
             self,
-            event.raw_code.into(),
+            KeyCode::new(event.raw_code.saturating_add(8)),
             KeyState::Released,
             SERIAL_COUNTER.next_serial(),
             event.time,
