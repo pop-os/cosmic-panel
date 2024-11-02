@@ -112,7 +112,8 @@ pub fn watch_config(
             channel::Event::Msg(ConfigUpdate::Entries(entries)) => {
                 let to_update = entries
                     .iter()
-                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c)).cloned()
+                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c))
+                    .cloned()
                     .collect::<Vec<String>>();
                 info!("Received entries: {:?}", to_update);
                 for entry in to_update {
