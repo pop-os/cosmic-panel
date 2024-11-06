@@ -691,21 +691,35 @@ impl PanelSpace {
                 };
                 let side = (layer_length as u32 - actual_length as u32) / 2;
 
-                let (loc, size) = if self.config.is_horizontal() {
-                    (
-                        (side as i32, 0),
-                        (container_length, new_logical_crosswise_dim + self.gap() as i32),
-                    )
-                } else {
-                    (
+                let (loc, size) = match self.config.anchor {
+                    PanelAnchor::Left => (
+                        (-1, side as i32),
+                        (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
+                    ),
+                    PanelAnchor::Right => (
                         (0, side as i32),
-                        (new_logical_crosswise_dim + self.gap() as i32, container_length),
-                    )
+                        (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
+                    ),
+                    PanelAnchor::Top => (
+                        (side as i32, -1),
+                        (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
+                    ),
+                    PanelAnchor::Bottom => (
+                        (side as i32, 0),
+                        (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
+                    ),
                 };
 
                 input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
-                input_region.add(0, 0, new_dim.w, new_dim.h);
+                let (loc, size) = match self.config.anchor {
+                    PanelAnchor::Left => ((-1, 0), (new_dim.w + 1, new_dim.h)),
+                    PanelAnchor::Right => ((0, 0), (new_dim.w + 1, new_dim.h)),
+                    PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1)),
+                    PanelAnchor::Bottom => ((0, 0), (new_dim.w, new_dim.h + 1)),
+                };
+
+                input_region.add(loc.0, loc.1, size.0, size.1);
             };
             layer.wl_surface().set_input_region(Some(input_region.wl_region()));
 
