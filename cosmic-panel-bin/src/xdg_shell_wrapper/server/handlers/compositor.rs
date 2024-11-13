@@ -212,15 +212,10 @@ impl CompositorHandler for GlobalState {
                 .iter_mut()
                 .find(|s| s.2.wl_surface() == surface)
             {
-                // XXX Hacky but we I'm not sure of a better way to do this.
-                let old_bbox = s_layer_surface.bbox().size;
+                let old_size = s_layer_surface.bbox().size;
                 on_commit_buffer_handler::<GlobalState>(surface);
-
-                // s_layer_surface.layer_surface().ensure_configured();
-                let bbox = s_layer_surface.bbox().size;
-
-                let size: Size<i32, Logical> =
-                    bbox.to_f64().to_physical(1.0).to_logical(*scale).to_i32_round();
+                let size = s_layer_surface.bbox().size;
+                let scaled_size = size.to_f64().to_physical_precise_round(*scale);
 
                 if size.w <= 0 || size.h <= 0 {
                     return;
@@ -232,14 +227,11 @@ impl CompositorHandler for GlobalState {
                     return;
                 };
                 *state = SurfaceState::Dirty;
-                if old_bbox != bbox {
-                    egl_surface.resize(bbox.w, bbox.h, 0, 0);
+                if old_size != size {
+                    egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                     c_layer_surface.set_size(size.w as u32, size.h as u32);
-                    *renderer = OutputDamageTracker::new(
-                        (bbox.w.max(1), bbox.h.max(1)),
-                        *scale,
-                        Transform::Flipped180,
-                    );
+                    *renderer =
+                        OutputDamageTracker::new(scaled_size, *scale, Transform::Flipped180);
                     c_layer_surface.wl_surface().commit();
                 }
             }

@@ -316,7 +316,7 @@ impl ClientState {
     /// draw the proxied layer shell surfaces
     pub fn draw_layer_surfaces(&mut self, renderer: &mut GlesRenderer, time: u32) {
         let clear_color = &[0.0, 0.0, 0.0, 0.0];
-        for (egl_surface, dmg_tracked_renderer, s_layer, _, state, ..) in
+        for (egl_surface, dmg_tracked_renderer, s_layer, _, state, scale, ..) in
             &mut self.proxied_layer_surfaces
         {
             match state {
@@ -327,7 +327,7 @@ impl ClientState {
             let _ = renderer.unbind();
             let _ = renderer.bind(egl_surface.clone());
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                s_layer.render_elements(renderer, (0, 0).into(), 1.25.into(), 1.0);
+                s_layer.render_elements(renderer, (0, 0).into(), (*scale).into(), 1.0);
             dmg_tracked_renderer
                 .render_output(
                     renderer,
