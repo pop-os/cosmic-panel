@@ -52,7 +52,7 @@ pub struct SpaceContainer {
     pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub applet_tx: mpsc::Sender<AppletMsg>,
-    pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+    pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
     pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
@@ -71,7 +71,7 @@ impl SpaceContainer {
     pub fn new(
         config: CosmicPanelContainerConfig,
         tx: mpsc::Sender<AppletMsg>,
-        panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+        panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
         loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
         let is_dark = ThemeMode::config()

@@ -36,7 +36,6 @@ use sctk::{
             Proxy, QueueHandle,
         },
     },
-    seat::pointer::PointerEvent,
     shell::{
         wlr_layer::{LayerSurface, LayerSurfaceConfigure},
         xdg::XdgPositioner,
@@ -52,11 +51,7 @@ use smithay::{
             surface::EGLSurface,
             EGLContext,
         },
-        renderer::{
-            damage::OutputDamageTracker,
-            gles::{Capability, GlesRenderer},
-            Bind, Unbind,
-        },
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Unbind},
     },
     desktop::{PopupManager, Space},
     output::Output,
@@ -294,7 +289,7 @@ pub struct PanelSpace {
     pub security_context_manager: Option<SecurityContextManager>,
     pub animate_state: Option<AnimateState>,
     pub maximized: bool,
-    pub panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+    pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub minimize_applet_rect: Rectangle<i32, Logical>,
     pub panel_rect_settings: RoundedRectangleSettings,
     pub scale_change_retries: u32,
@@ -323,7 +318,7 @@ impl PanelSpace {
         s_display: DisplayHandle,
         security_context_manager: Option<SecurityContextManager>,
         conn: &Connection,
-        panel_tx: calloop::channel::SyncSender<PanelCalloopMsg>,
+        panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
         visibility: Visibility,
         loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {

@@ -10,6 +10,7 @@ use crate::xdg_shell_wrapper::{
     client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
 };
 use anyhow::Result;
+use calloop::channel::Sender;
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
     wayland_client::protocol::wl_output::WlOutput,
@@ -19,7 +20,6 @@ use cosmic_panel_config::CosmicPanelConfig;
 use launch_pad::{ProcessKey, ProcessManager};
 use minimize::MinimizeApplet;
 use notifications::notifications_conn;
-use sctk::reexports::calloop::channel::SyncSender;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
 use std::{
     collections::HashMap,
@@ -75,8 +75,7 @@ fn main() -> Result<()> {
     };
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
-    let (calloop_tx, calloop_rx): (SyncSender<PanelCalloopMsg>, _) =
-        calloop::channel::sync_channel(100);
+    let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
 
     let event_loop = calloop::EventLoop::try_new()?;
 
