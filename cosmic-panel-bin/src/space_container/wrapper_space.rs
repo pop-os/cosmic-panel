@@ -1,4 +1,8 @@
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use crate::{
     iced::elements::target::SpaceTarget,
@@ -395,12 +399,13 @@ impl WrapperSpace for SpaceContainer {
         qh: &QueueHandle<GlobalState>,
         popup_manager: &mut PopupManager,
         time: u32,
+        throttle: Option<Duration>,
     ) -> std::time::Instant {
         self.space_list
             .iter_mut()
             .fold(None, |mut acc, s| {
                 let last_dirtied =
-                    s.handle_events(dh, popup_manager, time, self.renderer.as_mut(), qh);
+                    s.handle_events(dh, popup_manager, time, throttle, self.renderer.as_mut(), qh);
                 if let Some(last_dirty) = acc {
                     if last_dirty < last_dirtied {
                         acc = Some(last_dirtied);

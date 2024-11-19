@@ -104,6 +104,7 @@ impl PanelSpace {
         &mut self,
         renderer: &mut GlesRenderer,
         time: u32,
+        throttle: Option<Duration>,
         qh: &QueueHandle<GlobalState>,
     ) -> anyhow::Result<()> {
         if self.space_event.get().is_some()
@@ -271,9 +272,12 @@ impl PanelSpace {
                     }
                 }) {
                     let output = *o;
-                    window.send_frame(o, Duration::from_millis(time as u64), None, move |_, _| {
-                        Some(output.clone())
-                    });
+                    window.send_frame(
+                        o,
+                        Duration::from_millis(time as u64),
+                        throttle,
+                        move |_, _| Some(output.clone()),
+                    );
                 }
                 let wl_surface = self.layer.as_ref().unwrap().wl_surface().clone();
                 wl_surface.frame(qh, wl_surface.clone());

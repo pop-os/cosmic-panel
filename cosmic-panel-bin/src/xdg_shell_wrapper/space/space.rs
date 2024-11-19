@@ -221,6 +221,7 @@ pub trait WrapperSpace {
         qh: &QueueHandle<GlobalState>,
         popup_manager: &mut PopupManager,
         time: u32,
+        throttle: Option<Duration>,
     ) -> Instant;
 
     /// gets the config

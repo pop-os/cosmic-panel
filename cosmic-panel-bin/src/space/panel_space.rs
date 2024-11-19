@@ -799,6 +799,7 @@ impl PanelSpace {
         _dh: &DisplayHandle,
         popup_manager: &mut PopupManager,
         time: u32,
+        throttle: Option<Duration>,
         mut renderer: Option<&mut GlesRenderer>,
         qh: &QueueHandle<GlobalState>,
     ) -> Instant {
@@ -878,7 +879,7 @@ impl PanelSpace {
             self.handle_overflow_popup_events();
 
             if prev == self.popups.len() && should_render {
-                if let Err(e) = self.render(renderer, time, qh) {
+                if let Err(e) = self.render(renderer, time, throttle, qh) {
                     error!("Failed to render, error: {:?}", e);
                 }
             }
