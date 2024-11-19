@@ -131,9 +131,9 @@ pub fn run(
 
         // dispatch desktop client events
         let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
-            Duration::from_millis(100)
+            Some(Duration::from_millis(500))
         } else {
-            Duration::from_millis(16)
+            Some(Duration::from_millis(16))
         };
 
         event_loop.dispatch(dur, &mut global_state)?;
@@ -147,6 +147,7 @@ pub fn run(
                 &global_state.client_state.queue_handle,
                 &mut global_state.server_state.popup_manager,
                 global_state.start_time.elapsed().as_millis().try_into()?,
+                dur,
             );
         }
         global_state.draw_dnd_icon();

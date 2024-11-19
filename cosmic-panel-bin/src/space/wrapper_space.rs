@@ -5,7 +5,7 @@ use std::{
     os::{fd::OwnedFd, unix::prelude::AsRawFd},
     rc::Rc,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -1405,6 +1405,7 @@ impl WrapperSpace for PanelSpace {
         _qh: &QueueHandle<GlobalState>,
         _popup_manager: &mut PopupManager,
         _time: u32,
+        _throttle: Option<Duration>,
     ) -> Instant {
         unimplemented!()
     }
