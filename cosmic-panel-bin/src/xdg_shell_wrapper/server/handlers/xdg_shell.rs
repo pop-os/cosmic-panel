@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use sctk::shell::xdg::XdgPositioner;
 use smithay::{
     delegate_xdg_shell,
@@ -5,13 +6,16 @@ use smithay::{
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_seat,
     },
-    utils::Serial,
+    utils::{Serial, SERIAL_COUNTER},
     wayland::shell::xdg::{
         PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     },
 };
 
-use crate::xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace};
+use crate::{
+    iced::elements::target::SpaceTarget,
+    xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace},
+};
 
 impl XdgShellHandler for GlobalState {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -48,6 +52,19 @@ impl XdgShellHandler for GlobalState {
         {
             self.server_state.popup_manager.track_popup(PopupKind::Xdg(surface.clone())).unwrap();
             self.server_state.popup_manager.commit(surface.wl_surface());
+            for kbd in self
+                .server_state
+                .seats
+                .iter()
+                .filter_map(|s| s.server.seat.get_keyboard())
+                .collect_vec()
+            {
+                kbd.set_focus(
+                    self,
+                    Some(SpaceTarget::Surface(surface.wl_surface().clone())),
+                    SERIAL_COUNTER.next_serial(),
+                );
+            }
         }
     }
 
