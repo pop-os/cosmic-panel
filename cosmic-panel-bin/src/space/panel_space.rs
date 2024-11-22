@@ -293,7 +293,10 @@ pub struct PanelSpace {
     pub minimize_applet_rect: Rectangle<i32, Logical>,
     pub panel_rect_settings: RoundedRectangleSettings,
     pub scale_change_retries: u32,
+    /// Extra gap for stacked panels. Logical coordinate space.
     pub additional_gap: i32,
+    /// Target gap for the panel on its anchored edge. Logical coordinate space.
+    pub anchor_gap: i32,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
     pub left_overflow_button_id: id::Id,
     pub center_overflow_button_id: id::Id,
@@ -380,6 +383,7 @@ impl PanelSpace {
             remap_attempts: 0,
             background_element: None,
             last_minimize_update: Instant::now() - Duration::from_secs(1),
+            anchor_gap: 0,
         }
     }
 
@@ -507,6 +511,7 @@ impl PanelSpace {
                         Some(d) => d,
                         None => return,
                     };
+                    self.is_dirty = true;
                     if duration_since_last_focus > self.config.get_hide_wait().unwrap() {
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
@@ -549,20 +554,13 @@ impl PanelSpace {
                     let target = -panel_size + handle;
 
                     let cur_pix = (progress_norm * target as f32) as i32;
-                    let margin = self.config.get_margin() as i32;
 
                     if progress > total_t {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
-                        Self::set_margin(
-                            self.config.anchor,
-                            margin,
-                            target,
-                            self.additional_gap,
-                            layer_surface,
-                        );
-                        layer_shell_wl_surface.commit();
+
+                        self.anchor_gap = target;
                         self.additional_gap = 0;
                         self.visibility = Visibility::Hidden;
                     } else {
@@ -570,14 +568,8 @@ impl PanelSpace {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            Self::set_margin(
-                                self.config.anchor,
-                                margin,
-                                cur_pix,
-                                self.additional_gap,
-                                layer_surface,
-                            );
-                            layer_shell_wl_surface.commit();
+
+                            self.anchor_gap = cur_pix;
                         }
                         self.close_popups(|_| false);
                         self.visibility = Visibility::TransitionToHidden {
@@ -603,6 +595,7 @@ impl PanelSpace {
                 let progress_norm =
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle().unwrap() as i32;
+                self.is_dirty = true;
 
                 if let FocusStatus::LastFocused(_) = cur_hover {
                     // start transition to visible
@@ -626,29 +619,16 @@ impl PanelSpace {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
-                        Self::set_margin(
-                            self.config.anchor,
-                            self.config.get_margin() as i32,
-                            0,
-                            self.additional_gap,
-                            layer_surface,
-                        );
-                        layer_shell_wl_surface.commit();
+
+                        self.anchor_gap = 0;
                         self.visibility = Visibility::Visible;
                     } else {
                         if prev_margin != cur_pix {
                             if self.config.exclusive_zone() {
                                 layer_surface.set_exclusive_zone(panel_size - cur_pix);
                             }
-                            let margin = self.config.get_margin() as i32;
-                            Self::set_margin(
-                                self.config.anchor,
-                                margin,
-                                cur_pix,
-                                self.additional_gap,
-                                layer_surface,
-                            );
-                            layer_shell_wl_surface.commit();
+
+                            self.anchor_gap = cur_pix;
                         }
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: now,
@@ -664,23 +644,14 @@ impl PanelSpace {
     fn set_margin(
         anchor: PanelAnchor,
         margin: i32,
-        target: i32,
         additional_gap: i32,
         layer_surface: &LayerSurface,
     ) {
         match anchor {
-            PanelAnchor::Left => {
-                layer_surface.set_margin(margin, 0, margin, target + additional_gap)
-            },
-            PanelAnchor::Right => {
-                layer_surface.set_margin(margin, target + additional_gap, margin, 0)
-            },
-            PanelAnchor::Top => {
-                layer_surface.set_margin(target + additional_gap, margin, 0, margin)
-            },
-            PanelAnchor::Bottom => {
-                layer_surface.set_margin(0, margin, target + additional_gap, margin)
-            },
+            PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, additional_gap),
+            PanelAnchor::Right => layer_surface.set_margin(margin, additional_gap, margin, 0),
+            PanelAnchor::Top => layer_surface.set_margin(additional_gap, margin, 0, margin),
+            PanelAnchor::Bottom => layer_surface.set_margin(0, margin, additional_gap, margin),
         };
     }
 
@@ -786,10 +757,10 @@ impl PanelSpace {
                 Self::set_margin(
                     self.config.anchor,
                     self.config.get_margin() as i32,
-                    0,
                     self.additional_gap,
                     layer,
                 );
+                self.anchor_gap = 0;
             }
         }
     }
@@ -840,10 +811,10 @@ impl PanelSpace {
                             Self::set_margin(
                                 self.config.anchor,
                                 self.config.get_effective_anchor_gap() as i32,
-                                0,
                                 self.additional_gap,
                                 layer_surface,
                             );
+                            self.anchor_gap = 0;
                         }
                     } else if self.config.autohide.is_some()
                         && matches!(self.visibility, Visibility::Hidden)
@@ -854,11 +825,11 @@ impl PanelSpace {
                         Self::set_margin(
                             self.config.anchor,
                             self.config.get_margin() as i32,
-                            -(list_thickness as i32)
-                                + self.config.get_hide_handle().unwrap_or_default() as i32,
                             self.additional_gap,
                             layer_surface,
                         );
+                        self.anchor_gap = -(list_thickness as i32)
+                            + self.config.get_hide_handle().unwrap_or_default() as i32;
                     }
                     layer_surface.wl_surface().commit();
                     layer_surface.wl_surface().frame(qh, layer_surface.wl_surface().clone());
@@ -1251,7 +1222,8 @@ impl PanelSpace {
         if config.autohide.is_none() && self.config.autohide.is_some() {
             if let Some(l) = self.layer.as_ref() {
                 let margin = config.get_effective_anchor_gap() as i32;
-                Self::set_margin(config.anchor, margin, 0, self.additional_gap, l);
+                Self::set_margin(config.anchor, margin, self.additional_gap, l);
+                self.anchor_gap = 0;
                 let list_thickness = match self.config.anchor() {
                     PanelAnchor::Left | PanelAnchor::Right => self.dimensions.w,
                     PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.h,
@@ -1268,7 +1240,8 @@ impl PanelSpace {
         } else if self.config.get_effective_anchor_gap() != config.get_effective_anchor_gap() {
             if let Some(l) = self.layer.as_ref() {
                 let margin = config.get_effective_anchor_gap() as i32;
-                Self::set_margin(config.anchor, margin, 0, self.additional_gap, l);
+                Self::set_margin(config.anchor, margin, self.additional_gap, l);
+                self.anchor_gap = 0;
                 needs_commit = true;
             }
         }

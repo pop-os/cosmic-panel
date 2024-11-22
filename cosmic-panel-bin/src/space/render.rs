@@ -11,6 +11,7 @@ use cctk::wayland_client::{Proxy, QueueHandle};
 use itertools::Itertools;
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
+use cosmic_panel_config::PanelAnchor;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
@@ -24,8 +25,9 @@ use smithay::{
         gles::{GlesError, GlesFrame, GlesRenderer},
         Bind, Color32F, Frame, Renderer, Unbind,
     },
-    utils::{Buffer, Physical, Rectangle},
+    utils::{Buffer, Physical, Point, Rectangle},
 };
+
 pub(crate) enum PanelRenderElement {
     Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
     Crop(CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>),
@@ -157,8 +159,17 @@ impl PanelSpace {
                 return Ok(());
             }
 
+            let anim_gap_physical = (self.anchor_gap as f64) * self.scale;
+            let anim_gap_translation = Point::from(match self.config.anchor {
+                PanelAnchor::Left => (anim_gap_physical, 0.),
+                PanelAnchor::Right => (-anim_gap_physical, 0.),
+                PanelAnchor::Top => (0., anim_gap_physical),
+                PanelAnchor::Bottom => (0., -anim_gap_physical),
+            })
+            .to_i32_round();
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
                 let mut elements: Vec<PanelRenderElement> = (self.config.anchor_gap
+                    || self.anchor_gap != 0
                     || self.config.border_radius > 0)
                     .then(|| {
                         PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
@@ -178,7 +189,8 @@ impl PanelSpace {
                                     .unwrap_or_default()
                                     .to_f64()
                                     .to_physical(self.scale)
-                                    .to_i32_round();
+                                    .to_i32_round()
+                                    + anim_gap_translation;
 
                                 if let CosmicMappedInternal::OverflowButton(b) = w {
                                     return Some(
@@ -244,8 +256,10 @@ impl PanelSpace {
                     let pos = e.with_program(|p| p.logical_pos);
                     e.render_elements(
                         renderer,
-                        ((pos.0 as f64 * self.scale) as i32, (pos.1 as f64 * self.scale) as i32)
-                            .into(),
+                        Point::from((
+                            (pos.0 as f64 * self.scale) as i32,
+                            (pos.1 as f64 * self.scale) as i32,
+                        )) + anim_gap_translation,
                         self.scale.into(),
                         1.0,
                     )
