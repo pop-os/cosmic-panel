@@ -62,7 +62,8 @@ impl SeatHandler for GlobalState {
             // So instead of doing the right thing (and initialize these capabilities as
             // matching devices appear), we have to surrender to reality and
             // just always expose a keyboard and pointer.
-            new_server_seat.add_keyboard(Default::default(), 200, 20).unwrap();
+            let keyboard = new_server_seat.add_keyboard(Default::default(), 200, 20).unwrap();
+            keyboard.set_update_key(false);
             new_server_seat.add_pointer();
 
             let data_device = self.client_state.data_device_manager.get_data_device(qh, &seat);
@@ -147,7 +148,8 @@ impl SeatHandler for GlobalState {
         match capability {
             sctk::seat::Capability::Keyboard => {
                 if info.has_keyboard {
-                    sp.server.seat.add_keyboard(Default::default(), 200, 20).unwrap();
+                    let keyboard = sp.server.seat.add_keyboard(Default::default(), 200, 20).unwrap();
+                    keyboard.set_update_key(false);
                     if let Ok(kbd) = self.client_state.seat_state.get_keyboard(qh, &seat, None) {
                         sp.client.kbd.replace(kbd);
                     }
