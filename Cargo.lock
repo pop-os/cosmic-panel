@@ -2336,7 +2336,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3642,7 +3642,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/smithay/smithay?rev=df79eeb#df79eeba63a8e9c2d33b9be2418aee6a940135e7"
+source = "git+https://github.com/ids1024/smithay?branch=update_mask#57aaf6e80b10f7153dd2313cc11e70452187be9d"
 dependencies = [
  "appendlist",
  "bitflags 2.6.0",
@@ -3679,7 +3679,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.19.2"
-source = "git+https://github.com/Smithay/client-toolkit//#618a876400cb6c6b07a8ac5d3557f404602ec077"
+source = "git+https://github.com/ids1024/client-toolkit//?branch=raw_modifiers#45963e8b5a7f6751adc0568bf378b3742a82133e"
 dependencies = [
  "bitflags 2.6.0",
  "bytemuck",
@@ -4735,7 +4735,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ use sctk::{
     seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RepeatInfo},
     shell::WaylandSurface,
 };
-use smithay::{backend::input::KeyState, input::keyboard::FilterResult, utils::SERIAL_COUNTER};
+use smithay::{backend::input::KeyState, input::keyboard::{FilterResult, Layout}, utils::SERIAL_COUNTER};
 
 impl KeyboardHandler for GlobalState {
     fn enter(
@@ -260,12 +260,26 @@ impl KeyboardHandler for GlobalState {
         &mut self,
         _conn: &sctk::reexports::client::Connection,
         _qh: &sctk::reexports::client::QueueHandle<Self>,
-        _keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
         _modifiers: sctk::seat::keyboard::Modifiers,
-        _: u32,
+        raw_modifiers: sctk::seat::keyboard::RawModifiers,
+        layout: u32,
     ) {
         // TODO should these be handled specially
+        if let Some((name, Some(kbd))) = self
+            .server_state
+            .seats
+            .iter()
+            .find(|SeatPair { client, .. }| {
+                client.kbd.as_ref().map(|k| k == keyboard).unwrap_or(false)
+            })
+            .map(|seat| (seat.name.as_str(), seat.server.seat.get_keyboard()))
+        {
+            kbd.with_xkb_state(self, |mut context| {
+                context.update_mask(raw_modifiers.depressed, raw_modifiers.latched, raw_modifiers.locked, Layout(layout));
+            });
+        }
     }
 }
 

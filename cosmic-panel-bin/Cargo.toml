@@ -11,13 +11,13 @@ path = "src/main.rs"
 [dependencies]
 calloop = { version = "0.14.0", features = ["executor"] }
 ordered-float = "4.2.0"
-smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = [
+smithay = { default-features = false, features = [
     "use_system_lib",
     "desktop",
     "backend_egl",
     "backend_drm",
     "renderer_gl",
-], rev = "df79eeb" }
+], git = "https://github.com/ids1024/smithay", branch = "update_mask" }
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
