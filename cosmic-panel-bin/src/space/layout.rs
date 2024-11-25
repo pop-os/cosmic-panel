@@ -677,61 +677,6 @@ impl PanelSpace {
                 border_color: [0.0, 0.0, 0.0, 0.0],
             };
 
-            input_region.subtract(i32::MIN / 2, i32::MIN / 2, i32::MAX, i32::MAX);
-            let anim_gap = self.anchor_gap;
-
-            if is_dock {
-                let (layer_length, actual_length) = if self.config.is_horizontal() {
-                    (new_dim.w, self.actual_size.w)
-                } else {
-                    (new_dim.h, self.actual_size.h)
-                };
-                let side = (layer_length as u32 - actual_length as u32) / 2;
-
-                let (loc, size) = match self.config.anchor {
-                    PanelAnchor::Left => (
-                        (-1, side as i32),
-                        (
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
-                            container_length,
-                        ),
-                    ),
-                    PanelAnchor::Right => (
-                        (0, side as i32),
-                        (
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 - anim_gap,
-                            container_length,
-                        ),
-                    ),
-                    PanelAnchor::Top => (
-                        (side as i32, -1),
-                        (
-                            container_length,
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
-                        ),
-                    ),
-                    PanelAnchor::Bottom => (
-                        (side as i32, 0),
-                        (
-                            container_length,
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 - -anim_gap,
-                        ),
-                    ),
-                };
-
-                input_region.add(loc.0, loc.1, size.0, size.1);
-            } else {
-                let (loc, size) = match self.config.anchor {
-                    PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                    PanelAnchor::Right => ((0, 0), (new_dim.w + 1 - anim_gap, new_dim.h)),
-                    PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
-                    PanelAnchor::Bottom => ((0, 0), (new_dim.w, new_dim.h + 1 - anim_gap)),
-                };
-
-                input_region.add(loc.0, loc.1, size.0, size.1);
-            };
-            layer.wl_surface().set_input_region(Some(input_region.wl_region()));
-
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
                 bail!("output missing");
             };
@@ -770,6 +715,55 @@ impl PanelSpace {
             self.background_element = Some(bg.clone());
             self.space.map_element(CosmicMappedInternal::Background(bg), (0, 0), false);
         }
+        input_region.subtract(0, 0, i32::MAX, i32::MAX);
+        let anim_gap = self.anchor_gap;
+
+        if is_dock {
+            let (layer_length, actual_length) = if self.config.is_horizontal() {
+                (new_dim.w, self.actual_size.w)
+            } else {
+                (new_dim.h, self.actual_size.h)
+            };
+            let side = (layer_length as u32 - actual_length as u32) / 2;
+
+            let (loc, size) = match self.config.anchor {
+                PanelAnchor::Left => (
+                    (-1, side as i32),
+                    (
+                        new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
+                        container_length,
+                    ),
+                ),
+                PanelAnchor::Right => (
+                    (0, side as i32 - anim_gap),
+                    (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
+                ),
+                PanelAnchor::Top => (
+                    (side as i32, -1),
+                    (
+                        container_length,
+                        new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
+                    ),
+                ),
+                PanelAnchor::Bottom => (
+                    (side as i32, 0 - anim_gap),
+                    (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
+                ),
+            };
+
+            input_region.add(loc.0, loc.1, size.0, size.1);
+        } else {
+            let (loc, size) = match self.config.anchor {
+                PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
+                PanelAnchor::Right => ((0, -anim_gap), (new_dim.w + 1 + anim_gap, new_dim.h)),
+                PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
+                PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
+            };
+
+            input_region.add(loc.0, loc.1, size.0, size.1);
+        };
+        layer.wl_surface().set_input_region(Some(input_region.wl_region()));
+
         self.reorder_overflow_space(OverflowSection::Left);
         self.reorder_overflow_space(OverflowSection::Center);
         self.reorder_overflow_space(OverflowSection::Right);
