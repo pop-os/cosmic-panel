@@ -1,5 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     fmt::Debug,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
@@ -11,6 +12,7 @@ use std::{
 use crate::{
     iced::elements::{background::BackgroundElement, PopupMappedInternal},
     xdg_shell_wrapper::{
+        client::handlers::overlap::OverlapNotifyV1,
         client_state::{ClientFocus, FocusStatus},
         server_state::{ServerFocus, ServerPtrFocus},
         shared_state::GlobalState,
@@ -22,7 +24,10 @@ use crate::{
         wp_security_context::SecurityContextManager,
     },
 };
-use cctk::wayland_client::Connection;
+use cctk::{
+    cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1,
+    wayland_client::Connection,
+};
 
 use cosmic::iced::id;
 use launch_pad::process::Process;
@@ -308,6 +313,9 @@ pub struct PanelSpace {
     pub remap_attempts: u32,
     pub background_element: Option<BackgroundElement>,
     pub last_minimize_update: Instant,
+    pub(crate) toplevel_overlaps: HashSet<wayland_backend::client::ObjectId>,
+    pub(crate) notification_subscription: Option<ZcosmicOverlapNotificationV1>,
+    pub(crate) overlap_notify: Option<OverlapNotifyV1>,
 }
 
 impl PanelSpace {
@@ -384,6 +392,9 @@ impl PanelSpace {
             background_element: None,
             last_minimize_update: Instant::now() - Duration::from_secs(1),
             anchor_gap: 0,
+            toplevel_overlaps: HashSet::new(),
+            notification_subscription: None,
+            overlap_notify: None,
         }
     }
 
@@ -437,14 +448,16 @@ impl PanelSpace {
                 return;
             };
 
-        let cur_hover = {
+        let (cur_hover, intellihide) = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
             // no transition if not configured for autohide
             let no_hover_focus =
                 c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
                     && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
-            if self.config.autohide().is_none() {
+            let intellihide = if let Some(autohide) = self.config.autohide() {
+                autohide.intellihide && self.overlap_notify.is_some()
+            } else {
                 if no_hover_focus && self.animate_state.is_none() {
                     self.additional_gap = 0;
                     self.visibility = Visibility::Hidden;
@@ -452,9 +465,9 @@ impl PanelSpace {
                     self.visibility = Visibility::Visible;
                 }
                 return;
-            }
+            };
 
-            c_hovered_surface.iter().fold(
+            let f = c_hovered_surface.iter().fold(
                 if self.animate_state.is_some() || !self.output_has_toplevel {
                     FocusStatus::Focused
                 } else {
@@ -486,11 +499,15 @@ impl PanelSpace {
                         acc
                     }
                 },
-            )
+            );
+            (f, intellihide)
         };
+
         match self.visibility {
             Visibility::Hidden => {
-                if let FocusStatus::Focused = cur_hover {
+                if matches!(cur_hover, FocusStatus::Focused)
+                    || (intellihide && self.toplevel_overlaps.is_empty())
+                {
                     // start transition to visible
                     let margin = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
@@ -512,7 +529,9 @@ impl PanelSpace {
                         None => return,
                     };
                     self.is_dirty = true;
-                    if duration_since_last_focus > self.config.get_hide_wait().unwrap() {
+                    if duration_since_last_focus > self.config.get_hide_wait().unwrap()
+                        && (!intellihide || !self.toplevel_overlaps.is_empty())
+                    {
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
@@ -538,7 +557,9 @@ impl PanelSpace {
                 let handle = self.config.get_hide_handle().unwrap() as i32;
                 self.is_dirty = true;
 
-                if let FocusStatus::Focused = cur_hover {
+                if matches!(cur_hover, FocusStatus::Focused)
+                    || (intellihide && self.toplevel_overlaps.is_empty())
+                {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
                         last_instant: now,
@@ -597,8 +618,10 @@ impl PanelSpace {
                 let handle = self.config.get_hide_handle().unwrap() as i32;
                 self.is_dirty = true;
 
-                if let FocusStatus::LastFocused(_) = cur_hover {
-                    // start transition to visible
+                if matches!(cur_hover, FocusStatus::LastFocused(_))
+                    && (!intellihide || !self.toplevel_overlaps.is_empty())
+                {
+                    // start transition to hide
                     self.close_popups(|_| false);
                     self.visibility = Visibility::TransitionToHidden {
                         last_instant: now,

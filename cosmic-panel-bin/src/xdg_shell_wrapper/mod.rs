@@ -23,12 +23,11 @@ pub use server::state as server_state;
 use server::state::ServerState;
 use shared_state::GlobalState;
 use space::{Visibility, WrapperSpace};
-use tracing::info;
 pub use xdg_shell_wrapper_config as config;
 
 use crate::space_container::SpaceContainer;
 
-mod client;
+pub(crate) mod client;
 mod server;
 /// shared state
 pub mod shared_state;
@@ -60,6 +59,7 @@ pub fn run(
         &mut global_state.client_state.layer_state,
         &global_state.client_state.connection,
         &global_state.client_state.queue_handle,
+        global_state.client_state.overlap_notify.clone(),
     );
 
     // // remove extra looping after launch-pad is integrated

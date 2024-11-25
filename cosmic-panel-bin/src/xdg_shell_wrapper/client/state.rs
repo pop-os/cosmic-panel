@@ -5,8 +5,9 @@ use crate::{
     },
 };
 use cctk::{
-    toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState,
-    wayland_client::protocol::wl_pointer::WlPointer, workspace::WorkspaceState,
+    cosmic_protocols::overlap_notify, toplevel_info::ToplevelInfoState,
+    toplevel_management::ToplevelManagerState, wayland_client::protocol::wl_pointer::WlPointer,
+    workspace::WorkspaceState,
 };
 use sctk::{
     compositor::CompositorState,
@@ -76,8 +77,8 @@ use wayland_protocols::wp::{
 };
 
 use super::handlers::{
-    wp_fractional_scaling::FractionalScalingManager, wp_security_context::SecurityContextManager,
-    wp_viewporter::ViewporterState,
+    overlap::OverlapNotifyV1, wp_fractional_scaling::FractionalScalingManager,
+    wp_security_context::SecurityContextManager, wp_viewporter::ViewporterState,
 };
 
 #[derive(Debug)]
@@ -153,6 +154,8 @@ pub struct ClientState {
     pub workspace_state: Option<WorkspaceState>,
     /// security context manager
     pub security_context_manager: Option<SecurityContextManager>,
+    /// overlap notifications subscription
+    pub overlap_notify: Option<OverlapNotifyV1>,
 
     pub(crate) connection: Connection,
     /// queue handle
@@ -275,6 +278,10 @@ impl ClientState {
             },
             Ok(m) => Some(m),
         };
+        let overlap_notify = OverlapNotifyV1::bind(&globals, &qh);
+        if let Err(err) = &overlap_notify {
+            tracing::warn!("Failed to bind to overlap notify {err:?}");
+        }
 
         let client_state = ClientState {
             focused_surface: space.get_client_focused_surface(),
@@ -293,6 +300,8 @@ impl ClientState {
             layer_state: LayerShell::bind(&globals, &qh).expect("layer shell is not available"),
             data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
                 .expect("data device manager is not available"),
+            overlap_notify: overlap_notify.ok(),
+
             outputs: Default::default(),
             registry_state,
             multipool: None,

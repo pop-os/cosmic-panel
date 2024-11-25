@@ -13,6 +13,7 @@ use crate::{
     space::panel_space::ClientShrinkSize,
     space_container::SpaceContainer,
     xdg_shell_wrapper::{
+        client::handlers::overlap::{OverlapNotificationV1, OverlapNotifyV1},
         client_state::ClientFocus,
         server_state::ServerPointerFocus,
         shared_state::GlobalState,
@@ -33,6 +34,7 @@ use itertools::izip;
 use launch_pad::process::Process;
 use sctk::{
     compositor::{CompositorState, Region},
+    globals::GlobalData,
     output::OutputInfo,
     reexports::client::{
         protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
@@ -816,7 +818,9 @@ impl WrapperSpace for PanelSpace {
         _layer_state: &mut LayerShell,
         _conn: &Connection,
         _qh: &QueueHandle<GlobalState>,
+        overlap_notify: Option<OverlapNotifyV1>,
     ) {
+        self.overlap_notify = overlap_notify;
     }
 
     /// returns false to forward the button press, and true to intercept
@@ -1366,6 +1370,19 @@ impl WrapperSpace for PanelSpace {
         let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), qh));
 
         client_surface.commit();
+        if let Some(notify) = self.overlap_notify.as_ref() {
+            let notification = notify.notify.notify_on_overlap(
+                match client_surface.kind() {
+                    sctk::shell::wlr_layer::SurfaceKind::Wlr(zwlr_layer_surface_v1) => {
+                        zwlr_layer_surface_v1
+                    },
+                    _ => unimplemented!(),
+                },
+                qh,
+                OverlapNotificationV1 { surface: client_surface.wl_surface().clone() },
+            );
+            self.notification_subscription = Some(notification);
+        }
 
         let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
             first: true,

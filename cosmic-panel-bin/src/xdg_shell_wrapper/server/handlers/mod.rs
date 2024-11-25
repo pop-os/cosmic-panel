@@ -1,15 +1,12 @@
-use std::{cell::RefMut, os::fd::OwnedFd, rc::Rc, sync::Mutex};
+use std::{os::fd::OwnedFd, sync::Mutex};
 
 use itertools::Itertools;
 use sctk::{
     data_device_manager::data_offer::receive_to_fd,
-    reexports::client::{protocol::wl_data_device_manager::DndAction as ClientDndAction, Proxy},
+    reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction,
 };
 use smithay::{
-    backend::{
-        egl::EGLSurface,
-        renderer::{damage::OutputDamageTracker, ImportDma},
-    },
+    backend::renderer::{damage::OutputDamageTracker, ImportDma},
     delegate_data_device, delegate_dmabuf, delegate_output, delegate_primary_selection,
     delegate_seat,
     input::{pointer::CursorImageAttributes, Seat, SeatHandler, SeatState},

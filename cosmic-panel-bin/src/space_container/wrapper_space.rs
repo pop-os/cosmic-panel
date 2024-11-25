@@ -7,6 +7,7 @@ use std::{
 use crate::{
     iced::elements::target::SpaceTarget,
     xdg_shell_wrapper::{
+        client::handlers::overlap::OverlapNotifyV1,
         client_state::{ClientFocus, FocusStatus},
         server_state::ServerPointerFocus,
         shared_state::GlobalState,
@@ -16,6 +17,7 @@ use crate::{
         wp_viewporter::ViewporterState,
     },
 };
+use cctk::cosmic_protocols::overlap_notify;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{
@@ -69,7 +71,9 @@ impl WrapperSpace for SpaceContainer {
         layer_state: &mut LayerShell,
         conn: &Connection,
         qh: &QueueHandle<GlobalState>,
+        overlap_notify: Option<OverlapNotifyV1>,
     ) {
+        self.overlap_notify = overlap_notify.clone();
         self.connection = Some(conn.clone());
         self.security_context_manager = security_context_manager.clone();
 
@@ -112,6 +116,7 @@ impl WrapperSpace for SpaceContainer {
                             layer_state,
                             conn,
                             qh,
+                            overlap_notify.clone(),
                         );
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
@@ -220,6 +225,7 @@ impl WrapperSpace for SpaceContainer {
                                 layer_state,
                                 conn,
                                 qh,
+                                self.overlap_notify.clone(),
                             );
                             if let Some(s_display) = self.s_display.as_ref() {
                                 s.set_display_handle(s_display.clone());
