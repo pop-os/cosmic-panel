@@ -222,6 +222,10 @@ pub enum CosmicPanelBackground {
     Color([f32; 3]),
 }
 
+const fn _default_true() -> bool {
+    true
+}
+
 // TODO configurable interpolation type?
 /// configurable autohide behavior
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -235,6 +239,7 @@ pub struct AutoHide {
     /// should be > 0
     pub handle_size: u32,
     /// Intellihide
+    #[serde(default = "_default_true")]
     pub intellihide: bool,
 }
 
