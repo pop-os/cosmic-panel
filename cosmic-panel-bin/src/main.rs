@@ -44,7 +44,7 @@ fn main() -> Result<()> {
     let filter_layer =
         EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("warn")).unwrap();
     if let Ok(journal_layer) = tracing_journald::layer() {
-        tracing_subscriber::registry().with(journal_layer).with(filter_layer).init();
+        tracing_subscriber::registry().with(fmt_layer).with(filter_layer).init();
     } else {
         tracing_subscriber::registry().with(fmt_layer).with(filter_layer).init();
     }
@@ -130,6 +130,7 @@ fn main() -> Result<()> {
                             &mut state.client_state.layer_state,
                             &state.client_state.queue_handle,
                             Some(o),
+                            state.client_state.overlap_notify.clone(),
                         );
                     },
                     PanelCalloopMsg::UpdateToplevel(toplevel) => {

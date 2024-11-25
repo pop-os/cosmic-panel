@@ -17,6 +17,7 @@ pub mod keyboard;
 pub mod layer_shell;
 /// output helpers
 pub mod output;
+pub mod overlap;
 pub mod pointer;
 pub mod seat;
 pub mod shell;

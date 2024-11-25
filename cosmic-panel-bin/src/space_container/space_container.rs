@@ -1,10 +1,16 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::Arc,
+};
 
 use crate::{
     minimize::MinimizeApplet,
     space::{AppletMsg, PanelColors, PanelSpace},
-    xdg_shell_wrapper,
     xdg_shell_wrapper::{
+        self,
+        client::handlers::overlap::OverlapNotifyV1,
         client_state::ClientFocus,
         shared_state::GlobalState,
         space::{Visibility, WrapperSpace},
@@ -16,7 +22,8 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo, wayland_client::protocol::wl_seat::WlSeat,
+    toplevel_info::ToplevelInfo,
+    wayland_client::{self, protocol::wl_seat::WlSeat},
     workspace::WorkspaceGroup,
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
@@ -65,6 +72,7 @@ pub struct SpaceContainer {
     /// map from output name to minimized applet info
     pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
     pub(crate) loop_handle: calloop::LoopHandle<'static, GlobalState>,
+    pub(crate) overlap_notify: Option<OverlapNotifyV1>,
 }
 
 impl SpaceContainer {
@@ -110,6 +118,7 @@ impl SpaceContainer {
             security_context_manager: None,
             minimized_applets: HashMap::new(),
             loop_handle,
+            overlap_notify: None,
         }
     }
 
@@ -215,6 +224,7 @@ impl SpaceContainer {
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState>,
         force_output: Option<WlOutput>,
+        overlap_notify: Option<OverlapNotifyV1>,
     ) {
         // if the output is set to "all", we need to check if the config is the same for
         // all outputs if the output is set to a specific output, we need to

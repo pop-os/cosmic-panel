@@ -33,7 +33,8 @@ use crate::{
     iced::elements::target::SpaceTarget,
     xdg_shell_wrapper::{
         client::handlers::{
-            wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
+            overlap::OverlapNotifyV1, wp_fractional_scaling::FractionalScalingManager,
+            wp_viewporter::ViewporterState,
         },
         client_state::ClientFocus,
         config::WrapperConfig,
@@ -121,6 +122,7 @@ pub trait WrapperSpace {
         layer_state: &mut LayerShell,
         conn: &Connection,
         qh: &QueueHandle<GlobalState>,
+        overlap_notify: Option<OverlapNotifyV1>,
     );
 
     /// add the configured output to the space

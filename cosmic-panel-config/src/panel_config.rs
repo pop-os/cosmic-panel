@@ -234,11 +234,13 @@ pub struct AutoHide {
     /// size of the handle in pixels
     /// should be > 0
     pub handle_size: u32,
+    /// Intellihide
+    pub intellihide: bool,
 }
 
 impl Default for AutoHide {
     fn default() -> Self {
-        Self { wait_time: 1000, transition_time: 200, handle_size: 4 }
+        Self { wait_time: 1000, transition_time: 200, handle_size: 4, intellihide: true }
     }
 }
 
@@ -388,7 +390,7 @@ impl Default for CosmicPanelConfig {
             padding: 4,
             spacing: 4,
             exclusive_zone: true,
-            autohide: None,
+            autohide: Some(AutoHide::default()),
             border_radius: 8,
             margin: 4,
             opacity: 0.8,
@@ -505,7 +507,7 @@ impl CosmicPanelConfig {
     }
 
     pub fn exclusive_zone(&self) -> bool {
-        self.exclusive_zone
+        self.exclusive_zone || self.autohide.is_none()
     }
 
     pub fn autohide(&self) -> Option<AutoHide> {

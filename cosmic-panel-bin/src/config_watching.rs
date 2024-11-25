@@ -112,7 +112,8 @@ pub fn watch_config(
             channel::Event::Msg(ConfigUpdate::Entries(entries)) => {
                 let to_update = entries
                     .iter()
-                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c)).cloned()
+                    .filter(|c| !state.space.config.config_list.iter().any(|e| e.name == **c))
+                    .cloned()
                     .collect::<Vec<String>>();
                 info!("Received entries: {:?}", to_update);
                 for entry in to_update {
@@ -164,6 +165,7 @@ pub fn watch_config(
                         &mut state.client_state.layer_state,
                         &state.client_state.queue_handle,
                         None,
+                        state.client_state.overlap_notify.clone(),
                     );
                 }
                 info!("Removing entries: {:?}", entries);
@@ -188,6 +190,7 @@ pub fn watch_config(
                     &mut state.client_state.layer_state,
                     &state.client_state.queue_handle,
                     None,
+                    state.client_state.overlap_notify.clone(),
                 );
             },
             channel::Event::Closed => {},
