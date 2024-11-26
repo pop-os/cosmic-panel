@@ -238,14 +238,11 @@ pub struct AutoHide {
     /// size of the handle in pixels
     /// should be > 0
     pub handle_size: u32,
-    /// Intellihide
-    #[serde(default = "_default_true")]
-    pub intellihide: bool,
 }
 
 impl Default for AutoHide {
     fn default() -> Self {
-        Self { wait_time: 1000, transition_time: 200, handle_size: 4, intellihide: true }
+        Self { wait_time: 1000, transition_time: 200, handle_size: 4 }
     }
 }
 

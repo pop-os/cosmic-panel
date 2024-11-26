@@ -448,16 +448,14 @@ impl PanelSpace {
                 return;
             };
 
-        let (cur_hover, intellihide) = {
+        let cur_hover = {
             let c_focused_surface = self.c_focused_surface.borrow();
             let c_hovered_surface = self.c_hovered_surface.borrow();
             // no transition if not configured for autohide
             let no_hover_focus =
                 c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
                     && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
-            let intellihide = if let Some(autohide) = self.config.autohide() {
-                autohide.intellihide && self.overlap_notify.is_some()
-            } else {
+            if self.config.autohide().is_none() {
                 if no_hover_focus && self.animate_state.is_none() {
                     self.additional_gap = 0;
                     self.visibility = Visibility::Hidden;
@@ -500,9 +498,10 @@ impl PanelSpace {
                     }
                 },
             );
-            (f, intellihide)
+            f
         };
 
+        let intellihide = self.overlap_notify.is_some();
         match self.visibility {
             Visibility::Hidden => {
                 if matches!(cur_hover, FocusStatus::Focused)
