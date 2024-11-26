@@ -1343,8 +1343,13 @@ impl WrapperSpace for PanelSpace {
         };
 
         let surface = compositor_state.create_surface(qh);
-        let client_surface =
-            layer_state.create_layer_surface(qh, surface, layer, Some("Panel"), c_output.as_ref());
+        let client_surface = layer_state.create_layer_surface(
+            qh,
+            surface,
+            layer,
+            Some(self.config.name.clone()),
+            c_output.as_ref(),
+        );
         // client_surface.set_margin(margin.top, margin.right, margin.bottom,
         // margin.left);
         client_surface.set_keyboard_interactivity(match self.config.keyboard_interactivity {
