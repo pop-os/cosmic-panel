@@ -755,7 +755,7 @@ impl PanelSpace {
         } else {
             let (loc, size) = match self.config.anchor {
                 PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                PanelAnchor::Right => ((0, -anim_gap), (new_dim.w + 1 + anim_gap, new_dim.h)),
+                PanelAnchor::Right => ((-anim_gap, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
                 PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
                 PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
             };
