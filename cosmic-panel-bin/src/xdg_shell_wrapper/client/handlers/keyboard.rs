@@ -6,7 +6,7 @@ use crate::xdg_shell_wrapper::{
 };
 use sctk::{
     delegate_keyboard,
-    seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RepeatInfo},
+    seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RawModifiers, RepeatInfo},
     shell::WaylandSurface,
 };
 use smithay::{backend::input::KeyState, input::keyboard::FilterResult, utils::SERIAL_COUNTER};
@@ -263,6 +263,7 @@ impl KeyboardHandler for GlobalState {
         _keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
         _modifiers: sctk::seat::keyboard::Modifiers,
+        _: RawModifiers,
         _: u32,
     ) {
         // TODO should these be handled specially

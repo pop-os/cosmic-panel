@@ -20,6 +20,7 @@ use crate::{
     },
     minimize::MinimizeApplet,
     space::{corner_element::RoundedRectangleSettings, Alignment},
+    xdg_shell_wrapper::space::Visibility,
 };
 
 use super::{
@@ -643,6 +644,10 @@ impl PanelSpace {
                 p.logical_height == h && p.logical_width == w && self.bg_color() == p.color
             })
         }) || self.animate_state.as_ref().is_some()
+            || matches!(
+                self.visibility,
+                Visibility::TransitionToHidden { .. } | Visibility::TransitionToVisible { .. }
+            )
         {
             if let Some(bg) = self.background_element.take() {
                 self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
@@ -658,11 +663,17 @@ impl PanelSpace {
                 (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
                 _ => (border_radius, border_radius, border_radius, border_radius),
             };
+
+            let anim_gap_scaled = self.anchor_gap as f32 * self.scale as f32;
             let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap_scaled as f32, container_lengthwise_pos_scaled],
-                PanelAnchor::Right => [0., container_lengthwise_pos_scaled],
-                PanelAnchor::Top => [container_lengthwise_pos_scaled, 0.],
-                PanelAnchor::Bottom => [container_lengthwise_pos_scaled, gap_scaled as f32],
+                PanelAnchor::Left => {
+                    [gap_scaled as f32 + anim_gap_scaled, container_lengthwise_pos_scaled]
+                },
+                PanelAnchor::Right => [-anim_gap_scaled, container_lengthwise_pos_scaled],
+                PanelAnchor::Top => [container_lengthwise_pos_scaled, -anim_gap_scaled],
+                PanelAnchor::Bottom => {
+                    [container_lengthwise_pos_scaled, gap_scaled as f32 + anim_gap_scaled]
+                },
             };
             self.panel_rect_settings = RoundedRectangleSettings {
                 rad_tl: rad_tl as f32,

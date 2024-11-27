@@ -9,14 +9,10 @@ use std::{
 };
 
 use calloop::LoopHandle;
-use cctk::wayland_client::protocol::wl_subsurface::WlSubsurface;
 // element for rendering a button that toggles the overflow popup when clicked
 use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
-    iced::{
-        alignment::{Horizontal, Vertical},
-        Length, Padding,
-    },
+    iced::{Length, Padding},
     iced_core::id,
     theme::{self, Button},
     widget::{button, layer_container, Id},
@@ -184,8 +180,8 @@ impl Program for OverflowButton {
                         .width(Length::Fixed(self.icon_size as f32))
                         .height(Length::Fixed(self.icon_size as f32)),
                 )
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
+                .align_x(cosmic::iced::Alignment::Center)
+                .align_y(cosmic::iced::Alignment::Center)
                 .width(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal()))
                 .height(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal())),
             )
