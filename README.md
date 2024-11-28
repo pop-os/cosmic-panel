@@ -2,6 +2,12 @@
 
 ### Building and Installing .deb
 
+Install the requirenments  
+`sudo apt install debhelper just librust-xkbcommon-dev`
+
+[Rust](https://www.rust-lang.org/learn/get-started) is also required.
+
+Build and install with  
 `dpkg-buildpackage -b -d`  
 `cd ..`  
 `sudo dpkg -i cosmic-panel_0.1.0_amd64.deb`  
