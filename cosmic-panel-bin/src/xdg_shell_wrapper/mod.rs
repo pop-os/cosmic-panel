@@ -86,7 +86,9 @@ pub fn run(
     // TODO find better place for this
     // let set_clipboard_once = Rc::new(Cell::new(false));
 
+    let mut prev_dur = Duration::from_millis(16);
     loop {
+        let iter_start = Instant::now();
         // cleanup popup manager
         if last_cleanup.elapsed() > five_min {
             global_state.server_state.popup_manager.cleanup();
@@ -129,12 +131,14 @@ pub fn run(
             );
         }
 
+        let visibility = matches!(global_state.space.visibility(), Visibility::Hidden);
         // dispatch desktop client events
         let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
-            Some(Duration::from_millis(500))
+            Duration::from_millis(500)
         } else {
-            Some(Duration::from_millis(16))
-        };
+            Duration::from_millis(16)
+        }
+        .max(prev_dur);
 
         event_loop.dispatch(dur, &mut global_state)?;
 
@@ -147,7 +151,7 @@ pub fn run(
                 &global_state.client_state.queue_handle,
                 &mut global_state.server_state.popup_manager,
                 global_state.start_time.elapsed().as_millis().try_into()?,
-                dur,
+                Some(dur),
             );
         }
         global_state.draw_dnd_icon();
@@ -165,5 +169,24 @@ pub fn run(
             server_display.flush_clients()?;
         }
         global_state.iter_count += 1;
+
+        let new_visibility_hidden = matches!(global_state.space.visibility(), Visibility::Hidden);
+
+        if visibility != new_visibility_hidden {
+            prev_dur = Duration::from_millis(16);
+            continue;
+        }
+        if let Some(dur) = Instant::now()
+            .checked_duration_since(iter_start)
+            .and_then(|spent| dur.checked_sub(spent))
+        {
+            std::thread::sleep(dur.min(Duration::from_millis(if new_visibility_hidden {
+                50
+            } else {
+                16
+            })));
+        } else {
+            prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur);
+        }
     }
 }
