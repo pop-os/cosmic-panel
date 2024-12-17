@@ -110,7 +110,8 @@ impl PanelSpace {
         qh: &QueueHandle<GlobalState>,
     ) -> anyhow::Result<()> {
         if self.space_event.get().is_some()
-            && (self.actual_size.w <= 20 || self.actual_size.h <= 20)
+            || ((self.actual_size.w <= 20 || self.actual_size.h <= 20)
+                || (self.dimensions.w <= 20 || self.dimensions.h <= 20))
         {
             return Ok(());
         }
