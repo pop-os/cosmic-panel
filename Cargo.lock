@@ -4236,7 +4236,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.19.2"
-source = "git+https://github.com/Smithay/client-toolkit//#25079ae75cb6952b0542aa343bd5a52c81d135d4"
+source = "git+https://github.com/Smithay/client-toolkit//?rev=25079ae7#25079ae75cb6952b0542aa343bd5a52c81d135d4"
 dependencies = [
  "bitflags 2.6.0",
  "bytemuck",
