@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 use crate::iced::elements::{CosmicMappedInternal, PopupMappedInternal};
 
@@ -25,7 +25,9 @@ use smithay::{
         gles::{GlesError, GlesFrame, GlesRenderer},
         Bind, Color32F, Frame, Renderer, Unbind,
     },
+    reexports::wayland_server::Resource,
     utils::{Buffer, Physical, Point, Rectangle},
+    wayland::seat::WaylandFocus,
 };
 
 pub(crate) enum PanelRenderElement {
@@ -119,6 +121,12 @@ impl PanelSpace {
         let clear_color = [0., 0., 0., 0.];
 
         if self.is_dirty && self.has_frame {
+            let hovered_clients: HashSet<_> = self
+                .s_hovered_surface
+                .iter()
+                .chain(self.s_hovered_surface.iter())
+                .filter_map(|c| c.surface.wl_surface().map(|s| s.id()))
+                .collect();
             tracing::trace!("Rendering space");
             let my_renderer = match self.damage_tracked_renderer.as_mut() {
                 Some(r) => r,
@@ -287,6 +295,16 @@ impl PanelSpace {
                     }
                 }) {
                     let output = *o;
+                    let throttle =
+                        if window.wl_surface().is_some_and(|s| hovered_clients.contains(&s.id())) {
+                            throttle
+                        } else {
+                            Some(
+                                throttle
+                                    .map(|t| t.min(Duration::from_millis(100)))
+                                    .unwrap_or_else(|| Duration::from_millis(100)),
+                            )
+                        };
                     window.send_frame(
                         o,
                         Duration::from_millis(time as u64),
