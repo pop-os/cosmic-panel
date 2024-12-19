@@ -25,12 +25,12 @@ sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/c
 sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/client-toolkit//", features = [
     "calloop",
     "xkbcommon",
-] }
+], rev = "25079ae7" }
 [patch."crates-io"]
 sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/client-toolkit//", features = [
     "calloop",
     "xkbcommon",
-] }
+], rev = "25079ae7" }
 
 
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
