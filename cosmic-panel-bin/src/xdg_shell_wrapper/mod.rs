@@ -134,7 +134,7 @@ pub fn run(
         let visibility = matches!(global_state.space.visibility(), Visibility::Hidden);
         // dispatch desktop client events
         let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
-            Duration::from_millis(500)
+            Duration::from_millis(300)
         } else {
             Duration::from_millis(16)
         }
@@ -186,7 +186,7 @@ pub fn run(
                 16
             })));
         } else {
-            prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur);
+            prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur).min(Duration::from_millis(100));
         }
     }
 }
