@@ -302,6 +302,8 @@ impl SpaceContainer {
             c.name == entry.name && c.size != entry.size
             // size overrides changed
             || (c.name == entry.name && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
+            // border width changed
+            || (c.name == entry.name && c.border_width != entry.border_width)
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
