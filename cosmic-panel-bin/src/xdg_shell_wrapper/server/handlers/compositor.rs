@@ -191,7 +191,7 @@ impl CompositorHandler for GlobalState {
                     ),
                     server_surface,
                     client_surface,
-                    SurfaceState::Waiting,
+                    SurfaceState::Waiting(0, size),
                     1.0,
                     scale,
                     viewport,
@@ -223,16 +223,26 @@ impl CompositorHandler for GlobalState {
                 if let Some(viewport) = viewport {
                     viewport.set_destination(size.w, size.h);
                 }
-                if let SurfaceState::WaitingFirst = state {
-                    return;
+                let generation = match state {
+                    SurfaceState::WaitingFirst(..) => return,
+                    SurfaceState::Waiting(gen, _) => *gen,
+                    SurfaceState::Dirty(gen) => *gen,
                 };
-                *state = SurfaceState::Dirty;
+
                 if old_size != size {
+                    tracing::trace!("Layer surface update. old: {old_size:?}, new: {size:?}, generation: {generation}");
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                     c_layer_surface.set_size(size.w as u32, size.h as u32);
                     *renderer =
                         OutputDamageTracker::new(scaled_size, *scale, Transform::Flipped180);
                     c_layer_surface.wl_surface().commit();
+                    *state = if old_size.w == 0 || old_size.h == 0 {
+                        SurfaceState::Dirty(generation)
+                    } else {
+                        SurfaceState::Waiting(generation.wrapping_add(1), size)
+                    };
+                } else {
+                    *state = SurfaceState::Dirty(generation);
                 }
             }
         } else if role == "dnd_icon".into() {

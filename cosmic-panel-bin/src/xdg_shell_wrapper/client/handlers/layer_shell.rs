@@ -39,29 +39,36 @@ impl LayerShellHandler for GlobalState {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if let Some((_, _, s_layer_surface, c_layer_surface, mut state, ..)) = self
+        if let Some((_, _, s_layer_surface, _, mut state, ..)) = self
             .client_state
             .proxied_layer_surfaces
             .iter_mut()
             .find(|(_, _, _, s, ..)| s.wl_surface() == layer.wl_surface())
         {
-            match state {
-                SurfaceState::Waiting => {
-                    state = SurfaceState::Dirty;
+            let mut requested_size = configure.new_size;
+            let generation = match state {
+                SurfaceState::Waiting(generation, size) => {
+                    requested_size.0 = size.w as u32;
+                    requested_size.1 = size.h as u32;
+                    state = SurfaceState::Dirty(generation);
+                    generation
                 },
-                SurfaceState::Dirty => {},
-                SurfaceState::WaitingFirst => {
-                    state = SurfaceState::Waiting;
+                SurfaceState::Dirty(generation) => generation,
+                SurfaceState::WaitingFirst(generation, size) => {
+                    requested_size.0 = size.w as u32;
+                    requested_size.1 = size.h as u32;
+                    state = SurfaceState::Dirty(generation);
+                    generation
                 },
             };
-            let (width, height) = configure.new_size;
-
-            s_layer_surface.layer_surface().with_pending_state(|pending_state| {
-                pending_state.size = Some((width as i32, height as i32).into());
-            });
-            s_layer_surface.layer_surface().send_configure();
-            c_layer_surface.set_size(width, height);
-            c_layer_surface.wl_surface().commit();
+            tracing::trace!("Layer surface configure: {configure:?}, generation: {generation}");
+            if requested_size != configure.new_size {
+                s_layer_surface.layer_surface().with_pending_state(|pending_state| {
+                    pending_state.size =
+                        Some((configure.new_size.0 as i32, configure.new_size.1 as i32).into());
+                });
+                s_layer_surface.layer_surface().send_configure();
+            }
         } else {
             self.space.configure_layer(layer, configure);
         }
