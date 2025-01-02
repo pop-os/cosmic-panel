@@ -2,17 +2,23 @@
 
 use std::time::Duration;
 
+use cctk::wayland_client::Proxy;
 use itertools::Itertools;
 use sctk::{reexports::client::protocol::wl_surface::WlSurface, shell::WaylandSurface};
 use smithay::{
-    backend::renderer::{
-        damage::OutputDamageTracker,
-        element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-        gles::GlesRenderer,
-        Bind, ImportDma, ImportEgl, Unbind,
+    backend::{
+        input::KeyState,
+        renderer::{
+            damage::OutputDamageTracker,
+            element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+            gles::GlesRenderer,
+            Bind, ImportDma, ImportEgl, Unbind,
+        },
     },
     desktop::utils::send_frames_surface_tree,
+    input::keyboard::FilterResult,
     reexports::wayland_server::DisplayHandle,
+    utils::SERIAL_COUNTER,
     wayland::{
         compositor::with_states, dmabuf::DmabufState, fractional_scale::with_fractional_scale,
     },
@@ -49,6 +55,47 @@ impl GlobalState {
         start_time: std::time::Instant,
     ) -> Self {
         Self { space, client_state, server_state, start_time, iter_count: 0 }
+    }
+
+    pub(crate) fn cleanup(&mut self) {
+        // cleanup popup manager
+        self.server_state.popup_manager.cleanup();
+
+        // handle funky keyboard state.
+        // if a client layer shell surface is closed, then it won't receive the release
+        // event then the client will keep receiving input
+        // so we send the release here instead
+        let press = if let Some((key_pressed, kbd)) = self
+            .client_state
+            .last_key_pressed
+            .iter()
+            .position(|(_, _, layer_shell_wl_surface)| !layer_shell_wl_surface.is_alive())
+            .and_then(|key_pressed| {
+                self.server_state
+                    .seats
+                    .iter()
+                    .find(|s| s.name == self.client_state.last_key_pressed[key_pressed].0)
+                    .and_then(|s| {
+                        s.server.seat.get_keyboard().map(|kbd| {
+                            (self.client_state.last_key_pressed.remove(key_pressed), kbd)
+                        })
+                    })
+            }) {
+            Some((key_pressed, kbd))
+        } else {
+            None
+        };
+        if let Some((key_pressed, kbd)) = press {
+            kbd.input::<(), _>(
+                self,
+                key_pressed.1 .0.into(),
+                KeyState::Released,
+                SERIAL_COUNTER.next_serial(),
+                key_pressed.1 .1.wrapping_add(1),
+                move |_, _modifiers, _keysym| FilterResult::Forward,
+            );
+        }
+        self.space.cleanup();
     }
 
     /// set the scale factor for a surface

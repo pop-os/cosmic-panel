@@ -548,4 +548,10 @@ impl SpaceContainer {
             space.update_hidden_applet_frame();
         }
     }
+
+    pub fn cleanup(&mut self) {
+        for space in &mut self.space_list {
+            space.cleanup();
+        }
+    }
 }

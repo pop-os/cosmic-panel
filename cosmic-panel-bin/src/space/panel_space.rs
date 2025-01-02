@@ -799,8 +799,6 @@ impl PanelSpace {
         self.space.refresh();
         self.apply_animation_state();
 
-        popup_manager.cleanup();
-
         self.handle_focus();
         let mut should_render = false;
         match self.space_event.take() {
@@ -1401,6 +1399,8 @@ impl PanelSpace {
             }
         }
     }
+
+    pub fn cleanup(&mut self) {}
 }
 
 impl Drop for PanelSpace {

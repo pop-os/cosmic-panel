@@ -78,6 +78,16 @@ pub fn run(
 
     event_loop.dispatch(Duration::from_millis(30), &mut global_state)?;
 
+    let handle = event_loop.handle();
+    handle
+        .insert_source(
+            calloop::timer::Timer::from_duration(Duration::from_secs(2)),
+            |_, _, state| {
+                state.cleanup();
+                calloop::timer::TimeoutAction::ToDuration(Duration::from_secs(2))
+            },
+        )
+        .expect("Failed to insert cleanup timer.");
     global_state.bind_display(&s_dh);
 
     let mut last_cleanup = Instant::now();
@@ -89,47 +99,6 @@ pub fn run(
     let mut prev_dur = Duration::from_millis(16);
     loop {
         let iter_start = Instant::now();
-        // cleanup popup manager
-        if last_cleanup.elapsed() > five_min {
-            global_state.server_state.popup_manager.cleanup();
-            last_cleanup = Instant::now();
-        }
-
-        // handle funky keyboard state.
-        // if a client layer shell surface is closed, then it won't receive the release
-        // event then the client will keep receiving input
-        // so we send the release here instead
-        let press = if let Some((key_pressed, kbd)) = global_state
-            .client_state
-            .last_key_pressed
-            .iter()
-            .position(|(_, _, layer_shell_wl_surface)| !layer_shell_wl_surface.is_alive())
-            .and_then(|key_pressed| {
-                global_state
-                    .server_state
-                    .seats
-                    .iter()
-                    .find(|s| s.name == global_state.client_state.last_key_pressed[key_pressed].0)
-                    .and_then(|s| {
-                        s.server.seat.get_keyboard().map(|kbd| {
-                            (global_state.client_state.last_key_pressed.remove(key_pressed), kbd)
-                        })
-                    })
-            }) {
-            Some((key_pressed, kbd))
-        } else {
-            None
-        };
-        if let Some((key_pressed, kbd)) = press {
-            kbd.input::<(), _>(
-                &mut global_state,
-                key_pressed.1 .0.into(),
-                KeyState::Released,
-                SERIAL_COUNTER.next_serial(),
-                key_pressed.1 .1.wrapping_add(1),
-                move |_, _modifiers, _keysym| FilterResult::Forward,
-            );
-        }
 
         let visibility = matches!(global_state.space.visibility(), Visibility::Hidden);
         // dispatch desktop client events
