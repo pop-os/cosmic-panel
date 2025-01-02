@@ -61,6 +61,7 @@ use smithay::{
             protocol::{wl_output, wl_surface::WlSurface as SmithayWlSurface},
         },
     },
+    utils::{Logical, Size},
     wayland::compositor::CompositorClientState,
 };
 use std::{
@@ -235,9 +236,9 @@ impl ClientData for WrapperClientCompositorState {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SurfaceState {
-    WaitingFirst,
-    Waiting,
-    Dirty,
+    WaitingFirst(u32, Size<i32, Logical>),
+    Waiting(u32, Size<i32, Logical>),
+    Dirty(u32),
 }
 
 impl ClientState {
@@ -325,13 +326,13 @@ impl ClientState {
     /// draw the proxied layer shell surfaces
     pub fn draw_layer_surfaces(&mut self, renderer: &mut GlesRenderer, time: u32) {
         let clear_color = &[0.0, 0.0, 0.0, 0.0];
-        for (egl_surface, dmg_tracked_renderer, s_layer, _, state, scale, ..) in
+        for (egl_surface, dmg_tracked_renderer, s_layer, c_layer, state, scale, ..) in
             &mut self.proxied_layer_surfaces
         {
-            match state {
-                SurfaceState::WaitingFirst => continue,
-                SurfaceState::Waiting => continue,
-                SurfaceState::Dirty => {},
+            let gen = match state {
+                SurfaceState::WaitingFirst(_, _) => continue,
+                SurfaceState::Waiting(_, _) => continue,
+                SurfaceState::Dirty(gen) => gen,
             };
             let _ = renderer.unbind();
             let _ = renderer.bind(egl_surface.clone());
@@ -360,7 +361,7 @@ impl ClientState {
                     Some(output.clone())
                 })
             }
-            *state = SurfaceState::Waiting;
+            *state = SurfaceState::Waiting(*gen, s_layer.bbox().size);
         }
     }
 
