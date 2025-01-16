@@ -527,10 +527,10 @@ impl PanelSpace {
                         Some(d) => d,
                         None => return,
                     };
-                    self.is_dirty = true;
                     if duration_since_last_focus > self.config.get_hide_wait().unwrap()
                         && (!intellihide || !self.toplevel_overlaps.is_empty())
                     {
+                        self.is_dirty = true;
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
