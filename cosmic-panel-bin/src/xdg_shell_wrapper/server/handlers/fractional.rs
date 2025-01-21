@@ -16,18 +16,6 @@ impl FractionalScaleHandler for GlobalState {
         // We find the space that the surface is in, and set the fractional scale
         // to the fractional scale of the surface in the space
 
-        for tracked_surface in &self.client_state.proxied_layer_surfaces {
-            if tracked_surface.2.wl_surface() == &surface {
-                with_states(&surface, |states| {
-                    with_fractional_scale(states, |fractional_scale| {
-                        fractional_scale.set_preferred_scale(tracked_surface.5);
-                    });
-                });
-
-                return;
-            }
-        }
-
         with_states(&surface, |states| {
             with_fractional_scale(states, |fractional_scale| {
                 let scale_factor = self.space.get_scale_factor(&surface).unwrap_or(1.0);

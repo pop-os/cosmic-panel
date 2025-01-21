@@ -435,6 +435,7 @@ impl CosmicPanelConfig {
             },
         }
     }
+
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
         self.size.get_applet_icon_size(is_symbolic)

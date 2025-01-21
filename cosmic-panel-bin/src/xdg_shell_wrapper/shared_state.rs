@@ -4,12 +4,11 @@ use std::time::Duration;
 
 use cctk::wayland_client::Proxy;
 use itertools::Itertools;
-use sctk::{reexports::client::protocol::wl_surface::WlSurface, shell::WaylandSurface};
+use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use smithay::{
     backend::{
         input::KeyState,
         renderer::{
-            damage::OutputDamageTracker,
             element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
             gles::GlesRenderer,
             Bind, ImportDma, ImportEgl, Unbind,
@@ -19,9 +18,7 @@ use smithay::{
     input::keyboard::FilterResult,
     reexports::wayland_server::DisplayHandle,
     utils::SERIAL_COUNTER,
-    wayland::{
-        compositor::with_states, dmabuf::DmabufState, fractional_scale::with_fractional_scale,
-    },
+    wayland::dmabuf::DmabufState,
 };
 use tracing::{error, info};
 
@@ -103,35 +100,6 @@ impl GlobalState {
     pub fn scale_factor_changed(&mut self, surface: &WlSurface, scale_factor: f64, legacy: bool) {
         if legacy && self.client_state.fractional_scaling_manager.is_some() {
             return;
-        }
-        for tracked_surface in &mut self.client_state.proxied_layer_surfaces {
-            if tracked_surface.3.wl_surface() == surface {
-                if legacy {
-                    surface.set_buffer_scale(scale_factor as i32);
-                }
-                tracked_surface.5 = scale_factor;
-                let mut size = tracked_surface.2.bbox().size;
-                size.w = size.w.max(1);
-                size.h = size.h.max(1);
-                let scaled_size = size.to_f64().to_physical_precise_round(scale_factor);
-
-                tracked_surface.1 = OutputDamageTracker::new(
-                    scaled_size,
-                    scale_factor,
-                    smithay::utils::Transform::Flipped180,
-                );
-                if let Some(viewport) = tracked_surface.7.as_ref() {
-                    viewport.set_destination(size.w, size.h);
-                }
-                tracked_surface.0.resize(scaled_size.w.max(1), scaled_size.h.max(1), 0, 0);
-
-                with_states(tracked_surface.2.wl_surface(), |states| {
-                    with_fractional_scale(states, |fractional_scale| {
-                        fractional_scale.set_preferred_scale(scale_factor);
-                    });
-                });
-                return;
-            }
         }
 
         self.space.scale_factor_changed(surface, scale_factor, legacy);

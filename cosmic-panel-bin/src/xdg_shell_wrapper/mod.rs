@@ -6,13 +6,8 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use sctk::{reexports::client::Proxy, shm::multi::MultiPool};
-use smithay::{
-    backend::input::KeyState,
-    input::keyboard::FilterResult,
-    reexports::{calloop, wayland_server::Display},
-    utils::SERIAL_COUNTER,
-};
+use sctk::shm::multi::MultiPool;
+use smithay::reexports::{calloop, wayland_server::Display};
 
 use client::state::ClientState;
 pub use client::{
@@ -90,12 +85,6 @@ pub fn run(
         .expect("Failed to insert cleanup timer.");
     global_state.bind_display(&s_dh);
 
-    let mut last_cleanup = Instant::now();
-    let five_min = Duration::from_secs(300);
-
-    // TODO find better place for this
-    // let set_clipboard_once = Rc::new(Cell::new(false));
-
     let mut prev_dur = Duration::from_millis(16);
     loop {
         let iter_start = Instant::now();
@@ -124,13 +113,6 @@ pub fn run(
             );
         }
         global_state.draw_dnd_icon();
-
-        if let Some(renderer) = global_state.space.renderer() {
-            global_state.client_state.draw_layer_surfaces(
-                renderer,
-                global_state.start_time.elapsed().as_millis().try_into()?,
-            );
-        }
 
         // dispatch server events
         {

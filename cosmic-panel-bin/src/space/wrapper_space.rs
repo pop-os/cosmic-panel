@@ -650,13 +650,10 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(
-                                        &key,
-                                        vec![(
-                                            "COSMIC_NOTIFICATIONS".to_string(),
-                                            fd.as_raw_fd().to_string(),
-                                        )],
-                                    )
+                                    .update_process_env(&key, vec![(
+                                        "COSMIC_NOTIFICATIONS".to_string(),
+                                        fd.as_raw_fd().to_string(),
+                                    )])
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);

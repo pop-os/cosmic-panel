@@ -5,9 +5,8 @@ use crate::{
     },
 };
 use cctk::{
-    cosmic_protocols::overlap_notify, toplevel_info::ToplevelInfoState,
-    toplevel_management::ToplevelManagerState, wayland_client::protocol::wl_pointer::WlPointer,
-    workspace::WorkspaceState,
+    toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState,
+    wayland_client::protocol::wl_pointer::WlPointer, workspace::WorkspaceState,
 };
 use sctk::{
     compositor::CompositorState,
@@ -36,46 +35,24 @@ use sctk::{
         pointer::{PointerEvent, ThemedPointer},
         SeatState,
     },
-    shell::{
-        wlr_layer::{LayerShell, LayerSurface},
-        xdg::XdgShell,
-    },
+    shell::{wlr_layer::LayerShell, xdg::XdgShell},
     shm::{multi::MultiPool, Shm},
 };
 use smithay::{
-    backend::{
-        egl::EGLSurface,
-        renderer::{
-            damage::OutputDamageTracker,
-            element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
-            gles::GlesRenderer,
-            Bind, Unbind,
-        },
-    },
-    desktop::LayerSurface as SmithayLayerSurface,
+    backend::{egl::EGLSurface, renderer::damage::OutputDamageTracker},
     output::Output,
     reexports::{
         calloop,
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, GlobalId},
-            protocol::{wl_output, wl_surface::WlSurface as SmithayWlSurface},
+            protocol::wl_surface::WlSurface as SmithayWlSurface,
         },
     },
     utils::{Logical, Size},
     wayland::compositor::CompositorClientState,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    fmt::Debug,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc, time::Instant};
 use tracing::error;
-use wayland_protocols::wp::{
-    fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1,
-    viewporter::client::wp_viewport::WpViewport,
-};
 
 use super::handlers::{
     overlap::OverlapNotifyV1, wp_fractional_scaling::FractionalScalingManager,
@@ -172,22 +149,6 @@ pub struct ClientState {
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
 
     pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
-
-    pub(crate) pending_layer_surfaces: Vec<(
-        smithay::wayland::shell::wlr_layer::LayerSurface,
-        Option<wl_output::WlOutput>,
-        String,
-    )>,
-    pub(crate) proxied_layer_surfaces: Vec<(
-        Rc<EGLSurface>,
-        OutputDamageTracker,
-        SmithayLayerSurface,
-        LayerSurface,
-        SurfaceState,
-        f64,
-        Option<WpFractionalScaleV1>,
-        Option<WpViewport>,
-    )>,
 }
 
 impl Debug for ClientState {
@@ -214,8 +175,6 @@ impl Debug for ClientState {
             .field("multipool_ctr", &self.multipool_ctr)
             .field("last_key_pressed", &self.last_key_pressed)
             .field("outputs", &self.outputs)
-            .field("pending_layer_surfaces", &self.pending_layer_surfaces)
-            .field("proxied_layer_surfaces", &self.proxied_layer_surfaces)
             .finish()
     }
 }
@@ -287,8 +246,6 @@ impl ClientState {
         let client_state = ClientState {
             focused_surface: space.get_client_focused_surface(),
             hovered_surface: space.get_client_hovered_surface(),
-            proxied_layer_surfaces: Vec::new(),
-            pending_layer_surfaces: Vec::new(),
 
             queue_handle: qh.clone(),
             connection: connection.clone(),
@@ -321,48 +278,6 @@ impl ClientState {
         WaylandSource::new(connection, event_queue).insert(loop_handle).unwrap();
 
         Ok(client_state)
-    }
-
-    /// draw the proxied layer shell surfaces
-    pub fn draw_layer_surfaces(&mut self, renderer: &mut GlesRenderer, time: u32) {
-        let clear_color = &[0.0, 0.0, 0.0, 0.0];
-        for (egl_surface, dmg_tracked_renderer, s_layer, c_layer, state, scale, ..) in
-            &mut self.proxied_layer_surfaces
-        {
-            let gen = match state {
-                SurfaceState::WaitingFirst(_, _) => continue,
-                SurfaceState::Waiting(_, _) => continue,
-                SurfaceState::Dirty(gen) => gen,
-            };
-            let _ = renderer.unbind();
-            let _ = renderer.bind(egl_surface.clone());
-            let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                s_layer.render_elements(renderer, (0, 0).into(), (*scale).into(), 1.0);
-            dmg_tracked_renderer
-                .render_output(
-                    renderer,
-                    egl_surface.buffer_age().unwrap_or_default() as usize,
-                    &elements,
-                    *clear_color,
-                )
-                .unwrap();
-            egl_surface.swap_buffers(None).unwrap();
-            // FIXME: damage tracking issues on integrated graphics but not nvidia
-            // self.egl_surface
-            //     .as_ref()
-            //     .unwrap()
-            //     .swap_buffers(res.0.as_deref_mut())?;
-
-            renderer.unbind().unwrap();
-            // TODO what if there is "no output"?
-            for o in &self.outputs {
-                let output = &o.1;
-                s_layer.send_frame(&o.1, Duration::from_millis(time as u64), None, move |_, _| {
-                    Some(output.clone())
-                })
-            }
-            *state = SurfaceState::Waiting(*gen, s_layer.bbox().size);
-        }
     }
 
     /// initialize the toplevel info state

@@ -101,21 +101,18 @@ pub fn init_shaders(gles_renderer: &mut GlesRenderer) -> Result<(), GlesError> {
         }
     }
 
-    let rectangle_shader = gles_renderer.compile_custom_pixel_shader(
-        RECTANGLE_SHADER,
-        &[
-            UniformName::new("rad_tl", UniformType::_1f),
-            UniformName::new("rad_tr", UniformType::_1f),
-            UniformName::new("rad_bl", UniformType::_1f),
-            UniformName::new("rad_br", UniformType::_1f),
-            UniformName::new("loc", UniformType::_2f),
-            UniformName::new("rect_size", UniformType::_2f),
-            UniformName::new("border_width", UniformType::_1f),
-            UniformName::new("drop_shadow", UniformType::_1f),
-            UniformName::new("bg_color", UniformType::_4f),
-            UniformName::new("border_color", UniformType::_4f),
-        ],
-    )?;
+    let rectangle_shader = gles_renderer.compile_custom_pixel_shader(RECTANGLE_SHADER, &[
+        UniformName::new("rad_tl", UniformType::_1f),
+        UniformName::new("rad_tr", UniformType::_1f),
+        UniformName::new("rad_bl", UniformType::_1f),
+        UniformName::new("rad_br", UniformType::_1f),
+        UniformName::new("loc", UniformType::_2f),
+        UniformName::new("rect_size", UniformType::_2f),
+        UniformName::new("border_width", UniformType::_1f),
+        UniformName::new("drop_shadow", UniformType::_1f),
+        UniformName::new("bg_color", UniformType::_4f),
+        UniformName::new("border_color", UniformType::_4f),
+    ])?;
 
     let egl_context = gles_renderer.egl_context();
     egl_context.user_data().insert_if_missing(|| RoundedRectangleShader(rectangle_shader));
