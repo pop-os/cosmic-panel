@@ -17,7 +17,7 @@ use crate::{
         wp_viewporter::ViewporterState,
     },
 };
-use cctk::cosmic_protocols::overlap_notify;
+
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{

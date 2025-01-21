@@ -9,7 +9,6 @@ use crate::xdg_shell_wrapper::{
 use sctk::{
     delegate_pointer,
     seat::pointer::{PointerEvent, PointerHandler},
-    shell::WaylandSurface,
 };
 use smithay::{
     backend::input::{self, Axis, ButtonState},
@@ -83,25 +82,12 @@ impl GlobalState {
             let seat = &mut self.server_state.seats[seat_index];
             match e.kind {
                 sctk::seat::pointer::PointerEventKind::Leave { .. } => {
-                    ptr.motion(
-                        self,
-                        None,
-                        &MotionEvent {
-                            location: (0.0, 0.0).into(),
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time: time.try_into().unwrap(),
-                        },
-                    );
+                    ptr.motion(self, None, &MotionEvent {
+                        location: (0.0, 0.0).into(),
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: time.try_into().unwrap(),
+                    });
                     ptr.frame(self);
-
-                    if let Some((..)) = self
-                        .client_state
-                        .proxied_layer_surfaces
-                        .iter_mut()
-                        .find(|(_, _, _, s, ..)| s.wl_surface() == &e.surface)
-                    {
-                        continue;
-                    }
 
                     let mut c_hovered_surface = self.client_state.hovered_surface.borrow_mut();
                     for f in c_hovered_surface.iter_mut().filter(|f| f.0 == e.surface) {
@@ -127,31 +113,6 @@ impl GlobalState {
                         ));
                     }
 
-                    // check tracked layer shell surface
-                    let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, ..)| {
-                            if c.wl_surface() == &e.surface {
-                                Some(s.wl_surface().clone())
-                            } else {
-                                None
-                            }
-                        },
-                    );
-                    if let Some(s_surface) = s_surface {
-                        ptr.motion(
-                            self,
-                            Some((s_surface.into(), Point::default())),
-                            &MotionEvent {
-                                location: Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time: time.try_into().unwrap(),
-                            },
-                        );
-                        ptr.frame(self);
-
-                        continue;
-                    }
-
                     if let Some((
                         ServerPointerFocus { surface, c_pos, s_pos, .. },
                         mut generated_events,
@@ -166,16 +127,11 @@ impl GlobalState {
                             }) {
                                 *ev = (e.clone(), pointer.clone(), ev.2);
                             } else {
-                                ptr.motion(
-                                    self,
-                                    Some((surface, s_pos)),
-                                    &MotionEvent {
-                                        location: c_pos.to_f64()
-                                            + Point::from((surface_x, surface_y)),
-                                        serial: SERIAL_COUNTER.next_serial(),
-                                        time: time.try_into().unwrap(),
-                                    },
-                                );
+                                ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time: time.try_into().unwrap(),
+                                });
                                 ptr.frame(self);
                             }
                         } else {
@@ -189,15 +145,11 @@ impl GlobalState {
                             }
                         }
                     } else {
-                        ptr.motion(
-                            self,
-                            None,
-                            &MotionEvent {
-                                location: Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time: time.try_into().unwrap(),
-                            },
-                        );
+                        ptr.motion(self, None, &MotionEvent {
+                            location: Point::from((surface_x, surface_y)),
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time: time.try_into().unwrap(),
+                        });
                         ptr.frame(self);
                     }
                 },
@@ -215,31 +167,6 @@ impl GlobalState {
                         None => continue,
                     };
 
-                    // check tracked layer shell surface
-                    let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, ..)| {
-                            if c.wl_surface() == &e.surface {
-                                Some(s.wl_surface().clone())
-                            } else {
-                                None
-                            }
-                        },
-                    );
-
-                    if let Some(s_surface) = s_surface {
-                        ptr.motion(
-                            self,
-                            Some((s_surface.into(), Point::default())),
-                            &MotionEvent {
-                                location: Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time: time.try_into().unwrap(),
-                            },
-                        );
-                        ptr.frame(self);
-                        continue;
-                    }
-
                     if let Some((
                         ServerPointerFocus { surface, c_pos, s_pos, .. },
                         mut generated_events,
@@ -254,16 +181,11 @@ impl GlobalState {
                             }) {
                                 *ev = (e.clone(), pointer.clone(), ev.2);
                             } else {
-                                ptr.motion(
-                                    self,
-                                    Some((surface, s_pos)),
-                                    &MotionEvent {
-                                        location: c_pos.to_f64()
-                                            + Point::from((surface_x, surface_y)),
-                                        serial: SERIAL_COUNTER.next_serial(),
-                                        time,
-                                    },
-                                );
+                                ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time,
+                                });
                                 ptr.frame(self);
                             }
                         } else {
@@ -277,15 +199,11 @@ impl GlobalState {
                             }
                         }
                     } else {
-                        ptr.motion(
-                            self,
-                            None,
-                            &MotionEvent {
-                                location: Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time,
-                            },
-                        );
+                        ptr.motion(self, None, &MotionEvent {
+                            location: Point::from((surface_x, surface_y)),
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time,
+                        });
                         ptr.frame(self);
                         if let Some(themed_pointer) =
                             &self.server_state.seats[seat_index].client.ptr
@@ -298,89 +216,30 @@ impl GlobalState {
                 sctk::seat::pointer::PointerEventKind::Press { time, button, serial, .. } => {
                     self.server_state.last_button.replace(button);
                     seat.client.last_pointer_press = (serial, time);
-                    // check tracked layer shell surface
-                    let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, ..)| {
-                            if c.wl_surface() == &e.surface {
-                                Some(s.wl_surface().clone())
-                            } else {
-                                None
-                            }
-                        },
-                    );
-                    if let Some(s_surface) = s_surface {
-                        kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
-
-                        ptr.button(
-                            self,
-                            &ButtonEvent {
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time,
-                                button,
-                                state: ButtonState::Pressed,
-                            },
-                        );
-                        ptr.frame(self);
-
-                        continue;
-                    }
 
                     let s = self.space.handle_button(&seat_name, true);
 
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
-                    ptr.button(
-                        self,
-                        &ButtonEvent {
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time,
-                            button,
-                            state: ButtonState::Pressed,
-                        },
-                    );
+                    ptr.button(self, &ButtonEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time,
+                        button,
+                        state: ButtonState::Pressed,
+                    });
                     ptr.frame(self);
                 },
                 sctk::seat::pointer::PointerEventKind::Release { time, button, .. } => {
                     self.server_state.last_button.replace(button);
 
-                    // check tracked layer shell surface
-                    let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
-                        |(_, _, s, c, ..)| {
-                            if c.wl_surface() == &e.surface {
-                                Some(s.wl_surface().clone())
-                            } else {
-                                None
-                            }
-                        },
-                    );
-                    if let Some(s_surface) = s_surface {
-                        kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
-
-                        ptr.button(
-                            self,
-                            &ButtonEvent {
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time,
-                                button,
-                                state: ButtonState::Released,
-                            },
-                        );
-                        ptr.frame(self);
-
-                        continue;
-                    }
-
                     let s = self.space.handle_button(&seat_name, false);
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
 
-                    ptr.button(
-                        self,
-                        &ButtonEvent {
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time,
-                            button,
-                            state: ButtonState::Released,
-                        },
-                    );
+                    ptr.button(self, &ButtonEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time,
+                        button,
+                        state: ButtonState::Released,
+                    });
                     ptr.frame(self);
                 },
                 sctk::seat::pointer::PointerEventKind::Axis {

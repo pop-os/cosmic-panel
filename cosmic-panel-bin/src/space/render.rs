@@ -141,10 +141,9 @@ impl PanelSpace {
             // TODO check to make sure this is not going to cause damage issues
             if not_visible {
                 if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
-                    _ = frame.clear(
-                        Color32F::new(0.0, 0.0, 0.0, 0.0),
-                        &[Rectangle::from_loc_and_size((0, 0), dim)],
-                    );
+                    _ = frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[
+                        Rectangle::from_loc_and_size((0, 0), dim),
+                    ]);
                     if let Ok(sync_point) = frame.finish() {
                         if let Err(err) = sync_point.wait() {
                             tracing::error!("Error waiting for sync point: {:?}", err);

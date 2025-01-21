@@ -1217,8 +1217,8 @@ impl PanelSpace {
         // return early
         if config.anchor() != self.config.anchor() {
             panic!(
-                "Can't apply anchor changes when orientation changes. Requires re-creation of \
-                     the panel."
+                "Can't apply anchor changes when orientation changes. Requires re-creation of the \
+                 panel."
             );
         }
 

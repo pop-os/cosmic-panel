@@ -16,7 +16,7 @@ use cosmic::{
         keyboard::{Event as KeyboardEvent, Modifiers as IcedModifiers},
         mouse::{Button as MouseButton, Cursor, Event as MouseEvent, ScrollDelta},
         window::Event as WindowEvent,
-        Limits, Point as IcedPoint, Rectangle as IcedRectangle, Size as IcedSize, Task,
+        Limits, Point as IcedPoint, Size as IcedSize, Task,
     },
     iced_core::{clipboard::Null as NullClipboard, renderer::Style, Color, Font, Length, Pixels},
     iced_renderer::Renderer as IcedRenderer,
@@ -28,10 +28,7 @@ use cosmic::{
     widget::Id,
     Theme,
 };
-use iced_tiny_skia::{
-    graphics::{damage, Viewport},
-    Primitive,
-};
+use iced_tiny_skia::graphics::Viewport;
 use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use smithay::{
@@ -67,7 +64,6 @@ use smithay::{
 };
 
 pub mod elements;
-pub mod panel_message;
 
 static ID: Lazy<Id> = Lazy::new(|| Id::new("Program"));
 

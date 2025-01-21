@@ -2,7 +2,7 @@
 
 use calloop::LoopHandle;
 use cosmic::{
-    iced::{id, Color, Length, Radius},
+    iced::{id, Color, Length},
     iced_core::Shadow,
     theme,
     widget::horizontal_space,

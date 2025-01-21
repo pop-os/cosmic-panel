@@ -50,6 +50,10 @@ pub struct OverlapNotificationV1 {
 impl Dispatch<ZcosmicOverlapNotificationV1, OverlapNotificationV1, GlobalState>
     for OverlapNotificationV1
 {
+    event_created_child!(GlobalState, ZcosmicOverlapNotifyV1, [
+        0 => (ExtForeignToplevelHandleV1, Default::default())
+    ]);
+
     fn event(
         state: &mut GlobalState,
         _n: &ZcosmicOverlapNotificationV1,
@@ -74,10 +78,6 @@ impl Dispatch<ZcosmicOverlapNotificationV1, OverlapNotificationV1, GlobalState>
             }
         }
     }
-
-    event_created_child!(GlobalState, ZcosmicOverlapNotifyV1, [
-        0 => (ExtForeignToplevelHandleV1, Default::default())
-    ]);
 }
 
 wayland_client::delegate_dispatch!(GlobalState: [ZcosmicOverlapNotifyV1: GlobalData] => OverlapNotifyV1);

@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use crate::{
     minimize::MinimizeApplet,
@@ -22,8 +17,7 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo,
-    wayland_client::{self, protocol::wl_seat::WlSeat},
+    toplevel_info::ToplevelInfo, wayland_client::protocol::wl_seat::WlSeat,
     workspace::WorkspaceGroup,
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
@@ -224,7 +218,7 @@ impl SpaceContainer {
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState>,
         force_output: Option<WlOutput>,
-        overlap_notify: Option<OverlapNotifyV1>,
+        _overlap_notify: Option<OverlapNotifyV1>,
     ) {
         // if the output is set to "all", we need to check if the config is the same for
         // all outputs if the output is set to a specific output, we need to

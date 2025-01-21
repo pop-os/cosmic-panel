@@ -935,7 +935,8 @@ impl PanelSpace {
             } else if c.shrink_priority.is_some() {
                 overflow_partition.movable.push(w);
             } else {
-                // make shrinkable if no shrink priority with lowest priority so it is moved last
+                // make shrinkable if no shrink priority with lowest priority so it is moved
+                // last
                 overflow_partition.shrinkable.push((w.0, -1, ClientShrinkSize::AppletUnit(1)));
             }
         }
@@ -1065,8 +1066,8 @@ impl PanelSpace {
         }
         if overflow > 0 && !force_smaller {
             tracing::info!(
-                "Overflow not resolved {sum:.1} {overflow}. Forcing lowest priority shrinkable applets to be \
-                 smaller than configured...",
+                "Overflow not resolved {sum:.1} {overflow}. Forcing lowest priority shrinkable \
+                 applets to be smaller than configured...",
             );
             return self.shrink_clients(overflow, clients, section, true);
         }
@@ -1404,6 +1405,7 @@ impl PanelSpace {
             suggested_size,
         );
     }
+
     fn relax_overflow_right(
         &mut self,
         extra_space: u32,

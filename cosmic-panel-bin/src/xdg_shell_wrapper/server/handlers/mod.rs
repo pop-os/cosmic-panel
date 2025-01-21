@@ -45,7 +45,6 @@ use crate::{
 
 pub(crate) mod compositor;
 pub(crate) mod fractional;
-pub(crate) mod layer;
 pub(crate) mod viewporter;
 pub(crate) mod xdg_shell;
 

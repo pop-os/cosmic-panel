@@ -7,7 +7,6 @@ use crate::xdg_shell_wrapper::{
 use sctk::{
     delegate_keyboard,
     seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RawModifiers, RepeatInfo},
-    shell::WaylandSurface,
 };
 use smithay::{backend::input::KeyState, input::keyboard::FilterResult, utils::SERIAL_COUNTER};
 
@@ -50,21 +49,9 @@ impl KeyboardHandler for GlobalState {
                 ));
             }
         }
-        let s_surface =
-            self.client_state.proxied_layer_surfaces.iter_mut().find_map(|(_, _, s, c, ..)| {
-                if c.wl_surface() == surface {
-                    Some(s.wl_surface().clone())
-                } else {
-                    None
-                }
-            });
 
-        if let Some(s_surface) = s_surface {
-            kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
-        } else {
-            let s = self.space.keyboard_enter(&seat_name, surface.clone());
-            kbd.set_focus(self, s.map(|s| s.into()), SERIAL_COUNTER.next_serial());
-        }
+        let s = self.space.keyboard_enter(&seat_name, surface.clone());
+        kbd.set_focus(self, s.map(|s| s.into()), SERIAL_COUNTER.next_serial());
     }
 
     fn leave(
@@ -99,13 +86,7 @@ impl KeyboardHandler for GlobalState {
             }
         };
 
-        let s_surface = self
-            .client_state
-            .proxied_layer_surfaces
-            .iter_mut()
-            .any(|(_, _, _, c, ..)| c.wl_surface() == surface);
-
-        if kbd_focus && !s_surface {
+        if kbd_focus {
             self.space.keyboard_leave(&name, Some(surface.clone()));
         }
         kbd.set_focus(self, None, SERIAL_COUNTER.next_serial());

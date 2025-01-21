@@ -14,7 +14,7 @@ use smithay::{
         selection::{
             data_device::DataDeviceState, primary_selection::PrimarySelectionState, SelectionSource,
         },
-        shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
+        shell::xdg::XdgShellState,
         shm::ShmState,
         viewporter::ViewporterState,
     },
@@ -64,7 +64,6 @@ pub struct ServerState {
     pub(crate) data_device_state: DataDeviceState,
     pub(crate) dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     pub(crate) primary_selection_state: PrimarySelectionState,
-    pub(crate) layer_shell_state: WlrLayerShellState,
     pub(crate) _fractional_scale_state: FractionalScaleManagerState,
     pub(crate) _viewporter_state: ViewporterState,
 }
@@ -84,7 +83,6 @@ impl ServerState {
             seat_state: SeatState::new(),
             data_device_state: DataDeviceState::new::<GlobalState>(&dh),
             primary_selection_state: PrimarySelectionState::new::<GlobalState>(&dh),
-            layer_shell_state: WlrLayerShellState::new::<GlobalState>(&dh),
             _fractional_scale_state: FractionalScaleManagerState::new::<GlobalState>(&dh),
             _viewporter_state: ViewporterState::new::<GlobalState>(&dh),
 
