@@ -32,7 +32,7 @@ impl PointerHandler for GlobalState {
 }
 
 impl GlobalState {
-    fn update_generated_event_serial(&self, events: &mut Vec<PointerEvent>) {
+    pub fn update_generated_event_serial(&self, events: &mut Vec<PointerEvent>) {
         for e in events {
             match &mut e.kind {
                 sctk::seat::pointer::PointerEventKind::Enter { serial } => {
@@ -152,41 +152,29 @@ impl GlobalState {
                         continue;
                     }
 
-                    if let Some((
-                        ServerPointerFocus { surface, c_pos, s_pos, .. },
-                        mut generated_events,
-                    )) = self.space.pointer_enter(
-                        (surface_x as i32, surface_y as i32),
-                        &seat_name,
-                        e.surface.clone(),
-                    ) {
-                        if generated_events.is_empty() {
-                            if let Some(ev) = surface.wl_surface().and_then(|s| {
-                                self.client_state.delayed_surface_motion.get_mut(s.as_ref())
-                            }) {
-                                *ev = (e.clone(), pointer.clone(), ev.2);
-                            } else {
-                                ptr.motion(
-                                    self,
-                                    Some((surface, s_pos)),
-                                    &MotionEvent {
-                                        location: c_pos.to_f64()
-                                            + Point::from((surface_x, surface_y)),
-                                        serial: SERIAL_COUNTER.next_serial(),
-                                        time: time.try_into().unwrap(),
-                                    },
-                                );
-                                ptr.frame(self);
-                            }
+                    if let Some(ServerPointerFocus { surface, c_pos, s_pos, .. }) =
+                        self.space.pointer_enter(
+                            (surface_x as i32, surface_y as i32),
+                            &seat_name,
+                            e.surface.clone(),
+                            pointer,
+                        )
+                    {
+                        if let Some(ev) = surface.wl_surface().and_then(|s| {
+                            self.client_state.delayed_surface_motion.get_mut(s.as_ref())
+                        }) {
+                            *ev = (e.clone(), pointer.clone(), ev.2);
                         } else {
-                            self.update_generated_event_serial(&mut generated_events);
-                            self.pointer_frame_inner(conn, pointer, &generated_events);
-                            if let Some(s) = surface.wl_surface() {
-                                self.client_state.delayed_surface_motion.insert(
-                                    s.into_owned(),
-                                    (e.clone(), pointer.clone(), self.iter_count),
-                                );
-                            }
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time: time.try_into().unwrap(),
+                                },
+                            );
+                            ptr.frame(self);
                         }
                     } else {
                         ptr.motion(
@@ -240,41 +228,29 @@ impl GlobalState {
                         continue;
                     }
 
-                    if let Some((
-                        ServerPointerFocus { surface, c_pos, s_pos, .. },
-                        mut generated_events,
-                    )) = self.space.update_pointer(
-                        (surface_x as i32, surface_y as i32),
-                        &seat_name,
-                        c_focused_surface,
-                    ) {
-                        if generated_events.is_empty() {
-                            if let Some(ev) = surface.wl_surface().and_then(|s| {
-                                self.client_state.delayed_surface_motion.get_mut(s.as_ref())
-                            }) {
-                                *ev = (e.clone(), pointer.clone(), ev.2);
-                            } else {
-                                ptr.motion(
-                                    self,
-                                    Some((surface, s_pos)),
-                                    &MotionEvent {
-                                        location: c_pos.to_f64()
-                                            + Point::from((surface_x, surface_y)),
-                                        serial: SERIAL_COUNTER.next_serial(),
-                                        time,
-                                    },
-                                );
-                                ptr.frame(self);
-                            }
+                    if let Some(ServerPointerFocus { surface, c_pos, s_pos, .. }) =
+                        self.space.update_pointer(
+                            (surface_x as i32, surface_y as i32),
+                            &seat_name,
+                            c_focused_surface,
+                            &pointer,
+                        )
+                    {
+                        if let Some(ev) = surface.wl_surface().and_then(|s| {
+                            self.client_state.delayed_surface_motion.get_mut(s.as_ref())
+                        }) {
+                            *ev = (e.clone(), pointer.clone(), ev.2);
                         } else {
-                            self.update_generated_event_serial(&mut generated_events);
-                            self.pointer_frame_inner(conn, pointer, &generated_events);
-                            if let Some(s) = surface.wl_surface() {
-                                self.client_state.delayed_surface_motion.insert(
-                                    s.into_owned(),
-                                    (e.clone(), pointer.clone(), self.iter_count),
-                                );
-                            }
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time,
+                                },
+                            );
+                            ptr.frame(self);
                         }
                     } else {
                         ptr.motion(

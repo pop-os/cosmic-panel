@@ -17,7 +17,7 @@ use crate::{
         wp_viewporter::ViewporterState,
     },
 };
-use cctk::cosmic_protocols::overlap_notify;
+use cctk::{cosmic_protocols::overlap_notify, wayland_client::protocol::wl_pointer::WlPointer};
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{
@@ -501,12 +501,15 @@ impl WrapperSpace for SpaceContainer {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
+        pointer: &WlPointer,
+    ) -> Option<ServerPointerFocus> {
         let mut anchor_output = None;
         let ret = if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|s| !s.1.popups.is_empty())
         {
-            if let Some(p_ret) = popup_space.update_pointer(dim, seat_name, c_wl_surface.clone()) {
+            if let Some(p_ret) =
+                popup_space.update_pointer(dim, seat_name, c_wl_surface.clone(), pointer)
+            {
                 anchor_output = Some((
                     popup_space.config.anchor,
                     popup_space.output.as_ref().map(|o| o.1.name()),
@@ -515,7 +518,7 @@ impl WrapperSpace for SpaceContainer {
             } else {
                 self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
                     if i != popup_space_i {
-                        let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone());
+                        let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone(), pointer);
                         if ret.is_some() {
                             anchor_output =
                                 Some((s.config.anchor, s.output.as_ref().map(|o| o.1.name())));
@@ -528,7 +531,7 @@ impl WrapperSpace for SpaceContainer {
             }
         } else {
             self.space_list.iter_mut().find_map(|s| {
-                let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone());
+                let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone(), pointer);
                 if ret.is_some() {
                     anchor_output = Some((s.config.anchor, s.output.as_ref().map(|o| o.1.name())));
                 }
@@ -546,7 +549,7 @@ impl WrapperSpace for SpaceContainer {
             for s in stacked {
                 if s.s_hovered_surface
                     .iter()
-                    .any(|f| ret.as_ref().is_some_and(|ret| &f.surface == &ret.0.surface))
+                    .any(|f| ret.as_ref().is_some_and(|ret| &f.surface == &ret.surface))
                 {
                     continue;
                 }
@@ -691,16 +694,19 @@ impl WrapperSpace for SpaceContainer {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
+        pointer: &WlPointer,
+    ) -> Option<ServerPointerFocus> {
         if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|(_, s)| !s.popups.is_empty())
         {
-            if let Some(p_ret) = popup_space.pointer_enter(dim, seat_name, c_wl_surface.clone()) {
+            if let Some(p_ret) =
+                popup_space.pointer_enter(dim, seat_name, c_wl_surface.clone(), pointer)
+            {
                 Some(p_ret)
             } else {
                 self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
                     if i != popup_space_i {
-                        s.pointer_enter(dim, seat_name, c_wl_surface.clone())
+                        s.pointer_enter(dim, seat_name, c_wl_surface.clone(), pointer)
                     } else {
                         None
                     }
@@ -709,7 +715,7 @@ impl WrapperSpace for SpaceContainer {
         } else {
             self.space_list
                 .iter_mut()
-                .find_map(|s| s.pointer_enter(dim, seat_name, c_wl_surface.clone()))
+                .find_map(|s| s.pointer_enter(dim, seat_name, c_wl_surface.clone(), pointer))
         }
     }
 
