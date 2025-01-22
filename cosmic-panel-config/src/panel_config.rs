@@ -343,6 +343,9 @@ pub struct CosmicPanelConfig {
     pub margin: u16,
     /// opacity of the panel
     pub opacity: f32,
+    /// autohover popup delay duration in milliseconds
+    /// If None, then it is disabled
+    pub autohover_delay_ms: Option<u32>,
 }
 
 impl PartialEq for CosmicPanelConfig {
@@ -396,6 +399,7 @@ impl Default for CosmicPanelConfig {
             border_radius: 8,
             margin: 4,
             opacity: 0.8,
+            autohover_delay_ms: Some(500),
         }
     }
 }

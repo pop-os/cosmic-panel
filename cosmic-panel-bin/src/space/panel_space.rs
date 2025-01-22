@@ -244,6 +244,25 @@ impl PanelColors {
     }
 }
 
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HoverTrack {
+    pub hover_id: Option<HoverId>,
+    pub generation: u32,
+}
+impl HoverTrack {
+    pub fn set_hover_id(&mut self, hover_id: Option<HoverId>) {
+        self.hover_id = hover_id;
+        self.generation += 1;
+    }
+}
+
+// first check if the motion is on a popup's client surface
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HoverId {
+    Client(ClientId),
+    Overflow(id::Id),
+}
+
 // space for the cosmic panel
 #[derive(Debug)]
 pub struct PanelSpace {
@@ -316,6 +335,7 @@ pub struct PanelSpace {
     pub(crate) toplevel_overlaps: HashSet<wayland_backend::client::ObjectId>,
     pub(crate) notification_subscription: Option<ZcosmicOverlapNotificationV1>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
+    pub(crate) hover_track: HoverTrack,
 }
 
 impl PanelSpace {
@@ -395,6 +415,7 @@ impl PanelSpace {
             toplevel_overlaps: HashSet::new(),
             notification_subscription: None,
             overlap_notify: None,
+            hover_track: HoverTrack::default(),
         }
     }
 

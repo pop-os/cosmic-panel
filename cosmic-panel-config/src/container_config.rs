@@ -162,6 +162,7 @@ impl Default for CosmicPanelContainerConfig {
                     autohide: None,
                     margin: 0,
                     opacity: 1.0,
+                    autohover_delay_ms: Some(500),
                 },
                 CosmicPanelConfig {
                     name: "Dock".to_string(),
@@ -195,6 +196,7 @@ impl Default for CosmicPanelContainerConfig {
                     }),
                     margin: 0,
                     opacity: 1.0,
+                    autohover_delay_ms: Some(500),
                 },
             ],
         }

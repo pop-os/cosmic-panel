@@ -27,6 +27,8 @@ use crate::{
     },
 };
 use anyhow::bail;
+use calloop::timer::Timer;
+use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
@@ -80,7 +82,7 @@ use crate::{
     },
 };
 
-use super::{layout::OverflowSection, PanelSpace};
+use super::{layout::OverflowSection, panel_space::HoverId, PanelSpace};
 
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
@@ -865,17 +867,11 @@ impl WrapperSpace for PanelSpace {
         (x, y): (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
+        pointer: &WlPointer,
+    ) -> Option<ServerPointerFocus> {
         let mut prev_hover =
             self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
-        let mut generated_pointer_events = Vec::new();
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
-        // first check if the motion is on a popup's client surface
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-        pub enum HoverId {
-            Client(ClientId),
-            Overflow(id::Id),
-        }
 
         let mut cur_client_hover_id: Option<HoverId> = None;
         let mut overflow_client_hover_id = None;
@@ -1073,152 +1069,232 @@ impl WrapperSpace for PanelSpace {
         let prev_popup_client =
             self.popups.first().and_then(|p| p.s_surface.wl_surface().client()).map(|c| c.id());
 
-        if prev_popup_client.is_some() && matches!(cur_client_hover_id, Some(HoverId::Overflow(_)))
+        if let Some(auto_hover_dur) =
+            self.config.autohover_delay_ms.map(|d| Duration::from_millis(d as u64))
         {
-            self.close_popups(|_| false);
-            if let Some((relative_loc, geo)) = hover_relative_loc.zip(hover_geo) {
-                // place in center
-                let mut p = (x, y);
-                p.0 = relative_loc.x + geo.size.w / 2;
-                p.1 = relative_loc.y + geo.size.h / 2;
-                generated_pointer_events = vec![
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
-                    },
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Press {
-                            time: 0,
-                            button: BTN_LEFT,
-                            serial: 0,
-                        },
-                    },
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Release {
-                            time: 0,
-                            button: BTN_LEFT,
-                            serial: 0,
-                        },
-                    },
-                ];
-            }
-        } else if ((prev_popup_client
-            .as_ref()
-            .zip(cur_client_hover_id.as_ref())
-            .is_some_and(|(a, b)| &HoverId::Client(a.clone()) != b))
-            || self.overflow_popup.is_some())
-            && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
-        {
-            self.close_popups(|_| false);
+            if prev_popup_client.is_some()
+                && matches!(cur_client_hover_id, Some(HoverId::Overflow(_)))
+            {
+                self.hover_track.set_hover_id(cur_client_hover_id.clone());
 
-            self.overflow_popup = None;
-            // send press to new client if it hover flag is set
-            let left_guard = self.clients_left.lock().unwrap();
-            let center_guard = self.clients_center.lock().unwrap();
-            let right_guard = self.clients_right.lock().unwrap();
-            let client = left_guard
-                .iter()
-                .chain(center_guard.iter())
-                .chain(right_guard.iter())
-                .find(|c| {
-                    c.auto_popup_hover_press.is_some()
-                        && (Some(HoverId::Client(c.client.id())) == cur_client_hover_id
-                            || Some(c.client.id()) == overflow_client_hover_id)
-                })
-                .or({
-                    // overflow button
-                    None
-                })
-                .zip(hover_relative_loc)
-                .zip(hover_geo);
-            if let Some(((c, relative_loc), geo)) = client {
-                let mut p = (x, y);
-                let effective_anchor =
-                    match (c.auto_popup_hover_press.unwrap(), self.config.is_horizontal()) {
-                        (AppletAutoClickAnchor::Start, true) => AppletAutoClickAnchor::Left,
-                        (AppletAutoClickAnchor::Start, false) => AppletAutoClickAnchor::Top,
-                        (AppletAutoClickAnchor::End, true) => AppletAutoClickAnchor::Right,
-                        (AppletAutoClickAnchor::End, false) => AppletAutoClickAnchor::Bottom,
-                        (anchor, _) => anchor,
-                    };
-                match effective_anchor {
-                    AppletAutoClickAnchor::Top => {
-                        // centered on the top edge
-                        p.0 = relative_loc.x + geo.size.w / 2;
-                        p.1 = relative_loc.y + 4;
-                    },
-                    AppletAutoClickAnchor::Bottom => {
-                        // centered on the bottom edge
-                        p.0 = relative_loc.x + geo.size.w / 2;
-                        p.1 = relative_loc.y + geo.size.h - 4;
-                    },
-                    AppletAutoClickAnchor::Left => {
-                        // centered on the left edge
-                        p.0 = relative_loc.x + 4;
-                        p.1 = relative_loc.y + geo.size.h / 2;
-                    },
-                    AppletAutoClickAnchor::Right => {
-                        // centered on the right edge
-                        p.0 = relative_loc.x + geo.size.w - 4;
-                        p.1 = relative_loc.y + geo.size.h / 2;
-                    },
-                    AppletAutoClickAnchor::Center => {
-                        // centered on the center
-                        p.0 = relative_loc.x + geo.size.w / 2;
-                        p.1 = relative_loc.y + geo.size.h / 2;
-                    },
-                    AppletAutoClickAnchor::Auto => {
-                        let relative_x = x - relative_loc.x;
-                        let relative_y = y - relative_loc.y;
-                        if relative_x.abs() < 4 {
-                            p.0 += 4;
-                        } else if (relative_x - geo.size.w).abs() < 4 {
-                            p.0 -= 4;
-                        }
-                        if relative_y.abs() < 4 {
-                            p.1 += 4;
-                        } else if (relative_y - geo.size.h).abs() < 4 {
-                            p.1 -= 4;
-                        }
-                    },
-                    AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
-                        tracing::warn!("Invalid anchor for auto click");
-                        // should be handled above
-                    },
+                if let Some((relative_loc, geo)) = hover_relative_loc.zip(hover_geo) {
+                    self.hover_track.set_hover_id(cur_client_hover_id.clone());
+                    let cur_hover_track = self.hover_track.clone();
+                    let panel_id = self.id();
+                    let pointer = pointer.clone();
+                    let _ = self.loop_handle.insert_source(
+                        Timer::from_duration(auto_hover_dur),
+                        move |_, _, data| {
+                            let mut generated_events = if let Some(space) = data
+                                .space
+                                .space_list
+                                .iter_mut()
+                                .find(|s| s.id() == panel_id)
+                                .filter(|s| s.hover_track == cur_hover_track)
+                            {
+                                // place in center
+                                let mut p = (x, y);
+                                p.0 = relative_loc.x + geo.size.w / 2;
+                                p.1 = relative_loc.y + geo.size.h / 2;
+                                space.close_popups(|_| false);
+
+                                vec![
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Motion {
+                                            time: 0,
+                                        },
+                                    },
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Press {
+                                            time: 0,
+                                            button: BTN_LEFT,
+                                            serial: 0,
+                                        },
+                                    },
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Release {
+                                            time: 0,
+                                            button: BTN_LEFT,
+                                            serial: 0,
+                                        },
+                                    },
+                                ]
+                            } else {
+                                return calloop::timer::TimeoutAction::Drop;
+                            };
+                            if !generated_events.is_empty() {
+                                data.update_generated_event_serial(&mut generated_events);
+                                let conn = data.client_state.connection.clone();
+                                data.pointer_frame_inner(&conn, &pointer, &generated_events);
+                            }
+
+                            calloop::timer::TimeoutAction::Drop
+                        },
+                    );
                 }
-                generated_pointer_events = vec![
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Motion { time: 0 },
+            } else if ((prev_popup_client
+                .as_ref()
+                .zip(cur_client_hover_id.as_ref())
+                .is_some_and(|(a, b)| &HoverId::Client(a.clone()) != b))
+                || self.overflow_popup.is_some())
+                && matches!(cur_client_hover_id, Some(HoverId::Client(_)))
+            {
+                self.hover_track.set_hover_id(cur_client_hover_id.clone());
+                let cur_hover_track = self.hover_track.clone();
+                let panel_id = self.id();
+                let pointer = pointer.clone();
+
+                _ = self.loop_handle.insert_source(
+                    Timer::from_duration(auto_hover_dur),
+                    move |_, _, data| {
+                        let mut generated_events = if let Some(space) = data
+                            .space
+                            .space_list
+                            .iter_mut()
+                            .find(|s| s.id() == panel_id)
+                            .filter(|s| s.hover_track == cur_hover_track)
+                        {
+                            space.close_popups(|_| false);
+
+                            space.overflow_popup = None;
+                            // send press to new client if it hover flag is set
+                            let left_guard = space.clients_left.lock().unwrap();
+                            let center_guard = space.clients_center.lock().unwrap();
+                            let right_guard = space.clients_right.lock().unwrap();
+                            let client = left_guard
+                                .iter()
+                                .chain(center_guard.iter())
+                                .chain(right_guard.iter())
+                                .find(|c| {
+                                    c.auto_popup_hover_press.is_some()
+                                        && (Some(HoverId::Client(c.client.id()))
+                                            == cur_client_hover_id
+                                            || Some(c.client.id()) == overflow_client_hover_id)
+                                })
+                                .or({
+                                    // overflow button
+                                    None
+                                })
+                                .zip(hover_relative_loc)
+                                .zip(hover_geo);
+                            if let Some(((c, relative_loc), geo)) = client {
+                                let mut p = (x, y);
+                                let effective_anchor = match (
+                                    c.auto_popup_hover_press.unwrap(),
+                                    space.config.is_horizontal(),
+                                ) {
+                                    (AppletAutoClickAnchor::Start, true) => {
+                                        AppletAutoClickAnchor::Left
+                                    },
+                                    (AppletAutoClickAnchor::Start, false) => {
+                                        AppletAutoClickAnchor::Top
+                                    },
+                                    (AppletAutoClickAnchor::End, true) => {
+                                        AppletAutoClickAnchor::Right
+                                    },
+                                    (AppletAutoClickAnchor::End, false) => {
+                                        AppletAutoClickAnchor::Bottom
+                                    },
+                                    (anchor, _) => anchor,
+                                };
+                                match effective_anchor {
+                                    AppletAutoClickAnchor::Top => {
+                                        // centered on the top edge
+                                        p.0 = relative_loc.x + geo.size.w / 2;
+                                        p.1 = relative_loc.y + 4;
+                                    },
+                                    AppletAutoClickAnchor::Bottom => {
+                                        // centered on the bottom edge
+                                        p.0 = relative_loc.x + geo.size.w / 2;
+                                        p.1 = relative_loc.y + geo.size.h - 4;
+                                    },
+                                    AppletAutoClickAnchor::Left => {
+                                        // centered on the left edge
+                                        p.0 = relative_loc.x + 4;
+                                        p.1 = relative_loc.y + geo.size.h / 2;
+                                    },
+                                    AppletAutoClickAnchor::Right => {
+                                        // centered on the right edge
+                                        p.0 = relative_loc.x + geo.size.w - 4;
+                                        p.1 = relative_loc.y + geo.size.h / 2;
+                                    },
+                                    AppletAutoClickAnchor::Center => {
+                                        // centered on the center
+                                        p.0 = relative_loc.x + geo.size.w / 2;
+                                        p.1 = relative_loc.y + geo.size.h / 2;
+                                    },
+                                    AppletAutoClickAnchor::Auto => {
+                                        let relative_x = x - relative_loc.x;
+                                        let relative_y = y - relative_loc.y;
+                                        if relative_x.abs() < 4 {
+                                            p.0 += 4;
+                                        } else if (relative_x - geo.size.w).abs() < 4 {
+                                            p.0 -= 4;
+                                        }
+                                        if relative_y.abs() < 4 {
+                                            p.1 += 4;
+                                        } else if (relative_y - geo.size.h).abs() < 4 {
+                                            p.1 -= 4;
+                                        }
+                                    },
+                                    AppletAutoClickAnchor::Start | AppletAutoClickAnchor::End => {
+                                        tracing::warn!("Invalid anchor for auto click");
+                                        // should be handled above
+                                    },
+                                }
+                                vec![
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Motion {
+                                            time: 0,
+                                        },
+                                    },
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Press {
+                                            time: 0,
+                                            button: BTN_LEFT,
+                                            serial: 0,
+                                        },
+                                    },
+                                    PointerEvent {
+                                        surface: space.layer.as_ref().unwrap().wl_surface().clone(),
+                                        position: (p.0 as f64, p.1 as f64),
+                                        kind: sctk::seat::pointer::PointerEventKind::Release {
+                                            time: 0,
+                                            button: BTN_LEFT,
+                                            serial: 0,
+                                        },
+                                    },
+                                ]
+                            } else {
+                                return calloop::timer::TimeoutAction::Drop;
+                            }
+                        } else {
+                            return calloop::timer::TimeoutAction::Drop;
+                        };
+
+                        if !generated_events.is_empty() {
+                            data.update_generated_event_serial(&mut generated_events);
+                            let conn = data.client_state.connection.clone();
+                            data.pointer_frame_inner(&conn, &pointer, &generated_events);
+                        }
+                        calloop::timer::TimeoutAction::Drop
                     },
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Press {
-                            time: 0,
-                            button: BTN_LEFT,
-                            serial: 0,
-                        },
-                    },
-                    PointerEvent {
-                        surface: self.layer.as_ref().unwrap().wl_surface().clone(),
-                        position: (p.0 as f64, p.1 as f64),
-                        kind: sctk::seat::pointer::PointerEventKind::Release {
-                            time: 0,
-                            button: BTN_LEFT,
-                            serial: 0,
-                        },
-                    },
-                ];
+                );
+            } else {
+                self.hover_track.set_hover_id(None);
             }
         }
-        ret.map(|f| (f, generated_pointer_events))
+        ret
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
@@ -1232,6 +1308,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn pointer_leave(&mut self, seat_name: &str, _s: Option<c_wl_surface::WlSurface>) {
+        self.hover_track.set_hover_id(None);
         self.s_hovered_surface.retain(|focus| focus.seat_name != seat_name);
     }
 
@@ -1240,8 +1317,9 @@ impl WrapperSpace for PanelSpace {
         dim: (i32, i32),
         seat_name: &str,
         c_wl_surface: c_wl_surface::WlSurface,
-    ) -> Option<(ServerPointerFocus, Vec<PointerEvent>)> {
-        self.update_pointer(dim, seat_name, c_wl_surface)
+        pointer: &WlPointer,
+    ) -> Option<ServerPointerFocus> {
+        self.update_pointer(dim, seat_name, c_wl_surface, pointer)
     }
 
     // TODO

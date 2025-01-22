@@ -130,14 +130,21 @@ impl DataDeviceHandler for GlobalState {
 
         let metadata = SourceMetadata { mime_types, dnd_action };
         let (x, y) = (offer.x, offer.y);
-
-        let server_focus =
-            self.space.update_pointer((x as i32, y as i32), &seat.name, offer.surface.clone());
+        let Some(ptr) = seat.client.ptr.as_ref().map(|p| p.pointer().clone()) else {
+            tracing::error!("Missing pointer on seat for dnd enter");
+            return;
+        };
+        let server_focus = self.space.update_pointer(
+            (x as i32, y as i32),
+            &seat.name,
+            offer.surface.clone(),
+            &ptr,
+        );
 
         seat.client.dnd_offer = Some(offer);
         // TODO: touch vs pointer start data
         if !seat.client.next_dnd_offer_is_mine {
-            let focus = server_focus.map(|f| f.0);
+            let focus = server_focus;
             start_dnd(
                 &self.server_state.display_handle.clone(),
                 &seat.server.seat.clone(),
@@ -226,14 +233,19 @@ impl DataDeviceHandler for GlobalState {
             Some(offer) => offer,
             None => return,
         };
+        let Some(ptr) = seat.client.ptr.as_ref().map(|p| p.pointer().clone()) else {
+            tracing::error!("Missing pointer on seat for dnd motion");
+            return;
+        };
 
         let server_focus = self.space.update_pointer(
             (offer.x as i32, offer.y as i32),
             &seat.name,
             offer.surface.clone(),
+            &ptr,
         );
 
-        let client = if let Some((ServerPointerFocus { surface: w, .. }, _)) = server_focus {
+        let client = if let Some(ServerPointerFocus { surface: w, .. }) = server_focus {
             w.wl_surface().and_then(|s| s.client())
         } else {
             None
