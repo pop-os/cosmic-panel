@@ -39,7 +39,36 @@ pub enum PanelCalloopMsg {
     UpdateToplevel(zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1),
 }
 
+/// Access glibc malloc tunables.
+#[cfg(target_env = "gnu")]
+mod malloc {
+    use std::os::raw::c_int;
+    const M_MMAP_THRESHOLD: c_int = -3;
+
+    extern "C" {
+        fn malloc_trim(pad: usize);
+        fn mallopt(param: c_int, value: c_int) -> c_int;
+    }
+
+    /// Prevents glibc from hoarding memory via memory fragmentation.
+    pub fn limit_mmap_threshold() {
+        unsafe {
+            mallopt(M_MMAP_THRESHOLD, 65536);
+        }
+    }
+
+    /// Asks glibc to trim malloc arenas.
+    pub fn trim() {
+        unsafe {
+            malloc_trim(0);
+        }
+    }
+}
+
 fn main() -> Result<()> {
+    // Prevents glibc from hoarding memory via memory fragmentation.
+    #[cfg(target_env = "gnu")]
+    malloc::limit_mmap_threshold();
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer =
         EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("warn")).unwrap();
@@ -111,6 +140,19 @@ fn main() -> Result<()> {
             },
         )
         .expect("failed to insert hidden applet frame timer");
+
+    #[cfg(target_env = "gnu")]
+    event_loop
+        .handle()
+        .insert_source(
+            calloop::timer::Timer::from_duration(Duration::from_secs(600)),
+            |_, _, _: &mut GlobalState| {
+                tracing::trace!("Releasing free memory from the heap.");
+                malloc::trim();
+                calloop::timer::TimeoutAction::ToDuration(Duration::from_secs(600))
+            },
+        )
+        .expect("failed to insert malloc trim timer");
 
     event_loop
         .handle()
