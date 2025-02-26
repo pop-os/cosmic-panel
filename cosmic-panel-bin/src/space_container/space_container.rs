@@ -40,6 +40,7 @@ use sctk::{
         client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
     },
     shell::wlr_layer::LayerShell,
+    subcompositor::SubcompositorState,
 };
 use smithay::{
     backend::renderer::gles::GlesRenderer,
@@ -552,6 +553,40 @@ impl SpaceContainer {
     pub fn cleanup(&mut self) {
         for space in &mut self.space_list {
             space.cleanup();
+        }
+    }
+
+    pub fn dirty_subsurface(
+        &mut self,
+        compositor_state: &sctk::compositor::CompositorState,
+        wl_subcompositor: &SubcompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
+        qh: &QueueHandle<GlobalState>,
+        wlsurface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        // add window to the space with a client that matches the window
+        let s_client = wlsurface.client().map(|c| c.id());
+
+        if let Some(space) = self.space_list.iter_mut().find(|space| {
+            space
+                .clients_center
+                .lock()
+                .unwrap()
+                .iter()
+                .chain(space.clients_left.lock().unwrap().iter())
+                .chain(space.clients_right.lock().unwrap().iter())
+                .any(|c| Some(c.client.id()) == s_client)
+        }) {
+            space.dirty_subsurface(
+                self.renderer.as_mut(),
+                compositor_state,
+                wl_subcompositor,
+                fractional_scale_manager,
+                viewport,
+                qh,
+                wlsurface,
+            );
         }
     }
 }

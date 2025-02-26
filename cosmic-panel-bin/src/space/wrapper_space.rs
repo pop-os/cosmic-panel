@@ -911,8 +911,8 @@ impl WrapperSpace for PanelSpace {
                 };
 
                 let mut size = match e {
-                    CosmicMappedInternal::OverflowButton(b) => b.bbox().size,
-                    CosmicMappedInternal::Window(w) => w.bbox().size,
+                    CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
+                    CosmicMappedInternal::Window(w) => w.geometry().size,
                     _ => return None,
                 }
                 .to_f64();
