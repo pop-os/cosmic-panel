@@ -17,16 +17,18 @@ use crate::{
         server_state::{ServerFocus, ServerPtrFocus},
         shared_state::GlobalState,
         space::{
-            ClientEglDisplay, ClientEglSurface, PanelPopup, SpaceEvent, Visibility, WrapperPopup,
-            WrapperSpace,
+            ClientEglDisplay, ClientEglSurface, PanelPopup, PanelSubsurface, SpaceEvent,
+            Visibility, WrapperPopup, WrapperSpace, WrapperSubsurface,
         },
         util::smootherstep,
+        wp_fractional_scaling::FractionalScalingManager,
         wp_security_context::SecurityContextManager,
+        wp_viewporter::ViewporterState,
     },
 };
 use cctk::{
     cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1,
-    wayland_client::Connection,
+    wayland_client::{protocol::wl_subcompositor::WlSubcompositor, Connection},
 };
 
 use cosmic::iced::id;
@@ -46,6 +48,7 @@ use sctk::{
         xdg::XdgPositioner,
         WaylandSurface,
     },
+    subcompositor::{SubcompositorState, SubsurfaceData},
 };
 use smithay::{
     backend::{
@@ -58,15 +61,15 @@ use smithay::{
         },
         renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Unbind},
     },
-    desktop::{PopupManager, Space},
+    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Space},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
-        wayland_server::{backend::ClientId, Client, DisplayHandle},
+        wayland_server::{backend::ClientId, Client, DisplayHandle, Resource},
     },
     utils::{Logical, Rectangle, Size},
     wayland::{
-        compositor::with_states,
+        compositor::{with_states, SurfaceAttributes},
         fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -303,6 +306,7 @@ pub struct PanelSpace {
     pub layer_fractional_scale: Option<WpFractionalScaleV1>,
     pub layer_viewport: Option<WpViewport>,
     pub popups: Vec<WrapperPopup>,
+    pub subsurfaces: Vec<WrapperSubsurface>,
     pub start_instant: Instant,
     pub colors: PanelColors,
     pub applet_tx: mpsc::Sender<AppletMsg>,
@@ -376,6 +380,7 @@ impl PanelSpace {
             layer_viewport: Default::default(),
             egl_surface: Default::default(),
             popups: Default::default(),
+            subsurfaces: Default::default(),
             visibility,
             start_instant: Instant::now(),
             c_focused_surface,
@@ -888,6 +893,7 @@ impl PanelSpace {
         if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
             self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
+            self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
             self.handle_overflow_popup_events();
 
             if prev == self.popups.len() && should_render {
@@ -1422,6 +1428,135 @@ impl PanelSpace {
     }
 
     pub fn cleanup(&mut self) {}
+
+    pub fn dirty_subsurface(
+        &mut self,
+        renderer: Option<&mut GlesRenderer>,
+        compositor_state: &sctk::compositor::CompositorState,
+        wl_subcompositor: &SubcompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
+        qh: &QueueHandle<GlobalState>,
+        wlsurface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        let Some(renderer) = renderer else {
+            return;
+        };
+        self.is_dirty = true;
+        self.space.refresh();
+
+        let mut s_bbox = bbox_from_surface_tree(&wlsurface, (0, 0));
+        s_bbox.size.w += 20;
+        if let Some(s) = self.subsurfaces.iter_mut().find(|s| s.s_surface == *wlsurface) {
+            let Some(offset) = self.space.element_location(&s.parent) else {
+                return;
+            };
+
+            if s_bbox != s.subsurface.rectangle && s_bbox.size.w > 0 && s_bbox.size.h > 0 {
+                let p_s_bbox = s_bbox.to_f64().to_physical_precise_round(self.scale);
+                s.subsurface.egl_surface.resize(p_s_bbox.size.w, p_s_bbox.size.h, 0, 0);
+                s.subsurface
+                    .c_subsurface
+                    .set_position(offset.x + s_bbox.loc.x, offset.y + s_bbox.loc.y);
+                s.subsurface.rectangle = s_bbox;
+
+                if let Some(viewport) = &s.subsurface.viewport {
+                    viewport.set_destination(s_bbox.size.w.max(1), s_bbox.size.h.max(1));
+                }
+            }
+
+            s.subsurface.dirty = true;
+        } else if let Some(ls) = self.layer.as_ref() {
+            if s_bbox.size.w == 0 || s_bbox.size.h == 0 {
+                return;
+            }
+            let Some(parent_id) = self.space.elements().find(|m| {
+                let Some(t) = m.toplevel() else {
+                    return false;
+                };
+                t.wl_surface().client() == wlsurface.client()
+            }) else {
+                return;
+            };
+
+            let Some(offset) = self.space.element_location(&parent_id) else {
+                return;
+            };
+            // create and insert subsurface
+            // let new_surface = self
+            let (c_subsurface, c_surface) =
+                wl_subcompositor.create_subsurface(ls.wl_surface().clone(), &qh);
+            let fractional_scale =
+                fractional_scale_manager.map(|f| f.fractional_scaling(&c_surface, qh));
+
+            let viewport = viewport.map(|v| {
+                with_states(wlsurface, |states| {
+                    with_fractional_scale(states, |fractional_scale| {
+                        fractional_scale.set_preferred_scale(self.scale);
+                    });
+                });
+                let viewport = v.get_viewport(&c_surface, qh);
+                viewport.set_destination(s_bbox.size.w.max(1), s_bbox.size.h.max(1));
+                viewport
+            });
+            if fractional_scale.is_none() {
+                c_surface.set_buffer_scale(self.scale as i32);
+            }
+            let input_region = Region::new(compositor_state).ok();
+
+            // TODO: support input in subsurfaces...
+            c_surface.set_input_region(input_region.as_ref().map(|r| r.wl_region()));
+            let p_s_bbox = s_bbox.to_f64().to_physical_precise_round(self.scale);
+            let wl_egl_surface =
+                match WlEglSurface::new(c_surface.id(), p_s_bbox.size.w, p_s_bbox.size.h) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        tracing::error!("Failed to create WlEglSurface: {:?}", err);
+                        return;
+                    },
+                };
+            let client_egl_surface =
+                unsafe { ClientEglSurface::new(wl_egl_surface, c_surface.clone()) };
+
+            c_subsurface.set_position(offset.x + s_bbox.loc.x, offset.y + s_bbox.loc.y);
+
+            c_surface.commit();
+
+            self.subsurfaces.push(WrapperSubsurface {
+                parent: parent_id.clone(),
+                subsurface: PanelSubsurface {
+                    egl_surface: Rc::new(unsafe {
+                        EGLSurface::new(
+                            renderer.egl_context().display(),
+                            renderer
+                                .egl_context()
+                                .pixel_format()
+                                .expect("Failed to get pixel format from EGL context "),
+                            renderer.egl_context().config_id(),
+                            client_egl_surface,
+                        )
+                        .expect("Failed to initialize EGL Surface")
+                    }),
+                    c_subsurface,
+                    c_surface,
+                    dirty: true,
+                    rectangle: s_bbox,
+                    wrapper_rectangle: offset,
+                    has_frame: true,
+                    fractional_scale,
+                    viewport,
+                    scale: self.scale,
+                    damage_tracked_renderer: OutputDamageTracker::new(
+                        s_bbox.size.to_f64().to_physical(self.scale).to_i32_round(),
+                        self.scale,
+                        smithay::utils::Transform::Flipped180,
+                    ),
+                    parent: ls.wl_surface().clone(),
+                },
+                s_surface: wlsurface.clone(),
+            });
+        }
+    }
 }
 
 impl Drop for PanelSpace {

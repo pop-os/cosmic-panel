@@ -103,7 +103,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
+                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
                     return None;
                 };
                 self.clients_left.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
@@ -122,7 +122,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
+                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
                     return None;
                 };
                 self.clients_center.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
@@ -141,7 +141,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
+                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
                     return None;
                 };
                 self.clients_right.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
@@ -238,7 +238,7 @@ impl PanelSpace {
                     (s.size.unwrap_or_default(), s.bounds.unwrap_or_default())
                 })
                 .unwrap_or_default();
-            let bbox = w.bbox().size;
+            let bbox = w.geometry().size;
 
             if size.w == 0 {
                 size.w = bbox.w;
@@ -277,7 +277,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
         let left_sum_scaled = if let Some(left_button) = left_overflow_button.as_ref() {
-            let size = left_button.bbox().size.to_f64();
+            let size = left_button.geometry().size.to_f64();
             left_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
@@ -292,7 +292,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
-            let size = center_button.bbox().size.to_f64();
+            let size = center_button.geometry().size.to_f64();
             center_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
@@ -307,7 +307,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
-            let size = right_button.bbox().size.to_f64();
+            let size = right_button.geometry().size.to_f64();
             right_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
@@ -493,7 +493,7 @@ impl PanelSpace {
         } as i32;
 
         if let Some(right_button) = right_overflow_button {
-            let size = right_button.bbox().size.to_f64();
+            let size = right_button.geometry().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -512,7 +512,7 @@ impl PanelSpace {
         };
 
         if let Some(center_button) = center_overflow_button {
-            let size = center_button.bbox().size.to_f64();
+            let size = center_button.geometry().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -535,7 +535,7 @@ impl PanelSpace {
             for (_, w, minimize_priority) in windows {
                 // XXX this is a hack to get the logical size of the window
                 // TODO improve how this is done
-                let mut size = w.bbox().size.to_f64();
+                let mut size = w.geometry().size.to_f64();
                 let configured_size =
                     w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_default();
                 if configured_size.w != 0 {
@@ -605,7 +605,7 @@ impl PanelSpace {
         map_windows(windows_right.iter_mut(), right_pos);
         // if there is a left overflow_button, map it
         if let Some(left_button) = left_overflow_button {
-            let size = left_button.bbox().size.to_f64();
+            let size = left_button.geometry().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
                 margin_offset
                     + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
@@ -998,7 +998,7 @@ impl PanelSpace {
                 })
                 .unwrap();
 
-            let mut size = w.bbox().size.to_f64();
+            let mut size = w.geometry().size.to_f64();
             if size.w < 1. {
                 size.w = 1.;
             }
@@ -1106,7 +1106,7 @@ impl PanelSpace {
             if overflow == 0 {
                 break;
             }
-            let bbox = w.0.bbox();
+            let bbox = w.0.geometry();
             tracing::info!("Moving applet with bbox: {bbox:?}");
 
             if bbox.size.w == 0
@@ -1268,7 +1268,7 @@ impl PanelSpace {
             if extra_space < suggested_size {
                 break;
             }
-            let size: Size<i32, _> = w.bbox().size;
+            let size: Size<i32, _> = w.geometry().size;
 
             let applet_len = if is_horizontal { size.w as u32 } else { size.h as u32 };
             if extra_space >= applet_len {
@@ -1441,7 +1441,7 @@ impl PanelSpace {
             clients.constrained_shrinkables(self.config.is_horizontal(), self.scale).drain(..).rev()
         {
             let expand = extra_space as i32;
-            tracing::info!("Relaxing overflow client by {expand}, {:?}", w.bbox().size);
+            tracing::info!("Relaxing overflow client by {expand}, {:?}", w.geometry().size);
             if extra_space == 0 {
                 tracing::info!("No more space to relax");
                 break;
@@ -1565,7 +1565,7 @@ impl OverflowClientPartition {
             .filter(|(w, ..)| {
                 w.toplevel().is_some_and(|t| {
                     let state = t.current_state();
-                    let cur_size = w.bbox().size;
+                    let cur_size = w.geometry().size;
                     if is_horizontal {
                         state.bounds.is_none()
                             || state.bounds.is_some_and(|s| {
@@ -1592,7 +1592,7 @@ impl OverflowClientPartition {
             self.shrinkable.iter().all(|(w, ..)| {
                 w.toplevel().is_some_and(|t| {
                     let state = t.current_state();
-                    let cur_size = w.bbox().size;
+                    let cur_size = w.geometry().size;
                     if is_horizontal {
                         state.bounds.is_none()
                             || state.bounds.is_some_and(|s| {

@@ -2,7 +2,7 @@ use std::{os::fd::OwnedFd, sync::Mutex};
 
 use itertools::Itertools;
 use sctk::{
-    data_device_manager::data_offer::receive_to_fd,
+    data_device_manager::data_offer::receive_to_fd, delegate_subcompositor,
     reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction,
 };
 use smithay::{
@@ -48,6 +48,8 @@ pub(crate) mod fractional;
 pub(crate) mod layer;
 pub(crate) mod viewporter;
 pub(crate) mod xdg_shell;
+
+delegate_subcompositor!(GlobalState);
 
 impl PrimarySelectionHandler for GlobalState {
     fn primary_selection_state(&self) -> &PrimarySelectionState {

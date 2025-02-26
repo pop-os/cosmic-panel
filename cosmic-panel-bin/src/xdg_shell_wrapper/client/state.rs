@@ -41,6 +41,7 @@ use sctk::{
         xdg::XdgShell,
     },
     shm::{multi::MultiPool, Shm},
+    subcompositor::SubcompositorState,
 };
 use smithay::{
     backend::{
@@ -135,6 +136,7 @@ pub struct ClientState {
     pub output_state: OutputState,
     /// state
     pub compositor_state: CompositorState,
+    pub subcompositor: SubcompositorState,
     /// state
     pub shm_state: Shm,
     /// state
@@ -283,6 +285,8 @@ impl ClientState {
         if let Err(err) = &overlap_notify {
             tracing::warn!("Failed to bind to overlap notify {err:?}");
         }
+        let compositor_state =
+            CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
 
         let client_state = ClientState {
             focused_surface: space.get_client_focused_surface(),
@@ -294,8 +298,13 @@ impl ClientState {
             connection: connection.clone(),
             seat_state: SeatState::new(&globals, &qh),
             output_state: OutputState::new(&globals, &qh),
-            compositor_state: CompositorState::bind(&globals, &qh)
-                .expect("wl_compositor not available"),
+            subcompositor: SubcompositorState::bind(
+                compositor_state.wl_compositor().clone(),
+                &globals,
+                &qh,
+            )
+            .expect("wl_subsureface not available"),
+            compositor_state,
             shm_state: Shm::bind(&globals, &qh).expect("wl_shm not available"),
             xdg_shell_state: XdgShell::bind(&globals, &qh).expect("xdg shell not available"),
             layer_state: LayerShell::bind(&globals, &qh).expect("layer shell is not available"),

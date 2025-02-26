@@ -26,7 +26,7 @@ use smithay::{
         Bind, Color32F, Frame, Renderer, Unbind,
     },
     reexports::wayland_server::Resource,
-    utils::{Buffer, Physical, Point, Rectangle},
+    utils::{Buffer, IsAlive, Physical, Point, Rectangle},
     wayland::seat::WaylandFocus,
 };
 
@@ -214,6 +214,7 @@ impl PanelSpace {
                                         .collect::<Vec<_>>(),
                                     );
                                 }
+
                                 w.toplevel().map(|t| {
                                     let configured_size = t.current_state().size.map(|s| {
                                         let mut r = Rectangle::from_loc_and_size(
@@ -355,6 +356,42 @@ impl PanelSpace {
             wl_surface.commit();
             p.popup.dirty = false;
             p.popup.has_frame = false;
+        }
+
+        for subsurface in self.subsurfaces.iter_mut().filter(|subsurface| {
+            subsurface.subsurface.dirty
+                && subsurface.s_surface.alive()
+                && subsurface.subsurface.c_surface.is_alive()
+                && subsurface.subsurface.has_frame
+        }) {
+            renderer.unbind()?;
+            renderer.bind(subsurface.subsurface.egl_surface.clone())?;
+
+            let mut loc = subsurface.subsurface.rectangle.loc;
+            loc.x *= -1;
+            loc.y *= -1;
+            let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
+                renderer,
+                &subsurface.s_surface,
+                loc.to_f64().to_physical_precise_round(self.scale),
+                self.scale,
+                1.0,
+                smithay::backend::renderer::element::Kind::Unspecified,
+            );
+            subsurface.subsurface.damage_tracked_renderer.render_output(
+                renderer,
+                subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize,
+                &elements,
+                clear_color,
+            )?;
+
+            subsurface.subsurface.egl_surface.swap_buffers(None)?;
+
+            let wl_surface = subsurface.subsurface.c_surface.clone();
+            wl_surface.frame(qh, wl_surface.clone());
+            wl_surface.commit();
+            subsurface.subsurface.dirty = false;
+            subsurface.subsurface.has_frame = false;
         }
 
         // render to overflow_popup
