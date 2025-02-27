@@ -279,6 +279,7 @@ impl WrapperSpace for PanelSpace {
                 parent: parent
                     .map(|p| p.wl_surface().clone())
                     .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
+                grab: false,
             },
             s_surface,
         });
@@ -934,8 +935,12 @@ impl WrapperSpace for PanelSpace {
             });
 
             if let Some((target, relative_loc, space_target)) = space_focus {
-                let geo =
-                    target.bbox().to_f64().to_physical(1.0).to_logical(self.scale).to_i32_round();
+                let geo = target
+                    .geometry()
+                    .to_f64()
+                    .to_physical(1.0)
+                    .to_logical(self.scale)
+                    .to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = space_target.clone();
                 } else {
@@ -1061,8 +1066,13 @@ impl WrapperSpace for PanelSpace {
             return None;
         };
 
-        let prev_popup_client =
-            self.popups.first().and_then(|p| p.s_surface.wl_surface().client()).map(|c| c.id());
+        let prev_popup_client = self
+            .popups
+            .iter()
+            .filter(|p| p.popup.grab)
+            .next()
+            .and_then(|p| p.s_surface.wl_surface().client())
+            .map(|c| c.id());
 
         if let Some(auto_hover_dur) =
             self.config.autohover_delay_ms.map(|d| Duration::from_millis(d as u64))
@@ -1072,6 +1082,8 @@ impl WrapperSpace for PanelSpace {
             {
                 self.hover_track.set_hover_id(cur_client_hover_id.clone());
 
+                // TODO replace this with dbus protocol, I guess...
+                // maybe replace with wayland protocol. Idk...
                 if let Some((relative_loc, geo)) = hover_relative_loc.zip(hover_geo) {
                     self.hover_track.set_hover_id(cur_client_hover_id.clone());
                     let cur_hover_track = self.hover_track.clone();

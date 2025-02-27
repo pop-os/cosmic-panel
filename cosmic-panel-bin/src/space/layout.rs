@@ -103,7 +103,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
+                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_left.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
@@ -122,7 +122,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
+                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_center.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
@@ -141,7 +141,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let Some(t) = w.toplevel() else {
-                    tracing::warn!("Window {:?} has no toplevel", w.geometry());
+                    tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_right.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
