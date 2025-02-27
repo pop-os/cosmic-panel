@@ -80,22 +80,8 @@ impl XdgShellHandler for GlobalState {
     ) {
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // FIXME
-        // for s in &self.server_state.seats {
-        //     if s.server.owns(&seat) {
-        //         let popup = PopupKind::Xdg(surface);
-        //         if let Err(e) = self.server_state.popup_manager.grab_popup(
-        //             popup.wl_surface().clone(),
-        //             popup,
-        //             &s.server,
-        //             SERIAL_COUNTER.next_serial(),
-        //         ) {
-        //             error!(self.log.clone(), "{}", e);
-        //         }
-        //         break;
-        //     }
-        // }
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        self.space.grab(surface, seat, serial);
     }
 
     fn reposition_request(

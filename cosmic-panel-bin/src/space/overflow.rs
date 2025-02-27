@@ -131,6 +131,7 @@ impl PanelSpace {
                 scale: self.scale,
                 input_region: None,
                 parent: self.layer.as_ref().unwrap().wl_surface().clone(),
+                grab: true,
             },
             section,
         ));

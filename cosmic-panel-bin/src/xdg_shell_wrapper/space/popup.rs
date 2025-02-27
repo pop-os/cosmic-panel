@@ -78,6 +78,8 @@ pub struct PanelPopup {
     pub damage_tracked_renderer: OutputDamageTracker,
     /// parent of the popup
     pub parent: WlSurface,
+    /// has a grab
+    pub grab: bool,
 }
 
 impl WrapperPopup {

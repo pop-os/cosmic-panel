@@ -65,9 +65,9 @@ use smithay::{
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
-        wayland_server::{backend::ClientId, Client, DisplayHandle, Resource},
+        wayland_server::{backend::ClientId, protocol::wl_seat, Client, DisplayHandle, Resource},
     },
-    utils::{Logical, Rectangle, Size},
+    utils::{Logical, Rectangle, Serial, Size},
     wayland::{
         compositor::{with_states, SurfaceAttributes},
         fractional_scale::with_fractional_scale,
@@ -827,6 +827,7 @@ impl PanelSpace {
 
         self.handle_focus();
         let mut should_render = false;
+
         match self.space_event.take() {
             Some(SpaceEvent::Quit) => {
                 info!("root layer shell surface removed.");
@@ -1027,6 +1028,7 @@ impl PanelSpace {
                         let _ = renderer.unbind();
                         let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                         let _ = renderer.bind(egl_surface.clone());
+
                         egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                         let _ = renderer.unbind();
                         if let Some(viewport) = self.layer_viewport.as_ref() {
@@ -1555,6 +1557,12 @@ impl PanelSpace {
                 },
                 s_surface: wlsurface.clone(),
             });
+        }
+    }
+
+    pub(crate) fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface == surface) {
+            p.popup.grab = true;
         }
     }
 }
