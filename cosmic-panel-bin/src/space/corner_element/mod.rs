@@ -144,7 +144,7 @@ impl Element for RoundedRectangleShaderElement {
 impl RenderElement<GlesRenderer> for RoundedRectangleShaderElement {
     fn draw(
         &self,
-        frame: &mut GlesFrame<'_>,
+        frame: &mut GlesFrame<'_, '_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],

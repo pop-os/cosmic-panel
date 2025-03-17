@@ -1,11 +1,9 @@
-use std::rc::Rc;
-
 use cctk::wayland_client::protocol::{
     wl_subsurface::WlSubsurface as c_WlSubsurface, wl_surface::WlSurface as c_WlSurface,
 };
 use smithay::{
     backend::{egl::EGLSurface, renderer::damage::OutputDamageTracker},
-    reexports::wayland_server::protocol::{wl_subsurface::WlSubsurface, wl_surface::WlSurface},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{IsAlive, Logical, Point, Rectangle},
 };
 use wayland_protocols::wp::{
@@ -30,7 +28,7 @@ pub struct WrapperSubsurface {
 pub struct PanelSubsurface {
     // XXX implicitly drops egl_surface first to avoid segfault
     /// the egl surface
-    pub egl_surface: Rc<EGLSurface>,
+    pub egl_surface: EGLSurface,
 
     /// the subsurface on the layer shell surface
     pub c_subsurface: c_WlSubsurface,

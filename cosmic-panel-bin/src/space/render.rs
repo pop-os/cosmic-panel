@@ -23,7 +23,7 @@ use smithay::{
             AsRenderElements, RenderElement, UnderlyingStorage,
         },
         gles::{GlesError, GlesFrame, GlesRenderer},
-        Bind, Color32F, Frame, Renderer, Unbind,
+        Bind, Color32F, Frame, Renderer,
     },
     reexports::wayland_server::Resource,
     utils::{Buffer, IsAlive, Physical, Point, Rectangle},
@@ -79,7 +79,7 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
 impl RenderElement<GlesRenderer> for PanelRenderElement {
     fn draw(
         &self,
-        frame: &mut GlesFrame<'_>,
+        frame: &mut GlesFrame<'_, '_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
@@ -132,37 +132,41 @@ impl PanelSpace {
                 Some(r) => r,
                 None => return Ok(()),
             };
-            renderer.unbind()?;
-            renderer.bind(self.egl_surface.as_ref().unwrap().clone())?;
+            let egl_surface = self.egl_surface.as_mut().unwrap();
+            let age = egl_surface.buffer_age().unwrap_or_default() as usize;
+            let mut f = renderer.bind(egl_surface)?;
             // if not visible, just clear and exit early
             let not_visible = self.config.autohide.is_some()
                 && matches!(self.visibility, crate::xdg_shell_wrapper::space::Visibility::Hidden);
             let dim = self.dimensions.to_f64().to_physical(self.scale).to_i32_round();
             // TODO check to make sure this is not going to cause damage issues
             if not_visible {
-                if let Ok(mut frame) = renderer.render(dim, smithay::utils::Transform::Normal) {
-                    _ = frame.clear(
-                        Color32F::new(0.0, 0.0, 0.0, 0.0),
-                        &[Rectangle::from_loc_and_size((0, 0), dim)],
-                    );
-                    if let Ok(sync_point) = frame.finish() {
-                        if let Err(err) = sync_point.wait() {
-                            tracing::error!("Error waiting for sync point: {:?}", err);
-                        }
-                        self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
-                    }
-                    let wl_surface = self.layer.as_ref().unwrap().wl_surface();
-                    wl_surface.frame(qh, wl_surface.clone());
-                    wl_surface.commit();
-                    // reset the damage tracker
-                    *my_renderer = OutputDamageTracker::new(
-                        dim,
-                        self.scale,
-                        smithay::utils::Transform::Flipped180,
-                    );
-                }
+                let Ok(mut frame) = renderer.render(&mut f, dim, smithay::utils::Transform::Normal)
+                else {
+                    anyhow::bail!("Failed to clear panel.");
+                };
 
-                renderer.unbind()?;
+                _ = frame.clear(
+                    Color32F::new(0.0, 0.0, 0.0, 0.0),
+                    &[Rectangle::new((0, 0).into(), dim)],
+                );
+                if let Ok(sync_point) = frame.finish() {
+                    if let Err(err) = sync_point.wait() {
+                        tracing::error!("Error waiting for sync point: {:?}", err);
+                    }
+                    drop(f);
+                    egl_surface.swap_buffers(None)?;
+                }
+                let wl_surface = self.layer.as_ref().unwrap().wl_surface();
+                wl_surface.frame(qh, wl_surface.clone());
+                wl_surface.commit();
+                // reset the damage tracker
+                *my_renderer = OutputDamageTracker::new(
+                    dim,
+                    self.scale,
+                    smithay::utils::Transform::Flipped180,
+                );
+
                 self.is_dirty = false;
                 self.has_frame = false;
                 return Ok(());
@@ -279,14 +283,9 @@ impl PanelSpace {
                     elements.extend(bg);
                 };
 
-                _ = my_renderer.render_output(
-                    renderer,
-                    self.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize,
-                    &elements,
-                    clear_color,
-                );
-
-                self.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+                _ = my_renderer.render_output(renderer, &mut f, age, &elements, clear_color);
+                drop(f);
+                egl_surface.swap_buffers(None)?;
 
                 for window in self.space.elements().filter_map(|w| {
                     if let CosmicMappedInternal::Window(w) = w {
@@ -331,8 +330,9 @@ impl PanelSpace {
                 && p.popup.c_popup.wl_surface().is_alive()
                 && p.popup.has_frame
         }) {
-            renderer.unbind()?;
-            renderer.bind(p.popup.egl_surface.as_ref().unwrap().clone())?;
+            let age =
+                p.popup.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
+            let mut f = renderer.bind(p.popup.egl_surface.as_mut().unwrap())?;
 
             let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
                 renderer,
@@ -344,10 +344,12 @@ impl PanelSpace {
             );
             p.popup.damage_tracked_renderer.render_output(
                 renderer,
-                p.popup.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize,
+                &mut f,
+                age,
                 &elements,
                 clear_color,
             )?;
+            drop(f);
 
             p.popup.egl_surface.as_ref().unwrap().swap_buffers(None)?;
 
@@ -364,8 +366,8 @@ impl PanelSpace {
                 && subsurface.subsurface.c_surface.is_alive()
                 && subsurface.subsurface.has_frame
         }) {
-            renderer.unbind()?;
-            renderer.bind(subsurface.subsurface.egl_surface.clone())?;
+            let age = subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize;
+            let mut f = renderer.bind(&mut subsurface.subsurface.egl_surface)?;
 
             let mut loc = subsurface.subsurface.rectangle.loc;
             loc.x *= -1;
@@ -380,10 +382,12 @@ impl PanelSpace {
             );
             subsurface.subsurface.damage_tracked_renderer.render_output(
                 renderer,
-                subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize,
+                &mut f,
+                age,
                 &elements,
                 clear_color,
             )?;
+            drop(f);
 
             subsurface.subsurface.egl_surface.swap_buffers(None)?;
 
@@ -401,8 +405,8 @@ impl PanelSpace {
                 && p.state.is_none()
                 && p.c_popup.wl_surface().is_alive()
         }) {
-            renderer.unbind()?;
-            renderer.bind(p.egl_surface.as_ref().unwrap().clone())?;
+            let age = p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
+            let mut f = renderer.bind(p.egl_surface.as_mut().unwrap())?;
             let space = match section {
                 OverflowSection::Center => &self.overflow_center,
                 OverflowSection::Left => &self.overflow_left,
@@ -435,8 +439,8 @@ impl PanelSpace {
                             .to_i32_round();
 
                         let configured_size = t.current_state().size.map(|s| {
-                            let mut r = Rectangle::from_loc_and_size(
-                                loc,
+                            let mut r = Rectangle::new(
+                                loc.into(),
                                 s.to_f64().to_physical_precise_round(self.scale),
                             );
                             if r.size.w == 0 {
@@ -481,10 +485,12 @@ impl PanelSpace {
 
             _ = p.damage_tracked_renderer.render_output(
                 renderer,
-                p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize,
+                &mut f,
+                age,
                 &elements,
                 clear_color,
             );
+            drop(f);
             p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
             let wl_surface = p.c_popup.wl_surface();
             wl_surface.frame(qh, wl_surface.clone());
@@ -493,8 +499,6 @@ impl PanelSpace {
         if self.overflow_popup.is_some() {
             self.update_hidden_applet_frame();
         }
-
-        renderer.unbind()?;
 
         Ok(())
     }

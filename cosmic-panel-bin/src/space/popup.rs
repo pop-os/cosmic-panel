@@ -105,7 +105,7 @@ impl PanelSpace {
                     let client_egl_surface = unsafe {
                         ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
                     };
-                    let egl_surface = Rc::new(unsafe {
+                    let egl_surface = unsafe {
                         EGLSurface::new(
                             renderer.egl_context().display(),
                             renderer
@@ -116,7 +116,7 @@ impl PanelSpace {
                             client_egl_surface,
                         )
                         .expect("Failed to initialize EGL Surface")
-                    });
+                    };
                     p.egl_surface.replace(egl_surface);
                     p.dirty = true;
                     tracing::info!("Popup configured");
@@ -166,7 +166,7 @@ impl PanelSpace {
                     let client_egl_surface = unsafe {
                         ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
                     };
-                    let egl_surface = Rc::new(unsafe {
+                    let egl_surface = unsafe {
                         EGLSurface::new(
                             renderer.egl_context().display(),
                             renderer
@@ -177,7 +177,7 @@ impl PanelSpace {
                             client_egl_surface,
                         )
                         .expect("Failed to initialize EGL Surface")
-                    });
+                    };
                     p.egl_surface.replace(egl_surface);
                     p.dirty = true;
                     tracing::info!("Popup configured");

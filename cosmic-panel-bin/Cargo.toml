@@ -17,7 +17,7 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
     "backend_egl",
     "backend_drm",
     "renderer_gl",
-], rev = "df79eeb" }
+], rev = "796c41c" }
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
@@ -74,5 +74,5 @@ cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notificati
 serde = "1.0"
 bytemuck = "1.13"
 tempfile = "3.3"
-wayland-backend = { version = "0.3.2", features = ["client_system"] }
+wayland-backend = { version = "0.3.8", features = ["client_system"] }
 zbus = { version = "4.2.1", features = ["tokio", "p2p"] }
