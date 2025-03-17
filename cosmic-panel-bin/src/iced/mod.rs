@@ -635,7 +635,7 @@ impl<P: Program + Send + 'static> IsAlive for IcedElement<P> {
 
 impl<P: Program + Send + 'static> SpaceElement for IcedElement<P> {
     fn bbox(&self) -> Rectangle<i32, Logical> {
-        Rectangle::from_loc_and_size((0, 0), self.0.lock().unwrap().size)
+        Rectangle::new((0, 0).into(), self.0.lock().unwrap().size)
     }
 
     fn is_in_input_region(&self, _point: &Point<f64, Logical>) -> bool {
@@ -727,7 +727,7 @@ impl<P, R> AsRenderElements<R> for IcedElement<P>
 where
     P: Program + Send + 'static,
     R: Renderer + ImportMem,
-    <R as Renderer>::TextureId: 'static + Clone + Send,
+    R::TextureId: 'static + Clone + Send,
 {
     type RenderElement = MemoryRenderBufferRenderElement<R>;
 
@@ -788,9 +788,9 @@ where
                         .into_iter()
                         .filter_map(|x| x.snap())
                         .map(|damage_rect| {
-                            Rectangle::from_loc_and_size(
-                                (damage_rect.x as i32, damage_rect.y as i32),
-                                (bounds.width as i32, bounds.height as i32),
+                            Rectangle::new(
+                                (damage_rect.x as i32, damage_rect.y as i32).into(),
+                                (bounds.width as i32, bounds.height as i32).into(),
                             )
                         })
                         .collect::<Vec<_>>();
@@ -805,8 +805,8 @@ where
                 location.to_f64(),
                 &buffer,
                 Some(alpha),
-                Some(Rectangle::from_loc_and_size(
-                    (0., 0.),
+                Some(Rectangle::new(
+                    (0., 0.).into(),
                     size.to_f64().to_logical(1., Transform::Normal).to_i32_round(),
                 )),
                 Some(size.to_logical(1, Transform::Normal)),

@@ -10,7 +10,7 @@ use sctk::{
 use smithay::{
     backend::{
         egl::EGLSurface,
-        renderer::{damage::OutputDamageTracker, utils::on_commit_buffer_handler, Bind, Unbind},
+        renderer::{damage::OutputDamageTracker, utils::on_commit_buffer_handler, Bind},
     },
     delegate_compositor, delegate_shm,
     desktop::{utils::bbox_from_surface_tree, LayerSurface as SmithayLayerSurface},
@@ -156,7 +156,7 @@ impl CompositorHandler for GlobalState {
                     )
                 };
 
-                let egl_surface = Rc::new(unsafe {
+                let egl_surface = unsafe {
                     EGLSurface::new(
                         renderer.egl_context().display(),
                         renderer
@@ -167,7 +167,7 @@ impl CompositorHandler for GlobalState {
                         client_egl_surface,
                     )
                     .expect("Failed to create EGL Surface")
-                });
+                };
 
                 let surface = client_surface.wl_surface();
                 let scale = self
@@ -265,11 +265,9 @@ impl CompositorHandler for GlobalState {
                 let size = bbox_from_surface_tree(surface, (0, 0)).size;
 
                 if let Some(renderer) = self.space.renderer() {
-                    _ = renderer.unbind();
-
-                    match c_icon.0.clone() {
+                    match c_icon.0.as_mut() {
                         Some(egl_surface) => {
-                            _ = renderer.bind(egl_surface.clone());
+                            _ = renderer.bind(egl_surface);
                             if !egl_surface.resize(size.w.max(1), size.h.max(1), 0, 0) {
                                 error!("Failed to resize egl surface");
                             }
@@ -284,7 +282,7 @@ impl CompositorHandler for GlobalState {
                                 )
                             };
 
-                            let egl_surface = Rc::new(unsafe {
+                            let mut egl_surface = unsafe {
                                 EGLSurface::new(
                                     renderer.egl_context().display(),
                                     renderer
@@ -295,13 +293,12 @@ impl CompositorHandler for GlobalState {
                                     client_egl_surface,
                                 )
                                 .expect("Failed to create EGL Surface")
-                            });
-                            _ = renderer.bind(egl_surface.clone());
+                            };
+                            _ = renderer.bind(&mut egl_surface);
                             c_icon.0 = Some(egl_surface);
                         },
                     };
 
-                    let _ = renderer.unbind();
                     c_icon.2 = OutputDamageTracker::new(
                         (size.w.max(1), size.h.max(1)),
                         self.space.space_list[0].scale,

@@ -197,7 +197,7 @@ impl WrapperSpace for PanelSpace {
             }
         }
 
-        self.close_popups(|p| clear_exclude.contains(&p.c_popup));
+        self.close_popups(|p| clear_exclude.contains(&p.c_popup) || !p.grab);
         let c_popup = popup::Popup::from_surface(
             parent.as_ref().map(|p| p.xdg_surface()),
             &positioner,

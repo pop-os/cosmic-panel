@@ -12,7 +12,7 @@ use smithay::{
             damage::OutputDamageTracker,
             element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
             gles::GlesRenderer,
-            Bind, ImportDma, ImportEgl, Unbind,
+            Bind, ImportDma, ImportEgl,
         },
     },
     desktop::utils::send_frames_surface_tree,
@@ -169,7 +169,7 @@ impl GlobalState {
             if !*is_dirty || has_frame.is_none() {
                 return;
             }
-            let Some(egl_surface) = egl_surface.as_ref() else {
+            let Some(egl_surface) = egl_surface.as_mut() else {
                 return;
             };
             info!("draw_dnd_icon actually happening");
@@ -183,8 +183,10 @@ impl GlobalState {
                 },
             };
             info!("draw_dnd_icon got renderer");
-            let _ = renderer.unbind();
-            let _ = renderer.bind(egl_surface.clone());
+            let age = egl_surface.buffer_age().unwrap_or_default() as usize;
+            let Ok(mut f) = renderer.bind(egl_surface) else {
+                return;
+            };
             info!("draw_dnd_icon bound renderer");
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
                 render_elements_from_surface_tree(
@@ -196,12 +198,8 @@ impl GlobalState {
                     smithay::backend::renderer::element::Kind::Unspecified,
                 );
 
-            _ = dmg_tracked_renderer.render_output(
-                renderer,
-                egl_surface.buffer_age().unwrap_or_default() as usize,
-                &elements,
-                *clear_color,
-            );
+            _ = dmg_tracked_renderer.render_output(renderer, &mut f, age, &elements, *clear_color);
+            drop(f);
             egl_surface.swap_buffers(None).unwrap();
             // FIXME: damage tracking issues on integrated graphics but not nvidia
             // self.egl_surface
@@ -209,7 +207,6 @@ impl GlobalState {
             //     .unwrap()
             //     .swap_buffers(res.0.as_deref_mut())?;
 
-            let _ = renderer.unbind();
             // // TODO what if there is "no output"?
             for o in &self.client_state.outputs {
                 let output = &o.1;

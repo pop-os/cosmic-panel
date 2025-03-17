@@ -233,7 +233,7 @@ impl ClientDndGrabHandler for GlobalState {
         seat.server.dnd_icon = icon;
     }
 
-    fn dropped(&mut self, seat: Seat<Self>) {
+    fn dropped(&mut self, _: Option<WlSurface>, _: bool, seat: Seat<Self>) {
         let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
             Some(s) => s,
             None => return,

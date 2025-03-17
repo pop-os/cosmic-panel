@@ -50,7 +50,7 @@ use smithay::{
             damage::OutputDamageTracker,
             element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
             gles::GlesRenderer,
-            Bind, Unbind,
+            Bind,
         },
     },
     desktop::LayerSurface as SmithayLayerSurface,
@@ -99,7 +99,7 @@ pub(crate) struct ClientSeat {
     pub(crate) next_selection_offer_is_mine: bool,
     pub(crate) next_dnd_offer_is_mine: bool,
     pub(crate) dnd_icon:
-        Option<(Option<Rc<EGLSurface>>, WlSurface, OutputDamageTracker, bool, Option<u32>)>,
+        Option<(Option<EGLSurface>, WlSurface, OutputDamageTracker, bool, Option<u32>)>,
 }
 
 impl ClientSeat {
@@ -181,7 +181,7 @@ pub struct ClientState {
         String,
     )>,
     pub(crate) proxied_layer_surfaces: Vec<(
-        Rc<EGLSurface>,
+        EGLSurface,
         OutputDamageTracker,
         SmithayLayerSurface,
         LayerSurface,
@@ -343,18 +343,16 @@ impl ClientState {
                 SurfaceState::Waiting(_, _) => continue,
                 SurfaceState::Dirty(gen) => gen,
             };
-            let _ = renderer.unbind();
-            let _ = renderer.bind(egl_surface.clone());
+            let age = egl_surface.buffer_age().unwrap_or_default() as usize;
+            let Ok(mut f) = renderer.bind(egl_surface) else {
+                continue;
+            };
             let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
                 s_layer.render_elements(renderer, (0, 0).into(), (*scale).into(), 1.0);
             dmg_tracked_renderer
-                .render_output(
-                    renderer,
-                    egl_surface.buffer_age().unwrap_or_default() as usize,
-                    &elements,
-                    *clear_color,
-                )
+                .render_output(renderer, &mut f, age, &elements, *clear_color)
                 .unwrap();
+            drop(f);
             egl_surface.swap_buffers(None).unwrap();
             // FIXME: damage tracking issues on integrated graphics but not nvidia
             // self.egl_surface
@@ -362,7 +360,6 @@ impl ClientState {
             //     .unwrap()
             //     .swap_buffers(res.0.as_deref_mut())?;
 
-            renderer.unbind().unwrap();
             // TODO what if there is "no output"?
             for o in &self.outputs {
                 let output = &o.1;

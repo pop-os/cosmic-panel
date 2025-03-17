@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use std::rc::Rc;
-
 use cctk::wayland_client::protocol::wl_surface::WlSurface;
 use sctk::{
     compositor::Region,
@@ -49,7 +47,7 @@ pub struct WrapperPopup {
 pub struct PanelPopup {
     // XXX implicitly drops egl_surface first to avoid segfault
     /// the egl surface
-    pub egl_surface: Option<Rc<EGLSurface>>,
+    pub egl_surface: Option<EGLSurface>,
 
     /// the popup on the layer shell surface
     pub c_popup: Popup,

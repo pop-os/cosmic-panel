@@ -59,7 +59,7 @@ use smithay::{
             surface::EGLSurface,
             EGLContext,
         },
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Unbind},
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind},
     },
     desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Space},
     output::Output,
@@ -270,7 +270,7 @@ pub enum HoverId {
 #[derive(Debug)]
 pub struct PanelSpace {
     // XXX implicitly drops egl_surface first to avoid segfault
-    pub egl_surface: Option<Rc<EGLSurface>>,
+    pub egl_surface: Option<EGLSurface>,
     pub c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
     pub space: Space<CosmicMappedInternal>,
@@ -995,7 +995,7 @@ impl PanelSpace {
 
                         init_shaders(&mut new_renderer).expect("Failed to init shaders...");
 
-                        let egl_surface = Rc::new(unsafe {
+                        let mut egl_surface = unsafe {
                             EGLSurface::new(
                                 &new_egl_display,
                                 new_renderer
@@ -1006,31 +1006,27 @@ impl PanelSpace {
                                 client_egl_surface,
                             )
                             .expect("Failed to create EGL Surface")
-                        });
+                        };
 
                         // bind before setting swap interval
-                        let _ = new_renderer.unbind();
-                        let _ = new_renderer.bind(egl_surface.clone());
+                        let _ = new_renderer.bind(&mut egl_surface);
                         let swap_success =
                             unsafe { SwapInterval(new_egl_display.get_display_handle().handle, 0) }
                                 == 1;
                         if !swap_success {
                             error!("Failed to set swap interval");
                         }
-                        let _ = new_renderer.unbind();
 
                         renderer.replace(new_renderer);
                         self.egl_surface.replace(egl_surface);
                     }
                     if let (Some(renderer), Some(egl_surface)) =
-                        (renderer.as_mut(), self.egl_surface.as_ref())
+                        (renderer.as_mut(), self.egl_surface.as_mut())
                     {
-                        let _ = renderer.unbind();
                         let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
-                        let _ = renderer.bind(egl_surface.clone());
+                        let _ = renderer.bind(egl_surface);
 
                         egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-                        let _ = renderer.unbind();
                         if let Some(viewport) = self.layer_viewport.as_ref() {
                             viewport.set_destination(dim.w.max(1), dim.h.max(1));
                         }
@@ -1069,13 +1065,12 @@ impl PanelSpace {
                 let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 
                 if let (Some(renderer), Some(egl_surface)) =
-                    (renderer.as_mut(), self.egl_surface.as_ref())
+                    (renderer.as_mut(), self.egl_surface.as_mut())
                 {
-                    let _ = renderer.unbind();
-                    let _ = renderer.bind(egl_surface.clone());
+                    let _ = renderer.bind(egl_surface);
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-                    let _ = renderer.unbind();
+
                     if let Some(viewport) = self.layer_viewport.as_ref() {
                         viewport.set_destination(dim.w, dim.h);
                     }
@@ -1527,7 +1522,7 @@ impl PanelSpace {
             self.subsurfaces.push(WrapperSubsurface {
                 parent: parent_id.clone(),
                 subsurface: PanelSubsurface {
-                    egl_surface: Rc::new(unsafe {
+                    egl_surface: unsafe {
                         EGLSurface::new(
                             renderer.egl_context().display(),
                             renderer
@@ -1538,7 +1533,7 @@ impl PanelSpace {
                             client_egl_surface,
                         )
                         .expect("Failed to initialize EGL Surface")
-                    }),
+                    },
                     c_subsurface,
                     c_surface,
                     dirty: true,
