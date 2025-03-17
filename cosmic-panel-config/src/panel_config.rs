@@ -598,8 +598,8 @@ impl CosmicPanelConfig {
     }
 
     pub fn maximize(&mut self) {
-        self.opacity = 1.0;
         if self.autohide().is_some() {
+            self.opacity = 1.0;
             return;
         }
         self.expand_to_edges = true;

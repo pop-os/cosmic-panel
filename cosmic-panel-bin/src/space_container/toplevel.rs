@@ -144,7 +144,7 @@ impl SpaceContainer {
 
             let opacity = if maximized {
                 config.maximize();
-                1.0
+                config.autohide().map(|_| config.opacity).unwrap_or(1.0)
             } else {
                 if let Some(c) = c {
                     config = c.clone();

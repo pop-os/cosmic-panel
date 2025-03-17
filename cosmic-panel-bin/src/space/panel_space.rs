@@ -1413,11 +1413,11 @@ impl PanelSpace {
         }
         let bg_color = self.colors.bg_color(opacity);
         if !self.maximized {
-            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), self.config.autohide.is_some());
             self.maximized = maximized;
         } else {
             self.maximized = maximized;
-            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), self.config.autohide.is_some());
             if let Some(s) = self.animate_state.as_mut() {
                 s.end.bg_color[3] = self.config.opacity;
             }
