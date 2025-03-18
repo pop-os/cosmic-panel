@@ -547,12 +547,6 @@ impl WrapperSpace for SpaceContainer {
             };
             let stacked = self.stacked_spaces_by_priority(&output, anchor);
             for s in stacked {
-                if s.s_hovered_surface
-                    .iter()
-                    .any(|f| ret.as_ref().is_some_and(|ret| &f.surface == &ret.surface))
-                {
-                    continue;
-                }
                 let Some(space_c_wl_surface) = s.layer.as_ref().map(|l| l.wl_surface()) else {
                     continue;
                 };
