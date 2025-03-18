@@ -542,6 +542,7 @@ impl WrapperSpace for SpaceContainer {
             // set the pointer focus for any other space with the same anchor
             // and autohide
             let mut additional_gap = 0;
+            let mut no_autohide_additional_gap = 0;
             let Some(output) = output else {
                 return ret;
             };
@@ -550,10 +551,7 @@ impl WrapperSpace for SpaceContainer {
                 let Some(space_c_wl_surface) = s.layer.as_ref().map(|l| l.wl_surface()) else {
                     continue;
                 };
-                if s.config.autohide.is_none() {
-                    s.set_additional_gap(additional_gap);
-                    continue;
-                }
+
                 let hovered = s.c_hovered_surface.clone();
                 let mut guard = hovered.borrow_mut();
                 if let Some(f) =
@@ -567,12 +565,22 @@ impl WrapperSpace for SpaceContainer {
                         FocusStatus::Focused,
                     ));
                 }
-                if s.visibility == Visibility::Visible {
-                    s.set_additional_gap(additional_gap);
+                let to_apply = if s.config.autohide.is_none() {
+                    no_autohide_additional_gap
                 } else {
-                    s.additional_gap = additional_gap;
+                    additional_gap
+                };
+                if s.visibility == Visibility::Visible {
+                    s.set_additional_gap(to_apply);
+                } else {
+                    s.additional_gap = to_apply;
                 }
                 additional_gap += s.crosswise();
+                if s.config.autohide.is_none() {
+                    no_autohide_additional_gap = 0;
+                } else {
+                    no_autohide_additional_gap += s.crosswise();
+                }
             }
         }
 

@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use crate::{
     minimize::MinimizeApplet,
@@ -22,8 +17,7 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo,
-    wayland_client::{self, protocol::wl_seat::WlSeat},
+    toplevel_info::ToplevelInfo, wayland_client::protocol::wl_seat::WlSeat,
     workspace::WorkspaceGroup,
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
@@ -498,10 +492,8 @@ impl SpaceContainer {
                     && &s.config.anchor == &anchor
             })
             .collect::<Vec<_>>();
-        if spaces.last().is_some_and(|s| s.config.autohide.is_none()) {
-            spaces.remove(spaces.len() - 1);
-        }
-        spaces.sort_by(|a, b| a.config.get_priority().cmp(&b.config.get_priority()));
+
+        spaces.sort_by(|a, b| a.config.get_stack_priority().cmp(&b.config.get_stack_priority()));
         spaces.reverse();
         spaces
     }
