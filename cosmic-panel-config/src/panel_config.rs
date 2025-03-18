@@ -468,6 +468,24 @@ impl CosmicPanelConfig {
         priority
     }
 
+    pub fn get_stack_priority(&self) -> u32 {
+        let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
+        // XXX for stack priority, most significant value is autohide
+        if self.autohide().is_none() {
+            priority += 100000;
+        }
+        if self.margin == 0 {
+            priority += 200;
+        }
+        if !self.anchor_gap {
+            priority += 100;
+        }
+        if self.name.to_lowercase().contains("panel") {
+            priority += 10;
+        }
+        priority
+    }
+
     /// get margin between the panel and the edge of the output
     pub fn get_margin(&self) -> u16 {
         self.margin
