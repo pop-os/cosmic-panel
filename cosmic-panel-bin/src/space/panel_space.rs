@@ -483,7 +483,6 @@ impl PanelSpace {
                     && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
             if self.config.autohide().is_none() {
                 if no_hover_focus && self.animate_state.is_none() {
-                    self.additional_gap = 0;
                     self.visibility = Visibility::Hidden;
                 } else {
                     self.visibility = Visibility::Visible;
@@ -543,7 +542,13 @@ impl PanelSpace {
                         last_instant: Instant::now(),
                         progress: Duration::new(0, 0),
                         prev_margin: margin,
-                    }
+                    };
+                    Self::set_margin(
+                        self.config.anchor,
+                        self.config.get_margin() as i32,
+                        self.additional_gap,
+                        layer_surface,
+                    );
                 }
             },
             Visibility::Visible => {
@@ -607,7 +612,6 @@ impl PanelSpace {
                         }
 
                         self.anchor_gap = target;
-                        self.additional_gap = 0;
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
@@ -670,6 +674,12 @@ impl PanelSpace {
 
                         self.anchor_gap = 0;
                         self.visibility = Visibility::Visible;
+                        Self::set_margin(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            self.additional_gap,
+                            layer_surface,
+                        );
                     } else {
                         if prev_margin != cur_pix {
                             if self.config.exclusive_zone() {

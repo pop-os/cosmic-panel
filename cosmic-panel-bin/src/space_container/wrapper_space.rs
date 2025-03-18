@@ -532,7 +532,7 @@ impl WrapperSpace for SpaceContainer {
         } else {
             self.space_list.iter_mut().find_map(|s| {
                 let ret = s.update_pointer(dim, seat_name, c_wl_surface.clone(), pointer);
-                if ret.is_some() {
+                if s.layer.as_ref().is_some_and(|l| l.wl_surface() == &c_wl_surface) {
                     anchor_output = Some((s.config.anchor, s.output.as_ref().map(|o| o.1.name())));
                 }
                 ret
