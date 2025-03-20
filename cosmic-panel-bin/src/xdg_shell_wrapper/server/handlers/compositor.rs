@@ -228,21 +228,25 @@ impl CompositorHandler for GlobalState {
                     SurfaceState::Waiting(gen, _) => *gen,
                     SurfaceState::Dirty(gen) => *gen,
                 };
-
-                if old_size != size {
-                    tracing::trace!("Layer surface update. old: {old_size:?}, new: {size:?}, generation: {generation}");
-                    egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-                    c_layer_surface.set_size(size.w as u32, size.h as u32);
-                    *renderer =
-                        OutputDamageTracker::new(scaled_size, *scale, Transform::Flipped180);
-                    c_layer_surface.wl_surface().commit();
-                    *state = if old_size.w == 0 || old_size.h == 0 {
-                        SurfaceState::Dirty(generation)
+                if let Some(gles_renderer) = self.space.renderer() {
+                    if old_size != size {
+                        tracing::trace!("Layer surface update. old: {old_size:?}, new: {size:?}, generation: {generation}");
+                        _ = unsafe {
+                            gles_renderer.egl_context().make_current_with_surface(egl_surface)
+                        };
+                        egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
+                        c_layer_surface.set_size(size.w as u32, size.h as u32);
+                        *renderer =
+                            OutputDamageTracker::new(scaled_size, *scale, Transform::Flipped180);
+                        c_layer_surface.wl_surface().commit();
+                        *state = if old_size.w == 0 || old_size.h == 0 {
+                            SurfaceState::Dirty(generation)
+                        } else {
+                            SurfaceState::Waiting(generation.wrapping_add(1), size)
+                        };
                     } else {
-                        SurfaceState::Waiting(generation.wrapping_add(1), size)
-                    };
-                } else {
-                    *state = SurfaceState::Dirty(generation);
+                        *state = SurfaceState::Dirty(generation);
+                    }
                 }
             }
         } else if role == "dnd_icon".into() {
@@ -267,6 +271,9 @@ impl CompositorHandler for GlobalState {
                 if let Some(renderer) = self.space.renderer() {
                     match c_icon.0.as_mut() {
                         Some(egl_surface) => {
+                            _ = unsafe {
+                                renderer.egl_context().make_current_with_surface(egl_surface)
+                            };
                             _ = renderer.bind(egl_surface);
                             if !egl_surface.resize(size.w.max(1), size.h.max(1), 0, 0) {
                                 error!("Failed to resize egl surface");
@@ -293,6 +300,9 @@ impl CompositorHandler for GlobalState {
                                     client_egl_surface,
                                 )
                                 .expect("Failed to create EGL Surface")
+                            };
+                            _ = unsafe {
+                                renderer.egl_context().make_current_with_surface(&egl_surface)
                             };
                             _ = renderer.bind(&mut egl_surface);
                             c_icon.0 = Some(egl_surface);

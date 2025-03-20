@@ -903,7 +903,7 @@ impl PanelSpace {
 
         if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
-            self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager));
+            self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager, renderer));
             self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
             self.handle_overflow_popup_events();
 
@@ -1017,6 +1017,9 @@ impl PanelSpace {
                             )
                             .expect("Failed to create EGL Surface")
                         };
+                        _ = unsafe {
+                            new_renderer.egl_context().make_current_with_surface(&egl_surface)
+                        };
 
                         // bind before setting swap interval
                         let _ = new_renderer.bind(&mut egl_surface);
@@ -1034,6 +1037,9 @@ impl PanelSpace {
                         (renderer.as_mut(), self.egl_surface.as_mut())
                     {
                         let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
+                        _ = unsafe {
+                            renderer.egl_context().make_current_with_surface(egl_surface)
+                        };
                         let _ = renderer.bind(egl_surface);
 
                         egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
@@ -1077,6 +1083,7 @@ impl PanelSpace {
                 if let (Some(renderer), Some(egl_surface)) =
                     (renderer.as_mut(), self.egl_surface.as_mut())
                 {
+                    _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
                     let _ = renderer.bind(egl_surface);
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
                     egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
@@ -1461,6 +1468,9 @@ impl PanelSpace {
 
             if s_bbox != s.subsurface.rectangle && s_bbox.size.w > 0 && s_bbox.size.h > 0 {
                 let p_s_bbox = s_bbox.to_f64().to_physical_precise_round(self.scale);
+                _ = unsafe {
+                    renderer.egl_context().make_current_with_surface(&s.subsurface.egl_surface)
+                };
                 s.subsurface.egl_surface.resize(p_s_bbox.size.w, p_s_bbox.size.h, 0, 0);
                 s.subsurface
                     .c_subsurface

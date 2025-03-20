@@ -6,7 +6,10 @@ use sctk::{
     shell::xdg::{popup::Popup, XdgPositioner},
 };
 use smithay::{
-    backend::{egl::surface::EGLSurface, renderer::damage::OutputDamageTracker},
+    backend::{
+        egl::surface::EGLSurface,
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind},
+    },
     desktop::PopupManager,
     utils::{Logical, Rectangle, Size},
     wayland::shell::xdg::PopupSurface,
@@ -83,13 +86,19 @@ pub struct PanelPopup {
 impl WrapperPopup {
     /// Handles any events that have occurred since the last call, redrawing if
     /// needed. Returns true if the surface is alive.
-    pub fn handle_events(&mut self, popup_manager: &mut PopupManager) -> bool {
+    pub fn handle_events(
+        &mut self,
+        popup_manager: &mut PopupManager,
+        renderer: &mut GlesRenderer,
+    ) -> bool {
         if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = self.popup.state {
             self.popup.dirty = true;
             self.popup.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
             let scaled_size: Size<i32, _> =
                 self.popup.rectangle.size.to_f64().to_physical(self.popup.scale).to_i32_round();
-            if let Some(s) = self.popup.egl_surface.as_ref() {
+            if let Some(s) = self.popup.egl_surface.as_mut() {
+                _ = unsafe { renderer.egl_context().make_current_with_surface(s) };
+                _ = renderer.bind(s);
                 s.resize(scaled_size.w.max(1), scaled_size.h.max(1), 0, 0);
             }
             if let Some(viewport) = self.popup.viewport.as_ref() {
