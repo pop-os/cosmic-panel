@@ -343,6 +343,7 @@ impl ClientState {
                 SurfaceState::Waiting(_, _) => continue,
                 SurfaceState::Dirty(gen) => gen,
             };
+            _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
             let age = egl_surface.buffer_age().unwrap_or_default() as usize;
             let Ok(mut f) = renderer.bind(egl_surface) else {
                 continue;

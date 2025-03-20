@@ -133,6 +133,7 @@ impl PanelSpace {
                 None => return Ok(()),
             };
             let egl_surface = self.egl_surface.as_mut().unwrap();
+            _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
             let age = egl_surface.buffer_age().unwrap_or_default() as usize;
             let mut f = renderer.bind(egl_surface)?;
             // if not visible, just clear and exit early
@@ -330,8 +331,16 @@ impl PanelSpace {
                 && p.popup.c_popup.wl_surface().is_alive()
                 && p.popup.has_frame
         }) {
+            if let Err(err) = unsafe {
+                renderer
+                    .egl_context()
+                    .make_current_with_surface(p.popup.egl_surface.as_ref().unwrap())
+            } {
+                tracing::warn!("{:?}", err);
+            }
             let age =
                 p.popup.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
+
             let mut f = renderer.bind(p.popup.egl_surface.as_mut().unwrap())?;
 
             let elements: Vec<WaylandSurfaceRenderElement<_>> = render_elements_from_surface_tree(
@@ -367,6 +376,9 @@ impl PanelSpace {
                 && subsurface.subsurface.has_frame
         }) {
             let age = subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize;
+            _ = unsafe {
+                renderer.egl_context().make_current_with_surface(&subsurface.subsurface.egl_surface)
+            };
             let mut f = renderer.bind(&mut subsurface.subsurface.egl_surface)?;
 
             let mut loc = subsurface.subsurface.rectangle.loc;
@@ -406,6 +418,10 @@ impl PanelSpace {
                 && p.c_popup.wl_surface().is_alive()
         }) {
             let age = p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
+            _ = unsafe {
+                renderer.egl_context().make_current_with_surface(p.egl_surface.as_ref().unwrap())
+            };
+
             let mut f = renderer.bind(p.egl_surface.as_mut().unwrap())?;
             let space = match section {
                 OverflowSection::Center => &self.overflow_center,
