@@ -284,9 +284,12 @@ impl PanelSpace {
                     elements.extend(bg);
                 };
 
-                _ = my_renderer.render_output(renderer, &mut f, age, &elements, clear_color);
+                let res =
+                    my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
                 drop(f);
-                egl_surface.swap_buffers(None)?;
+                let mut dmg = res.damage.cloned();
+
+                egl_surface.swap_buffers(dmg.as_deref_mut())?;
 
                 for window in self.space.elements().filter_map(|w| {
                     if let CosmicMappedInternal::Window(w) = w {
@@ -351,7 +354,7 @@ impl PanelSpace {
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );
-            p.popup.damage_tracked_renderer.render_output(
+            let res = p.popup.damage_tracked_renderer.render_output(
                 renderer,
                 &mut f,
                 age,
@@ -359,8 +362,9 @@ impl PanelSpace {
                 clear_color,
             )?;
             drop(f);
+            let mut dmg = res.damage.cloned();
 
-            p.popup.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+            p.popup.egl_surface.as_ref().unwrap().swap_buffers(dmg.as_deref_mut())?;
 
             let wl_surface = p.popup.c_popup.wl_surface().clone();
             wl_surface.frame(qh, wl_surface.clone());
@@ -392,7 +396,7 @@ impl PanelSpace {
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );
-            subsurface.subsurface.damage_tracked_renderer.render_output(
+            let res = subsurface.subsurface.damage_tracked_renderer.render_output(
                 renderer,
                 &mut f,
                 age,
@@ -400,8 +404,9 @@ impl PanelSpace {
                 clear_color,
             )?;
             drop(f);
+            let mut dmg = res.damage.cloned();
 
-            subsurface.subsurface.egl_surface.swap_buffers(None)?;
+            subsurface.subsurface.egl_surface.swap_buffers(dmg.as_deref_mut())?;
 
             let wl_surface = subsurface.subsurface.c_surface.clone();
             wl_surface.frame(qh, wl_surface.clone());
@@ -499,15 +504,17 @@ impl PanelSpace {
 
             elements.extend(bg_render_element.unwrap_or_default());
 
-            _ = p.damage_tracked_renderer.render_output(
+            let res = p.damage_tracked_renderer.render_output(
                 renderer,
                 &mut f,
                 age,
                 &elements,
                 clear_color,
-            );
+            )?;
             drop(f);
-            p.egl_surface.as_ref().unwrap().swap_buffers(None)?;
+            let mut dmg = res.damage.cloned();
+
+            p.egl_surface.as_ref().unwrap().swap_buffers(dmg.as_deref_mut())?;
             let wl_surface = p.c_popup.wl_surface();
             wl_surface.frame(qh, wl_surface.clone());
             wl_surface.commit();

@@ -181,7 +181,7 @@ impl PanelSpace {
                     let scaled_size: Size<i32, _> =
                         p.rectangle.size.to_f64().to_physical(p.scale).to_i32_round();
                     if let Some(s) = p.egl_surface.as_ref() {
-                        // TODO do we need to have the renderer for this?
+                        // TODO do we need to have the renderer for
                         s.resize(scaled_size.w.max(1), scaled_size.h.max(1), 0, 0);
                     }
                     if let Some(viewport) = p.viewport.as_ref() {
