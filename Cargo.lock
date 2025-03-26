@@ -4125,7 +4125,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithay"
 version = "0.5.0"
-source = "git+https://github.com/smithay/smithay?rev=796c41c#796c41c0294ccc195b0f59228d6467cc6c8f5de8"
+source = "git+https://github.com/smithay/smithay?branch=fix%2Fwinit_buffer_age#56bb09a012a4ea094446d2f8ce1068b24de4c27e"
 dependencies = [
  "appendlist",
  "bitflags 2.7.0",
