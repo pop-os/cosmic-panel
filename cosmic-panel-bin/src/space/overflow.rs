@@ -9,7 +9,7 @@ use cosmic_panel_config::PanelAnchor;
 use sctk::shell::WaylandSurface;
 use smithay::{
     self,
-    backend::renderer::damage::OutputDamageTracker,
+    backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
     desktop::space::SpaceElement,
     utils::{Rectangle, Size},
 };
@@ -169,7 +169,7 @@ impl PanelSpace {
         (element, popup_element.cloned())
     }
 
-    pub fn handle_overflow_popup_events(&mut self) {
+    pub fn handle_overflow_popup_events(&mut self, renderer: &mut GlesRenderer) {
         self.overflow_popup = self
             .overflow_popup
             .take()
@@ -180,7 +180,9 @@ impl PanelSpace {
                     p.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
                     let scaled_size: Size<i32, _> =
                         p.rectangle.size.to_f64().to_physical(p.scale).to_i32_round();
+
                     if let Some(s) = p.egl_surface.as_ref() {
+                        _ = unsafe { renderer.egl_context().make_current_with_surface(s) };
                         // TODO do we need to have the renderer for
                         s.resize(scaled_size.w.max(1), scaled_size.h.max(1), 0, 0);
                     }
