@@ -905,7 +905,7 @@ impl PanelSpace {
             let prev = self.popups.len();
             self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager, renderer));
             self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
-            self.handle_overflow_popup_events();
+            self.handle_overflow_popup_events(renderer);
 
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, throttle, qh) {

@@ -379,10 +379,11 @@ impl PanelSpace {
                 && subsurface.subsurface.c_surface.is_alive()
                 && subsurface.subsurface.has_frame
         }) {
-            let age = subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize;
             _ = unsafe {
                 renderer.egl_context().make_current_with_surface(&subsurface.subsurface.egl_surface)
             };
+            let age = subsurface.subsurface.egl_surface.buffer_age().unwrap_or_default() as usize;
+
             let mut f = renderer.bind(&mut subsurface.subsurface.egl_surface)?;
 
             let mut loc = subsurface.subsurface.rectangle.loc;
