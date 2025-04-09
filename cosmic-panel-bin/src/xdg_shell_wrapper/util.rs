@@ -57,13 +57,21 @@ pub(crate) fn write_and_attach_buffer(
                 move |from: *const u8, length: usize, buffer_metadata: BufferData| {
                     if let Ok(format) = wl_shm::Format::try_from(buffer_metadata.format as u32) {
                         let BufferData { offset, width, height, stride, .. } = buffer_metadata;
-                        let Ok((_, buff, to)) = multipool.create_buffer(
+                        let (_, buff, to) = if let Some(res) = multipool.get(
                             width,
                             stride,
                             height,
                             &(cursor_surface.clone(), multipool_ctr),
                             format,
-                        ) else {
+                        ) {res}
+                        else if let Ok(res) = multipool.create_buffer(
+                            width,
+                            stride,
+                            height,
+                            &(cursor_surface.clone(), multipool_ctr),
+                            format,
+                        ) {res}
+                        else {
                             bail!("Failed to create buffer");
                         };
 
@@ -77,7 +85,7 @@ pub(crate) fn write_and_attach_buffer(
                         writer.flush()?;
 
                         cursor_surface.attach(Some(buff), 0, 0);
-                        cursor_surface.damage(0, 0, width, height as i32);
+                        cursor_surface.damage(0, 0, i32::MAX, i32::MAX);
                         cursor_surface.commit();
 
                         Ok(())
