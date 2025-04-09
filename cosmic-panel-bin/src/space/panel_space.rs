@@ -903,7 +903,18 @@ impl PanelSpace {
 
         if let Some(renderer) = renderer.as_mut() {
             let prev = self.popups.len();
-            self.popups.retain_mut(|p: &mut WrapperPopup| p.handle_events(popup_manager, renderer));
+            self.popups.retain_mut(|p: &mut WrapperPopup| {
+                let ret = p.handle_events(popup_manager, renderer);
+                if !ret {
+                    if let Some(w) = p.popup.fractional_scale.as_ref() {
+                        w.destroy();
+                    }
+                    if let Some(w) = p.popup.viewport.as_ref() {
+                        w.destroy();
+                    }
+                }
+                ret
+            });
             self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
             self.handle_overflow_popup_events(renderer);
 
