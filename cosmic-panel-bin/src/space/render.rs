@@ -423,10 +423,10 @@ impl PanelSpace {
                 && p.state.is_none()
                 && p.c_popup.wl_surface().is_alive()
         }) {
-            let age = p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
             _ = unsafe {
                 renderer.egl_context().make_current_with_surface(p.egl_surface.as_ref().unwrap())
             };
+            let age = p.egl_surface.as_ref().unwrap().buffer_age().unwrap_or_default() as usize;
 
             let mut f = renderer.bind(p.egl_surface.as_mut().unwrap())?;
             let space = match section {
