@@ -721,6 +721,7 @@ impl PanelSpace {
                 self.space.id(),
                 loc,
                 self.bg_color(),
+                self.config.border_width,
             );
             bg.output_enter(&output, Rectangle::default());
             self.background_element = Some(bg.clone());
