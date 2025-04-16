@@ -22,10 +22,10 @@ sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/c
 ] }
 
 [patch."https://github.com/Smithay/client-toolkit"]
-sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay//client-toolkit/", rev = "4cf0def" }
+sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/client-toolkit/", rev = "4cf0def" }
 
 [patch."crates-io"]
-sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay//client-toolkit/", rev = "4cf0def" }
+sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/client-toolkit/", rev = "4cf0def" }
 
 
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
