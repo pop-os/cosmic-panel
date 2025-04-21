@@ -27,6 +27,8 @@ sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay//
 [patch."crates-io"]
 sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay//client-toolkit/", rev = "4cf0def" }
 
+[patch."https://github.com/pop-os/cosmic-protocols"]
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//cosmic-protocols", rev = "67df697" }
 
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
