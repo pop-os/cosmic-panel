@@ -63,15 +63,17 @@ pub(crate) fn write_and_attach_buffer(
                             height,
                             &(cursor_surface.clone(), multipool_ctr),
                             format,
-                        ) {res}
-                        else if let Ok(res) = multipool.create_buffer(
+                        ) {
+                            res
+                        } else if let Ok(res) = multipool.create_buffer(
                             width,
                             stride,
                             height,
                             &(cursor_surface.clone(), multipool_ctr),
                             format,
-                        ) {res}
-                        else {
+                        ) {
+                            res
+                        } else {
                             bail!("Failed to create buffer");
                         };
 

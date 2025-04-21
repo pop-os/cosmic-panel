@@ -2,5 +2,9 @@ use cctk::workspace::WorkspaceGroup;
 
 pub trait WorkspaceHandlerSpace {
     /// A workspace was updated
-    fn update(&mut self, workspace_state: &[WorkspaceGroup]);
+    fn update<'a>(
+        &mut self,
+        groups: impl Iterator<Item = &'a cctk::workspace::WorkspaceGroup>,
+        workspaces: impl Iterator<Item = &'a cctk::workspace::Workspace>,
+    );
 }

@@ -9,7 +9,8 @@ impl WorkspaceHandler for GlobalState {
 
     fn done(&mut self) {
         let groups = self.client_state.workspace_state.as_ref().unwrap().workspace_groups();
-        WorkspaceHandlerSpace::update(&mut self.space, groups);
+        let workspaces = self.client_state.workspace_state.as_ref().unwrap().workspaces();
+        WorkspaceHandlerSpace::update(&mut self.space, groups, workspaces);
     }
 }
 

@@ -5,6 +5,7 @@ use cctk::{
     },
     toplevel_info::ToplevelInfo,
     wayland_client::Connection,
+    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };
 use wayland_backend::protocol::WEnum;
 
@@ -24,7 +25,7 @@ pub trait ToplevelInfoSpace {
     fn new_toplevel(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
         info: &ToplevelInfo,
     );
 
@@ -32,7 +33,7 @@ pub trait ToplevelInfoSpace {
     fn update_toplevel(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
         info: &ToplevelInfo,
     );
 
@@ -40,6 +41,6 @@ pub trait ToplevelInfoSpace {
     fn toplevel_closed(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     );
 }

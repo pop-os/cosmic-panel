@@ -5,6 +5,10 @@ use cctk::{
     },
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},
+    wayland_protocols::ext::{
+        foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
+        workspace::v1::client::ext_workspace_handle_v1,
+    },
 };
 
 use crate::xdg_shell_wrapper::{
@@ -22,7 +26,7 @@ impl ToplevelInfoSpace for SpaceContainer {
     fn new_toplevel(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
         self.toplevels.push((toplevel.clone(), info.clone()));
@@ -39,7 +43,7 @@ impl ToplevelInfoSpace for SpaceContainer {
     fn update_toplevel(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
         if let Some(info_1) =
@@ -66,7 +70,7 @@ impl ToplevelInfoSpace for SpaceContainer {
     fn toplevel_closed(
         &mut self,
         _conn: &Connection,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
         self.toplevels.retain(|(t, _)| t != toplevel);
         self.apply_toplevel_changes();
@@ -94,7 +98,7 @@ impl ToplevelManagerSpace for SpaceContainer {
 impl SpaceContainer {
     fn add_maximized(
         &mut self,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
         info: &ToplevelInfo,
     ) {
         let pre_maximixed_outputs = self.maximized_outputs();
@@ -112,7 +116,10 @@ impl SpaceContainer {
         }
     }
 
-    fn remove_maximized(&mut self, toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1) {
+    fn remove_maximized(
+        &mut self,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
+    ) {
         let pre_maximixed_outputs = self.maximized_outputs();
         if let Some(pos) = self.maximized_toplevels.iter().position(|(h, _)| h == toplevel) {
             self.maximized_toplevels.remove(pos);
@@ -163,9 +170,16 @@ impl SpaceContainer {
                     && !info.state.contains(&zcosmic_toplevel_handle_v1::State::Minimized)
                     && self.workspace_groups.iter().any(|g| {
                         g.workspaces.iter().any(|w| {
-                            w.state.contains(&cctk::wayland_client::WEnum::Value(
-                                workspace::v1::client::zcosmic_workspace_handle_v1::State::Active,
-                            )) && info.workspace.contains(&w.handle)
+                            if let Some(workspace_info) =
+                                self.workspaces.iter().find(|i| i.handle == *w)
+                            {
+                                workspace_info
+                                    .state
+                                    .contains(ext_workspace_handle_v1::State::Active)
+                                    && info.workspace.contains(w)
+                            } else {
+                                false
+                            }
                         })
                     })
             });
@@ -199,12 +213,15 @@ impl SpaceContainer {
             .iter()
             .filter_map(|g| {
                 if g.workspaces.iter().any(|w| {
-                    w.state.contains(&cctk::wayland_client::WEnum::Value(
-                        workspace::v1::client::zcosmic_workspace_handle_v1::State::Active,
-                    )) && self
-                        .maximized_toplevels
-                        .iter()
-                        .any(|(_, info)| info.workspace.contains(&w.handle))
+                    if let Some(workspace_info) = self.workspaces.iter().find(|i| i.handle == *w) {
+                        workspace_info.state.contains(ext_workspace_handle_v1::State::Active)
+                            && self
+                                .maximized_toplevels
+                                .iter()
+                                .any(|(_, info)| info.workspace.contains(w))
+                    } else {
+                        false
+                    }
                 }) {
                     Some(g.outputs.clone())
                 } else {

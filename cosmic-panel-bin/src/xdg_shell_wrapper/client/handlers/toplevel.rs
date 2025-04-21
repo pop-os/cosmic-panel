@@ -6,6 +6,7 @@ use cctk::{
     toplevel_info::{ToplevelInfoHandler, ToplevelInfoState},
     toplevel_management::ToplevelManagerHandler,
     wayland_client::{self, WEnum},
+    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };
 use wayland_client::{Connection, QueueHandle};
 
@@ -40,7 +41,7 @@ impl ToplevelInfoHandler for GlobalState {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
         let toplevel_state = if let Some(s) = self.client_state.toplevel_info_state.as_mut() {
             s
@@ -59,7 +60,7 @@ impl ToplevelInfoHandler for GlobalState {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
         let toplevel_state = if let Some(s) = self.client_state.toplevel_info_state.as_mut() {
             s
@@ -78,7 +79,7 @@ impl ToplevelInfoHandler for GlobalState {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        toplevel: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
         self.space.toplevel_closed(_conn, toplevel);
     }

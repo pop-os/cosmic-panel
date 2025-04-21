@@ -17,8 +17,10 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-    toplevel_info::ToplevelInfo, wayland_client::protocol::wl_seat::WlSeat,
-    workspace::WorkspaceGroup,
+    toplevel_info::ToplevelInfo,
+    wayland_client::protocol::wl_seat::WlSeat,
+    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
+    workspace::{Workspace, WorkspaceGroup},
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
 use cosmic_panel_config::{
@@ -59,9 +61,10 @@ pub struct SpaceContainer {
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
-    pub(crate) maximized_toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
-    pub(crate) toplevels: Vec<(ZcosmicToplevelHandleV1, ToplevelInfo)>,
+    pub(crate) maximized_toplevels: Vec<(ExtForeignToplevelHandleV1, ToplevelInfo)>,
+    pub(crate) toplevels: Vec<(ExtForeignToplevelHandleV1, ToplevelInfo)>,
     pub(crate) workspace_groups: Vec<WorkspaceGroup>,
+    pub(crate) workspaces: Vec<Workspace>,
     pub(crate) is_dark: bool,
     pub(crate) light_theme: cosmic::Theme,
     pub(crate) dark_theme: cosmic::Theme,
@@ -109,6 +112,7 @@ impl SpaceContainer {
             maximized_toplevels: Vec::with_capacity(1),
             toplevels: Vec::new(),
             workspace_groups: Vec::new(),
+            workspaces: Vec::new(),
             is_dark,
             light_theme: cosmic::Theme::system(Arc::new(light)),
             dark_theme: cosmic::Theme::system(Arc::new(dark)),
