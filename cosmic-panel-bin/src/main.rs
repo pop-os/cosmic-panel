@@ -14,6 +14,7 @@ use calloop::channel::Sender;
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
     wayland_client::protocol::wl_output::WlOutput,
+    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };
 use config_watching::{watch_config, watch_cosmic_theme};
 use cosmic_panel_config::CosmicPanelConfig;
@@ -36,7 +37,7 @@ pub enum PanelCalloopMsg {
     ClientSocketPair(ClientId),
     RestartSpace(CosmicPanelConfig, WlOutput),
     MinimizeRect { output: String, applet_info: MinimizeApplet },
-    UpdateToplevel(zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1),
+    UpdateToplevel(ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1),
 }
 
 /// Access glibc malloc tunables.

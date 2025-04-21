@@ -4,12 +4,17 @@ use itertools::Itertools;
 use super::SpaceContainer;
 
 impl WorkspaceHandlerSpace for SpaceContainer {
-    fn update(&mut self, groups: &[cctk::workspace::WorkspaceGroup]) {
+    fn update<'a>(
+        &mut self,
+        groups: impl Iterator<Item = &'a cctk::workspace::WorkspaceGroup>,
+        workspaces: impl Iterator<Item = &'a cctk::workspace::Workspace>,
+    ) {
         // detect workspace changes
         // for now this is limited to changes
         // to / from workspaces with maximized toplevels
         let pre_maximixed_outputs = self.maximized_outputs();
-        self.workspace_groups = groups.to_vec();
+        self.workspace_groups = groups.cloned().collect();
+        self.workspaces = workspaces.cloned().collect();
         let post_maximized_outputs = self.maximized_outputs();
         let outputs = self.outputs.clone();
         for (o, ..) in &outputs {

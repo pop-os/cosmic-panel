@@ -2,6 +2,7 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cctk::{
     cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
     wayland_client::{protocol::wl_surface::WlSurface, Proxy},
+    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };
 use smithay::utils::{Logical, Rectangle};
 
@@ -14,7 +15,7 @@ pub struct MinimizeApplet {
 
 pub fn update_toplevel(
     state: &mut GlobalState,
-    toplevel: zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+    toplevel: ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
 ) {
     let Some(toplevel_mngr) = state.client_state.toplevel_manager_state.as_ref() else {
         return;
@@ -33,7 +34,8 @@ pub fn update_toplevel(
         })
     }) {
         toplevel_mngr.manager.set_rectangle(
-            &toplevel,
+            // If cosmic toplevel manager exists, cosmic toplevel info should too
+            &toplevel_info.cosmic_toplevel.as_ref().unwrap(),
             &info.surface,
             info.rect.loc.x,
             info.rect.loc.y,
@@ -79,7 +81,8 @@ pub fn set_rectangles(state: &mut GlobalState, output: String, info: MinimizeApp
                 continue;
             }
             toplevel_mngr.manager.set_rectangle(
-                toplevel,
+                // If cosmic toplevel manager exists, cosmic toplevel info should too
+                &toplevel_info.cosmic_toplevel.as_ref().unwrap(),
                 &info.surface,
                 info.rect.loc.x,
                 info.rect.loc.y,

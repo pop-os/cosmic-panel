@@ -24,7 +24,7 @@ sctk.workspace = true
 wayland-protocols = { version = "0.32.1", features = ["staging"] }
 
 xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper-config" }
-cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "d218c76" }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "67df697" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
 wayland-egl = "0.32.1"
 wayland-protocols-wlr = { version = "0.3.1", features = ["client"] }
