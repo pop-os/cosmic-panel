@@ -808,22 +808,10 @@ dependencies = [
 [[package]]
 name = "cosmic-client-toolkit"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols?rev=67df697#67df697105486fa4c9dd6ce00889c8b0526c9bb4"
+source = "git+https://github.com/pop-os//cosmic-protocols?rev=67df697#67df697105486fa4c9dd6ce00889c8b0526c9bb4"
 dependencies = [
  "bitflags 2.9.0",
- "cosmic-protocols 0.1.0 (git+https://github.com/pop-os/cosmic-protocols?rev=67df697)",
- "libc",
- "smithay-client-toolkit",
- "wayland-client",
- "wayland-protocols",
-]
-
-[[package]]
-name = "cosmic-client-toolkit"
-version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols?rev=d218c76#d218c76b58c7a3b20dd5e7943f93fc306a1b81b8"
-dependencies = [
- "cosmic-protocols 0.1.0 (git+https://github.com/pop-os/cosmic-protocols?rev=d218c76)",
+ "cosmic-protocols",
  "libc",
  "smithay-client-toolkit",
  "wayland-client",
@@ -888,7 +876,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "calloop 0.14.2",
- "cosmic-client-toolkit 0.1.0 (git+https://github.com/pop-os/cosmic-protocols?rev=67df697)",
+ "cosmic-client-toolkit",
  "cosmic-notifications-util",
  "cosmic-panel-config",
  "cosmic-theme",
@@ -945,21 +933,7 @@ dependencies = [
 [[package]]
 name = "cosmic-protocols"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols?rev=67df697#67df697105486fa4c9dd6ce00889c8b0526c9bb4"
-dependencies = [
- "bitflags 2.9.0",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
- "wayland-scanner",
- "wayland-server",
-]
-
-[[package]]
-name = "cosmic-protocols"
-version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols?rev=d218c76#d218c76b58c7a3b20dd5e7943f93fc306a1b81b8"
+source = "git+https://github.com/pop-os//cosmic-protocols?rev=67df697#67df697105486fa4c9dd6ce00889c8b0526c9bb4"
 dependencies = [
  "bitflags 2.9.0",
  "wayland-backend",
@@ -2151,7 +2125,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "bitflags 2.9.0",
  "bytemuck",
- "cosmic-client-toolkit 0.1.0 (git+https://github.com/pop-os/cosmic-protocols?rev=d218c76)",
+ "cosmic-client-toolkit",
  "futures",
  "glam",
  "guillotiere",
