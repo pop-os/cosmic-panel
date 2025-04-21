@@ -296,26 +296,17 @@ impl WrapperSpace for PanelSpace {
         popup.with_pending_state(|pending| {
             pending.geometry = Rectangle::from_loc_and_size((0, 0), pos_state.rect_size);
         });
-        if let Some(p) = self.popups.iter().find(|wp| &wp.s_surface == &popup) {
-            let positioner = &p.popup.positioner;
-            let rect_size = pos_state.rect_size.to_f64().upscale(self.scale).to_i32_round::<i32>();
-            p.popup.c_popup.xdg_surface().set_window_geometry(
-                0,
-                0,
-                rect_size.w.max(1),
-                rect_size.h.max(1),
-            );
-            self.apply_positioner_state(positioner, pos_state, &p.s_surface);
-
-            if let Some(viewport) = &p.popup.viewport {
-                viewport
-                    .set_destination(pos_state.rect_size.w.max(1), pos_state.rect_size.h.max(1));
-            }
+        if let Some(i) = self.popups.iter().position(|wp| &wp.s_surface == &popup) {
+            let p = &self.popups[i];
+            let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
+            self.apply_positioner_state(&positioner, pos_state, &p.s_surface);
+            let p = &mut self.popups[i];
+            let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
 
             if positioner.version() >= 3 {
-                p.popup.c_popup.reposition(positioner, token);
+                p.popup.c_popup.reposition(&positioner, token);
             }
-            p.popup.c_popup.wl_surface().commit();
+            p.popup.state = Some(WrapperPopupState::WaitConfigure);
             if positioner.version() >= 3 {
                 popup.send_repositioned(token);
             }
@@ -765,14 +756,7 @@ impl WrapperSpace for PanelSpace {
 
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-            let p_geo = PopupKind::Xdg(p.s_surface.clone()).geometry();
-            if p_bbox != p.popup.rectangle && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
-                p.popup.c_popup.xdg_surface().set_window_geometry(
-                    p_geo.loc.x,
-                    p_geo.loc.y,
-                    p_geo.size.w.max(1),
-                    p_geo.size.h.max(1),
-                );
+            if p_bbox.size != p.popup.rectangle.size && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
                 if let Some((input_regions, my_region)) =
                     with_states(p.s_surface.wl_surface(), |states| {
                         let mut guard = states.cached_state.get::<SurfaceAttributes>();
@@ -786,17 +770,12 @@ impl WrapperSpace for PanelSpace {
                     }
                     p.popup.c_popup.wl_surface().set_input_region(Some(my_region.wl_region()));
                 }
-                if let Some(viewport) = &p.popup.viewport {
-                    viewport.set_destination(p_geo.size.w.max(1), p_geo.size.h.max(1));
+                let rect_size = p_bbox.size;
+                let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
+                positioner.set_size(rect_size.w, rect_size.h);
+                if positioner.version() >= 3 {
+                    p.popup.c_popup.reposition(&positioner, 0);
                 }
-                p.popup.c_popup.wl_surface().commit();
-
-                p.popup.state = Some(WrapperPopupState::Rectangle {
-                    x: p_bbox.loc.x,
-                    y: p_bbox.loc.y,
-                    width: p_bbox.size.w.max(1),
-                    height: p_bbox.size.h.max(1),
-                });
             }
             p.popup.dirty = true;
         }
@@ -1001,7 +980,7 @@ impl WrapperSpace for PanelSpace {
                 }) else {
                     return None;
                 };
-                let Some(space_location) = space.element_location(e) else {
+                let Some(space_location) = space.element_location(&e) else {
                     return None;
                 };
 
@@ -1333,7 +1312,6 @@ impl WrapperSpace for PanelSpace {
         self.update_pointer(dim, seat_name, c_wl_surface, pointer)
     }
 
-    // TODO
     fn configure_popup(
         &mut self,
         _popup: &sctk::shell::xdg::popup::Popup,

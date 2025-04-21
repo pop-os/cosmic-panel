@@ -80,17 +80,21 @@ impl PanelSpace {
                 config.height = p.wrapper_rectangle.size.h;
             }
             let (width, height) = (config.width, config.height);
-            p.wrapper_rectangle = Rectangle::from_loc_and_size(config.position, (width, height));
+            let new_rect = Rectangle::from_loc_and_size(config.position, (width, height));
+            if p.wrapper_rectangle != new_rect {
+                p.wrapper_rectangle = new_rect;
 
-            p.state = match p.state {
-                None | Some(WrapperPopupState::WaitConfigure) => None,
-                Some(r) => Some(r),
-            };
+                p.state = Some(WrapperPopupState::Rectangle {
+                    x: config.position.0,
+                    y: config.position.1,
+                    width: config.width,
+                    height: config.height,
+                });
 
-            if let Some(s) = s_popup {
-                _ = s.send_configure()
+                if let Some(s) = s_popup {
+                    _ = s.send_configure()
+                }
             }
-
             match config.kind {
                 popup::ConfigureKind::Initial => {
                     tracing::info!("Popup Initial Configure");
