@@ -98,14 +98,20 @@ impl PanelSpace {
             match config.kind {
                 popup::ConfigureKind::Initial => {
                     tracing::info!("Popup Initial Configure");
-                    let wl_egl_surface =
-                        match WlEglSurface::new(p.c_popup.wl_surface().id(), width, height) {
-                            Ok(s) => s,
-                            Err(err) => {
-                                tracing::error!("Failed to create WlEglSurface: {:?}", err);
-                                return;
-                            },
-                        };
+                    let width_scaled = (width as f64 * self.scale) as i32;
+                    let height_scaled = (height as f64 * self.scale) as i32;
+
+                    let wl_egl_surface = match WlEglSurface::new(
+                        p.c_popup.wl_surface().id(),
+                        width_scaled,
+                        height_scaled,
+                    ) {
+                        Ok(s) => s,
+                        Err(err) => {
+                            tracing::error!("Failed to create WlEglSurface: {:?}", err);
+                            return;
+                        },
+                    };
                     let client_egl_surface = unsafe {
                         ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
                     };
