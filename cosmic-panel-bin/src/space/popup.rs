@@ -80,7 +80,7 @@ impl PanelSpace {
                 config.height = p.wrapper_rectangle.size.h;
             }
             let (width, height) = (config.width, config.height);
-            let new_rect = Rectangle::from_loc_and_size(config.position, (width, height));
+            let new_rect = Rectangle::new(config.position.into(), (width, height).into());
             if p.wrapper_rectangle != new_rect {
                 p.wrapper_rectangle = new_rect;
 
@@ -150,7 +150,7 @@ impl PanelSpace {
                 config.height = p.wrapper_rectangle.size.h;
             }
             let (width, height) = (config.width, config.height);
-            p.wrapper_rectangle = Rectangle::from_loc_and_size(config.position, (width, height));
+            p.wrapper_rectangle = Rectangle::new(config.position.into(), (width, height).into());
 
             p.state = match p.state {
                 None | Some(WrapperPopupState::WaitConfigure) => None,

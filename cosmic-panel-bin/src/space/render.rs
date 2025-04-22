@@ -188,7 +188,7 @@ impl PanelSpace {
                     .then(|| {
                         PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
                             renderer,
-                            Rectangle::from_loc_and_size((0, 0), dim.to_logical(1)),
+                            Rectangle::from_size(dim.to_logical(1)),
                             self.panel_rect_settings,
                         ))
                     })
@@ -222,7 +222,7 @@ impl PanelSpace {
 
                                 w.toplevel().map(|t| {
                                     let configured_size = t.current_state().size.map(|s| {
-                                        let mut r = Rectangle::from_loc_and_size(
+                                        let mut r = Rectangle::new(
                                             self.space
                                                 .element_location(w)
                                                 .unwrap_or_default()
