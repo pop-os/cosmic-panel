@@ -267,10 +267,7 @@ impl PanelSpace {
             }
         }
 
-        let left = windows_left.iter().map(|e| {
-            let l = map_fn(e, anchor, Alignment::Left);
-            l
-        });
+        let left = windows_left.iter().map(|e| map_fn(e, anchor, Alignment::Left));
 
         let left_sum_scaled =
             left.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>() as f64
@@ -700,16 +697,11 @@ impl PanelSpace {
 
             let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
             let radius = match (self.config.anchor, self.gap()) {
-                (PanelAnchor::Right, 0) => [border_radius as f32, 0., 0., border_radius as f32],
-                (PanelAnchor::Left, 0) => [0., border_radius as f32, border_radius as f32, 0.],
-                (PanelAnchor::Bottom, 0) => [border_radius as f32, border_radius as f32, 0., 0.],
-                (PanelAnchor::Top, 0) => [0., 0., border_radius as f32, border_radius as f32],
-                _ => [
-                    border_radius as f32,
-                    border_radius as f32,
-                    border_radius as f32,
-                    border_radius as f32,
-                ],
+                (PanelAnchor::Right, 0) => [border_radius, 0., 0., border_radius],
+                (PanelAnchor::Left, 0) => [0., border_radius, border_radius, 0.],
+                (PanelAnchor::Bottom, 0) => [border_radius, border_radius, 0., 0.],
+                (PanelAnchor::Top, 0) => [0., 0., border_radius, border_radius],
+                _ => [border_radius, border_radius, border_radius, border_radius],
             };
             let bg = background_element(
                 Id::new("panel_bg"),
@@ -1014,10 +1006,10 @@ impl PanelSpace {
                 .map(|s| s.to_f64())
                 .unwrap_or(size);
             if configured_size.w >= 1. {
-                size.w = size.w.min(configured_size.w as f64);
+                size.w = size.w.min(configured_size.w);
             }
             if configured_size.h >= 1. {
-                size.h = size.h.min(configured_size.h as f64);
+                size.h = size.h.min(configured_size.h);
             }
 
             let (major_dim, suggested_dim) = if self.config.is_horizontal() {

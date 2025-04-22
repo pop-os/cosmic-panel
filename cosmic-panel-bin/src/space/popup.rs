@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::xdg_shell_wrapper::space::{ClientEglSurface, PanelPopup, WrapperPopupState};
 use cctk::wayland_client::Proxy;
 use sctk::shell::xdg::popup::{self};
@@ -30,7 +28,7 @@ impl PanelSpace {
             ));
             false
         });
-        if self.overflow_popup.as_ref().is_some_and(|(p, _)| !exclude(&p)) {
+        if self.overflow_popup.as_ref().is_some_and(|(p, _)| !exclude(p)) {
             let (popup, _) = self.overflow_popup.take().unwrap();
             tracing::info!("Closing overflow popup: {:?}", popup.c_popup.wl_surface());
             to_destroy.push((
@@ -41,8 +39,8 @@ impl PanelSpace {
         }
 
         for (popup, surface, s_surface) in to_destroy {
-            self.c_focused_surface.borrow_mut().retain(|s| &s.0 != &surface);
-            self.c_hovered_surface.borrow_mut().retain(|s| &s.0 != &surface);
+            self.c_focused_surface.borrow_mut().retain(|s| s.0 != surface);
+            self.c_hovered_surface.borrow_mut().retain(|s| s.0 != surface);
 
             if let Some(s_surface) = s_surface {
                 self.s_focused_surface

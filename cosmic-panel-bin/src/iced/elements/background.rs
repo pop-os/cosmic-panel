@@ -2,7 +2,7 @@
 
 use calloop::LoopHandle;
 use cosmic::{
-    iced::{id, Color, Length, Radius},
+    iced::{id, Color, Length},
     iced_core::Shadow,
     theme,
     widget::horizontal_space,
@@ -59,7 +59,7 @@ impl Program for Background {
     fn view(&self) -> Element<'_, ()> {
         let width = self.logical_width as f32;
         let height = self.logical_height as f32;
-        let radius_arr: [f32; 4] = self.radius.clone();
+        let radius_arr: [f32; 4] = self.radius;
 
         let color = self.color;
         Element::from(

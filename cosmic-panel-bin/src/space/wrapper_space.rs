@@ -53,9 +53,7 @@ use sctk::{
 use shlex::Shlex;
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
-    desktop::{
-        space::SpaceElement, utils::bbox_from_surface_tree, PopupKind, PopupManager, Window,
-    },
+    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
@@ -296,15 +294,15 @@ impl WrapperSpace for PanelSpace {
         popup.with_pending_state(|pending| {
             pending.geometry = Rectangle::from_size(pos_state.rect_size);
         });
-        if let Some(i) = self.popups.iter().position(|wp| &wp.s_surface == &popup) {
+        if let Some(i) = self.popups.iter().position(|wp| wp.s_surface == popup) {
             let p = &self.popups[i];
             let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
-            self.apply_positioner_state(&positioner, pos_state, &p.s_surface);
+            self.apply_positioner_state(positioner, pos_state, &p.s_surface);
             let p = &mut self.popups[i];
             let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
 
             if positioner.version() >= 3 {
-                p.popup.c_popup.reposition(&positioner, token);
+                p.popup.c_popup.reposition(positioner, token);
             }
             p.popup.state = Some(WrapperPopupState::WaitConfigure);
             if positioner.version() >= 3 {
@@ -602,7 +600,7 @@ impl WrapperSpace for PanelSpace {
                                     security_context_manager
                                         .create_listener::<SpaceContainer>(&qh_clone)
                                         .ok()
-                                        .map(|security_context| {
+                                        .inspect(|security_context| {
                                             security_context.set_sandbox_engine(NAME.to_string());
                                             security_context.commit();
 
@@ -615,7 +613,6 @@ impl WrapperSpace for PanelSpace {
                                                 privileged_socket.as_raw_fd().to_string(),
                                             ));
                                             fds.push(privileged_socket.into());
-                                            security_context
                                         })
                                 },
                             )
@@ -961,7 +958,7 @@ impl WrapperSpace for PanelSpace {
                 }) else {
                     return None;
                 };
-                let Some(space_location) = space.element_location(&e) else {
+                let Some(space_location) = space.element_location(e) else {
                     return None;
                 };
 
@@ -1029,8 +1026,7 @@ impl WrapperSpace for PanelSpace {
         let prev_popup_client = self
             .popups
             .iter()
-            .filter(|p| p.popup.grab)
-            .next()
+            .find(|p| p.popup.grab)
             .and_then(|p| p.s_surface.wl_surface().client())
             .map(|c| c.id());
 

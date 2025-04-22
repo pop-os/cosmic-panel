@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use sctk::{
     reexports::client::Proxy,
     shell::{
@@ -15,7 +13,7 @@ use smithay::{
     delegate_compositor, delegate_shm,
     desktop::{utils::bbox_from_surface_tree, LayerSurface as SmithayLayerSurface},
     reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
-    utils::{Logical, Size, Transform},
+    utils::Transform,
     wayland::{
         buffer::BufferHandler,
         compositor::{get_role, CompositorHandler, CompositorState},

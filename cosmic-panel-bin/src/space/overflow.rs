@@ -147,9 +147,9 @@ impl PanelSpace {
             CosmicMappedInternal::OverflowButton(b) => b.with_program(|p| {
                 (&p.id == element_id).then_some((
                     e.clone(),
-                    if &self.left_overflow_button_id == &p.id {
+                    if self.left_overflow_button_id == p.id {
                         OverflowSection::Left
-                    } else if &self.right_overflow_button_id == &p.id {
+                    } else if self.right_overflow_button_id == p.id {
                         OverflowSection::Right
                     } else {
                         OverflowSection::Center

@@ -27,27 +27,22 @@ impl SeatHandler for GlobalState {
                 .new_wl_seat(&self.server_state.display_handle, name.clone());
 
             let kbd = if info.has_keyboard {
-                if let Ok(kbd) = self.client_state.seat_state.get_keyboard(qh, &seat, None) {
-                    Some(kbd)
-                } else {
-                    None
-                }
+                self.client_state.seat_state.get_keyboard(qh, &seat, None).ok()
             } else {
                 None
             };
 
             let ptr = if info.has_pointer {
-                if let Ok(ptr) = self.client_state.seat_state.get_pointer_with_theme(
-                    qh,
-                    &seat,
-                    self.client_state.shm_state.wl_shm(),
-                    self.client_state.compositor_state.create_surface(qh),
-                    ThemeSpec::System,
-                ) {
-                    Some(ptr)
-                } else {
-                    None
-                }
+                self.client_state
+                    .seat_state
+                    .get_pointer_with_theme(
+                        qh,
+                        &seat,
+                        self.client_state.shm_state.wl_shm(),
+                        self.client_state.compositor_state.create_surface(qh),
+                        ThemeSpec::System,
+                    )
+                    .ok()
             } else {
                 None
             };

@@ -17,7 +17,7 @@ use crate::{
         wp_viewporter::ViewporterState,
     },
 };
-use cctk::{cosmic_protocols::overlap_notify, wayland_client::protocol::wl_pointer::WlPointer};
+use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
 use sctk::{
@@ -27,7 +27,6 @@ use sctk::{
         protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
     },
-    seat::pointer::PointerEvent,
     shell::{
         wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,

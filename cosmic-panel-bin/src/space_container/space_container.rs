@@ -16,10 +16,8 @@ use crate::{
     PanelCalloopMsg,
 };
 use cctk::{
-    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
     toplevel_info::ToplevelInfo,
     wayland_client::protocol::wl_seat::WlSeat,
-    wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     workspace::{Workspace, WorkspaceGroup},
 };
 use cosmic::{cosmic_config::CosmicConfigEntry, iced::id, theme};
@@ -493,7 +491,7 @@ impl SpaceContainer {
             .iter_mut()
             .filter(|s| {
                 s.output.as_ref().is_some_and(|o| o.1.name().as_str() == output_id)
-                    && &s.config.anchor == &anchor
+                    && s.config.anchor == anchor
             })
             .collect::<Vec<_>>();
 
