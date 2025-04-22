@@ -23,46 +23,41 @@ use super::SpaceContainer;
 
 impl ToplevelInfoSpace for SpaceContainer {
     /// A new toplevel was created
-    fn new_toplevel(
-        &mut self,
-        _conn: &Connection,
-        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
-        info: &ToplevelInfo,
-    ) {
-        self.toplevels.push((toplevel.clone(), info.clone()));
+    fn new_toplevel(&mut self, _conn: &Connection, info: &ToplevelInfo) {
+        self.toplevels.push(info.clone());
         self.apply_toplevel_changes();
-        _ = self.panel_tx.send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
+        _ = self
+            .panel_tx
+            .send(crate::PanelCalloopMsg::UpdateToplevel(info.foreign_toplevel.clone()));
 
         let is_maximized = info.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized);
         if is_maximized {
-            self.add_maximized(toplevel, info);
+            self.add_maximized(info);
         }
     }
 
     /// A toplevel was updated
-    fn update_toplevel(
-        &mut self,
-        _conn: &Connection,
-        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
-        info: &ToplevelInfo,
-    ) {
-        if let Some(info_1) =
-            self.toplevels
-                .iter_mut()
-                .find_map(|(t, info_1)| if t == toplevel { Some(info_1) } else { None })
+    fn update_toplevel(&mut self, _conn: &Connection, info: &ToplevelInfo) {
+        if let Some(info_1) = self
+            .toplevels
+            .iter_mut()
+            .find(|info_1| info_1.foreign_toplevel == info.foreign_toplevel)
         {
             *info_1 = info.clone();
         }
-        _ = self.panel_tx.send(crate::PanelCalloopMsg::UpdateToplevel(toplevel.clone()));
+        _ = self
+            .panel_tx
+            .send(crate::PanelCalloopMsg::UpdateToplevel(info.foreign_toplevel.clone()));
         self.apply_toplevel_changes();
 
         let is_maximized = info.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized);
 
-        let was_maximized = self.maximized_toplevels.iter().any(|(t, _)| t == toplevel);
+        let was_maximized =
+            self.maximized_toplevels.iter().any(|t| t.foreign_toplevel == info.foreign_toplevel);
         if is_maximized && !was_maximized {
-            self.add_maximized(toplevel, info);
+            self.add_maximized(info);
         } else if !is_maximized && was_maximized {
-            self.remove_maximized(toplevel);
+            self.remove_maximized(&info.foreign_toplevel);
         }
     }
 
@@ -72,10 +67,10 @@ impl ToplevelInfoSpace for SpaceContainer {
         _conn: &Connection,
         toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
-        self.toplevels.retain(|(t, _)| t != toplevel);
+        self.toplevels.retain(|t| t.foreign_toplevel != *toplevel);
         self.apply_toplevel_changes();
 
-        if self.maximized_toplevels.iter().any(|(h, _)| h == toplevel) {
+        if self.maximized_toplevels.iter().any(|t| t.foreign_toplevel == *toplevel) {
             self.remove_maximized(toplevel);
         }
     }
@@ -96,13 +91,9 @@ impl ToplevelManagerSpace for SpaceContainer {
 }
 
 impl SpaceContainer {
-    fn add_maximized(
-        &mut self,
-        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
-        info: &ToplevelInfo,
-    ) {
+    fn add_maximized(&mut self, info: &ToplevelInfo) {
         let pre_maximixed_outputs = self.maximized_outputs();
-        self.maximized_toplevels.push((toplevel.clone(), info.clone()));
+        self.maximized_toplevels.push(info.clone());
         let post_maximized_outputs = self.maximized_outputs();
         let outputs = self.outputs.clone();
         for (o, ..) in &outputs {
@@ -121,7 +112,9 @@ impl SpaceContainer {
         toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
         let pre_maximixed_outputs = self.maximized_outputs();
-        if let Some(pos) = self.maximized_toplevels.iter().position(|(h, _)| h == toplevel) {
+        if let Some(pos) =
+            self.maximized_toplevels.iter().position(|t| t.foreign_toplevel == *toplevel)
+        {
             self.maximized_toplevels.remove(pos);
         } else {
             return;
@@ -165,7 +158,7 @@ impl SpaceContainer {
 
     pub(crate) fn apply_toplevel_changes(&mut self) {
         for output in self.outputs.iter().map(|o| (o.0.clone(), o.1.name())).collect::<Vec<_>>() {
-            let has_toplevel = self.toplevels.iter().any(|(_, info)| {
+            let has_toplevel = self.toplevels.iter().any(|info| {
                 info.output.contains(&output.0)
                     && !info.state.contains(&zcosmic_toplevel_handle_v1::State::Minimized)
                     && self.workspace_groups.iter().any(|g| {
@@ -218,7 +211,7 @@ impl SpaceContainer {
                             && self
                                 .maximized_toplevels
                                 .iter()
-                                .any(|(_, info)| info.workspace.contains(w))
+                                .any(|info| info.workspace.contains(w))
                     } else {
                         false
                     }

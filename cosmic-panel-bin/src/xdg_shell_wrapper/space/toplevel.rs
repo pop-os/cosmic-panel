@@ -22,20 +22,10 @@ pub trait ToplevelManagerSpace {
 /// handle events related to toplevels
 pub trait ToplevelInfoSpace {
     /// A new toplevel was created
-    fn new_toplevel(
-        &mut self,
-        _conn: &Connection,
-        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
-        info: &ToplevelInfo,
-    );
+    fn new_toplevel(&mut self, _conn: &Connection, info: &ToplevelInfo);
 
     /// A toplevel was updated
-    fn update_toplevel(
-        &mut self,
-        _conn: &Connection,
-        toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
-        info: &ToplevelInfo,
-    );
+    fn update_toplevel(&mut self, _conn: &Connection, info: &ToplevelInfo);
 
     /// A toplevel was closed
     fn toplevel_closed(

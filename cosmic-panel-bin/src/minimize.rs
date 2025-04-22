@@ -21,7 +21,8 @@ pub fn update_toplevel(
         return;
     };
     let minimized_applets = &state.space.minimized_applets;
-    let Some((_, toplevel_info)) = state.space.toplevels.iter().find(|t| &t.0 == &toplevel) else {
+    let Some(toplevel_info) = state.space.toplevels.iter().find(|t| t.foreign_toplevel == toplevel)
+    else {
         return;
     };
 
@@ -71,7 +72,7 @@ pub fn set_rectangles(state: &mut GlobalState, output: String, info: MinimizeApp
             return;
         };
 
-        for (toplevel, toplevel_info) in &mut state.space.toplevels {
+        for toplevel_info in &mut state.space.toplevels {
             if !toplevel_info.output.iter().any(|o| {
                 let Some(i) = state.client_state.output_state.info(o) else {
                     return false;
