@@ -267,10 +267,10 @@ impl WrapperSpace for PanelSpace {
                 c_popup,
                 egl_surface: None,
                 dirty: false,
-                rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
+                rectangle: Rectangle::from_size(positioner_state.rect_size),
                 state: cur_popup_state,
                 input_region: Some(input_region),
-                wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), positioner_state.rect_size),
+                wrapper_rectangle: Rectangle::from_size(positioner_state.rect_size),
                 positioner,
                 has_frame: true,
                 fractional_scale,
@@ -294,7 +294,7 @@ impl WrapperSpace for PanelSpace {
         token: u32,
     ) -> anyhow::Result<()> {
         popup.with_pending_state(|pending| {
-            pending.geometry = Rectangle::from_loc_and_size((0, 0), pos_state.rect_size);
+            pending.geometry = Rectangle::from_size(pos_state.rect_size);
         });
         if let Some(i) = self.popups.iter().position(|wp| &wp.s_surface == &popup) {
             let p = &self.popups[i];
@@ -886,7 +886,7 @@ impl WrapperSpace for PanelSpace {
                         size.h = size.h.min(configured_size.h as f64);
                     }
                 }
-                let bbox = Rectangle::from_loc_and_size(location.to_f64(), size);
+                let bbox = Rectangle::new(location.to_f64(), size);
                 if bbox.contains((x as f64, y as f64)) {
                     SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
                 } else {

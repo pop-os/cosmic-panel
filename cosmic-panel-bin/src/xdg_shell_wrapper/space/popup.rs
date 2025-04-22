@@ -93,7 +93,7 @@ impl WrapperPopup {
     ) -> bool {
         if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = self.popup.state {
             self.popup.dirty = true;
-            self.popup.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
+            self.popup.rectangle = Rectangle::new((x, y).into(), (width, height).into());
             let scaled_size: Size<i32, _> =
                 self.popup.rectangle.size.to_f64().to_physical(self.popup.scale).to_i32_round();
             if let Some(s) = self.popup.egl_surface.as_mut() {

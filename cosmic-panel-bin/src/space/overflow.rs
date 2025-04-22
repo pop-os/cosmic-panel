@@ -121,9 +121,9 @@ impl PanelSpace {
                 c_popup,
                 egl_surface: None,
                 dirty: false,
-                rectangle: Rectangle::from_loc_and_size((0, 0), popup_bbox.size),
+                rectangle: Rectangle::from_size(popup_bbox.size),
                 state: Some(WrapperPopupState::WaitConfigure),
-                wrapper_rectangle: Rectangle::from_loc_and_size((0, 0), popup_bbox.size),
+                wrapper_rectangle: Rectangle::from_size(popup_bbox.size),
                 positioner,
                 has_frame: true,
                 fractional_scale,
@@ -177,7 +177,7 @@ impl PanelSpace {
             .filter_map(|(mut p, section)| {
                 if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = p.state {
                     p.dirty = true;
-                    p.rectangle = Rectangle::from_loc_and_size((x, y), (width, height));
+                    p.rectangle = Rectangle::new((x, y).into(), (width, height).into());
                     let scaled_size: Size<i32, _> =
                         p.rectangle.size.to_f64().to_physical(p.scale).to_i32_round();
 

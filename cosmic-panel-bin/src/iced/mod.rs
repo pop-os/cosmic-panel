@@ -430,7 +430,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
 
     fn motion(&self, _seat: &Seat<GlobalState>, _data: &mut GlobalState, event: &MotionEvent) {
         let mut internal = self.0.lock().unwrap();
-        let bbox = Rectangle::from_loc_and_size((0, 0), internal.size);
+        let bbox = Rectangle::from_size(internal.size);
         if internal.request_redraws {
             internal.pending_update = Some(Instant::now());
         }
