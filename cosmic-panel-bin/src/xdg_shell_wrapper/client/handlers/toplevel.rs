@@ -53,7 +53,7 @@ impl ToplevelInfoHandler for GlobalState {
         } else {
             return;
         };
-        self.space.new_toplevel(_conn, toplevel, info);
+        self.space.new_toplevel(_conn, info);
     }
 
     fn update_toplevel(
@@ -72,7 +72,7 @@ impl ToplevelInfoHandler for GlobalState {
         } else {
             return;
         };
-        self.space.update_toplevel(_conn, toplevel, info);
+        self.space.update_toplevel(_conn, info);
     }
 
     fn toplevel_closed(

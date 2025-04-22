@@ -61,8 +61,8 @@ pub struct SpaceContainer {
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
-    pub(crate) maximized_toplevels: Vec<(ExtForeignToplevelHandleV1, ToplevelInfo)>,
-    pub(crate) toplevels: Vec<(ExtForeignToplevelHandleV1, ToplevelInfo)>,
+    pub(crate) maximized_toplevels: Vec<ToplevelInfo>,
+    pub(crate) toplevels: Vec<ToplevelInfo>,
     pub(crate) workspace_groups: Vec<WorkspaceGroup>,
     pub(crate) workspaces: Vec<Workspace>,
     pub(crate) is_dark: bool,
@@ -401,7 +401,7 @@ impl SpaceContainer {
         let maximized_outputs = self.maximized_outputs();
         for (wl_output, output, info) in outputs {
             let output_name = output.name();
-            let has_toplevel = self.toplevels.iter().any(|(_, t)| t.output.contains(wl_output));
+            let has_toplevel = self.toplevels.iter().any(|t| t.output.contains(wl_output));
             if force_output.as_ref() != Some(wl_output) && force_output.is_some() {
                 continue;
             }
