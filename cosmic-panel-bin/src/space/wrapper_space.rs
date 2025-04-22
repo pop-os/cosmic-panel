@@ -756,28 +756,9 @@ impl WrapperSpace for PanelSpace {
 
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
-            if p_bbox.size != p.popup.rectangle.size && p_bbox.size.w > 0 && p_bbox.size.h > 0 {
-                if let Some((input_regions, my_region)) =
-                    with_states(p.s_surface.wl_surface(), |states| {
-                        let mut guard = states.cached_state.get::<SurfaceAttributes>();
-                        guard.current().input_region.as_ref().cloned()
-                    })
-                    .zip(p.popup.input_region.as_ref())
-                {
-                    my_region.subtract(p_bbox.loc.x, p_bbox.loc.y, p_bbox.size.w, p_bbox.size.h);
-                    for r in input_regions.rects {
-                        my_region.add(0, 0, r.1.size.w, r.1.size.h);
-                    }
-                    p.popup.c_popup.wl_surface().set_input_region(Some(my_region.wl_region()));
-                }
-                let rect_size = p_bbox.size;
-                let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
-                positioner.set_size(rect_size.w, rect_size.h);
-                if positioner.version() >= 3 {
-                    p.popup.c_popup.reposition(&positioner, 0);
-                }
+            if p_bbox.size == p.popup.rectangle.size {
+                p.popup.dirty = true;
             }
-            p.popup.dirty = true;
         }
     }
 
