@@ -1,5 +1,3 @@
-use cctk::workspace::WorkspaceGroup;
-
 pub trait WorkspaceHandlerSpace {
     /// A workspace was updated
     fn update<'a>(

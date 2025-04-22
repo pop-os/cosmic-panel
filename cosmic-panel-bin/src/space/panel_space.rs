@@ -28,7 +28,7 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1,
-    wayland_client::{protocol::wl_subcompositor::WlSubcompositor, Connection},
+    wayland_client::Connection,
 };
 
 use cosmic::iced::id;
@@ -48,7 +48,7 @@ use sctk::{
         xdg::XdgPositioner,
         WaylandSurface,
     },
-    subcompositor::{SubcompositorState, SubsurfaceData},
+    subcompositor::SubcompositorState,
 };
 use smithay::{
     backend::{
@@ -69,7 +69,7 @@ use smithay::{
     },
     utils::{Logical, Rectangle, Serial, Size},
     wayland::{
-        compositor::{with_states, SurfaceAttributes},
+        compositor::with_states,
         fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState},
@@ -500,7 +500,7 @@ impl PanelSpace {
                     if surface.is_alive()
                         && (self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
                             || self.popups.iter().any(|p| {
-                                &p.popup.c_popup.wl_surface() == &surface
+                                p.popup.c_popup.wl_surface() == surface
                                     || self
                                         .popups
                                         .iter()
@@ -1005,7 +1005,7 @@ impl PanelSpace {
                             renderer
                         } else {
                             unsafe {
-                                let mut capabilities =
+                                let capabilities =
                                     GlesRenderer::supported_capabilities(&egl_context)
                                         .expect("Failed to query EGL Context");
                                 // capabilities.retain(|cap| *cap != Capability::);
@@ -1470,7 +1470,7 @@ impl PanelSpace {
         self.is_dirty = true;
         self.space.refresh();
 
-        let mut s_bbox = bbox_from_surface_tree(&wlsurface, (0, 0));
+        let mut s_bbox = bbox_from_surface_tree(wlsurface, (0, 0));
         s_bbox.size.w += 20;
         if let Some(s) = self.subsurfaces.iter_mut().find(|s| s.s_surface == *wlsurface) {
             let Some(offset) = self.space.element_location(&s.parent) else {
@@ -1507,13 +1507,13 @@ impl PanelSpace {
                 return;
             };
 
-            let Some(offset) = self.space.element_location(&parent_id) else {
+            let Some(offset) = self.space.element_location(parent_id) else {
                 return;
             };
             // create and insert subsurface
             // let new_surface = self
             let (c_subsurface, c_surface) =
-                wl_subcompositor.create_subsurface(ls.wl_surface().clone(), &qh);
+                wl_subcompositor.create_subsurface(ls.wl_surface().clone(), qh);
             let fractional_scale =
                 fractional_scale_manager.map(|f| f.fractional_scaling(&c_surface, qh));
 

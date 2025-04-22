@@ -1,8 +1,5 @@
 use cctk::{
-    cosmic_protocols::{
-        toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-        toplevel_management::v1::client::zcosmic_toplevel_manager_v1,
-    },
+    cosmic_protocols::toplevel_management::v1::client::zcosmic_toplevel_manager_v1,
     toplevel_info::{ToplevelInfoHandler, ToplevelInfoState},
     toplevel_management::ToplevelManagerHandler,
     wayland_client::{self, WEnum},

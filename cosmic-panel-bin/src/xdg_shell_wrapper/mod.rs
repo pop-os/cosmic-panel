@@ -6,13 +6,8 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use sctk::{reexports::client::Proxy, shm::multi::MultiPool};
-use smithay::{
-    backend::input::KeyState,
-    input::keyboard::FilterResult,
-    reexports::{calloop, wayland_server::Display},
-    utils::SERIAL_COUNTER,
-};
+use sctk::shm::multi::MultiPool;
+use smithay::reexports::{calloop, wayland_server::Display};
 
 use client::state::ClientState;
 pub use client::{
@@ -90,7 +85,7 @@ pub fn run(
         .expect("Failed to insert cleanup timer.");
     global_state.bind_display(&s_dh);
 
-    let mut last_cleanup = Instant::now();
+    let last_cleanup = Instant::now();
     let five_min = Duration::from_secs(300);
 
     // TODO find better place for this

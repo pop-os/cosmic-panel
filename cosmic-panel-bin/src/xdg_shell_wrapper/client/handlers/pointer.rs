@@ -233,7 +233,7 @@ impl GlobalState {
                             (surface_x as i32, surface_y as i32),
                             &seat_name,
                             c_focused_surface,
-                            &pointer,
+                            pointer,
                         )
                     {
                         if let Some(ev) = surface.wl_surface().and_then(|s| {

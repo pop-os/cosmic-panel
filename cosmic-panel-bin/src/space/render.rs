@@ -462,7 +462,7 @@ impl PanelSpace {
 
                         let configured_size = t.current_state().size.map(|s| {
                             let mut r = Rectangle::new(
-                                loc.into(),
+                                loc,
                                 s.to_f64().to_physical_precise_round(self.scale),
                             );
                             if r.size.w == 0 {

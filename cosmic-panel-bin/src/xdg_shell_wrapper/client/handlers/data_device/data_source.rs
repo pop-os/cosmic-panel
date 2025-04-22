@@ -55,7 +55,7 @@ impl DataSourceHandler for GlobalState {
             if let Some(dnd_source) = seat.server.dnd_source.as_ref() {
                 dnd_source.send(mime, fd.as_fd());
             }
-        } else if let Some(_) = seat.server.selection_source.as_ref() {
+        } else if seat.server.selection_source.as_ref().is_some() {
             _ = request_data_device_client_selection(&seat.server.seat, mime, fd.into());
         }
     }

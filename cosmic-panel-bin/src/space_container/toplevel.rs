@@ -1,7 +1,7 @@
 use cctk::{
     cosmic_protocols::{
         toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
-        toplevel_management::v1::client::zcosmic_toplevel_manager_v1, workspace,
+        toplevel_management::v1::client::zcosmic_toplevel_manager_v1,
     },
     toplevel_info::ToplevelInfo,
     wayland_client::{protocol::wl_output::WlOutput, Connection},

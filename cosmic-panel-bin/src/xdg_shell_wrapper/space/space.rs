@@ -14,7 +14,6 @@ use sctk::{
         protocol::{wl_output as c_wl_output, wl_surface},
         Connection, QueueHandle,
     },
-    seat::pointer::PointerEvent,
     shell::{
         wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
         xdg::{XdgPositioner, XdgShell},

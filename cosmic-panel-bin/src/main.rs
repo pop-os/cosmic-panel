@@ -12,7 +12,6 @@ use crate::xdg_shell_wrapper::{
 use anyhow::Result;
 use calloop::channel::Sender;
 use cctk::{
-    cosmic_protocols::toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
     wayland_client::protocol::wl_output::WlOutput,
     wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };

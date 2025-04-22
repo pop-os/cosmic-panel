@@ -5,9 +5,8 @@ use crate::{
     },
 };
 use cctk::{
-    cosmic_protocols::overlap_notify, toplevel_info::ToplevelInfoState,
-    toplevel_management::ToplevelManagerState, wayland_client::protocol::wl_pointer::WlPointer,
-    workspace::WorkspaceState,
+    toplevel_info::ToplevelInfoState, toplevel_management::ToplevelManagerState,
+    wayland_client::protocol::wl_pointer::WlPointer, workspace::WorkspaceState,
 };
 use sctk::{
     compositor::CompositorState,
