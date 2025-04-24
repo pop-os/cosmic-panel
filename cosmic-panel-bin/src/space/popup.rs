@@ -79,26 +79,24 @@ impl PanelSpace {
             }
             let (width, height) = (config.width, config.height);
             let new_rect = Rectangle::new(config.position.into(), (width, height).into());
-            if p.wrapper_rectangle != new_rect {
-                p.wrapper_rectangle = new_rect;
+            p.wrapper_rectangle = new_rect;
 
-                p.state = Some(WrapperPopupState::Rectangle {
-                    x: config.position.0,
-                    y: config.position.1,
-                    width: config.width,
-                    height: config.height,
-                });
+            p.state = Some(WrapperPopupState::Rectangle {
+                x: config.position.0,
+                y: config.position.1,
+                width: config.width,
+                height: config.height,
+            });
 
-                if let Some(s) = s_popup {
-                    _ = s.send_configure()
-                }
+            if let Some(s) = s_popup {
+                _ = s.send_configure()
             }
+
             match config.kind {
                 popup::ConfigureKind::Initial => {
                     tracing::info!("Popup Initial Configure");
-                    let width_scaled = (width as f64 * self.scale) as i32;
-                    let height_scaled = (height as f64 * self.scale) as i32;
-
+                    let width_scaled = (width as f64 * self.scale).ceil() as i32;
+                    let height_scaled = (height as f64 * self.scale).ceil() as i32;
                     let wl_egl_surface = match WlEglSurface::new(
                         p.c_popup.wl_surface().id(),
                         width_scaled,
@@ -158,8 +156,8 @@ impl PanelSpace {
             match config.kind {
                 popup::ConfigureKind::Initial => {
                     tracing::info!("Popup Initial Configure");
-                    let width_scaled = (width as f64 * self.scale) as i32;
-                    let height_scaled = (height as f64 * self.scale) as i32;
+                    let width_scaled = (width as f64 * self.scale).ceil() as i32;
+                    let height_scaled = (height as f64 * self.scale).ceil() as i32;
                     let wl_egl_surface = match WlEglSurface::new(
                         p.c_popup.wl_surface().id(),
                         width_scaled,
