@@ -274,7 +274,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
         let left_sum_scaled = if let Some(left_button) = left_overflow_button.as_ref() {
-            let size = left_button.geometry().size.to_f64();
+            let size = left_button.geometry().size.to_f64() * self.scale;
             left_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
@@ -289,7 +289,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
-            let size = center_button.geometry().size.to_f64();
+            let size = center_button.geometry().size.to_f64() * self.scale;
             center_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
@@ -304,7 +304,7 @@ impl PanelSpace {
                 * self.scale
                 + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
-            let size = right_button.geometry().size.to_f64();
+            let size = right_button.geometry().size.to_f64() * self.scale;
             right_sum_scaled
                 + if self.config.is_horizontal() { size.w } else { size.h }
                 + spacing_scaled
