@@ -641,11 +641,9 @@ impl PanelSpace {
                 p.logical_height == h && p.logical_width == w && self.bg_color() == p.color
             })
         }) || self.animate_state.as_ref().is_some()
-            || matches!(
-                self.visibility,
-                Visibility::TransitionToHidden { .. } | Visibility::TransitionToVisible { .. }
-            )
+            || self.transitioning
         {
+            self.transitioning = false;
             if let Some(bg) = self.background_element.take() {
                 self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
             }

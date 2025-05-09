@@ -61,7 +61,7 @@ use smithay::{
         },
         renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind},
     },
-    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Space},
+    desktop::{utils::bbox_from_surface_tree, PopupManager, Space},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
@@ -300,6 +300,7 @@ pub struct PanelSpace {
     pub s_focused_surface: ServerFocus,
     pub s_hovered_surface: ServerPtrFocus,
     pub visibility: Visibility,
+    pub transitioning: bool,
     pub output: Option<(c_wl_output::WlOutput, Output, OutputInfo)>,
     pub s_display: Option<DisplayHandle>,
     pub layer: Option<LayerSurface>,
@@ -421,6 +422,7 @@ impl PanelSpace {
             notification_subscription: None,
             overlap_notify: None,
             hover_track: HoverTrack::default(),
+            transitioning: false,
         }
     }
 
@@ -467,12 +469,11 @@ impl PanelSpace {
     }
 
     pub fn handle_focus(&mut self) {
-        let (layer_surface, layer_shell_wl_surface) =
-            if let Some(layer_surface) = self.layer.as_ref() {
-                (layer_surface, layer_surface.wl_surface())
-            } else {
-                return;
-            };
+        let (layer_surface, _) = if let Some(layer_surface) = self.layer.as_ref() {
+            (layer_surface, layer_surface.wl_surface())
+        } else {
+            return;
+        };
 
         let cur_hover = {
             let c_focused_surface = self.c_focused_surface.borrow();
@@ -532,6 +533,7 @@ impl PanelSpace {
                 if matches!(cur_hover, FocusStatus::Focused)
                     || (intellihide && self.toplevel_overlaps.is_empty())
                 {
+                    self.transitioning = true;
                     // start transition to visible
                     let margin = match self.config.anchor() {
                         PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
@@ -553,6 +555,7 @@ impl PanelSpace {
             },
             Visibility::Visible => {
                 if let FocusStatus::LastFocused(t) = cur_hover {
+                    self.transitioning = true;
                     // start transition to hidden
                     let duration_since_last_focus = match Instant::now().checked_duration_since(t) {
                         Some(d) => d,
@@ -571,6 +574,8 @@ impl PanelSpace {
                 }
             },
             Visibility::TransitionToHidden { last_instant, progress, prev_margin } => {
+                self.transitioning = true;
+
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
                 let delta_t = match now.checked_duration_since(last_instant) {
@@ -606,7 +611,7 @@ impl PanelSpace {
 
                     let cur_pix = (progress_norm * target as f32) as i32;
 
-                    if progress > total_t {
+                    if progress >= total_t {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
@@ -631,6 +636,8 @@ impl PanelSpace {
                 }
             },
             Visibility::TransitionToVisible { last_instant, progress, prev_margin } => {
+                self.transitioning = true;
+
                 let now = Instant::now();
                 let total_t = self.config.get_hide_transition().unwrap();
                 let delta_t = match now.checked_duration_since(last_instant) {
@@ -667,7 +674,7 @@ impl PanelSpace {
 
                     let cur_pix = ((1.0 - progress_norm) * start as f32) as i32;
 
-                    if progress > total_t {
+                    if progress >= total_t {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
