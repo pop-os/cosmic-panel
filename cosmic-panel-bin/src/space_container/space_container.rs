@@ -373,6 +373,7 @@ impl SpaceContainer {
                     xdg_shell_wrapper::space::Visibility::Visible,
                     self.loop_handle.clone(),
                 );
+                space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
                     compositor_state,
                     fractional_scale_manager,
@@ -461,6 +462,7 @@ impl SpaceContainer {
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
                 }
+                space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
                     compositor_state,
                     fractional_scale_manager,
