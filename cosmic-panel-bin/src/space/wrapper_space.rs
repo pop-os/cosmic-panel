@@ -3,6 +3,7 @@ use std::{
     ffi::OsString,
     fs, mem,
     os::{fd::OwnedFd, unix::prelude::AsRawFd},
+    panic,
     rc::Rc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -380,7 +381,6 @@ impl WrapperSpace for PanelSpace {
                 )
                 .collect();
 
-            let config_size = ron::ser::to_string(&self.config.size).unwrap_or_default();
             let active_output =
                 self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default();
 
@@ -458,7 +458,6 @@ impl WrapperSpace for PanelSpace {
 
             // only allow 1 per panel
             let mut has_minimize = false;
-
             for (panel_client, my_list, panel_side) in panel_clients {
                 if panel_client.exec.is_none() {
                     continue;
@@ -543,9 +542,12 @@ impl WrapperSpace for PanelSpace {
                 let id_clone = panel_client.name.clone();
                 let id_clone_info = panel_client.name.clone();
                 let id_clone_err = panel_client.name.clone();
-                let client_id = panel_client.client.id();
-                let client_id_info = panel_client.client.id();
-                let client_id_err = panel_client.client.id();
+                let Some(client) = panel_client.client.as_ref() else {
+                    panic!("Failed to get client");
+                };
+                let client_id = client.id();
+                let client_id_info = client.id();
+                let client_id_err = client.id();
                 let security_context_manager_clone = security_context_manager.clone();
                 let qh_clone = qh.clone();
 
@@ -668,7 +670,7 @@ impl WrapperSpace for PanelSpace {
                                 .iter_mut()
                                 .find(|PanelClient { name, .. }| name == &id_clone)
                             {
-                                old_client.client = c;
+                                old_client.client = Some(c);
                                 old_client.security_ctx = security_context;
                                 info!("Replaced the client socket");
                             } else {
@@ -1139,8 +1141,14 @@ impl WrapperSpace for PanelSpace {
                             .chain(right_guard.iter())
                             .find(|c| {
                                 c.auto_popup_hover_press.is_some()
-                                    && (Some(HoverId::Client(c.client.id())) == cur_client_hover_id
-                                        || Some(c.client.id()) == overflow_client_hover_id)
+                                    && c.client
+                                        .as_ref()
+                                        .zip(cur_client_hover_id.as_ref())
+                                        .is_some_and(|(c, id)| HoverId::Client(c.id()) == *id)
+                                    || c.client
+                                        .as_ref()
+                                        .zip(overflow_client_hover_id.as_ref())
+                                        .is_some_and(|(c, id)| c.id() == *id)
                             })
                             .or({
                                 // overflow button
@@ -1495,7 +1503,7 @@ impl WrapperSpace for PanelSpace {
             .iter()
             .chain(self.clients_left.lock().unwrap().iter())
             .chain(self.clients_right.lock().unwrap().iter())
-            .any(|c| Some(&c.client) == client.as_ref())
+            .any(|c| c.client.as_ref() == client.as_ref())
         {
             Some(self.scale)
         } else {
