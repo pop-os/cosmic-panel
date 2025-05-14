@@ -2,11 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::iced::elements::{CosmicMappedInternal, PopupMappedInternal};
 
-use super::{
-    corner_element::{RoundedRectangleShader, RoundedRectangleShaderElement},
-    layout::OverflowSection,
-    PanelSpace,
-};
+use super::{layout::OverflowSection, PanelSpace};
 use cctk::wayland_client::{Proxy, QueueHandle};
 use itertools::Itertools;
 
@@ -33,7 +29,6 @@ use smithay::{
 pub(crate) enum PanelRenderElement {
     Wayland(WaylandSurfaceRenderElement<GlesRenderer>),
     Crop(CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>),
-    RoundedRectangle(RoundedRectangleShaderElement),
     Iced(MemoryRenderBufferRenderElement<GlesRenderer>),
 }
 
@@ -42,7 +37,6 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
         match self {
             Self::Wayland(e, ..) => e.id(),
             Self::Crop(e) => e.id(),
-            Self::RoundedRectangle(e) => e.id(),
             Self::Iced(e) => e.id(),
         }
     }
@@ -51,7 +45,6 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
         match self {
             Self::Wayland(e, ..) => e.current_commit(),
             Self::Crop(e) => e.current_commit(),
-            Self::RoundedRectangle(e) => e.current_commit(),
             Self::Iced(e) => e.current_commit(),
         }
     }
@@ -60,7 +53,6 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
         match self {
             Self::Wayland(e) => e.src(),
             Self::Crop(e) => e.src(),
-            Self::RoundedRectangle(e) => e.src(),
             Self::Iced(e) => e.src(),
         }
     }
@@ -69,7 +61,6 @@ impl smithay::backend::renderer::element::Element for PanelRenderElement {
         match self {
             Self::Wayland(e) => e.geometry(scale),
             Self::Crop(e) => e.geometry(scale),
-            Self::RoundedRectangle(e) => e.geometry(scale),
             // XXX hack don't know how else to avoid scaling twice
             Self::Iced(e) => e.geometry(1.0.into()),
         }
@@ -88,7 +79,6 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
         match self {
             Self::Wayland(e, ..) => e.draw(frame, src, dst, damage, opaque_regions),
             Self::Crop(e) => e.draw(frame, src, dst, damage, opaque_regions),
-            Self::RoundedRectangle(e) => e.draw(frame, src, dst, damage, opaque_regions),
             Self::Iced(e) => e.draw(frame, src, dst, damage, opaque_regions),
         }
     }
@@ -97,7 +87,6 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
         match self {
             PanelRenderElement::Wayland(e, ..) => e.underlying_storage(renderer),
             PanelRenderElement::Crop(e) => e.underlying_storage(renderer),
-            PanelRenderElement::RoundedRectangle(e) => e.underlying_storage(renderer),
             PanelRenderElement::Iced(e) => e.underlying_storage(renderer),
         }
     }
@@ -182,89 +171,77 @@ impl PanelSpace {
             })
             .to_i32_round();
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
-                let mut elements: Vec<PanelRenderElement> = (self.config.anchor_gap
-                    || self.anchor_gap != 0
-                    || self.config.border_radius > 0)
-                    .then(|| {
-                        PanelRenderElement::RoundedRectangle(RoundedRectangleShader::element(
-                            renderer,
-                            Rectangle::from_size(dim.to_logical(1)),
-                            self.panel_rect_settings,
-                        ))
-                    })
-                    .into_iter()
-                    .chain(
-                        self.space
-                            .elements()
-                            .filter_map(|w| {
-                                let loc = self
-                                    .space
-                                    .element_location(w)
-                                    .unwrap_or_default()
-                                    .to_f64()
-                                    .to_physical(self.scale)
-                                    .to_i32_round()
-                                    + anim_gap_translation;
+                let mut elements = self
+                    .space
+                    .elements()
+                    .filter_map(|w| {
+                        let loc = self
+                            .space
+                            .element_location(w)
+                            .unwrap_or_default()
+                            .to_f64()
+                            .to_physical(self.scale)
+                            .to_i32_round()
+                            + anim_gap_translation;
 
-                                if let CosmicMappedInternal::OverflowButton(b) = w {
-                                    return Some(
-                                        b.render_elements(
-                                            renderer,
-                                            loc,
-                                            smithay::utils::Scale::from(self.scale),
-                                            1.0,
-                                        )
-                                        .into_iter()
-                                        .map(PanelRenderElement::Iced)
-                                        .collect::<Vec<_>>(),
-                                    );
+                        if let CosmicMappedInternal::OverflowButton(b) = w {
+                            return Some(
+                                b.render_elements(
+                                    renderer,
+                                    loc,
+                                    smithay::utils::Scale::from(self.scale),
+                                    1.0,
+                                )
+                                .into_iter()
+                                .map(PanelRenderElement::Iced)
+                                .collect::<Vec<_>>(),
+                            );
+                        }
+
+                        w.toplevel().map(|t| {
+                            let configured_size = t.current_state().size.map(|s| {
+                                let mut r = Rectangle::new(
+                                    self.space
+                                        .element_location(w)
+                                        .unwrap_or_default()
+                                        .to_f64()
+                                        .to_physical_precise_round(self.scale),
+                                    s.to_f64().to_physical_precise_round(self.scale),
+                                );
+                                if r.size.w == 0 {
+                                    r.size.w = i32::MAX;
+                                }
+                                if r.size.h == 0 {
+                                    r.size.h = i32::MAX;
+                                }
+                                r
+                            });
+
+                            render_elements_from_surface_tree(
+                                renderer,
+                                t.wl_surface(),
+                                loc,
+                                self.scale,
+                                1.0,
+                                smithay::backend::renderer::element::Kind::Unspecified,
+                            )
+                            .into_iter()
+                            .filter_map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
+                                if let Some(configured_size) = configured_size {
+                                    return CropRenderElement::from_element(
+                                        r,
+                                        self.scale,
+                                        configured_size,
+                                    )
+                                    .map(PanelRenderElement::Crop);
                                 }
 
-                                w.toplevel().map(|t| {
-                                    let configured_size = t.current_state().size.map(|s| {
-                                        let mut r = Rectangle::new(
-                                            self.space
-                                                .element_location(w)
-                                                .unwrap_or_default()
-                                                .to_f64()
-                                                .to_physical_precise_round(self.scale),
-                                            s.to_f64().to_physical_precise_round(self.scale),
-                                        );
-                                        if r.size.w == 0 {
-                                            r.size.w = i32::MAX;
-                                        }
-                                        if r.size.h == 0 {
-                                            r.size.h = i32::MAX;
-                                        }
-                                        r
-                                    });
-
-                                    render_elements_from_surface_tree(
-                                        renderer,
-                                        t.wl_surface(),
-                                        loc,
-                                        self.scale,
-                                        1.0,
-                                        smithay::backend::renderer::element::Kind::Unspecified,
-                                    )
-                                    .into_iter()
-                                    .filter_map(|r: WaylandSurfaceRenderElement<GlesRenderer>| {
-                                        if let Some(configured_size) = configured_size {
-                                            return CropRenderElement::from_element(
-                                                r,
-                                                self.scale,
-                                                configured_size,
-                                            )
-                                            .map(PanelRenderElement::Crop);
-                                        }
-
-                                        Some(PanelRenderElement::Wayland(r))
-                                    })
-                                    .collect::<Vec<_>>()
-                                })
+                                Some(PanelRenderElement::Wayland(r))
                             })
-                            .flatten(),
-                    )
+                            .collect::<Vec<_>>()
+                        })
+                    })
+                    .flatten()
                     .collect_vec();
 
                 if let Some(bg) = self.background_element.as_ref().map(|e| {

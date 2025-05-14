@@ -19,7 +19,7 @@ use crate::{
         IcedElement,
     },
     minimize::MinimizeApplet,
-    space::{corner_element::RoundedRectangleSettings, Alignment},
+    space::Alignment,
     xdg_shell_wrapper::space::Visibility,
 };
 
@@ -47,12 +47,13 @@ impl PanelSpace {
     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
         self.remap_attempts = self.remap_attempts.saturating_sub(1);
 
-        let make_indices_contiguous = |windows: &mut Vec<(usize, Window, Option<u32>)>| {
-            windows.sort_by(|(a_i, ..), (b_i, ..)| a_i.cmp(b_i));
-            for (j, (i, ..)) in windows.iter_mut().enumerate() {
-                *i = j;
-            }
-        };
+        let make_indices_contiguous =
+            |windows: &mut Vec<(usize, CosmicMappedInternal, Option<u32>)>| {
+                windows.sort_by(|(a_i, ..), (b_i, ..)| a_i.cmp(b_i));
+                for (j, (i, ..)) in windows.iter_mut().enumerate() {
+                    *i = j;
+                }
+            };
 
         let mut left_overflow_button = None;
         let mut right_overflow_button = None;
@@ -64,7 +65,7 @@ impl PanelSpace {
             .cloned()
             .filter_map(|w| {
                 let w = match w {
-                    CosmicMappedInternal::Window(w) => w,
+                    CosmicMappedInternal::Window(w) => CosmicMappedInternal::Window(w),
                     CosmicMappedInternal::OverflowButton(b)
                         if overflow_button::with_id(&b, |id| {
                             &self.left_overflow_button_id == id
@@ -89,6 +90,9 @@ impl PanelSpace {
                         right_overflow_button = Some(b);
                         return None;
                     },
+                    CosmicMappedInternal::Spacer(s) => {
+                        return Some(CosmicMappedInternal::Spacer(s));
+                    },
                     _ => return None,
                 };
 
@@ -102,12 +106,19 @@ impl PanelSpace {
             .iter()
             .cloned()
             .filter_map(|w| {
-                let Some(t) = w.toplevel() else {
+                if w.toplevel().is_none() && matches!(&w, CosmicMappedInternal::Window(_)) {
                     tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_left.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.client.id()) == t.wl_surface().client().map(|c| c.id()) {
+                    if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
+                        Some((i, w.clone(), c.minimize_priority))
+                    } else if w
+                        .toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .zip(c.client.as_ref())
+                        .is_some_and(|(c, w_c)| c.id() == w_c.id())
+                    {
                         Some((i, w.clone(), c.minimize_priority))
                     } else {
                         None
@@ -115,18 +126,26 @@ impl PanelSpace {
                 })
             })
             .collect_vec();
+
         make_indices_contiguous(&mut windows_left);
 
         let mut windows_center = to_map
             .iter()
             .cloned()
             .filter_map(|w| {
-                let Some(t) = w.toplevel() else {
+                if w.toplevel().is_none() && matches!(&w, CosmicMappedInternal::Window(_)) {
                     tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_center.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.client.id()) == t.wl_surface().client().map(|c| c.id()) {
+                    if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
+                        Some((i, w.clone(), c.minimize_priority))
+                    } else if w
+                        .toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .zip(c.client.as_ref())
+                        .is_some_and(|(c, w_c)| c.id() == w_c.id())
+                    {
                         Some((i, w.clone(), c.minimize_priority))
                     } else {
                         None
@@ -140,12 +159,19 @@ impl PanelSpace {
             .iter()
             .cloned()
             .filter_map(|w| {
-                let Some(t) = w.toplevel() else {
+                if w.toplevel().is_none() && matches!(&w, CosmicMappedInternal::Window(_)) {
                     tracing::warn!("Window {:?} has no toplevel", w.bbox());
                     return None;
                 };
                 self.clients_right.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
-                    if Some(c.client.id()) == t.wl_surface().client().map(|c| c.id()) {
+                    if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
+                        Some((i, w.clone(), c.minimize_priority))
+                    } else if w
+                        .toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .zip(c.client.as_ref())
+                        .is_some_and(|(c, w_c)| c.id() == w_c.id())
+                    {
                         Some((i, w.clone(), c.minimize_priority))
                     } else {
                         None
@@ -179,9 +205,9 @@ impl PanelSpace {
 
     pub(crate) fn layout(
         &mut self,
-        mut windows_left: Vec<(usize, Window, Option<u32>)>,
-        mut windows_center: Vec<(usize, Window, Option<u32>)>,
-        mut windows_right: Vec<(usize, Window, Option<u32>)>,
+        mut windows_left: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
+        mut windows_center: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
+        mut windows_right: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
         mut left_overflow_button: Option<OverflowButtonElement>,
         mut right_overflow_button: Option<OverflowButtonElement>,
         mut center_overflow_button: Option<OverflowButtonElement>,
@@ -227,7 +253,7 @@ impl PanelSpace {
         }
 
         fn map_fn(
-            (i, w, _): &(usize, Window, Option<u32>),
+            (i, w, _): &(usize, CosmicMappedInternal, Option<u32>),
             anchor: PanelAnchor,
             alignment: Alignment,
         ) -> (Alignment, usize, i32, i32, i32) {
@@ -237,7 +263,13 @@ impl PanelSpace {
                     let s = t.current_state();
                     (s.size.unwrap_or_default(), s.bounds.unwrap_or_default())
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|| {
+                    if let CosmicMappedInternal::Spacer(s) = w {
+                        (s.bbox().size, s.bbox().size)
+                    } else {
+                        (w.geometry().size, w.geometry().size)
+                    }
+                });
             let bbox = w.geometry().size;
 
             if size.w == 0 {
@@ -508,6 +540,31 @@ impl PanelSpace {
             self.space.map_element(CosmicMappedInternal::OverflowButton(right_button), loc, true);
         };
 
+        // XXX this is a bit of a hack around the fact that we want the spacer to be placed before the overflow button
+        if windows_left.is_empty()
+            && !windows_center.is_empty()
+            && self.logical_layer_start_overlap > 0
+        {
+            let (_, CosmicMappedInternal::Spacer(s), _) = windows_center.remove(0) else {
+                panic!("No spacer found");
+            };
+            let size = s.bbox().size.to_f64();
+            let crosswise_pos = if self.config.is_horizontal() {
+                margin_offset
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
+            } else {
+                margin_offset
+                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
+            };
+            let loc = if self.config().is_horizontal() {
+                (center_pos.round() as i32, crosswise_pos)
+            } else {
+                (crosswise_pos, center_pos.round() as i32)
+            };
+            self.space.map_element(CosmicMappedInternal::Spacer(s), loc, false);
+            center_pos += size.h + spacing_u32 as f64;
+        }
+
         if let Some(center_button) = center_overflow_button {
             let size = center_button.geometry().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {
@@ -526,7 +583,7 @@ impl PanelSpace {
             center_pos += size.h + spacing_u32 as f64;
         }
 
-        let mut map_windows = |windows: IterMut<'_, (usize, Window, Option<u32>)>,
+        let mut map_windows = |windows: IterMut<'_, (usize, CosmicMappedInternal, Option<u32>)>,
                                mut prev|
          -> f64 {
             for (_, w, minimize_priority) in windows {
@@ -534,7 +591,14 @@ impl PanelSpace {
                 // TODO improve how this is done
                 let mut size = w.geometry().size.to_f64();
                 let configured_size =
-                    w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_default();
+                    w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_else(|| {
+                        if let CosmicMappedInternal::Spacer(s) = w {
+                            s.bbox().size
+                        } else {
+                            w.geometry().size
+                        }
+                    });
+
                 if configured_size.w != 0 {
                     size.w = size.w.min(configured_size.w as f64);
                 }
@@ -555,7 +619,7 @@ impl PanelSpace {
                     );
                     (x, y) = (cur.0 as i32, cur.1);
                     prev += size.w + spacing_u32 as f64;
-                    self.space.map_element(CosmicMappedInternal::Window(w.clone()), (x, y), false);
+                    self.space.map_element(w.clone(), (x, y), false);
                 } else {
                     let cur = (
                         margin_offset
@@ -567,7 +631,7 @@ impl PanelSpace {
                     );
                     (x, y) = (cur.0, cur.1 as i32);
                     prev += size.h + spacing_u32 as f64;
-                    self.space.map_element(CosmicMappedInternal::Window(w.clone()), (x, y), false);
+                    self.space.map_element(w.clone(), (x, y), false);
                 }
                 if minimize_priority.is_some() {
                     let new_rect = Rectangle {
@@ -621,17 +685,16 @@ impl PanelSpace {
 
         let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
         let container_length_scaled = self.container_length as f64 * self.scale;
-        let container_lengthwise_pos_scaled = container_lengthwise_pos as f32 * self.scale as f32;
         if self.config.is_horizontal() {
             panel_size.w = container_length_scaled;
         } else {
             panel_size.h = container_length_scaled;
         }
-        let (w, h) = if is_dock {
+        let (mut w, mut h) = if is_dock {
             if self.config.is_horizontal() {
-                (container_length, new_logical_crosswise_dim)
+                (container_length, new_dim.h)
             } else {
-                (new_logical_crosswise_dim, container_length)
+                (new_dim.w, container_length)
             }
         } else {
             (new_dim.w, new_dim.h)
@@ -647,50 +710,32 @@ impl PanelSpace {
             if let Some(bg) = self.background_element.take() {
                 self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
             }
-            let gap_scaled = self.gap() as f64 * self.scale;
-            let border_radius = self.border_radius() as f64 * self.scale;
 
-            let border_radius = border_radius.min(panel_size.w / 2.).min(panel_size.h / 2.);
-            let (rad_tl, rad_tr, rad_bl, rad_br) = match (self.config.anchor, self.gap()) {
-                (PanelAnchor::Right, 0) => (border_radius, 0., border_radius, 0.),
-                (PanelAnchor::Left, 0) => (0., border_radius, 0., border_radius),
-                (PanelAnchor::Bottom, 0) => (border_radius, border_radius, 0., 0.),
-                (PanelAnchor::Top, 0) => (0., 0., border_radius, border_radius),
-                _ => (border_radius, border_radius, border_radius, border_radius),
+            let start_overlap = if self.logical_layer_start_overlap > 0 {
+                self.logical_layer_start_overlap as i32 + self.config.spacing as i32
+            } else {
+                0
             };
-
-            let anim_gap_scaled = self.anchor_gap as f32 * self.scale as f32;
-            let loc = match self.config.anchor {
-                PanelAnchor::Left => {
-                    [gap_scaled as f32 + anim_gap_scaled, container_lengthwise_pos_scaled]
-                },
-                PanelAnchor::Right => [-anim_gap_scaled, container_lengthwise_pos_scaled],
-                PanelAnchor::Top => [container_lengthwise_pos_scaled, -anim_gap_scaled],
-                PanelAnchor::Bottom => {
-                    [container_lengthwise_pos_scaled, gap_scaled as f32 + anim_gap_scaled]
-                },
-            };
-            self.panel_rect_settings = RoundedRectangleSettings {
-                rad_tl: rad_tl as f32,
-                rad_tr: rad_tr as f32,
-                rad_bl: rad_bl as f32,
-                rad_br: rad_br as f32,
-                loc,
-                rect_size: [panel_size.w as f32, panel_size.h as f32],
-                border_width: 0.0,
-                drop_shadow: 0.0,
-                bg_color: [0.0, 0.0, 0.0, 1.0],
-                border_color: [0.0, 0.0, 0.0, 0.0],
+            let end_overlap = if self.logical_layer_end_overlap > 0 {
+                self.logical_layer_end_overlap as i32 + self.config.spacing as i32
+            } else {
+                0
             };
 
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
                 bail!("output missing");
             };
-            let loc = match self.config.anchor {
-                PanelAnchor::Left => [gap as f32, container_lengthwise_pos as f32],
-                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
-                PanelAnchor::Bottom => [container_lengthwise_pos as f32, 0.],
-                PanelAnchor::Top => [container_lengthwise_pos as f32, gap as f32],
+            let mut loc = match self.config.anchor {
+                PanelAnchor::Left => [
+                    self.config.margin as f32 + self.anchor_gap as f32,
+                    container_lengthwise_pos as f32,
+                ],
+                PanelAnchor::Right => [-self.anchor_gap as f32, container_lengthwise_pos as f32],
+                PanelAnchor::Bottom => [container_lengthwise_pos as f32, -self.anchor_gap as f32],
+                PanelAnchor::Top => [
+                    container_lengthwise_pos as f32,
+                    self.config.margin as f32 + self.anchor_gap as f32,
+                ],
             };
 
             let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
@@ -701,6 +746,28 @@ impl PanelSpace {
                 (PanelAnchor::Top, 0) => [0., 0., border_radius, border_radius],
                 _ => [border_radius, border_radius, border_radius, border_radius],
             };
+
+            if container_lengthwise_pos < start_overlap {
+                if self.config.is_horizontal() {
+                    loc[0] += start_overlap as f32 - container_lengthwise_pos as f32;
+                    w -= start_overlap - container_lengthwise_pos;
+                } else {
+                    loc[1] += start_overlap as f32 - container_lengthwise_pos as f32;
+                    h -= start_overlap - container_lengthwise_pos;
+                }
+            }
+            if container_lengthwise_pos < end_overlap {
+                if self.config.is_horizontal() {
+                    w -= end_overlap - container_lengthwise_pos;
+                } else {
+                    h -= end_overlap - container_lengthwise_pos;
+                }
+            }
+            if self.config.is_horizontal() {
+                h -= self.config.margin as i32;
+            } else {
+                w -= self.config.margin as i32;
+            }
             let bg = background_element(
                 Id::new("panel_bg"),
                 w,
@@ -714,7 +781,11 @@ impl PanelSpace {
             );
             bg.output_enter(&output, Rectangle::default());
             self.background_element = Some(bg.clone());
-            self.space.map_element(CosmicMappedInternal::Background(bg), (0, 0), false);
+            self.space.map_element(
+                CosmicMappedInternal::Background(bg),
+                (loc[0] as i32, loc[1] as i32),
+                false,
+            );
         }
         input_region.subtract(0, 0, i32::MAX, i32::MAX);
         let anim_gap = self.anchor_gap;
@@ -729,7 +800,7 @@ impl PanelSpace {
                 };
                 let side = (layer_length as u32 - actual_length as u32) / 2;
 
-                let (loc, size) = match self.config.anchor {
+                let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => (
                         (-1, side as i32),
                         (
@@ -754,14 +825,48 @@ impl PanelSpace {
                     ),
                 };
 
+                if container_lengthwise_pos < self.logical_layer_start_overlap {
+                    if self.config.is_horizontal() {
+                        loc.0 += self.logical_layer_start_overlap - container_lengthwise_pos;
+                        size.0 -= self.logical_layer_start_overlap - container_lengthwise_pos;
+                    } else {
+                        loc.1 += self.logical_layer_start_overlap - container_lengthwise_pos;
+                        size.1 -= self.logical_layer_start_overlap - container_lengthwise_pos;
+                    }
+                }
+                if container_lengthwise_pos < self.logical_layer_end_overlap {
+                    if self.config.is_horizontal() {
+                        size.0 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                    } else {
+                        // loc.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                        size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                    }
+                }
+
                 input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
-                let (loc, size) = match self.config.anchor {
+                let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
                     PanelAnchor::Right => ((-anim_gap, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
                     PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
                     PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
                 };
+                if container_lengthwise_pos < self.logical_layer_start_overlap {
+                    if self.config.is_horizontal() {
+                        loc.0 += self.logical_layer_start_overlap - container_lengthwise_pos;
+                        size.0 -= self.logical_layer_start_overlap - container_lengthwise_pos;
+                    } else {
+                        loc.1 += self.logical_layer_start_overlap - container_lengthwise_pos;
+                        size.1 -= self.logical_layer_start_overlap - container_lengthwise_pos;
+                    }
+                }
+                if container_lengthwise_pos < self.logical_layer_end_overlap {
+                    if self.config.is_horizontal() {
+                        size.0 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                    } else {
+                        size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                    }
+                }
 
                 input_region.add(loc.0, loc.1, size.0, size.1);
             };
@@ -819,7 +924,9 @@ impl PanelSpace {
             let pos_a = clients.iter().position(|c| {
                 if let PopupMappedInternal::Window(w) = a {
                     w.toplevel().is_some_and(|t| {
-                        t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
+                        t.wl_surface().client().is_some_and(|w_client| {
+                            c.client.as_ref().is_some_and(|c| *c == w_client)
+                        })
                     })
                 } else {
                     false
@@ -828,7 +935,9 @@ impl PanelSpace {
             let pos_b = clients.iter().position(|c| {
                 if let PopupMappedInternal::Window(w) = b {
                     w.toplevel().is_some_and(|t| {
-                        t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
+                        t.wl_surface().client().is_some_and(|w_client| {
+                            c.client.as_ref().is_some_and(|c| *c == w_client)
+                        })
                     })
                 } else {
                     false
@@ -911,7 +1020,9 @@ impl PanelSpace {
                 };
                 if w.alive()
                     && w.toplevel().is_some_and(|t| {
-                        t.wl_surface().client().is_some_and(|w_client| w_client == c.client)
+                        t.wl_surface().client().is_some_and(|w_client| {
+                            c.client.as_ref().is_some_and(|c| *c == w_client)
+                        })
                     })
                 {
                     let w_clone = w.clone();

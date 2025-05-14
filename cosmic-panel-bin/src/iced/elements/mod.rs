@@ -5,6 +5,7 @@ pub mod target;
 
 use std::borrow::Cow;
 
+use crate::space::Spacer;
 use background::BackgroundElement;
 use overflow_button::OverflowButtonElement;
 use overflow_popup::OverflowPopupElement;
@@ -19,7 +20,8 @@ space_elements! {
     pub CosmicMappedInternal;
     OverflowButton=OverflowButtonElement,
     Window=Window,
-    Background=BackgroundElement
+    Background=BackgroundElement,
+    Spacer=Spacer
 }
 
 impl CosmicMappedInternal {

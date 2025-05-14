@@ -24,8 +24,9 @@ impl TryFrom<CosmicMappedInternal> for SpaceTarget {
                 Ok(SpaceTarget::Surface(w.toplevel().unwrap().wl_surface().clone()))
             },
             CosmicMappedInternal::OverflowButton(b) => Ok(SpaceTarget::OverflowButton(b)),
-            CosmicMappedInternal::_GenericCatcher(_) => bail!("Cannot convert generic catcher"),
             CosmicMappedInternal::Background(_) => bail!("Cannot convert background"),
+            CosmicMappedInternal::Spacer(_) => bail!("Cannot convert spacer"),
+            CosmicMappedInternal::_GenericCatcher(_) => bail!("Cannot convert generic catcher"),
         }
     }
 }

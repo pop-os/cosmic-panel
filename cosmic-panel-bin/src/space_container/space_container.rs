@@ -223,7 +223,7 @@ impl SpaceContainer {
         layer_state: &mut LayerShell,
         qh: &QueueHandle<GlobalState>,
         force_output: Option<WlOutput>,
-        overlap_notify: Option<OverlapNotifyV1>,
+        _overlap_notify: Option<OverlapNotifyV1>,
     ) {
         // if the output is set to "all", we need to check if the config is the same for
         // all outputs if the output is set to a specific output, we need to
@@ -318,6 +318,8 @@ impl SpaceContainer {
                 && Some(c.anchor) != opposite_anchor
                 && ((old_priority < c.get_priority() && new_priority > c.get_priority() || old_priority > c.get_priority() && new_priority < c.get_priority()))}
             || c.name != entry.name && old_priority != new_priority && c.anchor == entry.anchor
+            // || self.space_list.iter().any(|s| s.has_layer_overlap())
+
         );
 
         self.config.config_list.retain(|c| c.name != entry.name);
@@ -574,7 +576,7 @@ impl SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == s_client)
+                .any(|c| c.client.as_ref().map(|c| c.id()) == s_client)
         }) {
             space.dirty_subsurface(
                 self.renderer.as_mut(),
@@ -601,7 +603,7 @@ impl SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.id() == s_client)
+                .any(|c| c.client.as_ref().is_some_and(|c| c.id() == s_client))
         }) {
             space.grab(surface, seat, serial);
         }
