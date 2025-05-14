@@ -769,7 +769,7 @@ where
 
                     let damage = vec![cosmic::iced::Rectangle::new(
                         cosmic::iced::Point::default(),
-                        viewport.logical_size(),
+                        IcedSize::new(size.w as f32, size.h as f32),
                     )];
 
                     internal_ref.renderer.draw(

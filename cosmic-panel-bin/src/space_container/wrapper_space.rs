@@ -327,7 +327,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == w_client)
+                .any(|c| c.client.as_ref().zip(w_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
         }) {
             space.add_window(s_top_level);
         }
@@ -356,7 +356,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == p_client)
+                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
         }) {
             space.add_popup(
                 compositor_state,
@@ -391,7 +391,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == p_client)
+                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
         }) {
             space.reposition_popup(popup, positioner_state, token)?
         }
@@ -459,7 +459,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == w_client)
+                .any(|c| c.client.as_ref().zip(w_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
         }) {
             space.dirty_window(dh, w);
         }
@@ -481,7 +481,7 @@ impl WrapperSpace for SpaceContainer {
                 .iter()
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| Some(c.client.id()) == p_client)
+                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
         }) {
             space.dirty_popup(dh, w);
         }

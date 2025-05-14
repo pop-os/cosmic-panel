@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::Debug,
     os::{fd::OwnedFd, unix::net::UnixStream},
     rc::Rc,
@@ -91,10 +91,7 @@ use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor}
 
 use crate::{iced::elements::CosmicMappedInternal, PanelCalloopMsg};
 
-use super::{
-    corner_element::{init_shaders, RoundedRectangleSettings},
-    layout::OverflowSection,
-};
+use super::{layout::OverflowSection, Spacer};
 
 pub enum AppletMsg {
     NewProcess(String, Process),
@@ -128,7 +125,7 @@ pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
 #[derive(Debug)]
 pub struct PanelClient {
     pub name: String,
-    pub client: Client,
+    pub client: Option<Client>,
     pub stream: Option<UnixStream>,
     pub security_ctx: Option<WpSecurityContextV1>,
     pub exec: Option<String>,
@@ -191,7 +188,7 @@ impl PanelClient {
     pub fn new(name: String, client: Client, stream: Option<UnixStream>) -> Self {
         Self {
             name,
-            client,
+            client: Some(client),
             stream,
             security_ctx: None,
             exec: None,
@@ -320,7 +317,6 @@ pub struct PanelSpace {
     pub maximized: bool,
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub minimize_applet_rect: Rectangle<i32, Logical>,
-    pub panel_rect_settings: RoundedRectangleSettings,
     pub scale_change_retries: u32,
     /// Extra gap for stacked panels. Logical coordinate space.
     pub additional_gap: i32,
@@ -338,6 +334,9 @@ pub struct PanelSpace {
     pub background_element: Option<BackgroundElement>,
     pub last_minimize_update: Instant,
     pub(crate) toplevel_overlaps: HashSet<wayland_backend::client::ObjectId>,
+    pub(crate) layer_overlaps: HashMap<String, smithay::utils::Rectangle<i32, Logical>>,
+    pub(crate) logical_layer_start_overlap: i32,
+    pub(crate) logical_layer_end_overlap: i32,
     pub(crate) notification_subscription: Option<ZcosmicOverlapNotificationV1>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
     pub(crate) hover_track: HoverTrack,
@@ -403,7 +402,6 @@ impl PanelSpace {
             panel_tx,
             minimize_applet_rect: Default::default(),
             container_length: 0,
-            panel_rect_settings: RoundedRectangleSettings::default(),
             scale_change_retries: 0,
             additional_gap: 0,
             loop_handle,
@@ -423,6 +421,9 @@ impl PanelSpace {
             overlap_notify: None,
             hover_track: HoverTrack::default(),
             transitioning: false,
+            layer_overlaps: HashMap::new(),
+            logical_layer_start_overlap: 0,
+            logical_layer_end_overlap: 0,
         }
     }
 
@@ -432,6 +433,219 @@ impl PanelSpace {
         } else {
             self.dimensions.w
         }
+    }
+
+    pub fn insert_layer_overlap(&mut self, id: String, rect: Rectangle<i32, Logical>) {
+        self.layer_overlaps.insert(id, rect);
+        self.apply_layer_overlaps();
+    }
+
+    pub fn remove_layer_overlap(&mut self, id: &str) {
+        self.layer_overlaps.remove(id);
+        self.apply_layer_overlaps();
+    }
+
+    pub fn has_layer_overlap(&self) -> bool {
+        !self.layer_overlaps.is_empty()
+    }
+
+    pub fn apply_layer_overlaps(&mut self) {
+        self.is_dirty = true;
+        self.logical_layer_start_overlap = 0;
+        self.logical_layer_end_overlap = 0;
+        for rect in self.layer_overlaps.values() {
+            if self.config.is_horizontal() {
+                if rect.loc.x + rect.size.w < self.dimensions.w / 2 {
+                    self.logical_layer_start_overlap =
+                        self.logical_layer_start_overlap.max(rect.loc.x + rect.size.w)
+                            - self.config.spacing as i32
+                            + self.config.margin as i32;
+                } else {
+                    self.logical_layer_end_overlap =
+                        self.logical_layer_end_overlap.max(self.dimensions.w - rect.loc.x)
+                            - self.config.spacing as i32
+                            + self.config.margin as i32;
+                }
+            } else {
+                if rect.loc.y + rect.size.h < self.dimensions.h / 2 {
+                    self.logical_layer_start_overlap =
+                        self.logical_layer_start_overlap.max(rect.loc.y + rect.size.h)
+                            - self.config.spacing as i32
+                            + self.config.margin as i32;
+                } else {
+                    self.logical_layer_end_overlap =
+                        self.logical_layer_end_overlap.max(self.dimensions.h - rect.loc.y)
+                            - self.config.spacing as i32
+                            + self.config.margin as i32;
+                }
+            }
+        }
+
+        if self.logical_layer_start_overlap > 0 {
+            self.add_spacer_element_to_start(self.logical_layer_start_overlap as u32);
+        } else {
+            self.clear_spacer_start();
+        }
+
+        if self.logical_layer_end_overlap > 0 {
+            self.add_spacer_element_to_end(self.logical_layer_end_overlap as u32);
+        } else {
+            self.clear_spacer_end();
+        }
+    }
+
+    fn clear_spacer_start(&mut self) {
+        // remove fake client from start of left client list or middle client list if left is empty
+        // this is used to create a spacer element
+        let mut left_guard = self.clients_left.lock().unwrap();
+        let mut center_guard = self.clients_center.lock().unwrap();
+
+        if left_guard.get(0).is_some_and(|c| c.name == "spacer-start") {
+            left_guard.remove(0);
+        } else if center_guard.get(0).is_some_and(|c| c.name == "spacer-start") {
+            center_guard.remove(0);
+        }
+
+        // remove from space
+        if let Some(element) = self
+            .space
+            .element_under((0., 0.))
+            .filter(|e| matches!(e.0, CosmicMappedInternal::Spacer(_)))
+            .map(|e| e.0.clone())
+        {
+            self.space.unmap_elem(&element);
+        }
+    }
+
+    fn clear_spacer_end(&mut self) {
+        // remove fake client from end of right client list
+        // this is used to create a spacer element
+        let mut right_guard = self.clients_right.lock().unwrap();
+        let mut center_guard = self.clients_center.lock().unwrap();
+
+        if right_guard.get(0).is_some_and(|c| c.name == "spacer-end") {
+            right_guard.remove(0);
+        } else if center_guard.get(0).is_some_and(|c| c.name == "spacer-end") {
+            center_guard.remove(0);
+        }
+
+        // remove from space
+        if let Some(element) = self
+            .space
+            .element_under((self.dimensions.w as f64, self.dimensions.h as f64))
+            .filter(|e| matches!(e.0, CosmicMappedInternal::Spacer(_)))
+            .map(|e| e.0.clone())
+        {
+            self.space.unmap_elem(&element);
+        }
+    }
+
+    pub fn add_spacer_element_to_start(&mut self, dim: u32) {
+        // add fake client to start of left client list or middle client list if left is empty
+        // this is used to create a spacer element
+        let mut left_guard = self.clients_left.lock().unwrap();
+        let mut center_guard = self.clients_center.lock().unwrap();
+
+        let spacer_client = PanelClient {
+            name: "spacer-start".to_string(),
+            client: None,
+            stream: None,
+            security_ctx: None,
+            exec: None,
+            minimize_priority: None,
+            requests_wayland_display: None,
+            is_notification_applet: None,
+            shrink_priority: None,
+            shrink_min_size: None,
+            auto_popup_hover_press: None,
+        };
+
+        // add to list if not already there
+        if left_guard.get(0).is_some_and(|c| c.name != "spacer-start") {
+            left_guard.insert(0, spacer_client);
+        } else if center_guard.get(0).is_some_and(|c| c.name != "spacer-start") {
+            center_guard.insert(0, spacer_client);
+        }
+
+        // add to space if not already there
+        if let Some(e) = self
+            .space
+            .element_under((0.5, 0.5))
+            .filter(|e| !matches!(e.0, CosmicMappedInternal::Spacer(_)))
+            .map(|e| e.0.clone())
+        {
+            self.space.unmap_elem(&e);
+        }
+
+        let size = if self.config.is_horizontal() {
+            (dim as i32, 4 as i32)
+        } else {
+            (4 as i32, dim as i32)
+        };
+        self.space.map_element(
+            CosmicMappedInternal::Spacer(Spacer {
+                name: "spacer-start".to_string(),
+                bbox: Rectangle::new((0, 0).into(), size.into()),
+            }),
+            (0, 0),
+            false,
+        );
+    }
+
+    pub fn add_spacer_element_to_end(&mut self, dim: u32) {
+        // add fake client to end of right client list
+        // this is used to create a spacer element
+        let mut right_guard = self.clients_right.lock().unwrap();
+        let mut center_guard = self.clients_center.lock().unwrap();
+
+        let spacer_client = PanelClient {
+            name: "spacer-end".to_string(),
+            client: None,
+            stream: None,
+            security_ctx: None,
+            exec: None,
+            minimize_priority: None,
+            requests_wayland_display: None,
+            is_notification_applet: None,
+            shrink_priority: None,
+            shrink_min_size: None,
+            auto_popup_hover_press: None,
+        };
+        // add to list if not already there
+        if right_guard.last().is_some_and(|c| c.name != "spacer-end") {
+            right_guard.push(spacer_client);
+        } else if center_guard.last().is_some_and(|c| c.name != "spacer-end") {
+            center_guard.push(spacer_client);
+        }
+        // location should be layer dimensions - dim
+        // add to space if not already there
+        let loc = if self.config.is_horizontal() {
+            (self.dimensions.w - dim as i32, 0)
+        } else {
+            (0, self.dimensions.h - dim as i32)
+        };
+
+        if let Some(e) = self
+            .space
+            .element_under((self.dimensions.w as f64, self.dimensions.h as f64))
+            .filter(|e| !matches!(e.0, CosmicMappedInternal::Spacer(_)))
+            .map(|e| e.0.clone())
+        {
+            self.space.unmap_elem(&e);
+        }
+        let size = if self.config.is_horizontal() {
+            (dim as i32, 4 as i32)
+        } else {
+            (4 as i32, dim as i32)
+        };
+        self.space.map_element(
+            CosmicMappedInternal::Spacer(Spacer {
+                name: "spacer-end".to_string(),
+                bbox: Rectangle::new(loc.into(), size.into()),
+            }),
+            loc,
+            false,
+        );
     }
 
     pub fn bg_color(&self) -> [f32; 4] {
@@ -1021,8 +1235,6 @@ impl PanelSpace {
                             }
                         };
 
-                        init_shaders(&mut new_renderer).expect("Failed to init shaders...");
-
                         let mut egl_surface = unsafe {
                             EGLSurface::new(
                                 &new_egl_display,
@@ -1593,7 +1805,7 @@ impl PanelSpace {
         }
     }
 
-    pub(crate) fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+    pub(crate) fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface == surface) {
             p.popup.grab = true;
         }

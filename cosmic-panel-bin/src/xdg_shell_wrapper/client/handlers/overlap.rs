@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use cctk::{
     cosmic_protocols::overlap_notify::v1::client::{
         zcosmic_overlap_notification_v1::{self, ZcosmicOverlapNotificationV1},
@@ -58,6 +60,14 @@ impl Dispatch<ZcosmicOverlapNotificationV1, OverlapNotificationV1, GlobalState>
         _: &Connection,
         _: &QueueHandle<GlobalState>,
     ) {
+        // build map of namespace to priority
+        let namespace_map = state
+            .space
+            .space_list
+            .iter()
+            .map(|s| (s.config.name.clone(), (s.config.get_priority(), s.config.is_horizontal())))
+            .collect::<HashMap<_, _>>();
+
         let my_surface = &data.surface;
         for s in &mut state.space.space_list {
             if !s.layer.as_ref().is_some_and(|l| l.wl_surface() == my_surface) {
@@ -69,6 +79,28 @@ impl Dispatch<ZcosmicOverlapNotificationV1, OverlapNotificationV1, GlobalState>
                 },
                 zcosmic_overlap_notification_v1::Event::ToplevelLeave { ref toplevel } => {
                     s.toplevel_overlaps.remove(&toplevel.id());
+                },
+                zcosmic_overlap_notification_v1::Event::LayerEnter {
+                    ref identifier,
+                    ref namespace,
+                    exclusive: _,
+                    layer: _,
+                    x,
+                    y,
+                    width,
+                    height,
+                } => {
+                    if namespace_map.get(namespace).is_some_and(|(p, horizontal)| {
+                        *horizontal != s.config.is_horizontal() && *p > s.config.get_priority()
+                    }) {
+                        s.insert_layer_overlap(
+                            identifier.clone(),
+                            smithay::utils::Rectangle::new((x, y).into(), (width, height).into()),
+                        );
+                    }
+                },
+                zcosmic_overlap_notification_v1::Event::LayerLeave { ref identifier } => {
+                    s.remove_layer_overlap(identifier);
                 },
                 _ => {},
             }
