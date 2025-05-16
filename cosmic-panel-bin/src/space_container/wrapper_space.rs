@@ -231,6 +231,16 @@ impl WrapperSpace for SpaceContainer {
                             }
                             s
                         };
+                        s.setup(
+                            compositor_state,
+                            fractional_scale_manager,
+                            self.security_context_manager.clone(),
+                            viewport,
+                            layer_state,
+                            conn,
+                            qh,
+                            self.overlap_notify.clone(),
+                        );
 
                         if s.new_output(
                             compositor_state,
@@ -768,7 +778,9 @@ impl WrapperSpace for SpaceContainer {
             .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
             space.configure_panel_layer(layer, configure, &mut self.renderer);
-            if matches!(space.visibility(), Visibility::Visible) || !space.output_has_toplevel {
+            if matches!(space.visibility(), Visibility::Visible)
+                || space.toplevel_overlaps.is_empty()
+            {
                 space.output.as_ref().map(|o| (o.1.name(), space.config.anchor));
             }
         }
