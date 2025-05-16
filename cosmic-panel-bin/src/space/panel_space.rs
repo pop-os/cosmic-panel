@@ -311,7 +311,6 @@ pub struct PanelSpace {
     pub input_region: Option<Region>,
     pub has_frame: bool,
     pub scale: f64,
-    pub output_has_toplevel: bool,
     pub security_context_manager: Option<SecurityContextManager>,
     pub animate_state: Option<AnimateState>,
     pub maximized: bool,
@@ -395,7 +394,6 @@ impl PanelSpace {
             is_dirty: false,
             has_frame: true,
             scale: 1.0,
-            output_has_toplevel: false,
             security_context_manager,
             animate_state: None,
             maximized: false,
@@ -706,7 +704,7 @@ impl PanelSpace {
             };
 
             let f = c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || !self.output_has_toplevel {
+                if self.animate_state.is_some() || self.toplevel_overlaps.is_empty() {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -1026,7 +1024,7 @@ impl PanelSpace {
         }
         self.is_dirty = true;
         self.additional_gap = gap;
-        if (!self.output_has_toplevel || matches!(self.visibility, Visibility::Visible))
+        if (self.toplevel_overlaps.is_empty() || matches!(self.visibility, Visibility::Visible))
             && !matches!(
                 self.space_event.as_ref().get(),
                 Some(SpaceEvent::WaitConfigure { first, .. }) if first

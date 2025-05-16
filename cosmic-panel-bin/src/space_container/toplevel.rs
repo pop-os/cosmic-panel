@@ -194,8 +194,6 @@ impl SpaceContainer {
                         additional_gap += s.crosswise();
                     }
                     s.handle_focus();
-
-                    s.output_has_toplevel = has_toplevel;
                 }
             }
         }
