@@ -132,6 +132,8 @@ pub enum PanelSize {
     L,
     /// XL
     XL,
+    /// Define a custom size
+    Custom(u32),
 }
 
 impl PanelSize {
@@ -144,6 +146,7 @@ impl PanelSize {
                 PanelSize::M => 28,
                 PanelSize::L => 32,
                 PanelSize::XL => 48,
+                PanelSize::Custom(s) => *s / 2,
             }
         } else {
             match self {
@@ -152,6 +155,7 @@ impl PanelSize {
                 PanelSize::M => 40,
                 PanelSize::L => 48,
                 PanelSize::XL => 56,
+                PanelSize::Custom(s) => *s * 7 / 10,
             }
         }
     }
@@ -164,6 +168,7 @@ impl PanelSize {
                 PanelSize::M => 14,
                 PanelSize::L => 16,
                 PanelSize::XL => 16,
+                PanelSize::Custom(s) => (*s / 4) as u16,
             }
         } else {
             match self {
@@ -172,6 +177,7 @@ impl PanelSize {
                 PanelSize::M => 8,
                 PanelSize::L => 8,
                 PanelSize::XL => 12,
+                PanelSize::Custom(s) => (*s * 3 / 20) as u16,
             }
         }
     }
@@ -189,6 +195,7 @@ impl Display for PanelSize {
             PanelSize::M => write!(f, "M"),
             PanelSize::L => write!(f, "L"),
             PanelSize::XL => write!(f, "XL"),
+            PanelSize::Custom(s) => write!(f, "Custom({})", s),
         }
     }
 }
@@ -203,7 +210,17 @@ impl FromStr for PanelSize {
             "M" => Ok(Self::M),
             "L" => Ok(Self::L),
             "XL" => Ok(Self::XL),
-            _ => Err(anyhow::anyhow!("Not a valid PanelSize")),
+            s => {
+                if s.starts_with("Custom(") && s.ends_with(")") {
+                    let s = s.strip_prefix("Custom(").unwrap().strip_suffix(")").unwrap();
+                    match s.parse::<u32>() {
+                        Ok(s) => Ok(Self::Custom(s)),
+                        Err(_) => Err(anyhow::anyhow!("Not a valid PanelSize")),
+                    }
+                } else {
+                    Err(anyhow::anyhow!("Not a valid PanelSize"))
+                }
+            },
         }
     }
 }
@@ -599,6 +616,7 @@ impl CosmicPanelConfig {
             PanelSize::M => 8 + gap..101 + gap,
             PanelSize::L => 8 + gap..121 + gap,
             PanelSize::XL => 8 + gap..141 + gap,
+            PanelSize::Custom(s) => 8 + gap..s * 2 + 1 + gap,
         };
         assert!(2 * self.padding + gap < bar_thickness.end);
         let o_h = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().1);
