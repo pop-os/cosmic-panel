@@ -1131,6 +1131,20 @@ impl PanelSpace {
                     if let Some(w) = p.popup.viewport.as_ref() {
                         w.destroy();
                     }
+                    self.c_focused_surface
+                        .borrow_mut()
+                        .retain(|s| s.0 != *p.popup.c_popup.wl_surface());
+                    self.c_hovered_surface
+                        .borrow_mut()
+                        .retain(|s| s.0 != *p.popup.c_popup.wl_surface());
+                    self.s_focused_surface.retain(|s| {
+                        !s.0.wl_surface().is_some_and(|s| s.as_ref() == p.s_surface.wl_surface())
+                    });
+                    self.s_hovered_surface.retain(|s| {
+                        !s.surface
+                            .wl_surface()
+                            .is_some_and(|s| s.as_ref() == p.s_surface.wl_surface())
+                    });
                 }
                 ret
             });
