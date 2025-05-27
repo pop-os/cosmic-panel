@@ -560,6 +560,10 @@ impl WrapperSpace for SpaceContainer {
                 let Some(space_c_wl_surface) = s.layer.as_ref().map(|l| l.wl_surface()) else {
                     continue;
                 };
+                // skip if there is a popup here, because it should already have focus
+                if !s.popups.is_empty() {
+                    continue;
+                }
 
                 let hovered = s.c_hovered_surface.clone();
                 let mut guard = hovered.borrow_mut();
