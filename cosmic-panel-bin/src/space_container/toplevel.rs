@@ -1,3 +1,4 @@
+use crate::xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
 use cctk::{
     cosmic_protocols::{
         toplevel_info::v1::client::zcosmic_toplevel_handle_v1,
@@ -10,14 +11,9 @@ use cctk::{
         workspace::v1::client::ext_workspace_handle_v1,
     },
 };
-
-use crate::xdg_shell_wrapper::{
-    client_state::FocusStatus,
-    space::{ToplevelInfoSpace, ToplevelManagerSpace},
-};
 use cosmic_panel_config::PanelAnchor;
 use itertools::Itertools;
-use sctk::shell::WaylandSurface;
+use sctk::reexports::client::Proxy;
 
 use super::SpaceContainer;
 
@@ -158,40 +154,22 @@ impl SpaceContainer {
 
     pub(crate) fn apply_toplevel_changes(&mut self) {
         for output in self.outputs.iter().map(|o| (o.0.clone(), o.1.name())).collect::<Vec<_>>() {
-            let has_toplevel = self.toplevels.iter().any(|info| {
-                info.output.contains(&output.0)
-                    && !info.state.contains(&zcosmic_toplevel_handle_v1::State::Minimized)
-                    && self.workspace_groups.iter().any(|g| {
-                        g.workspaces.iter().any(|w| {
-                            if let Some(workspace_info) =
-                                self.workspaces.iter().find(|i| i.handle == *w)
-                            {
-                                workspace_info
-                                    .state
-                                    .contains(ext_workspace_handle_v1::State::Active)
-                                    && info.workspace.contains(w)
-                            } else {
-                                false
-                            }
-                        })
-                    })
-            });
-
-            let name = output.1;
             for anchor in
                 [PanelAnchor::Top, PanelAnchor::Bottom, PanelAnchor::Left, PanelAnchor::Right]
             {
-                let mut additional_gap = 0;
-                for s in self.stacked_spaces_by_priority(&name, anchor) {
-                    s.set_additional_gap(additional_gap);
-                    if s.config.autohide.is_some()
-                        && (!has_toplevel
-                            || s.c_focused_surface.borrow().iter().any(|c| {
-                                matches!(c.2, FocusStatus::Focused)
-                                    && s.layer.as_ref().is_some_and(|s| s.wl_surface() == &c.0)
-                            }))
-                    {
-                        additional_gap += s.crosswise();
+                for s in self.space_list.iter_mut().filter(|s| {
+                    s.output.as_ref().is_some_and(|o| o.1.name() == output.1)
+                        && s.config.anchor == anchor
+                }) {
+                    s.minimized_toplevels.clear();
+                    for t in &self.toplevels {
+                        if !t.output.contains(&output.0) {
+                            continue;
+                        }
+
+                        if t.state.contains(&zcosmic_toplevel_handle_v1::State::Minimized) {
+                            s.minimized_toplevels.insert(t.foreign_toplevel.id());
+                        }
                     }
                     s.handle_focus();
                 }

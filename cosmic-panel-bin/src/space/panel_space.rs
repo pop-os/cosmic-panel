@@ -332,6 +332,7 @@ pub struct PanelSpace {
     pub remap_attempts: u32,
     pub background_element: Option<BackgroundElement>,
     pub last_minimize_update: Instant,
+    pub(crate) minimized_toplevels: HashSet<wayland_backend::client::ObjectId>,
     pub(crate) toplevel_overlaps: HashSet<wayland_backend::client::ObjectId>,
     pub(crate) layer_overlaps: HashMap<String, smithay::utils::Rectangle<i32, Logical>>,
     pub(crate) logical_layer_start_overlap: i32,
@@ -414,15 +415,25 @@ impl PanelSpace {
             background_element: None,
             last_minimize_update: Instant::now() - Duration::from_secs(1),
             anchor_gap: 0,
-            toplevel_overlaps: HashSet::new(),
             notification_subscription: None,
             overlap_notify: None,
             hover_track: HoverTrack::default(),
             transitioning: false,
-            layer_overlaps: HashMap::new(),
             logical_layer_start_overlap: 0,
             logical_layer_end_overlap: 0,
+
+            toplevel_overlaps: HashSet::new(),
+            layer_overlaps: HashMap::new(),
+            minimized_toplevels: HashSet::new(),
         }
+    }
+
+    pub fn has_toplevel_overlap(&self) -> bool {
+        self.toplevel_overlaps
+            .iter()
+            .filter(|t| !self.minimized_toplevels.contains(&t))
+            .next()
+            .is_some()
     }
 
     pub fn crosswise(&self) -> i32 {
@@ -704,7 +715,7 @@ impl PanelSpace {
             };
 
             let f = c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || self.toplevel_overlaps.is_empty() {
+                if self.animate_state.is_some() || !self.has_toplevel_overlap() {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -740,10 +751,11 @@ impl PanelSpace {
         };
 
         let intellihide = self.overlap_notify.is_some();
+
         match self.visibility {
             Visibility::Hidden => {
                 if matches!(cur_hover, FocusStatus::Focused)
-                    || (intellihide && self.toplevel_overlaps.is_empty())
+                    || (intellihide && !self.has_toplevel_overlap())
                 {
                     self.transitioning = true;
                     // start transition to visible
@@ -767,15 +779,16 @@ impl PanelSpace {
             },
             Visibility::Visible => {
                 if let FocusStatus::LastFocused(t) = cur_hover {
-                    self.transitioning = true;
                     // start transition to hidden
                     let duration_since_last_focus = match Instant::now().checked_duration_since(t) {
                         Some(d) => d,
                         None => return,
                     };
+
                     if duration_since_last_focus > self.config.get_hide_wait().unwrap()
-                        && (!intellihide || !self.toplevel_overlaps.is_empty())
+                        && (!intellihide || self.has_toplevel_overlap())
                     {
+                        self.transitioning = true;
                         self.is_dirty = true;
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
@@ -805,7 +818,7 @@ impl PanelSpace {
                 self.is_dirty = true;
 
                 if matches!(cur_hover, FocusStatus::Focused)
-                    || (intellihide && self.toplevel_overlaps.is_empty())
+                    || (intellihide && !self.has_toplevel_overlap())
                 {
                     // start transition to visible
                     self.visibility = Visibility::TransitionToVisible {
@@ -867,7 +880,7 @@ impl PanelSpace {
                 self.is_dirty = true;
 
                 if matches!(cur_hover, FocusStatus::LastFocused(_))
-                    && (!intellihide || !self.toplevel_overlaps.is_empty())
+                    && (!intellihide || !self.has_toplevel_overlap())
                 {
                     // start transition to hide
                     self.close_popups(|_| false);
@@ -1024,7 +1037,7 @@ impl PanelSpace {
         }
         self.is_dirty = true;
         self.additional_gap = gap;
-        if (self.toplevel_overlaps.is_empty() || matches!(self.visibility, Visibility::Visible))
+        if (!self.has_toplevel_overlap() || matches!(self.visibility, Visibility::Visible))
             && !matches!(
                 self.space_event.as_ref().get(),
                 Some(SpaceEvent::WaitConfigure { first, .. }) if first
