@@ -201,7 +201,7 @@ fn main() -> Result<()> {
             let _ = process_manager.set_max_restarts(999999).await;
 
             let mut notifications_proxy =
-                match tokio::time::timeout(Duration::from_secs(1), notifications_conn()).await {
+                match tokio::time::timeout(Duration::from_secs(5), notifications_conn()).await {
                     Ok(Ok(p)) => Some(p),
                     err => {
                         error!("Failed to connect to the notifications daemon {:?}", err);
