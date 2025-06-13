@@ -39,8 +39,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ] }
 tracing-journald = "0.3"
 tracing-futures = "0.2"
-launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
-# launch-pad = { path = "../../launch-pad" }
+# launch-pad = { git = "https://github.com/pop-os/launch-pad.git" }
+launch-pad = { path = "../../launch-pad" }
 cosmic-panel-config = { path = "../cosmic-panel-config" }
 cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme" }
 transpose = "0.2.2"
