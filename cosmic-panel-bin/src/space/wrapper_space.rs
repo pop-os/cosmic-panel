@@ -32,7 +32,7 @@ use calloop::timer::Timer;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
-use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
+use freedesktop_desktop_entry::{self, DesktopEntry, Iter, PathSource};
 use itertools::izip;
 use launch_pad::process::Process;
 use sctk::{
@@ -340,7 +340,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, c, Some(s))
+                    PanelClient::new(name, None, c, Some(s))
                 })
                 .collect();
 
@@ -353,7 +353,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, c, Some(s))
+                    PanelClient::new(name, None, c, Some(s))
                 })
                 .collect();
 
@@ -366,7 +366,7 @@ impl WrapperSpace for PanelSpace {
                 .into_iter()
                 .map(|name| {
                     let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, c, Some(s))
+                    PanelClient::new(name, None, c, Some(s))
                 })
                 .collect();
 
@@ -416,6 +416,7 @@ impl WrapperSpace for PanelSpace {
                     if let Ok(bytes) = fs::read_to_string(&path) {
                         if let Ok(entry) = DesktopEntry::from_str(&path, &bytes, &locales) {
                             if let Some(exec) = entry.exec() {
+                                panel_client.path = Some(path.clone());
                                 panel_client.exec = Some(exec.to_string());
                                 panel_client.requests_wayland_display =
                                     Some(entry.desktop_entry("X-HostWaylandDisplay").is_some());
@@ -462,6 +463,7 @@ impl WrapperSpace for PanelSpace {
                 if panel_client.exec.is_none() {
                     continue;
                 }
+
                 let Some(socket) = panel_client.stream.take() else {
                     error!("Failed to get socket for {}", &panel_client.name);
                     continue;
@@ -533,10 +535,6 @@ impl WrapperSpace for PanelSpace {
                 applet_env.push(("WAYLAND_SOCKET".to_string(), socket.as_raw_fd().to_string()));
 
                 fds.push(socket.into());
-                trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
-
-                info!("Starting: {}", exec);
-
                 let display_handle = display.clone();
                 let applet_tx_clone = self.applet_tx.clone();
                 let id_clone = panel_client.name.clone();
@@ -551,9 +549,26 @@ impl WrapperSpace for PanelSpace {
                 let security_context_manager_clone = security_context_manager.clone();
                 let qh_clone = qh.clone();
 
+                // arg forwarding WAYLAND_SOCKET is required
+                // env must be passed in args
+                let is_flatpak = panel_client.is_flatpak();
+
+                if is_flatpak {
+                    args.insert(
+                        args.len().saturating_sub(2),
+                        "--socket=inherit-wayland-socket".to_string(),
+                    );
+                    for (k, v) in &applet_env {
+                        args.insert(args.len().saturating_sub(2), format!("--env={k}={v}"))
+                    }
+                }
+                trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
+
+                info!("Starting: {}", exec);
+
                 let mut process = Process::new()
                     .with_executable(&exec)
-                    .with_args(args)
+                    .with_args(args.clone())
                     .with_on_stderr(move |_, _, out| {
                         // TODO why is span not included in logs to journald
                         let id_clone = id_clone_err.clone();
@@ -622,6 +637,7 @@ impl WrapperSpace for PanelSpace {
                             None
                         };
 
+                        let args = args.clone();
                         async move {
                             if !should_restart {
                                 _ = pman.stop_process(key).await;
@@ -679,11 +695,26 @@ impl WrapperSpace for PanelSpace {
                             let _ = applet_tx_clone
                                 .send(AppletMsg::ClientSocketPair(client_id_clone))
                                 .await;
+
+                            applet_env.retain(|(k, v)| k.as_str() != "WAYLAND_SOCKET");
                             applet_env.push((
                                 "WAYLAND_SOCKET".to_string(),
                                 raw_client_socket.to_string(),
                             ));
+
+                            let mut args = args.clone();
+                            if is_flatpak {
+                                args.retain(|arg| !arg.contains("WAYLAND_SOCKET"));
+                                args.insert(
+                                    args.len().saturating_sub(2),
+                                    format!(
+                                        "--env=WAYLAND_SOCKET={}",
+                                        raw_client_socket.to_string()
+                                    ),
+                                );
+                            }
                             let _ = pman.update_process_env(&key, applet_env.clone()).await;
+                            let _ = pman.update_process_args(&key, args).await;
                         }
                     });
 

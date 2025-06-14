@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     os::{fd::OwnedFd, unix::net::UnixStream},
+    path::PathBuf,
     rc::Rc,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -32,6 +33,7 @@ use cctk::{
 };
 
 use cosmic::iced::id;
+use freedesktop_desktop_entry::PathSource;
 use launch_pad::process::Process;
 use sctk::{
     compositor::Region,
@@ -125,6 +127,7 @@ pub type Clients = Arc<Mutex<Vec<PanelClient>>>;
 #[derive(Debug)]
 pub struct PanelClient {
     pub name: String,
+    pub path: Option<PathBuf>,
     pub client: Option<Client>,
     pub stream: Option<UnixStream>,
     pub security_ctx: Option<WpSecurityContextV1>,
@@ -185,9 +188,15 @@ impl FromStr for AppletAutoClickAnchor {
 }
 
 impl PanelClient {
-    pub fn new(name: String, client: Client, stream: Option<UnixStream>) -> Self {
+    pub fn new(
+        name: String,
+        path: Option<PathBuf>,
+        client: Client,
+        stream: Option<UnixStream>,
+    ) -> Self {
         Self {
             name,
+            path,
             client: Some(client),
             stream,
             security_ctx: None,
@@ -199,6 +208,13 @@ impl PanelClient {
             shrink_priority: None,
             shrink_min_size: None,
         }
+    }
+
+    pub fn is_flatpak(&self) -> bool {
+        let Some(path) = self.path.as_ref() else {
+            return false;
+        };
+        matches!(PathSource::guess_from(path), PathSource::SystemFlatpak | PathSource::LocalFlatpak)
     }
 }
 
@@ -557,6 +573,7 @@ impl PanelSpace {
 
         let spacer_client = PanelClient {
             name: "spacer-start".to_string(),
+            path: None,
             client: None,
             stream: None,
             security_ctx: None,
@@ -609,6 +626,7 @@ impl PanelSpace {
 
         let spacer_client = PanelClient {
             name: "spacer-end".to_string(),
+            path: None,
             client: None,
             stream: None,
             security_ctx: None,
