@@ -1159,6 +1159,11 @@ impl WrapperSpace for PanelSpace {
                         .find(|s| s.id() == panel_id)
                         .filter(|s| s.hover_track == cur_hover_track)
                     {
+                        // exit early if popup is open on the hover id
+                        if space.popups.first().zip(cur_client_hover_id.as_ref()).is_some_and(|(p, c_id)| matches!(c_id, HoverId::Client(ref c_id) if Some(c_id) == p.s_surface.wl_surface().client().map(|c| c.id()).as_ref())) {
+                            return calloop::timer::TimeoutAction::Drop;
+                        }
+
                         space.close_popups(|_| false);
 
                         space.overflow_popup = None;
