@@ -386,10 +386,12 @@ impl WrapperSpace for PanelSpace {
 
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
+            let config_spacing = ron::ser::to_string(&self.config.spacing).unwrap_or_default();
             let config_name = self.config.name.clone();
             let env_vars = vec![
                 ("COSMIC_PANEL_NAME".to_string(), config_name),
                 ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
+                ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
                 ("RUST_BACKTRACE".to_string(), "1".to_string()),
