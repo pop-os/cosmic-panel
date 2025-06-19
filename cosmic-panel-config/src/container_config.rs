@@ -185,8 +185,8 @@ impl Default for CosmicPanelContainerConfig {
                     size_wings: None,
                     size_center: None,
                     expand_to_edges: false,
-                    padding: 0,
-                    spacing: 4,
+                    padding: 4,
+                    spacing: 12,
                     border_radius: 160,
                     exclusive_zone: false,
                     autohide: Some(crate::AutoHide {
