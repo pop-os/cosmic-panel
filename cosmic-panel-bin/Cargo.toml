@@ -51,7 +51,7 @@ libc = "0.2.132"
 freedesktop-desktop-entry = "0.6.2"
 xdg = "2.4.1"
 itertools = "0.13"
-notify = "6.1"
+notify = "8"
 tokio = { version = "1", features = [
     "process",
     "sync",
