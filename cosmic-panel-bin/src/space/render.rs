@@ -266,7 +266,7 @@ impl PanelSpace {
                 drop(f);
                 let mut dmg = res.damage.cloned();
 
-                egl_surface.swap_buffers(dmg.as_deref_mut())?;
+                egl_surface.swap_buffers(None)?;
 
                 for window in self.space.elements().filter_map(|w| {
                     if let CosmicMappedInternal::Window(w) = w {
