@@ -76,7 +76,6 @@ pub(crate) fn write_and_attach_buffer(
                         } else {
                             bail!("Failed to create buffer");
                         };
-
                         let mut writer = BufWriter::new(to);
                         let from: &[u8] = unsafe { std::slice::from_raw_parts(from, length) };
                         let offset: usize = offset.try_into()?;
@@ -100,6 +99,9 @@ pub(crate) fn write_and_attach_buffer(
             bail!("Not an shm buffer")
         }
     } else {
+        cursor_surface.attach(None, 0, 0);
+        cursor_surface.damage(0, 0, i32::MAX, i32::MAX);
+        cursor_surface.commit();
         bail!("Missing new buffer.")
     }
 }
