@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::xdg_shell_wrapper::space::{ToplevelInfoSpace, ToplevelManagerSpace};
 use cctk::{
     cosmic_protocols::{
@@ -178,7 +180,8 @@ impl SpaceContainer {
     }
 
     pub(crate) fn maximized_outputs(&self) -> Vec<WlOutput> {
-        self.workspace_groups
+        let outputs = self
+            .workspace_groups
             .iter()
             .filter_map(|g| {
                 if g.workspaces.iter().any(|w| {
@@ -197,7 +200,22 @@ impl SpaceContainer {
                     None
                 }
             })
+            .flatten();
+
+        let sticky_outputs: HashSet<WlOutput> = self
+            .maximized_toplevels
+            .iter()
+            .filter_map(|t| {
+                if t.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized)
+                    && t.state.contains(&zcosmic_toplevel_handle_v1::State::Sticky)
+                {
+                    Some(t.output.clone().into_iter())
+                } else {
+                    None
+                }
+            })
             .flatten()
-            .collect()
+            .collect();
+        outputs.chain(sticky_outputs.into_iter()).collect()
     }
 }
