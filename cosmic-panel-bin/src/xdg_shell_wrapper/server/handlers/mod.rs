@@ -4,6 +4,7 @@ use itertools::Itertools;
 use sctk::{
     data_device_manager::data_offer::receive_to_fd, delegate_subcompositor,
     reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction,
+    shm::multi::MultiPool,
 };
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, ImportDma},
@@ -34,7 +35,7 @@ use smithay::{
         },
     },
 };
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 
 use crate::{
     iced::elements::target::SpaceTarget,
@@ -102,7 +103,7 @@ impl SeatHandler for GlobalState {
         let Some(ptr) = seat_pair.client.ptr.as_ref() else {
             return;
         };
-        // render dnd icon to the active dnd icon surface
+
         match image {
             smithay::input::pointer::CursorImageStatus::Hidden => {
                 let ptr = ptr.pointer();
@@ -117,6 +118,9 @@ impl SeatHandler for GlobalState {
             smithay::input::pointer::CursorImageStatus::Surface(surface) => {
                 trace!("received surface with cursor image");
 
+                if self.client_state.multipool.is_none() {
+                    self.client_state.multipool = MultiPool::new(&self.client_state.shm_state).ok();
+                }
                 let multipool = match &mut self.client_state.multipool {
                     Some(m) => m,
                     None => {
@@ -145,15 +149,18 @@ impl SeatHandler for GlobalState {
                         trace!("Setting cursor {:?}", hotspot);
                         let ptr = ptr.pointer();
                         ptr.set_cursor(last_enter, Some(cursor_surface), hotspot.x, hotspot.y);
-                        self.client_state.multipool_ctr += 1;
 
-                        if let Err(e) = write_and_attach_buffer(
-                            buf.as_ref().unwrap(),
-                            cursor_surface,
-                            self.client_state.multipool_ctr,
-                            multipool,
-                        ) {
-                            error!("failed to attach buffer to cursor surface: {}", e);
+                        for ctr in 0..5 {
+                            if let Err(e) = write_and_attach_buffer(
+                                buf.as_ref().unwrap(),
+                                cursor_surface,
+                                ctr,
+                                multipool,
+                            ) {
+                                info!("failed to attach buffer to cursor surface: {}", e);
+                            } else {
+                                break;
+                            }
                         }
                     }
                 });

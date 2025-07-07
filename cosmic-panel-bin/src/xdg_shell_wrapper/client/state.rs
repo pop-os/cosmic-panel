@@ -168,7 +168,6 @@ pub struct ClientState {
     pub hovered_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) cursor_surface: Option<wl_surface::WlSurface>,
     pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
-    pub(crate) multipool_ctr: usize,
     pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
 
@@ -212,7 +211,6 @@ impl Debug for ClientState {
             .field("hovered_surface", &self.hovered_surface)
             .field("cursor_surface", &self.cursor_surface)
             .field("multipool", &self.multipool)
-            .field("multipool_ctr", &self.multipool_ctr)
             .field("last_key_pressed", &self.last_key_pressed)
             .field("outputs", &self.outputs)
             .field("pending_layer_surfaces", &self.pending_layer_surfaces)
@@ -314,7 +312,6 @@ impl ClientState {
             outputs: Default::default(),
             registry_state,
             multipool: None,
-            multipool_ctr: 0,
             cursor_surface: None,
             last_key_pressed: Vec::new(),
             fractional_scaling_manager,
