@@ -1310,6 +1310,76 @@ impl WrapperSpace for PanelSpace {
         ret
     }
 
+    fn touch_under(
+        &mut self,
+        (x, y): (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        // first check if the motion is on a popup's client surface
+        if let Some(p) = self.popups.iter().find(|p| p.popup.c_popup.wl_surface() == &c_wl_surface)
+        {
+            let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
+            Some(ServerPointerFocus {
+                surface: p.s_surface.wl_surface().clone().into(),
+                seat_name: seat_name.to_string(),
+                c_pos: p.popup.rectangle.loc,
+                s_pos: (p.popup.rectangle.loc - geo.loc).to_f64(),
+            })
+        } else {
+            // if not on this panel's client surface return None
+            if self.layer.as_ref().map(|s| *s.wl_surface() != c_wl_surface).unwrap_or(true) {
+                return None;
+            }
+            // FIXME
+            // There has to be a way to avoid messing with the scaling like this...
+            let space_focus = self.space.elements().rev().find_map(|e| {
+                let Some(location) = self.space.element_location(e) else {
+                    return None;
+                };
+
+                let mut size = match e {
+                    CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
+                    CosmicMappedInternal::Window(w) => w.geometry().size,
+                    _ => return None,
+                }
+                .to_f64();
+
+                if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
+                    if configured_size.w > 0 {
+                        size.w = size.w.min(configured_size.w as f64);
+                    }
+                    if configured_size.h > 0 {
+                        size.h = size.h.min(configured_size.h as f64);
+                    }
+                }
+                let bbox = Rectangle::new(location.to_f64(), size);
+                if bbox.contains((x as f64, y as f64)) {
+                    SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
+                } else {
+                    None
+                }
+            });
+
+            if let Some((target, relative_loc, space_target)) = space_focus {
+                let geo = target
+                    .geometry()
+                    .to_f64()
+                    .to_physical(1.0)
+                    .to_logical(self.scale)
+                    .to_i32_round();
+                Some(ServerPointerFocus {
+                    surface: space_target,
+                    seat_name: seat_name.to_string(),
+                    c_pos: geo.loc,
+                    s_pos: relative_loc.to_f64(),
+                })
+            } else {
+                None
+            }
+        }
+    }
+
     fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
 

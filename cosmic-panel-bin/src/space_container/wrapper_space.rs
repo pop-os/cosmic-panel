@@ -600,6 +600,33 @@ impl WrapperSpace for SpaceContainer {
         ret
     }
 
+    fn touch_under(
+        &mut self,
+        dim: (i32, i32),
+        seat_name: &str,
+        c_wl_surface: c_wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus> {
+        if let Some((popup_space_i, popup_space)) =
+            self.space_list.iter_mut().enumerate().find(|s| !s.1.popups.is_empty())
+        {
+            if let Some(p_ret) = popup_space.touch_under(dim, seat_name, c_wl_surface.clone()) {
+                Some(p_ret)
+            } else {
+                self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
+                    if i != popup_space_i {
+                        s.touch_under(dim, seat_name, c_wl_surface.clone())
+                    } else {
+                        None
+                    }
+                })
+            }
+        } else {
+            self.space_list
+                .iter_mut()
+                .find_map(|s| s.touch_under(dim, seat_name, c_wl_surface.clone()))
+        }
+    }
+
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|(_, s)| !s.popups.is_empty())

@@ -47,6 +47,16 @@ impl SeatHandler for GlobalState {
                 None
             };
 
+            let touch = if info.has_touch {
+                if let Ok(touch) = self.client_state.seat_state.get_touch(qh, &seat) {
+                    Some(touch)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // A lot of clients bind keyboard and pointer unconditionally once on launch..
             // Initial clients might race the compositor on adding periheral and
             // end up in a state, where they are not able to receive input.
@@ -59,6 +69,7 @@ impl SeatHandler for GlobalState {
             // just always expose a keyboard and pointer.
             new_server_seat.add_keyboard(Default::default(), 200, 20).unwrap();
             new_server_seat.add_pointer();
+            new_server_seat.add_touch();
 
             let data_device = self.client_state.data_device_manager.get_data_device(qh, &seat);
 
@@ -68,6 +79,7 @@ impl SeatHandler for GlobalState {
                     _seat: seat.clone(),
                     kbd,
                     ptr,
+                    touch,
                     data_device,
                     copy_paste_source: None,
                     dnd_source: None,
@@ -117,6 +129,7 @@ impl SeatHandler for GlobalState {
                     _seat: seat.clone(),
                     kbd: None,
                     ptr: None,
+                    touch: None,
                     data_device: self.client_state.data_device_manager.get_data_device(qh, &seat),
                     copy_paste_source: None,
                     dnd_source: None,
@@ -162,7 +175,14 @@ impl SeatHandler for GlobalState {
                     }
                 }
             },
-            sctk::seat::Capability::Touch => {}, // TODO
+            sctk::seat::Capability::Touch => {
+                if info.has_touch {
+                    sp.server.seat.add_touch();
+                    if let Ok(touch) = self.client_state.seat_state.get_touch(qh, &seat) {
+                        sp.client.touch.replace(touch);
+                    }
+                }
+            },
             _ => unimplemented!(),
         }
     }

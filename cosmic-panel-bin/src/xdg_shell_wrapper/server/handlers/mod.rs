@@ -66,7 +66,7 @@ delegate_primary_selection!(GlobalState);
 impl SeatHandler for GlobalState {
     type KeyboardFocus = SpaceTarget;
     type PointerFocus = SpaceTarget;
-    type TouchFocus = WlSurface;
+    type TouchFocus = SpaceTarget;
 
     fn seat_state(&mut self) -> &mut SeatState<Self> {
         &mut self.server_state.seat_state

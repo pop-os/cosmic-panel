@@ -163,6 +163,14 @@ pub trait WrapperSpace {
         pointer: &WlPointer,
     ) -> Option<ServerPointerFocus>;
 
+    /// Handle touch on the space
+    fn touch_under(
+        &mut self,
+        dim: (i32, i32),
+        seat_name: &str,
+        surface: wl_surface::WlSurface,
+    ) -> Option<ServerPointerFocus>;
+
     /// add a top level window to the space
     fn add_window(&mut self, s_top_level: Window);
 
