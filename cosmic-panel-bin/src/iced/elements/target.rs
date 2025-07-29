@@ -3,7 +3,7 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 use anyhow::bail;
 use smithay::{
-    input::{keyboard::KeyboardTarget, pointer::PointerTarget},
+    input::{keyboard::KeyboardTarget, pointer::PointerTarget, touch::TouchTarget},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::IsAlive,
     wayland::seat::WaylandFocus,
@@ -285,6 +285,98 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
             SpaceTarget::OverflowButton(b) => {
                 KeyboardTarget::modifiers(b, seat, data, modifiers, serial)
             },
+        }
+    }
+}
+
+// TODO Iced touch events
+impl TouchTarget<GlobalState> for SpaceTarget {
+    fn down(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        event: &smithay::input::touch::DownEvent,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::down(s, seat, data, event, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn up(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        event: &smithay::input::touch::UpEvent,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::up(s, seat, data, event, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn motion(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        event: &smithay::input::touch::MotionEvent,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::motion(s, seat, data, event, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn frame(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::frame(s, seat, data, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn cancel(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::cancel(s, seat, data, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn shape(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        event: &smithay::input::touch::ShapeEvent,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::shape(s, seat, data, event, serial),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn orientation(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        event: &smithay::input::touch::OrientationEvent,
+        serial: smithay::utils::Serial,
+    ) {
+        match self {
+            SpaceTarget::Surface(s) => TouchTarget::orientation(s, seat, data, event, serial),
+            SpaceTarget::OverflowButton(_b) => {},
         }
     }
 }

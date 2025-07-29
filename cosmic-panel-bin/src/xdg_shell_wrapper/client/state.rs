@@ -26,6 +26,7 @@ use sctk::{
                 wl_output::WlOutput,
                 wl_seat::WlSeat,
                 wl_surface::{self, WlSurface},
+                wl_touch,
             },
             Connection, QueueHandle,
         },
@@ -87,6 +88,7 @@ pub(crate) struct ClientSeat {
     pub(crate) _seat: WlSeat,
     pub(crate) kbd: Option<wl_keyboard::WlKeyboard>,
     pub(crate) ptr: Option<ThemedPointer>,
+    pub(crate) touch: Option<wl_touch::WlTouch>,
     pub(crate) last_enter: u32,
     pub(crate) last_key_press: (u32, u32),
     pub(crate) last_pointer_press: (u32, u32),
@@ -170,6 +172,7 @@ pub struct ClientState {
     pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
     pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
+    pub(crate) touch_surfaces: HashMap<i32, WlSurface>,
 
     pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
 
@@ -310,6 +313,7 @@ impl ClientState {
             overlap_notify: overlap_notify.ok(),
 
             outputs: Default::default(),
+            touch_surfaces: HashMap::new(),
             registry_state,
             multipool: None,
             cursor_surface: None,
