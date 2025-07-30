@@ -15,6 +15,22 @@ pub enum SpaceTarget {
     OverflowButton(OverflowButtonElement),
 }
 
+impl SpaceTarget {
+    fn inner_keyboard_target(&self) -> &dyn KeyboardTarget<GlobalState> {
+        match self {
+            SpaceTarget::Surface(s) => s,
+            SpaceTarget::OverflowButton(b) => b,
+        }
+    }
+
+    fn inner_pointer_target(&self) -> &dyn PointerTarget<GlobalState> {
+        match self {
+            SpaceTarget::Surface(s) => s,
+            SpaceTarget::OverflowButton(b) => b,
+        }
+    }
+}
+
 impl TryFrom<CosmicMappedInternal> for SpaceTarget {
     type Error = anyhow::Error;
 
@@ -59,10 +75,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::enter(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => PointerTarget::enter(b, seat, data, event),
-        }
+        self.inner_pointer_target().enter(seat, data, event)
     }
 
     fn motion(
@@ -71,10 +84,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::motion(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.motion(seat, data, event),
-        }
+        self.inner_pointer_target().motion(seat, data, event)
     }
 
     fn relative_motion(
@@ -83,10 +93,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::relative_motion(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.relative_motion(seat, data, event),
-        }
+        self.inner_pointer_target().relative_motion(seat, data, event)
     }
 
     fn button(
@@ -95,10 +102,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::button(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.button(seat, data, event),
-        }
+        self.inner_pointer_target().button(seat, data, event)
     }
 
     fn axis(
@@ -107,17 +111,11 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         frame: smithay::input::pointer::AxisFrame,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::axis(s, seat, data, frame),
-            SpaceTarget::OverflowButton(b) => b.axis(seat, data, frame),
-        }
+        self.inner_pointer_target().axis(seat, data, frame)
     }
 
     fn frame(&self, seat: &smithay::input::Seat<GlobalState>, data: &mut GlobalState) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::frame(s, seat, data),
-            SpaceTarget::OverflowButton(b) => b.frame(seat, data),
-        }
+        self.inner_pointer_target().frame(seat, data)
     }
 
     fn gesture_swipe_begin(
@@ -126,10 +124,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_swipe_begin(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_swipe_begin(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_swipe_begin(seat, data, event)
     }
 
     fn gesture_swipe_update(
@@ -138,10 +133,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_swipe_update(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_swipe_update(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_swipe_update(seat, data, event)
     }
 
     fn gesture_swipe_end(
@@ -150,10 +142,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_swipe_end(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_swipe_end(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_swipe_end(seat, data, event)
     }
 
     fn gesture_pinch_begin(
@@ -162,10 +151,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_pinch_begin(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_pinch_begin(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_pinch_begin(seat, data, event)
     }
 
     fn gesture_pinch_update(
@@ -174,10 +160,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_pinch_update(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_pinch_update(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_pinch_update(seat, data, event)
     }
 
     fn gesture_pinch_end(
@@ -186,10 +169,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_pinch_end(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_pinch_end(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_pinch_end(seat, data, event)
     }
 
     fn gesture_hold_begin(
@@ -198,10 +178,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_hold_begin(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_hold_begin(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_hold_begin(seat, data, event)
     }
 
     fn gesture_hold_end(
@@ -210,10 +187,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::gesture_hold_end(s, seat, data, event),
-            SpaceTarget::OverflowButton(b) => b.gesture_hold_end(seat, data, event),
-        }
+        self.inner_pointer_target().gesture_hold_end(seat, data, event)
     }
 
     fn leave(
@@ -223,10 +197,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         serial: smithay::utils::Serial,
         time: u32,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => PointerTarget::leave(s, seat, data, serial, time),
-            SpaceTarget::OverflowButton(b) => PointerTarget::leave(b, seat, data, serial, time),
-        }
+        self.inner_pointer_target().leave(seat, data, serial, time)
     }
 }
 
@@ -238,10 +209,7 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
         keys: Vec<smithay::input::keyboard::KeysymHandle<'_>>,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => KeyboardTarget::enter(s, seat, data, keys, serial),
-            SpaceTarget::OverflowButton(b) => KeyboardTarget::enter(b, seat, data, keys, serial),
-        }
+        self.inner_keyboard_target().enter(seat, data, keys, serial)
     }
 
     fn leave(
@@ -250,10 +218,7 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => KeyboardTarget::leave(s, seat, data, serial),
-            SpaceTarget::OverflowButton(b) => KeyboardTarget::leave(b, seat, data, serial),
-        }
+        self.inner_keyboard_target().leave(seat, data, serial)
     }
 
     fn key(
@@ -265,12 +230,7 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
         serial: smithay::utils::Serial,
         time: u32,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => KeyboardTarget::key(s, seat, data, key, state, serial, time),
-            SpaceTarget::OverflowButton(b) => {
-                KeyboardTarget::key(b, seat, data, key, state, serial, time)
-            },
-        }
+        self.inner_keyboard_target().key(seat, data, key, state, serial, time)
     }
 
     fn modifiers(
@@ -280,12 +240,7 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
         modifiers: smithay::input::keyboard::ModifiersState,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => KeyboardTarget::modifiers(s, seat, data, modifiers, serial),
-            SpaceTarget::OverflowButton(b) => {
-                KeyboardTarget::modifiers(b, seat, data, modifiers, serial)
-            },
-        }
+        self.inner_keyboard_target().modifiers(seat, data, modifiers, serial)
     }
 }
 
