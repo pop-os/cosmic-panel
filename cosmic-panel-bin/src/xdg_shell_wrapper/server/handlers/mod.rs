@@ -53,8 +53,8 @@ pub(crate) mod xdg_shell;
 delegate_subcompositor!(GlobalState);
 
 impl PrimarySelectionHandler for GlobalState {
-    fn primary_selection_state(&self) -> &PrimarySelectionState {
-        &self.server_state.primary_selection_state
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.server_state.primary_selection_state
     }
 }
 
@@ -175,8 +175,10 @@ delegate_seat!(GlobalState);
 //
 
 impl DataDeviceHandler for GlobalState {
-    fn data_device_state(&self) -> &smithay::wayland::selection::data_device::DataDeviceState {
-        &self.server_state.data_device_state
+    fn data_device_state(
+        &mut self,
+    ) -> &mut smithay::wayland::selection::data_device::DataDeviceState {
+        &mut self.server_state.data_device_state
     }
 }
 
