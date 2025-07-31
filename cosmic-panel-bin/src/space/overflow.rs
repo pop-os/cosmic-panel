@@ -1,7 +1,7 @@
 use anyhow::bail;
 use cctk::{
     sctk::shell::xdg::{popup, XdgPositioner},
-    wayland_client::{protocol::wl_seat::WlSeat, QueueHandle},
+    wayland_client::{protocol::wl_seat::WlSeat, Proxy, QueueHandle},
 };
 use cosmic::iced::id;
 
@@ -76,6 +76,7 @@ impl PanelSpace {
                 | xdg_positioner::ConstraintAdjustment::SlideY,
         );
         positioner.set_offset(offset.0, offset.1);
+        positioner.set_reactive();
 
         positioner.set_size(popup_bbox.size.w, popup_bbox.size.h);
         let c_popup = popup::Popup::from_surface(
