@@ -1,5 +1,6 @@
+use cctk::wayland_client::Proxy;
 use itertools::Itertools;
-use sctk::shell::xdg::XdgPositioner;
+use sctk::{seat::pointer::PointerData, shell::xdg::XdgPositioner};
 use smithay::{
     delegate_xdg_shell,
     desktop::{PopupKind, Window},
@@ -14,7 +15,9 @@ use smithay::{
 
 use crate::{
     iced::elements::target::SpaceTarget,
-    xdg_shell_wrapper::{shared_state::GlobalState, space::WrapperSpace},
+    xdg_shell_wrapper::{
+        client_state::FocusStatus, shared_state::GlobalState, space::WrapperSpace,
+    },
 };
 
 impl XdgShellHandler for GlobalState {
@@ -34,36 +37,48 @@ impl XdgShellHandler for GlobalState {
             Ok(p) => p,
             Err(_) => return,
         };
-
-        if self
-            .space
-            .add_popup(
-                &self.client_state.compositor_state,
-                self.client_state.fractional_scaling_manager.as_ref(),
-                self.client_state.viewporter_state.as_ref(),
-                &self.client_state.connection,
-                &self.client_state.queue_handle,
-                &mut self.client_state.xdg_shell_state,
-                surface.clone(),
-                positioner,
-                positioner_state,
-            )
-            .is_ok()
-        {
-            self.server_state.popup_manager.track_popup(PopupKind::Xdg(surface.clone())).unwrap();
-            self.server_state.popup_manager.commit(surface.wl_surface());
-            for kbd in self
-                .server_state
-                .seats
+        if let Some(f_seat) = self.server_state.seats.iter().find(|s| {
+            self.client_state
+                .focused_surface
+                .borrow()
                 .iter()
-                .filter_map(|s| s.server.seat.get_keyboard())
-                .collect_vec()
+                .any(|f| f.1 == s.name && matches!(f.2, FocusStatus::Focused))
+        }) {
+            if self
+                .space
+                .add_popup(
+                    &self.client_state.compositor_state,
+                    self.client_state.fractional_scaling_manager.as_ref(),
+                    self.client_state.viewporter_state.as_ref(),
+                    &self.client_state.connection,
+                    &self.client_state.queue_handle,
+                    &mut self.client_state.xdg_shell_state,
+                    surface.clone(),
+                    positioner,
+                    positioner_state,
+                    &f_seat.client._seat,
+                    f_seat.client.get_serial_of_last_seat_event(),
+                )
+                .is_ok()
             {
-                kbd.set_focus(
-                    self,
-                    Some(SpaceTarget::Surface(surface.wl_surface().clone())),
-                    SERIAL_COUNTER.next_serial(),
-                );
+                self.server_state
+                    .popup_manager
+                    .track_popup(PopupKind::Xdg(surface.clone()))
+                    .unwrap();
+                self.server_state.popup_manager.commit(surface.wl_surface());
+                for kbd in self
+                    .server_state
+                    .seats
+                    .iter()
+                    .filter_map(|s| s.server.seat.get_keyboard())
+                    .collect_vec()
+                {
+                    kbd.set_focus(
+                        self,
+                        Some(SpaceTarget::Surface(surface.wl_surface().clone())),
+                        SERIAL_COUNTER.next_serial(),
+                    );
+                }
             }
         }
     }
@@ -80,9 +95,7 @@ impl XdgShellHandler for GlobalState {
     ) {
     }
 
-    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        self.space.grab(surface, seat, serial);
-    }
+    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {}
 
     fn reposition_request(
         &mut self,

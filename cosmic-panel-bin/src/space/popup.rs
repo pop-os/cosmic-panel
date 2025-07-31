@@ -12,7 +12,6 @@ use super::PanelSpace;
 
 impl PanelSpace {
     pub(crate) fn close_popups<'a>(&mut self, exclude: impl Fn(&PanelPopup) -> bool) {
-        tracing::info!("Closing popups");
         let mut to_destroy = Vec::with_capacity(self.popups.len());
         self.popups.retain_mut(|p| {
             if exclude(&p.popup) {
@@ -69,6 +68,9 @@ impl PanelSpace {
             .map(|p| (&mut p.popup, Some(&mut p.s_surface)))
             .find(|(p, _)| popup.wl_surface() == p.c_popup.wl_surface())
         {
+            // is there a smithay bug? The acked configure is not valid, and cosmic-comp produces an error after sending it...
+            // p.c_popup.xdg_surface().ack_configure(config.serial);
+            // p.c_popup.wl_surface().commit();
             tracing::info!("Configuring popup: {:?}", config);
             // use the size that we have already if the new size is 0
             if config.width == 0 {
@@ -125,7 +127,6 @@ impl PanelSpace {
                     };
                     p.egl_surface.replace(egl_surface);
                     p.dirty = true;
-                    tracing::info!("Popup configured");
                 },
                 popup::ConfigureKind::Reactive => {},
                 popup::ConfigureKind::Reposition { token: _token } => {},

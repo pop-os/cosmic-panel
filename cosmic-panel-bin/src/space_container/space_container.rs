@@ -589,23 +589,4 @@ impl SpaceContainer {
             );
         }
     }
-
-    pub(crate) fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let Some(s_client) = surface.wl_surface().client().map(|c| c.id()) else {
-            return;
-        };
-
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().is_some_and(|c| c.id() == s_client))
-        }) {
-            space.grab(surface, seat, serial);
-        }
-    }
 }

@@ -1848,12 +1848,6 @@ impl PanelSpace {
             });
         }
     }
-
-    pub(crate) fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface == surface) {
-            p.popup.grab = true;
-        }
-    }
 }
 
 impl Drop for PanelSpace {

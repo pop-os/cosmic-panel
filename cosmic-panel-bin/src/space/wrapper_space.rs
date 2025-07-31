@@ -29,7 +29,7 @@ use crate::{
 };
 use anyhow::bail;
 use calloop::timer::Timer;
-use cctk::wayland_client::protocol::wl_pointer::WlPointer;
+use cctk::wayland_client::protocol::{wl_pointer::WlPointer, wl_seat};
 use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter, PathSource};
@@ -140,6 +140,8 @@ impl WrapperSpace for PanelSpace {
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
+        latest_seat: &wl_seat::WlSeat,
+        latest_serial: u32,
     ) -> anyhow::Result<()> {
         tracing::info!("adding popup");
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
@@ -204,32 +206,42 @@ impl WrapperSpace for PanelSpace {
             c_wl_surface.clone(),
             xdg_shell_state,
         )?;
+        if parent.is_none() {
+            self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        }
 
         let input_region = Region::new(compositor_state)?;
 
-        if let (Some(s_window_geometry), Some(input_regions)) =
-            with_states(s_surface.wl_surface(), |states| {
-                let mut guard = states.cached_state.get::<SurfaceCachedState>();
-                let mut guard_attr = states.cached_state.get::<SurfaceAttributes>();
-                let cached = guard.current();
-                let attr = guard_attr.current();
-                (cached.geometry, attr.input_region.clone())
-            })
-        {
+        if let Some(s_window_geometry) = with_states(s_surface.wl_surface(), |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let pending = guard.pending();
+            pending.geometry
+        }) {
             c_popup.xdg_surface().set_window_geometry(
                 s_window_geometry.loc.x,
                 s_window_geometry.loc.y,
                 s_window_geometry.size.w.max(1),
                 s_window_geometry.size.h.max(1),
             );
-            for r in input_regions.rects {
-                input_region.add(0, 0, r.1.size.w, r.1.size.h);
-            }
-            c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
 
-        if parent.is_none() {
-            self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        if let Some(input_regions) = with_states(s_surface.wl_surface(), |states| {
+            let mut guard_attr = states.cached_state.get::<SurfaceAttributes>();
+            let attr = guard_attr.pending();
+            attr.input_region.clone()
+        }) {
+            let mut area: i32 = 0;
+            for r in input_regions.rects {
+                area = area.saturating_add(r.1.size.w.saturating_mul(r.1.size.h));
+                input_region.add(0, 0, r.1.size.w, r.1.size.h);
+            }
+            // must take a grab on all popups to avoid being closed automatically by focus follows cursor...
+            if area > 1 {
+                c_popup.xdg_popup().grab(latest_seat, latest_serial);
+            }
+            c_wl_surface.set_input_region(Some(input_region.wl_region()));
+        } else {
+            c_popup.xdg_popup().grab(latest_seat, latest_serial);
         }
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
@@ -278,7 +290,7 @@ impl WrapperSpace for PanelSpace {
                 parent: parent
                     .map(|p| p.wl_surface().clone())
                     .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
-                grab: false,
+                grab: true,
             },
             s_surface,
         });
@@ -297,6 +309,7 @@ impl WrapperSpace for PanelSpace {
         });
         if let Some(i) = self.popups.iter().position(|wp| wp.s_surface == popup) {
             let p = &self.popups[i];
+
             let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
             self.apply_positioner_state(positioner, pos_state, &p.s_surface);
             let p = &mut self.popups[i];
@@ -1380,9 +1393,13 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
+    fn keyboard_leave(&mut self, seat_name: &str, f: Option<c_wl_surface::WlSurface>) {
+        if self.layer.as_ref().zip(f).is_some_and(|l| l.0.wl_surface() == &l.1)
+            && self.popups.iter().any(|p| p.popup.grab)
+        {
+            return;
+        }
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
-
         self.close_popups(|_| false);
     }
 
