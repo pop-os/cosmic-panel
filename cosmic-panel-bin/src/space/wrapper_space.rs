@@ -143,7 +143,6 @@ impl WrapperSpace for PanelSpace {
         latest_seat: &wl_seat::WlSeat,
         latest_serial: u32,
     ) -> anyhow::Result<()> {
-        tracing::info!("adding popup");
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
         let mut clear_exclude = Vec::new();
@@ -1106,7 +1105,6 @@ impl WrapperSpace for PanelSpace {
                             let mut p = (x, y);
                             p.0 = relative_loc.x + geo.size.w / 2;
                             p.1 = relative_loc.y + geo.size.h / 2;
-                            space.close_popups(|_| false);
 
                             vec![
                                 PointerEvent {
@@ -1178,8 +1176,6 @@ impl WrapperSpace for PanelSpace {
                         if space.popups.first().zip(cur_client_hover_id.as_ref()).is_some_and(|(p, c_id)| matches!(c_id, HoverId::Client(ref c_id) if Some(c_id) == p.s_surface.wl_surface().client().map(|c| c.id()).as_ref())) {
                             return calloop::timer::TimeoutAction::Drop;
                         }
-
-                        space.close_popups(|_| false);
 
                         space.overflow_popup = None;
                         // send press to new client if it hover flag is set
