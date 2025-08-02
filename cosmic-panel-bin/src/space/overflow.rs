@@ -39,7 +39,10 @@ impl PanelSpace {
         seat: (u32, WlSeat),
         force_hide: bool,
     ) -> anyhow::Result<()> {
-        if force_hide || self.overflow_popup.is_some() {
+        let has_popup = self.overflow_popup.is_some();
+        self.close_popups(|_| false);
+
+        if force_hide || has_popup {
             tracing::info!("removing overflow popup");
             self.overflow_popup = None;
             return Ok(());
@@ -87,8 +90,6 @@ impl PanelSpace {
             xdg_shell_state,
         )?;
 
-        c_popup.xdg_popup().grab(&seat.1, seat.0);
-
         c_popup.xdg_surface().set_window_geometry(
             popup_bbox.loc.x,
             popup_bbox.loc.y,
@@ -96,6 +97,7 @@ impl PanelSpace {
             popup_bbox.size.h.max(1),
         );
         self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        c_popup.xdg_popup().grab(&seat.1, seat.0);
 
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));

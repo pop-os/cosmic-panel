@@ -789,6 +789,9 @@ impl WrapperSpace for PanelSpace {
                 }
             })
         {
+            if let Some(p) = self.overflow_popup.as_mut() {
+                p.0.dirty = true;
+            }
             w.on_commit();
             w.refresh();
         }
@@ -1177,7 +1180,6 @@ impl WrapperSpace for PanelSpace {
                             return calloop::timer::TimeoutAction::Drop;
                         }
 
-                        space.overflow_popup = None;
                         // send press to new client if it hover flag is set
                         let left_guard = space.clients_left.lock().unwrap();
                         let center_guard = space.clients_center.lock().unwrap();
@@ -1390,11 +1392,18 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, f: Option<c_wl_surface::WlSurface>) {
+        // if not a leaf, return early
+        if let Some(surface) = f.as_ref() {
+            if self.popups.iter().any(|p| p.popup.parent == *surface) {
+                return;
+            }
+        }
         if self.layer.as_ref().zip(f).is_some_and(|l| l.0.wl_surface() == &l.1)
-            && self.popups.iter().any(|p| p.popup.grab)
+            && (self.popups.iter().any(|p| p.popup.grab) || self.overflow_popup.is_some())
         {
             return;
         }
+
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
         self.close_popups(|_| false);
     }
