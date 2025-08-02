@@ -1181,7 +1181,6 @@ impl PanelSpace {
             });
             self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
             self.handle_overflow_popup_events(renderer);
-
             if prev == self.popups.len() && should_render {
                 if let Err(e) = self.render(renderer, time, throttle, qh) {
                     error!("Failed to render, error: {:?}", e);
@@ -1846,12 +1845,6 @@ impl PanelSpace {
                 },
                 s_surface: wlsurface.clone(),
             });
-        }
-    }
-
-    pub(crate) fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface == surface) {
-            p.popup.grab = true;
         }
     }
 }

@@ -1,7 +1,8 @@
 use crate::{
     space_container::SpaceContainer,
     xdg_shell_wrapper::{
-        server_state::ServerState, shared_state::GlobalState, space::WrapperSpace,
+        client::handlers::touch, server_state::ServerState, shared_state::GlobalState,
+        space::WrapperSpace,
     },
 };
 use cctk::{
@@ -92,6 +93,7 @@ pub(crate) struct ClientSeat {
     pub(crate) last_enter: u32,
     pub(crate) last_key_press: (u32, u32),
     pub(crate) last_pointer_press: (u32, u32),
+    pub(crate) last_touch_down: (u32, u32),
     pub(crate) data_device: DataDevice,
     pub(crate) copy_paste_source: Option<CopyPasteSource>,
     pub(crate) dnd_source: Option<DragSource>,
@@ -107,8 +109,11 @@ impl ClientSeat {
     pub fn get_serial_of_last_seat_event(&self) -> u32 {
         let (key_serial, key_time) = self.last_key_press;
         let (pointer_serial, pointer_time) = self.last_pointer_press;
-        if key_time > pointer_time {
+        let (touch_serial, touch_time) = self.last_touch_down;
+        if key_time > pointer_time && key_time > touch_time {
             key_serial
+        } else if touch_time > key_time && touch_time > pointer_time {
+            touch_serial
         } else {
             pointer_serial
         }

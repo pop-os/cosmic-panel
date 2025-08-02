@@ -150,11 +150,7 @@ impl KeyboardHandler for GlobalState {
         };
 
         if let Some(c_focus) = c_kbd_focus {
-            self.client_state.last_key_pressed.push((
-                seat_name,
-                (event.raw_code, event.time),
-                c_focus,
-            ))
+            self.client_state.last_key_pressed.push((seat_name, (event.raw_code, serial), c_focus))
         }
 
         let _ = kbd.input::<(), _>(
@@ -191,7 +187,7 @@ impl KeyboardHandler for GlobalState {
 
         self.client_state
             .last_key_pressed
-            .retain(|(seat_name, raw_code, _s)| seat_name != &name && raw_code.0 == event.raw_code);
+            .retain(|(seat_name, raw_code, _s)| seat_name != &name || raw_code.0 != event.raw_code);
 
         kbd.input::<(), _>(
             self,

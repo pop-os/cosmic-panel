@@ -86,6 +86,7 @@ impl SeatHandler for GlobalState {
                     last_enter: 0,
                     last_key_press: (0, 0),
                     last_pointer_press: (0, 0),
+                    last_touch_down: (0, 0),
                     selection_offer: None,
                     dnd_offer: None,
                     next_dnd_offer_is_mine: false,
@@ -138,6 +139,7 @@ impl SeatHandler for GlobalState {
                     last_enter: 0,
                     last_key_press: (0, 0),
                     last_pointer_press: (0, 0),
+                    last_touch_down: (0, 0),
                     next_selection_offer_is_mine: false,
                     next_dnd_offer_is_mine: false,
                     dnd_icon: None, // TODO forward touch

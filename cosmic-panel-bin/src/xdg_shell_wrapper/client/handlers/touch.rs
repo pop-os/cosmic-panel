@@ -36,13 +36,23 @@ impl TouchHandler for GlobalState {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
         touch: &WlTouch,
-        _serial: u32,
+        serial: u32,
         time: u32,
         surface: WlSurface,
         id: i32,
         location: (f64, f64),
     ) {
-        let (seat_name, touch) = get_touch_handle(self, touch);
+        let seat_index = self
+            .server_state
+            .seats
+            .iter()
+            .position(|SeatPair { client, .. }| {
+                client.touch.as_ref().map(|t| t == touch).unwrap_or(false)
+            })
+            .unwrap();
+        let seat_name = self.server_state.seats[seat_index].name.to_string();
+        let touch = self.server_state.seats[seat_index].server.seat.get_touch().unwrap();
+        self.server_state.seats[seat_index].client.last_touch_down = (serial, time);
 
         self.client_state.touch_surfaces.insert(id, surface.clone());
 

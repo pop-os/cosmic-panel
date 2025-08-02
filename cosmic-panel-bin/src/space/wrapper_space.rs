@@ -29,7 +29,7 @@ use crate::{
 };
 use anyhow::bail;
 use calloop::timer::Timer;
-use cctk::wayland_client::protocol::wl_pointer::WlPointer;
+use cctk::wayland_client::protocol::{wl_pointer::WlPointer, wl_seat};
 use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter, PathSource};
@@ -140,8 +140,9 @@ impl WrapperSpace for PanelSpace {
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
+        latest_seat: &wl_seat::WlSeat,
+        latest_serial: u32,
     ) -> anyhow::Result<()> {
-        tracing::info!("adding popup");
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
         let mut clear_exclude = Vec::new();
@@ -204,32 +205,42 @@ impl WrapperSpace for PanelSpace {
             c_wl_surface.clone(),
             xdg_shell_state,
         )?;
+        if parent.is_none() {
+            self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        }
 
         let input_region = Region::new(compositor_state)?;
 
-        if let (Some(s_window_geometry), Some(input_regions)) =
-            with_states(s_surface.wl_surface(), |states| {
-                let mut guard = states.cached_state.get::<SurfaceCachedState>();
-                let mut guard_attr = states.cached_state.get::<SurfaceAttributes>();
-                let cached = guard.current();
-                let attr = guard_attr.current();
-                (cached.geometry, attr.input_region.clone())
-            })
-        {
+        if let Some(s_window_geometry) = with_states(s_surface.wl_surface(), |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let pending = guard.pending();
+            pending.geometry
+        }) {
             c_popup.xdg_surface().set_window_geometry(
                 s_window_geometry.loc.x,
                 s_window_geometry.loc.y,
                 s_window_geometry.size.w.max(1),
                 s_window_geometry.size.h.max(1),
             );
-            for r in input_regions.rects {
-                input_region.add(0, 0, r.1.size.w, r.1.size.h);
-            }
-            c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
 
-        if parent.is_none() {
-            self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
+        if let Some(input_regions) = with_states(s_surface.wl_surface(), |states| {
+            let mut guard_attr = states.cached_state.get::<SurfaceAttributes>();
+            let attr = guard_attr.pending();
+            attr.input_region.clone()
+        }) {
+            let mut area: i32 = 0;
+            for r in input_regions.rects {
+                area = area.saturating_add(r.1.size.w.saturating_mul(r.1.size.h));
+                input_region.add(0, 0, r.1.size.w, r.1.size.h);
+            }
+            // must take a grab on all popups to avoid being closed automatically by focus follows cursor...
+            if area > 1 {
+                c_popup.xdg_popup().grab(latest_seat, latest_serial);
+            }
+            c_wl_surface.set_input_region(Some(input_region.wl_region()));
+        } else {
+            c_popup.xdg_popup().grab(latest_seat, latest_serial);
         }
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
@@ -278,7 +289,7 @@ impl WrapperSpace for PanelSpace {
                 parent: parent
                     .map(|p| p.wl_surface().clone())
                     .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
-                grab: false,
+                grab: true,
             },
             s_surface,
         });
@@ -297,6 +308,7 @@ impl WrapperSpace for PanelSpace {
         });
         if let Some(i) = self.popups.iter().position(|wp| wp.s_surface == popup) {
             let p = &self.popups[i];
+
             let positioner: &sctk::shell::xdg::XdgPositioner = &p.popup.positioner;
             self.apply_positioner_state(positioner, pos_state, &p.s_surface);
             let p = &mut self.popups[i];
@@ -777,6 +789,9 @@ impl WrapperSpace for PanelSpace {
                 }
             })
         {
+            if let Some(p) = self.overflow_popup.as_mut() {
+                p.0.dirty = true;
+            }
             w.on_commit();
             w.refresh();
         }
@@ -1093,7 +1108,6 @@ impl WrapperSpace for PanelSpace {
                             let mut p = (x, y);
                             p.0 = relative_loc.x + geo.size.w / 2;
                             p.1 = relative_loc.y + geo.size.h / 2;
-                            space.close_popups(|_| false);
 
                             vec![
                                 PointerEvent {
@@ -1166,9 +1180,6 @@ impl WrapperSpace for PanelSpace {
                             return calloop::timer::TimeoutAction::Drop;
                         }
 
-                        space.close_popups(|_| false);
-
-                        space.overflow_popup = None;
                         // send press to new client if it hover flag is set
                         let left_guard = space.clients_left.lock().unwrap();
                         let center_guard = space.clients_center.lock().unwrap();
@@ -1380,9 +1391,20 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    fn keyboard_leave(&mut self, seat_name: &str, _: Option<c_wl_surface::WlSurface>) {
-        self.s_focused_surface.retain(|(_, name)| name != seat_name);
+    fn keyboard_leave(&mut self, seat_name: &str, f: Option<c_wl_surface::WlSurface>) {
+        // if not a leaf, return early
+        if let Some(surface) = f.as_ref() {
+            if self.popups.iter().any(|p| p.popup.parent == *surface) {
+                return;
+            }
+        }
+        if self.layer.as_ref().zip(f).is_some_and(|l| l.0.wl_surface() == &l.1)
+            && (self.popups.iter().any(|p| p.popup.grab) || self.overflow_popup.is_some())
+        {
+            return;
+        }
 
+        self.s_focused_surface.retain(|(_, name)| name != seat_name);
         self.close_popups(|_| false);
     }
 
