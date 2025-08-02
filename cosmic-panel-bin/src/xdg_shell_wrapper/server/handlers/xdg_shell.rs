@@ -1,6 +1,5 @@
-use cctk::wayland_client::Proxy;
 use itertools::Itertools;
-use sctk::{seat::pointer::PointerData, shell::xdg::XdgPositioner};
+use sctk::shell::xdg::XdgPositioner;
 use smithay::{
     delegate_xdg_shell,
     desktop::{PopupKind, Window},

@@ -495,9 +495,11 @@ impl PanelSpace {
             p.egl_surface.as_ref().unwrap().swap_buffers(dmg.as_deref_mut())?;
             let wl_surface = p.c_popup.wl_surface();
             wl_surface.frame(qh, wl_surface.clone());
+            p.dirty = false;
             wl_surface.commit();
         }
-        if self.overflow_popup.is_some() {
+
+        if self.overflow_popup.as_ref().is_some_and(|p| p.0.c_popup.wl_surface().is_alive()) {
             self.update_hidden_applet_frame();
         }
 
