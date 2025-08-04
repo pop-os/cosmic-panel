@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use crate::{
+    iced::elements::PanelSpaceElement,
     minimize::MinimizeApplet,
     space::{AppletMsg, PanelColors, PanelSpace},
     xdg_shell_wrapper::{

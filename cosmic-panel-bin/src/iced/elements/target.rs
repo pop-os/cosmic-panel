@@ -1,4 +1,4 @@
-use super::{overflow_button::OverflowButtonElement, CosmicMappedInternal};
+use super::{overflow_button::OverflowButtonElement, CosmicMappedInternal, PopupMappedInternal};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 use anyhow::bail;
@@ -42,7 +42,21 @@ impl TryFrom<CosmicMappedInternal> for SpaceTarget {
             CosmicMappedInternal::OverflowButton(b) => Ok(SpaceTarget::OverflowButton(b)),
             CosmicMappedInternal::Background(_) => bail!("Cannot convert background"),
             CosmicMappedInternal::Spacer(_) => bail!("Cannot convert spacer"),
-            CosmicMappedInternal::_GenericCatcher(_) => bail!("Cannot convert generic catcher"),
+            CosmicMappedInternal::_GenericCatcher(_) => unreachable!(),
+        }
+    }
+}
+
+impl TryFrom<PopupMappedInternal> for SpaceTarget {
+    type Error = anyhow::Error;
+
+    fn try_from(value: PopupMappedInternal) -> Result<Self, Self::Error> {
+        match value {
+            PopupMappedInternal::Window(w) => {
+                Ok(SpaceTarget::Surface(w.toplevel().unwrap().wl_surface().clone()))
+            },
+            PopupMappedInternal::Popup(p) => bail!("Cannot convert popup"),
+            PopupMappedInternal::_GenericCatcher(_) => unreachable!(),
         }
     }
 }
