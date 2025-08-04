@@ -81,6 +81,52 @@ use crate::{
 
 use super::{layout::OverflowSection, panel_space::HoverId, PanelSpace};
 
+struct SpaceFocus {
+    target: CosmicMappedInternal,
+    relative_loc: smithay::utils::Point<i32, Logical>,
+    space_target: SpaceTarget,
+}
+
+fn space_focus(
+    space: &smithay::desktop::Space<CosmicMappedInternal>,
+    x: i32,
+    y: i32,
+) -> Option<SpaceFocus> {
+    // FIXME
+    // There has to be a way to avoid messing with the scaling like this...
+    space.elements().rev().find_map(|e| {
+        let Some(location) = space.element_location(e) else {
+            return None;
+        };
+
+        let mut size = match e {
+            CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
+            CosmicMappedInternal::Window(w) => w.geometry().size,
+            _ => return None,
+        }
+        .to_f64();
+
+        if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
+            if configured_size.w > 0 {
+                size.w = size.w.min(configured_size.w as f64);
+            }
+            if configured_size.h > 0 {
+                size.h = size.h.min(configured_size.h as f64);
+            }
+        }
+        let bbox = Rectangle::new(location.to_f64(), size);
+        if bbox.contains((x as f64, y as f64)) {
+            SpaceTarget::try_from(e.clone()).ok().map(|s| SpaceFocus {
+                target: e.clone(),
+                relative_loc: location,
+                space_target: s,
+            })
+        } else {
+            None
+        }
+    })
+}
+
 impl WrapperSpace for PanelSpace {
     type Config = CosmicPanelConfig;
 
@@ -910,53 +956,24 @@ impl WrapperSpace for PanelSpace {
             }
         } else if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == c_wl_surface) {
             // if not on this panel's client surface return None
-
-            // FIXME
-            // There has to be a way to avoid messing with the scaling like this...
-            let space_focus = self.space.elements().rev().find_map(|e| {
-                let Some(location) = self.space.element_location(e) else {
-                    return None;
-                };
-
-                let mut size = match e {
-                    CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
-                    CosmicMappedInternal::Window(w) => w.geometry().size,
-                    _ => return None,
-                }
-                .to_f64();
-
-                if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
-                    if configured_size.w > 0 {
-                        size.w = size.w.min(configured_size.w as f64);
-                    }
-                    if configured_size.h > 0 {
-                        size.h = size.h.min(configured_size.h as f64);
-                    }
-                }
-                let bbox = Rectangle::new(location.to_f64(), size);
-                if bbox.contains((x as f64, y as f64)) {
-                    SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
-                } else {
-                    None
-                }
-            });
-
-            if let Some((target, relative_loc, space_target)) = space_focus {
-                let geo = target
+            if let Some(focus) = space_focus(&self.space, x, y) {
+                let geo = focus
+                    .target
                     .geometry()
                     .to_f64()
                     .to_physical(1.0)
                     .to_logical(self.scale)
                     .to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
-                    prev_kbd.0 = space_target.clone();
+                    prev_kbd.0 = focus.space_target.clone();
                 } else {
-                    self.s_focused_surface.push((space_target.clone(), seat_name.to_string()));
+                    self.s_focused_surface
+                        .push((focus.space_target.clone(), seat_name.to_string()));
                 }
 
                 hover_geo = Some(geo);
-                hover_relative_loc = Some(relative_loc);
-                match &target {
+                hover_relative_loc = Some(focus.relative_loc);
+                match &focus.target {
                     CosmicMappedInternal::Window(w) => {
                         cur_client_hover_id = w
                             .wl_surface()
@@ -970,16 +987,16 @@ impl WrapperSpace for PanelSpace {
                 };
 
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                    prev_foc.s_pos = relative_loc.to_f64();
+                    prev_foc.s_pos = focus.relative_loc.to_f64();
                     prev_foc.c_pos = geo.loc;
-                    prev_foc.surface = space_target;
+                    prev_foc.surface = focus.space_target;
                     Some(prev_foc.clone())
                 } else {
                     self.s_hovered_surface.push(ServerPointerFocus {
-                        surface: space_target,
+                        surface: focus.space_target,
                         seat_name: seat_name.to_string(),
                         c_pos: geo.loc,
-                        s_pos: relative_loc.to_f64(),
+                        s_pos: focus.relative_loc.to_f64(),
                     });
                     self.s_hovered_surface.last().cloned()
                 }
@@ -1342,48 +1359,19 @@ impl WrapperSpace for PanelSpace {
             if self.layer.as_ref().map(|s| *s.wl_surface() != c_wl_surface).unwrap_or(true) {
                 return None;
             }
-            // FIXME
-            // There has to be a way to avoid messing with the scaling like this...
-            let space_focus = self.space.elements().rev().find_map(|e| {
-                let Some(location) = self.space.element_location(e) else {
-                    return None;
-                };
-
-                let mut size = match e {
-                    CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
-                    CosmicMappedInternal::Window(w) => w.geometry().size,
-                    _ => return None,
-                }
-                .to_f64();
-
-                if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
-                    if configured_size.w > 0 {
-                        size.w = size.w.min(configured_size.w as f64);
-                    }
-                    if configured_size.h > 0 {
-                        size.h = size.h.min(configured_size.h as f64);
-                    }
-                }
-                let bbox = Rectangle::new(location.to_f64(), size);
-                if bbox.contains((x as f64, y as f64)) {
-                    SpaceTarget::try_from(e.clone()).ok().map(|s| (e.clone(), location, s))
-                } else {
-                    None
-                }
-            });
-
-            if let Some((target, relative_loc, space_target)) = space_focus {
-                let geo = target
+            if let Some(focus) = space_focus(&self.space, x, y) {
+                let geo = focus
+                    .target
                     .geometry()
                     .to_f64()
                     .to_physical(1.0)
                     .to_logical(self.scale)
                     .to_i32_round();
                 Some(ServerPointerFocus {
-                    surface: space_target,
+                    surface: focus.space_target,
                     seat_name: seat_name.to_string(),
                     c_pos: geo.loc,
-                    s_pos: relative_loc.to_f64(),
+                    s_pos: focus.relative_loc.to_f64(),
                 })
             } else {
                 None
