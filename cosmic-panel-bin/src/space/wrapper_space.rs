@@ -54,12 +54,12 @@ use sctk::{
 use shlex::Shlex;
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
-    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Window},
+    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Space, Window},
     output::Output,
     reexports::wayland_server::{
         self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
     },
-    utils::{Logical, Rectangle, Size},
+    utils::{Logical, Rectangle, Scale, Size},
     wayland::{
         compositor::{with_states, SurfaceAttributes},
         fractional_scale::with_fractional_scale,
@@ -72,7 +72,7 @@ use tracing::{error, error_span, info, info_span, trace};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use crate::{
-    iced::elements::CosmicMappedInternal,
+    iced::elements::{CosmicMappedInternal, PanelSpaceElement},
     space::{
         panel_space::{AppletAutoClickAnchor, PanelClient},
         AppletMsg,
@@ -81,40 +81,45 @@ use crate::{
 
 use super::{layout::OverflowSection, panel_space::HoverId, PanelSpace};
 
-struct SpaceFocus {
-    target: CosmicMappedInternal,
+struct SpaceFocus<T> {
+    target: T,
     relative_loc: smithay::utils::Point<i32, Logical>,
     space_target: SpaceTarget,
 }
 
-fn space_focus(
-    space: &smithay::desktop::Space<CosmicMappedInternal>,
-    x: i32,
-    y: i32,
-) -> Option<SpaceFocus> {
-    // FIXME
-    // There has to be a way to avoid messing with the scaling like this...
+impl<T> SpaceFocus<T>
+where
+    T: PanelSpaceElement,
+    SpaceTarget: TryFrom<T>,
+{
+    fn geo(&self, scale: f64) -> Rectangle<i32, Logical> {
+        // FIXME
+        // There has to be a way to avoid messing with the scaling like this...
+        self.target.geometry().to_f64().to_physical(1.0).to_logical(scale).to_i32_round()
+    }
+}
+
+fn space_focus<T>(space: &Space<T>, x: i32, y: i32) -> Option<SpaceFocus<T>>
+where
+    T: PanelSpaceElement,
+    SpaceTarget: TryFrom<T>,
+{
     space.elements().rev().find_map(|e| {
         let Some(location) = space.element_location(e) else {
             return None;
         };
 
-        let mut size = match e {
-            CosmicMappedInternal::OverflowButton(b) => b.geometry().size,
-            CosmicMappedInternal::Window(w) => w.geometry().size,
-            _ => return None,
-        }
-        .to_f64();
-
+        let mut bbox = e.geometry().to_f64();
+        bbox.loc += location.to_f64();
         if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
             if configured_size.w > 0 {
-                size.w = size.w.min(configured_size.w as f64);
+                bbox.size.w = bbox.size.w.min(configured_size.w as f64);
             }
             if configured_size.h > 0 {
-                size.h = size.h.min(configured_size.h as f64);
+                bbox.size.h = bbox.size.h.min(configured_size.h as f64);
             }
         }
-        let bbox = Rectangle::new(location.to_f64(), size);
+
         if bbox.contains((x as f64, y as f64)) {
             SpaceTarget::try_from(e.clone()).ok().map(|s| SpaceFocus {
                 target: e.clone(),
@@ -957,13 +962,8 @@ impl WrapperSpace for PanelSpace {
         } else if self.layer.as_ref().is_some_and(|s| *s.wl_surface() == c_wl_surface) {
             // if not on this panel's client surface return None
             if let Some(focus) = space_focus(&self.space, x, y) {
-                let geo = focus
-                    .target
-                    .geometry()
-                    .to_f64()
-                    .to_physical(1.0)
-                    .to_logical(self.scale)
-                    .to_i32_round();
+                let geo = focus.geo(self.scale);
+
                 if let Some(prev_kbd) = prev_foc {
                     prev_kbd.0 = focus.space_target.clone();
                 } else {
@@ -1018,51 +1018,32 @@ impl WrapperSpace for PanelSpace {
                 OverflowSection::Right => &self.overflow_right,
             };
 
-            let space_focus = space.elements().rev().find_map(|e| {
-                let Some(w) = (match e {
-                    PopupMappedInternal::Window(w) => w.wl_surface(),
-                    _ => return None,
-                }) else {
-                    return None;
-                };
-                let Some(space_location) = space.element_location(e) else {
-                    return None;
-                };
+            if let Some(focus) = space_focus(space, x, y) {
+                let geo = focus.geo(self.scale);
 
-                let mut bbox = e.bbox().to_f64();
-                bbox.loc.x = space_location.x as f64;
-                bbox.loc.y = space_location.y as f64;
-                if bbox.contains((x as f64, y as f64)) {
-                    Some((e.bbox().to_f64(), w.into_owned(), space_location))
-                } else {
-                    None
-                }
-            });
-
-            if let Some((bbox, target, relative_loc)) = space_focus {
-                let geo = bbox.to_i32_round();
                 if let Some(prev_kbd) = prev_foc {
-                    prev_kbd.0 = SpaceTarget::Surface(target.clone());
+                    prev_kbd.0 = focus.space_target.clone();
                 } else {
-                    self.s_focused_surface.push((target.clone().into(), seat_name.to_string()));
+                    self.s_focused_surface
+                        .push((focus.space_target.clone(), seat_name.to_string()));
                 }
 
                 hover_geo = Some(geo);
-                hover_relative_loc = Some(relative_loc);
+                hover_relative_loc = Some(focus.relative_loc);
                 overflow_client_hover_id =
-                    target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
+                    focus.target.wl_surface().and_then(|t| t.client().map(|c| c.id()));
 
                 if let Some((_, prev_foc)) = prev_hover.as_mut() {
-                    prev_foc.s_pos = relative_loc.to_f64();
+                    prev_foc.s_pos = focus.relative_loc.to_f64();
                     prev_foc.c_pos = geo.loc;
-                    prev_foc.surface = target.into();
+                    prev_foc.surface = focus.space_target.clone();
                     Some(prev_foc.clone())
                 } else {
                     self.s_hovered_surface.push(ServerPointerFocus {
-                        surface: target.into(),
+                        surface: focus.space_target.clone(),
                         seat_name: seat_name.to_string(),
                         c_pos: geo.loc,
-                        s_pos: relative_loc.to_f64(),
+                        s_pos: focus.relative_loc.to_f64(),
                     });
                     self.s_hovered_surface.last().cloned()
                 }
@@ -1360,13 +1341,7 @@ impl WrapperSpace for PanelSpace {
                 return None;
             }
             if let Some(focus) = space_focus(&self.space, x, y) {
-                let geo = focus
-                    .target
-                    .geometry()
-                    .to_f64()
-                    .to_physical(1.0)
-                    .to_logical(self.scale)
-                    .to_i32_round();
+                let geo = focus.geo(self.scale);
                 Some(ServerPointerFocus {
                     surface: focus.space_target,
                     seat_name: seat_name.to_string(),

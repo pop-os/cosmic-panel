@@ -1,6 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
-use crate::iced::elements::{CosmicMappedInternal, PopupMappedInternal};
+use crate::iced::elements::{CosmicMappedInternal, PanelSpaceElement, PopupMappedInternal};
 
 use super::{layout::OverflowSection, PanelSpace};
 use cctk::wayland_client::{Proxy, QueueHandle};

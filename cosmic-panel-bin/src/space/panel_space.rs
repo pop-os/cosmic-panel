@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    iced::elements::{background::BackgroundElement, PopupMappedInternal},
+    iced::elements::{background::BackgroundElement, PanelSpaceElement, PopupMappedInternal},
     xdg_shell_wrapper::{
         client::handlers::overlap::OverlapNotifyV1,
         client_state::{ClientFocus, FocusStatus},

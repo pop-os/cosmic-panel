@@ -14,7 +14,7 @@ use crate::{
                 self, overflow_button_element, OverflowButton, OverflowButtonElement,
             },
             overflow_popup::{overflow_popup_element, BORDER_WIDTH},
-            CosmicMappedInternal, PopupMappedInternal,
+            CosmicMappedInternal, PanelSpaceElement, PopupMappedInternal,
         },
         IcedElement,
     },

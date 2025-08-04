@@ -2,6 +2,7 @@ pub mod background;
 pub mod overflow_button;
 pub mod overflow_popup;
 pub mod target;
+use target::SpaceTarget;
 
 use std::borrow::Cow;
 
@@ -10,10 +11,18 @@ use background::BackgroundElement;
 use overflow_button::OverflowButtonElement;
 use overflow_popup::OverflowPopupElement;
 use smithay::{
-    desktop::Window,
+    desktop::{space::SpaceElement, Window},
     space_elements,
     wayland::{seat::WaylandFocus, shell::xdg::ToplevelSurface},
 };
+
+pub trait PanelSpaceElement
+where
+    Self: SpaceElement + Clone + PartialEq,
+    SpaceTarget: TryFrom<Self>,
+{
+    fn toplevel(&self) -> Option<&ToplevelSurface>;
+}
 
 space_elements! {
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -24,8 +33,8 @@ space_elements! {
     Spacer=Spacer
 }
 
-impl CosmicMappedInternal {
-    pub fn toplevel(&self) -> Option<&ToplevelSurface> {
+impl PanelSpaceElement for CosmicMappedInternal {
+    fn toplevel(&self) -> Option<&ToplevelSurface> {
         match self {
             CosmicMappedInternal::Window(w) => w.toplevel(),
             _ => None,
@@ -51,8 +60,8 @@ space_elements! {
     Window=Window
 }
 
-impl PopupMappedInternal {
-    pub fn toplevel(&self) -> Option<&ToplevelSurface> {
+impl PanelSpaceElement for PopupMappedInternal {
+    fn toplevel(&self) -> Option<&ToplevelSurface> {
         match self {
             PopupMappedInternal::Window(w) => w.toplevel(),
             _ => None,
