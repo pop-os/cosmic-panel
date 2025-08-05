@@ -38,9 +38,10 @@ impl XdgShellHandler for GlobalState {
         };
         if let Some(f_seat) = self.server_state.seats.iter().find(|s| {
             self.client_state
-                .focused_surface
+                .hovered_surface
                 .borrow()
                 .iter()
+                .chain(self.client_state.focused_surface.borrow().iter())
                 .any(|f| f.1 == s.name && matches!(f.2, FocusStatus::Focused))
         }) {
             if self
