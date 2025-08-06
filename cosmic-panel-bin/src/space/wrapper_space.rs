@@ -1335,6 +1335,29 @@ impl WrapperSpace for PanelSpace {
                 c_pos: p.popup.rectangle.loc,
                 s_pos: (p.popup.rectangle.loc - geo.loc).to_f64(),
             })
+        } else if self
+            .overflow_popup
+            .as_ref()
+            .is_some_and(|p| p.0.c_popup.wl_surface() == &c_wl_surface)
+        {
+            let (_, section) = self.overflow_popup.as_ref().unwrap();
+            let space = match section {
+                OverflowSection::Left => &self.overflow_left,
+                OverflowSection::Center => &self.overflow_center,
+                OverflowSection::Right => &self.overflow_right,
+            };
+
+            if let Some(focus) = space_focus(space, x, y) {
+                let geo = focus.geo(self.scale);
+                Some(ServerPointerFocus {
+                    surface: focus.space_target,
+                    seat_name: seat_name.to_string(),
+                    c_pos: geo.loc,
+                    s_pos: focus.relative_loc.to_f64(),
+                })
+            } else {
+                None
+            }
         } else {
             // if not on this panel's client surface return None
             if self.layer.as_ref().map(|s| *s.wl_surface() != c_wl_surface).unwrap_or(true) {
