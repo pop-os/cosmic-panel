@@ -15,6 +15,7 @@ use cosmic::{
         futures::{FutureExt, StreamExt},
         keyboard::{Event as KeyboardEvent, Modifiers as IcedModifiers},
         mouse::{Button as MouseButton, Cursor, Event as MouseEvent, ScrollDelta},
+        touch::{Event as TouchEvent, Finger},
         window::Event as WindowEvent,
         Limits, Point as IcedPoint, Size as IcedSize, Task,
     },
@@ -52,6 +53,7 @@ use smithay::{
             GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
             PointerTarget, RelativeMotionEvent,
         },
+        touch::TouchTarget,
         Seat,
     },
     output::Output,
@@ -152,6 +154,7 @@ struct IcedElementInternal<P: Program + Send + 'static> {
     size: Size<i32, Logical>,
     cursor_pos: Option<Point<f64, Logical>>,
     panel_id: usize,
+    touch_map: HashMap<Finger, IcedPoint>,
 
     // iced
     theme: Theme,
@@ -199,6 +202,7 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             cursor_pos: self.cursor_pos,
             theme: self.theme.clone(),
             panel_id: self.panel_id,
+            touch_map: HashMap::new(),
             renderer,
             state,
             debug,
@@ -271,6 +275,7 @@ impl<P: Program + Send + 'static> IcedElement<P> {
             pending_update: None,
             size,
             cursor_pos: None,
+            touch_map: HashMap::new(),
             theme,
             renderer,
             state,
@@ -621,6 +626,106 @@ impl<P: Program + Send + 'static> KeyboardTarget<GlobalState> for IcedElement<P>
         }
         internal.state.queue_event(Event::Keyboard(KeyboardEvent::ModifiersChanged(mods)));
         let _ = internal.update(true);
+    }
+}
+
+impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
+    fn down(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        event: &smithay::input::touch::DownEvent,
+        _serial: smithay::utils::Serial,
+    ) {
+        let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+        let id = Finger(i32::from(event.slot) as u64);
+        let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
+        internal.state.queue_event(Event::Touch(TouchEvent::FingerPressed { id, position }));
+        internal.touch_map.insert(id, position);
+        internal.cursor_pos = Some(event.location);
+        let _ = internal.update(false);
+    }
+
+    fn up(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        event: &smithay::input::touch::UpEvent,
+        _serial: smithay::utils::Serial,
+    ) {
+        let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+        let id = Finger(i32::from(event.slot) as u64);
+        if let Some(position) = internal.touch_map.remove(&id) {
+            internal.state.queue_event(Event::Touch(TouchEvent::FingerLifted { id, position }));
+            let _ = internal.update(false);
+        }
+    }
+
+    fn motion(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        event: &smithay::input::touch::MotionEvent,
+        _serial: smithay::utils::Serial,
+    ) {
+        let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+        let id = Finger(i32::from(event.slot) as u64);
+        let position = IcedPoint::new(event.location.x as f32, event.location.y as f32);
+        internal.state.queue_event(Event::Touch(TouchEvent::FingerMoved { id, position }));
+        internal.touch_map.insert(id, position);
+        internal.cursor_pos = Some(event.location);
+        let _ = internal.update(false);
+    }
+
+    fn frame(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        _serial: smithay::utils::Serial,
+    ) {
+    }
+
+    fn cancel(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+        _serial: smithay::utils::Serial,
+    ) {
+        let mut internal = self.0.lock().unwrap();
+        if internal.request_redraws {
+            internal.pending_update = Some(Instant::now());
+        }
+        for (id, position) in std::mem::take(&mut internal.touch_map) {
+            internal.state.queue_event(Event::Touch(TouchEvent::FingerLost { id, position }));
+        }
+        let _ = internal.update(false);
+    }
+
+    fn shape(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        _event: &smithay::input::touch::ShapeEvent,
+        _serial: smithay::utils::Serial,
+    ) {
+    }
+
+    fn orientation(
+        &self,
+        _seat: &smithay::input::Seat<GlobalState>,
+        _data: &mut GlobalState,
+        _event: &smithay::input::touch::OrientationEvent,
+        _serial: smithay::utils::Serial,
+    ) {
     }
 }
 

@@ -29,6 +29,13 @@ impl SpaceTarget {
             SpaceTarget::OverflowButton(b) => b,
         }
     }
+
+    fn inner_touch_target(&self) -> &dyn TouchTarget<GlobalState> {
+        match self {
+            SpaceTarget::Surface(s) => s,
+            SpaceTarget::OverflowButton(b) => b,
+        }
+    }
 }
 
 impl TryFrom<CosmicMappedInternal> for SpaceTarget {
@@ -267,10 +274,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         event: &smithay::input::touch::DownEvent,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::down(s, seat, data, event, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().down(seat, data, event, serial)
     }
 
     fn up(
@@ -280,10 +284,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         event: &smithay::input::touch::UpEvent,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::up(s, seat, data, event, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().up(seat, data, event, serial)
     }
 
     fn motion(
@@ -293,10 +294,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         event: &smithay::input::touch::MotionEvent,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::motion(s, seat, data, event, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().motion(seat, data, event, serial)
     }
 
     fn frame(
@@ -305,10 +303,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::frame(s, seat, data, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().frame(seat, data, serial)
     }
 
     fn cancel(
@@ -317,10 +312,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         data: &mut GlobalState,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::cancel(s, seat, data, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().cancel(seat, data, serial)
     }
 
     fn shape(
@@ -330,10 +322,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         event: &smithay::input::touch::ShapeEvent,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::shape(s, seat, data, event, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().shape(seat, data, event, serial)
     }
 
     fn orientation(
@@ -343,10 +332,7 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         event: &smithay::input::touch::OrientationEvent,
         serial: smithay::utils::Serial,
     ) {
-        match self {
-            SpaceTarget::Surface(s) => TouchTarget::orientation(s, seat, data, event, serial),
-            SpaceTarget::OverflowButton(_b) => {},
-        }
+        self.inner_touch_target().orientation(seat, data, event, serial)
     }
 }
 
