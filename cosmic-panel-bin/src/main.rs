@@ -4,6 +4,7 @@ mod minimize;
 mod notifications;
 mod space;
 mod space_container;
+mod workspaces_dbus;
 mod xdg_shell_wrapper;
 
 use crate::xdg_shell_wrapper::{

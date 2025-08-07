@@ -12,6 +12,7 @@ use std::{
 
 use crate::{
     iced::elements::{PanelSpaceElement, PopupMappedInternal, background::BackgroundElement},
+    workspaces_dbus::CosmicWorkspaces,
     xdg_shell_wrapper::{
         client::handlers::overlap::OverlapNotifyV1,
         client_state::{ClientFocus, FocusStatus},
@@ -340,6 +341,7 @@ pub struct PanelSpace {
     pub has_frame: bool,
     pub scale: f64,
     pub security_context_manager: Option<SecurityContextManager>,
+    pub cosmic_workspaces: Option<CosmicWorkspaces>,
     pub animate_state: Option<AnimateState>,
     pub maximized: bool,
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
@@ -380,6 +382,7 @@ impl PanelSpace {
         theme: cosmic::Theme,
         s_display: DisplayHandle,
         security_context_manager: Option<SecurityContextManager>,
+        cosmic_workspaces: Option<CosmicWorkspaces>,
         conn: &Connection,
         panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
         loop_handle: calloop::LoopHandle<'static, GlobalState>,
@@ -425,6 +428,7 @@ impl PanelSpace {
             has_frame: true,
             scale: 1.0,
             security_context_manager,
+            cosmic_workspaces,
             animate_state: None,
             maximized: false,
             panel_tx,

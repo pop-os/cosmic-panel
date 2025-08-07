@@ -52,6 +52,7 @@ tokio = { version = "1", features = [
     "process",
     "sync",
     "rt",
+    "rt-multi-thread",
     "macros",
     "io-util",
     "time",
@@ -66,3 +67,5 @@ cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notificati
 # cosmic-notifications-util = { path = "../../cosmic-notifications-daemon/cosmic-notifications-util", default-features = false }
 wayland-backend = { version = "0.3.11", features = ["client_system"] }
 zbus = { version = "5.10", features = ["tokio", "p2p"] }
+ordered-stream = "0.2.0"
+futures = "0.3.31"
