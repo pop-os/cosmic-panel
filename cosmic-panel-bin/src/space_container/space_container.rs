@@ -5,6 +5,7 @@ use crate::{
     iced::elements::PanelSpaceElement,
     minimize::MinimizeApplet,
     space::{AppletMsg, PanelColors, PanelSpace},
+    workspaces_dbus::CosmicWorkspaces,
     xdg_shell_wrapper::{
         self,
         client::handlers::overlap::OverlapNotifyV1,
@@ -70,6 +71,7 @@ pub struct SpaceContainer {
     pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
     pub(crate) loop_handle: calloop::LoopHandle<'static, GlobalState>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
+    pub(crate) cosmic_workspaces: Option<CosmicWorkspaces>,
 }
 
 impl SpaceContainer {
@@ -94,6 +96,14 @@ impl SpaceContainer {
             .and_then(|c| Theme::get_entry(&c).ok())
             .unwrap_or_else(Theme::dark_default);
 
+        let cosmic_workspaces = match CosmicWorkspaces::new() {
+            Ok(cosmic_workspaces) => Some(cosmic_workspaces),
+            Err(err) => {
+                tracing::error!("failed to create workspaces dbus proxy: {}", err);
+                None
+            },
+        };
+
         Self {
             connection: None,
             config,
@@ -117,6 +127,7 @@ impl SpaceContainer {
             minimized_applets: HashMap::new(),
             loop_handle,
             overlap_notify: None,
+            cosmic_workspaces,
         }
     }
 
@@ -365,6 +376,7 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
+                    self.cosmic_workspaces.clone(),
                     self.connection.as_ref().unwrap(),
                     self.panel_tx.clone(),
                     self.loop_handle.clone(),
@@ -444,6 +456,7 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.security_context_manager.clone(),
+                    self.cosmic_workspaces.clone(),
                     self.connection.as_ref().unwrap(),
                     self.panel_tx.clone(),
                     self.loop_handle.clone(),

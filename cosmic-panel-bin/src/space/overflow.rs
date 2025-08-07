@@ -47,6 +47,11 @@ impl PanelSpace {
             self.overflow_popup = None;
             return Ok(());
         }
+
+        if let Some(cosmic_workspaces) = &self.cosmic_workspaces {
+            cosmic_workspaces.hide();
+        }
+
         // get popup location and anchor based on element_id and panel
         // anchor create popup using sctk
         let c_wl_surface = compositor_state.create_surface(qh);
