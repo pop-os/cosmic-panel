@@ -16,7 +16,7 @@ license = "GPL-3.0-only"
 lto = "thin"
 
 [workspace.dependencies]
-sctk = { package = "smithay-client-toolkit", git = "https://github.com/Smithay/client-toolkit", version = "0.19.2", features = [
+sctk = { package = "smithay-client-toolkit", version = "0.19.2", features = [
     "calloop",
     "xkbcommon",
 ] }
