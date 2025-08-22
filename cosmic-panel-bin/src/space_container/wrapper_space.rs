@@ -100,11 +100,6 @@ impl WrapperSpace for SpaceContainer {
                             self.security_context_manager.clone(),
                             conn,
                             self.panel_tx.clone(),
-                            if config.autohide.is_some() {
-                                Visibility::Hidden
-                            } else {
-                                Visibility::Visible
-                            },
                             self.loop_handle.clone(),
                         );
                         s.setup(
@@ -179,17 +174,11 @@ impl WrapperSpace for SpaceContainer {
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces
         // configured for All
-        let mut new_spaces = self
-            .config
-            .configs_for_output(&output_name)
-            .into_iter()
-            .filter_map(|config| {
-                let visible = if config.autohide.is_some() {
-                    Visibility::Hidden
-                } else {
-                    Visibility::Visible
-                };
-                match &config.output {
+        let mut new_spaces =
+            self.config
+                .configs_for_output(&output_name)
+                .into_iter()
+                .filter_map(|config| match &config.output {
                     CosmicPanelOuput::All => {
                         let c = match config.background {
                             CosmicPanelBackground::ThemeDefault
@@ -213,7 +202,6 @@ impl WrapperSpace for SpaceContainer {
                                 self.security_context_manager.clone(),
                                 conn,
                                 self.panel_tx.clone(),
-                                visible,
                                 self.loop_handle.clone(),
                             );
                             s.setup(
@@ -281,7 +269,6 @@ impl WrapperSpace for SpaceContainer {
                                 self.security_context_manager.clone(),
                                 conn,
                                 self.panel_tx.clone(),
-                                visible,
                                 self.loop_handle.clone(),
                             );
 
@@ -309,9 +296,8 @@ impl WrapperSpace for SpaceContainer {
                         }
                     },
                     _ => None,
-                }
-            })
-            .collect_vec();
+                })
+                .collect_vec();
         self.space_list.append(&mut new_spaces);
         // add output to space
         for s in &mut self.space_list {
