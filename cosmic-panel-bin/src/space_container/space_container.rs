@@ -367,7 +367,6 @@ impl SpaceContainer {
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
                     self.panel_tx.clone(),
-                    xdg_shell_wrapper::space::Visibility::Visible,
                     self.loop_handle.clone(),
                 );
                 space.overlap_notify = self.overlap_notify.clone();
@@ -397,7 +396,6 @@ impl SpaceContainer {
         let maximized_outputs = self.maximized_outputs();
         for (wl_output, output, info) in outputs {
             let output_name = output.name();
-            let has_toplevel = self.toplevels.iter().any(|t| t.output.contains(wl_output));
             if force_output.as_ref() != Some(wl_output) && force_output.is_some() {
                 continue;
             }
@@ -421,11 +419,6 @@ impl SpaceContainer {
                 if !is_recreated {
                     continue;
                 }
-                let visible = if c.autohide.is_none() || !has_toplevel {
-                    Visibility::Visible
-                } else {
-                    Visibility::Hidden
-                };
                 // remove old one if it exists
                 self.space_list.retain(|s| {
                     // keep if the name is different or the output is different
@@ -453,7 +446,6 @@ impl SpaceContainer {
                     self.security_context_manager.clone(),
                     self.connection.as_ref().unwrap(),
                     self.panel_tx.clone(),
-                    visible,
                     self.loop_handle.clone(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {

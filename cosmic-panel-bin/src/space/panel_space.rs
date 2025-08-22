@@ -382,10 +382,11 @@ impl PanelSpace {
         security_context_manager: Option<SecurityContextManager>,
         conn: &Connection,
         panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
-        visibility: Visibility,
         loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
         let name = format!("{}-{}", config.name, config.output);
+        let visibility =
+            if config.autohide.is_some() { Visibility::Hidden } else { Visibility::Visible };
         Self {
             config,
             space: Space::default(),
