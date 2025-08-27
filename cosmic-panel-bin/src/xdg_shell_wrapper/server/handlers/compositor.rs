@@ -10,7 +10,7 @@ use smithay::{
         egl::EGLSurface,
         renderer::{damage::OutputDamageTracker, utils::on_commit_buffer_handler, Bind},
     },
-    delegate_compositor, delegate_shm,
+    delegate_compositor, delegate_cursor_shape, delegate_shm,
     desktop::{utils::bbox_from_surface_tree, LayerSurface as SmithayLayerSurface},
     reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
     utils::Transform,

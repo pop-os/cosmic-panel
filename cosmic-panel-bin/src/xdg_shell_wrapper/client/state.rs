@@ -174,6 +174,8 @@ pub struct ClientState {
     /// state regarding the last embedded client surface with keyboard focus
     pub hovered_surface: Rc<RefCell<ClientFocus>>,
     pub(crate) cursor_surface: Option<wl_surface::WlSurface>,
+    pub(crate) cursor_scale: Option<WpFractionalScaleV1>,
+    pub(crate) cursor_vp: Option<WpViewport>,
     pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
     pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
@@ -322,6 +324,8 @@ impl ClientState {
             registry_state,
             multipool: None,
             cursor_surface: None,
+            cursor_scale: None,
+            cursor_vp: None,
             last_key_pressed: Vec::new(),
             fractional_scaling_manager,
             viewporter_state,

@@ -57,11 +57,6 @@ pub fn run(
         global_state.client_state.overlap_notify.clone(),
     );
 
-    // // remove extra looping after launch-pad is integrated
-    for _ in 0..10 {
-        event_loop.dispatch(Duration::from_millis(16), &mut global_state)?;
-    }
-
     let multipool = MultiPool::new(&global_state.client_state.shm_state);
 
     let cursor_surface = global_state
@@ -69,6 +64,19 @@ pub fn run(
         .compositor_state
         .create_surface(&global_state.client_state.queue_handle);
     global_state.client_state.multipool = multipool.ok();
+    if let Some((scale, vp)) = global_state
+        .client_state
+        .fractional_scaling_manager
+        .as_ref()
+        .zip(global_state.client_state.viewporter_state.as_ref())
+    {
+        global_state.client_state.cursor_scale = Some(
+            scale.fractional_scaling(&cursor_surface, &global_state.client_state.queue_handle),
+        );
+        global_state.client_state.cursor_vp =
+            Some(vp.get_viewport(&cursor_surface, &global_state.client_state.queue_handle));
+    }
+
     global_state.client_state.cursor_surface = Some(cursor_surface);
 
     event_loop.dispatch(Duration::from_millis(30), &mut global_state)?;
