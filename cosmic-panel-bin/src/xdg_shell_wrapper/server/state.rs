@@ -8,6 +8,7 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         compositor::CompositorState,
+        cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufGlobal, DmabufState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
@@ -57,6 +58,7 @@ pub struct ServerState {
     pub(crate) seats: Vec<SeatPair>,
     // Smithay State
     pub(crate) compositor_state: CompositorState,
+    pub(crate) cursor_shape: CursorShapeManagerState,
     pub(crate) xdg_shell_state: XdgShellState,
     pub(crate) shm_state: ShmState,
     pub(crate) _output_manager_state: OutputManagerState,
@@ -78,6 +80,7 @@ impl ServerState {
             last_button: None,
             seats: Vec::new(),
             compositor_state: CompositorState::new::<GlobalState>(&dh),
+            cursor_shape: CursorShapeManagerState::new::<GlobalState>(&dh),
             xdg_shell_state: XdgShellState::new::<GlobalState>(&dh),
             shm_state: ShmState::new::<GlobalState>(&dh, vec![]),
             _output_manager_state: OutputManagerState::new_with_xdg_output::<GlobalState>(&dh),

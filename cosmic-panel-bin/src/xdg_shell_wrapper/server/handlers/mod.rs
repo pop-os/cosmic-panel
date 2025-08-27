@@ -1,10 +1,11 @@
+use smithay::wayland::viewporter::ViewportCachedState;
 use std::{os::fd::OwnedFd, sync::Mutex};
 
 use itertools::Itertools;
 use sctk::{
     data_device_manager::data_offer::receive_to_fd, delegate_subcompositor,
     reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction,
-    shm::multi::MultiPool,
+    shell::WaylandSurface, shm::multi::MultiPool,
 };
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, ImportDma},
@@ -45,6 +46,7 @@ use crate::{
 };
 
 pub(crate) mod compositor;
+pub(crate) mod cursor;
 pub(crate) mod fractional;
 pub(crate) mod layer;
 pub(crate) mod viewporter;
@@ -117,6 +119,16 @@ impl SeatHandler for GlobalState {
             },
             smithay::input::pointer::CursorImageStatus::Surface(surface) => {
                 trace!("received surface with cursor image");
+                let vp = with_states(&surface, |states| {
+                    states.cached_state.get::<ViewportCachedState>().current().clone()
+                });
+
+                if let Some((vp, dst)) = self.client_state.cursor_vp.as_ref().zip(vp.dst) {
+                    vp.set_destination(dst.w, dst.h);
+                }
+                if let Some((vp, src)) = self.client_state.cursor_vp.as_ref().zip(vp.src) {
+                    vp.set_source(src.loc.x, src.loc.y, src.size.w, src.size.h);
+                }
 
                 if self.client_state.multipool.is_none() {
                     self.client_state.multipool = MultiPool::new(&self.client_state.shm_state).ok();
@@ -138,6 +150,7 @@ impl SeatHandler for GlobalState {
 
                 with_states(&surface, |data| {
                     let mut guard = data.cached_state.get::<SurfaceAttributes>();
+
                     let surface_attributes = guard.current();
                     let buf = surface_attributes.buffer.as_mut();
                     if let Some(hotspot) = data
