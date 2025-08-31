@@ -3,8 +3,8 @@ use std::{
     hash::Hash,
     rc::Rc,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -12,11 +12,11 @@ use calloop::LoopHandle;
 // element for rendering a button that toggles the overflow popup when clicked
 use crate::xdg_shell_wrapper::{self, shared_state::GlobalState};
 use cosmic::{
+    Element,
     iced::{Length, Padding},
     iced_core::id,
     theme::{self, Button},
-    widget::{button, layer_container, Id},
-    Element,
+    widget::{Id, button, layer_container},
 };
 use smithay::utils::{Logical, Point, Size};
 

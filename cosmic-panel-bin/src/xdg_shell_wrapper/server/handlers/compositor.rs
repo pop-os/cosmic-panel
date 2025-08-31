@@ -1,22 +1,22 @@
 use sctk::{
     reexports::client::Proxy,
     shell::{
-        wlr_layer::{self, Anchor, KeyboardInteractivity},
         WaylandSurface,
+        wlr_layer::{self, Anchor, KeyboardInteractivity},
     },
 };
 use smithay::{
     backend::{
         egl::EGLSurface,
-        renderer::{damage::OutputDamageTracker, utils::on_commit_buffer_handler, Bind},
+        renderer::{Bind, damage::OutputDamageTracker, utils::on_commit_buffer_handler},
     },
-    delegate_compositor, delegate_cursor_shape, delegate_shm,
-    desktop::{utils::bbox_from_surface_tree, LayerSurface as SmithayLayerSurface},
+    delegate_compositor, delegate_shm,
+    desktop::{LayerSurface as SmithayLayerSurface, utils::bbox_from_surface_tree},
     reexports::wayland_server::protocol::{wl_buffer, wl_surface::WlSurface},
     utils::Transform,
     wayland::{
         buffer::BufferHandler,
-        compositor::{get_role, CompositorHandler, CompositorState},
+        compositor::{CompositorHandler, CompositorState, get_role},
         shell::wlr_layer::{ExclusiveZone, Layer},
         shm::{ShmHandler, ShmState},
     },
@@ -223,12 +223,15 @@ impl CompositorHandler for GlobalState {
                 }
                 let generation = match state {
                     SurfaceState::WaitingFirst(..) => return,
-                    SurfaceState::Waiting(gen, _) => *gen,
-                    SurfaceState::Dirty(gen) => *gen,
+                    SurfaceState::Waiting(generation, _) => *generation,
+                    SurfaceState::Dirty(generation) => *generation,
                 };
                 if let Some(gles_renderer) = self.space.renderer() {
                     if old_size != size {
-                        tracing::trace!("Layer surface update. old: {old_size:?}, new: {size:?}, generation: {generation}");
+                        tracing::trace!(
+                            "Layer surface update. old: {old_size:?}, new: {size:?}, generation: \
+                             {generation}"
+                        );
                         _ = unsafe {
                             gles_renderer.egl_context().make_current_with_surface(egl_surface)
                         };
@@ -282,7 +285,7 @@ impl CompositorHandler for GlobalState {
                             let client_egl_surface = unsafe {
                                 ClientEglSurface::new(
                                     WlEglSurface::new(c_surface.id(), size.w.max(1), size.h.max(1))
-                                        .unwrap(), /* TODO remove unwrap */
+                                        .unwrap(), // TODO remove unwrap
                                     c_surface.clone(),
                                 )
                             };

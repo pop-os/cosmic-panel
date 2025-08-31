@@ -4,7 +4,7 @@ members = [
     "cosmic-panel-config",
     "xdg-shell-wrapper-config",
 ]
-resolver = "2"
+resolver = "3"
 
 [profile.dev]
 opt-level = 1

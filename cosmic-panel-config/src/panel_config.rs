@@ -3,7 +3,7 @@
 use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 
 use anyhow::bail;
-use cosmic_config::{cosmic_config_derive::CosmicConfigEntry, Config, CosmicConfigEntry};
+use cosmic_config::{Config, CosmicConfigEntry, cosmic_config_derive::CosmicConfigEntry};
 use sctk::shell::wlr_layer::Anchor;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wayland-rs")]
@@ -468,6 +468,7 @@ impl CosmicPanelConfig {
             },
         }
     }
+
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
         self.size.get_applet_icon_size(is_symbolic)
@@ -522,11 +523,7 @@ impl CosmicPanelConfig {
 
     /// get the effective anchor gap margin
     pub fn get_effective_anchor_gap(&self) -> u32 {
-        if self.anchor_gap {
-            self.margin as u32
-        } else {
-            0
-        }
+        if self.anchor_gap { self.margin as u32 } else { 0 }
     }
 
     /// if autohide is configured, returns the duration of time which the panel

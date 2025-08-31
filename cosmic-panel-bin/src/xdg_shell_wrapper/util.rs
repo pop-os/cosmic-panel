@@ -8,16 +8,16 @@ use std::{
 
 use smithay::reexports::wayland_server::{self, Client};
 // SPDX-License-Identifier: MPL-2.0
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use sctk::{
     reexports::client::protocol::{wl_shm, wl_surface::WlSurface},
     shm::multi::MultiPool,
 };
 use smithay::{
-    backend::renderer::{buffer_type, BufferType},
+    backend::renderer::{BufferType, buffer_type},
     wayland::{
         compositor::BufferAssignment,
-        shm::{with_buffer_contents, BufferData},
+        shm::{BufferData, with_buffer_contents},
     },
 };
 

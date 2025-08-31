@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    iced::elements::{background::BackgroundElement, PanelSpaceElement, PopupMappedInternal},
+    iced::elements::{PanelSpaceElement, PopupMappedInternal, background::BackgroundElement},
     xdg_shell_wrapper::{
         client::handlers::overlap::OverlapNotifyV1,
         client_state::{ClientFocus, FocusStatus},
@@ -41,35 +41,35 @@ use sctk::{
     reexports::{
         calloop,
         client::{
-            protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
             Proxy, QueueHandle,
+            protocol::{wl_display::WlDisplay, wl_output as c_wl_output},
         },
     },
     shell::{
+        WaylandSurface,
         wlr_layer::{LayerSurface, LayerSurfaceConfigure},
         xdg::XdgPositioner,
-        WaylandSurface,
     },
     subcompositor::SubcompositorState,
 };
 use smithay::{
     backend::{
         egl::{
+            EGLContext,
             context::{GlAttributes, PixelFormatRequirements},
             display::EGLDisplay,
             ffi::egl::SwapInterval,
             surface::EGLSurface,
-            EGLContext,
         },
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind},
+        renderer::{Bind, damage::OutputDamageTracker, gles::GlesRenderer},
     },
-    desktop::{utils::bbox_from_surface_tree, PopupManager, Space},
+    desktop::{PopupManager, Space, utils::bbox_from_surface_tree},
     output::Output,
     reexports::{
         wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity},
-        wayland_server::{backend::ClientId, protocol::wl_seat, Client, DisplayHandle, Resource},
+        wayland_server::{Client, DisplayHandle, Resource, backend::ClientId},
     },
-    utils::{Logical, Rectangle, Serial, Size},
+    utils::{Logical, Rectangle, Size},
     wayland::{
         compositor::with_states,
         fractional_scale::with_fractional_scale,
@@ -91,9 +91,9 @@ use wayland_protocols::{
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
-use crate::{iced::elements::CosmicMappedInternal, PanelCalloopMsg};
+use crate::{PanelCalloopMsg, iced::elements::CosmicMappedInternal};
 
-use super::{layout::OverflowSection, Spacer};
+use super::{Spacer, layout::OverflowSection};
 
 pub enum AppletMsg {
     NewProcess(String, Process),
@@ -453,11 +453,7 @@ impl PanelSpace {
     }
 
     pub fn crosswise(&self) -> i32 {
-        if self.config.is_horizontal() {
-            self.dimensions.h
-        } else {
-            self.dimensions.w
-        }
+        if self.config.is_horizontal() { self.dimensions.h } else { self.dimensions.w }
     }
 
     pub fn insert_layer_overlap(&mut self, id: String, rect: Rectangle<i32, Logical>) {
@@ -520,8 +516,8 @@ impl PanelSpace {
     }
 
     fn clear_spacer_start(&mut self) {
-        // remove fake client from start of left client list or middle client list if left is empty
-        // this is used to create a spacer element
+        // remove fake client from start of left client list or middle client list if
+        // left is empty this is used to create a spacer element
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
 
@@ -566,8 +562,8 @@ impl PanelSpace {
     }
 
     pub fn add_spacer_element_to_start(&mut self, dim: u32) {
-        // add fake client to start of left client list or middle client list if left is empty
-        // this is used to create a spacer element
+        // add fake client to start of left client list or middle client list if left is
+        // empty this is used to create a spacer element
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
 
@@ -1531,8 +1527,8 @@ impl PanelSpace {
         // return early
         if config.anchor() != self.config.anchor() {
             panic!(
-                "Can't apply anchor changes when orientation changes. Requires re-creation of \
-                     the panel."
+                "Can't apply anchor changes when orientation changes. Requires re-creation of the \
+                 panel."
             );
         }
 
@@ -1670,11 +1666,7 @@ impl PanelSpace {
             .elements()
             .cloned()
             .filter_map(|e| {
-                if let CosmicMappedInternal::OverflowButton(b) = e {
-                    Some(b)
-                } else {
-                    None
-                }
+                if let CosmicMappedInternal::OverflowButton(b) = e { Some(b) } else { None }
             })
             .collect::<Vec<_>>();
 

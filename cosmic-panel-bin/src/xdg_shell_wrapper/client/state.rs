@@ -1,8 +1,7 @@
 use crate::{
     space_container::SpaceContainer,
     xdg_shell_wrapper::{
-        client::handlers::touch, server_state::ServerState, shared_state::GlobalState,
-        space::WrapperSpace,
+        server_state::ServerState, shared_state::GlobalState, space::WrapperSpace,
     },
 };
 use cctk::{
@@ -12,15 +11,16 @@ use cctk::{
 use sctk::{
     compositor::CompositorState,
     data_device_manager::{
+        DataDeviceManagerState,
         data_device::DataDevice,
         data_offer::{DragOffer, SelectionOffer},
         data_source::{CopyPasteSource, DragSource},
-        DataDeviceManagerState,
     },
     output::OutputState,
     reexports::{
         calloop_wayland_source::WaylandSource,
         client::{
+            Connection, QueueHandle,
             globals::registry_queue_init,
             protocol::{
                 wl_keyboard,
@@ -29,29 +29,28 @@ use sctk::{
                 wl_surface::{self, WlSurface},
                 wl_touch,
             },
-            Connection, QueueHandle,
         },
     },
     registry::RegistryState,
     seat::{
-        pointer::{PointerEvent, ThemedPointer},
         SeatState,
+        pointer::{PointerEvent, ThemedPointer},
     },
     shell::{
         wlr_layer::{LayerShell, LayerSurface},
         xdg::XdgShell,
     },
-    shm::{multi::MultiPool, Shm},
+    shm::{Shm, multi::MultiPool},
     subcompositor::SubcompositorState,
 };
 use smithay::{
     backend::{
         egl::EGLSurface,
         renderer::{
-            damage::OutputDamageTracker,
-            element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
-            gles::GlesRenderer,
             Bind,
+            damage::OutputDamageTracker,
+            element::{AsRenderElements, surface::WaylandSurfaceRenderElement},
+            gles::GlesRenderer,
         },
     },
     desktop::LayerSurface as SmithayLayerSurface,
@@ -344,13 +343,13 @@ impl ClientState {
     /// draw the proxied layer shell surfaces
     pub fn draw_layer_surfaces(&mut self, renderer: &mut GlesRenderer, time: u32) {
         let clear_color = &[0.0, 0.0, 0.0, 0.0];
-        for (egl_surface, dmg_tracked_renderer, s_layer, c_layer, state, scale, ..) in
+        for (egl_surface, dmg_tracked_renderer, s_layer, _c_layer, state, scale, ..) in
             &mut self.proxied_layer_surfaces
         {
-            let gen = match state {
-                SurfaceState::WaitingFirst(_, _) => continue,
-                SurfaceState::Waiting(_, _) => continue,
-                SurfaceState::Dirty(gen) => gen,
+            let generation = match state {
+                SurfaceState::WaitingFirst(..) => continue,
+                SurfaceState::Waiting(..) => continue,
+                SurfaceState::Dirty(generation) => generation,
             };
             _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
             let age = egl_surface.buffer_age().unwrap_or_default() as usize;
@@ -377,7 +376,7 @@ impl ClientState {
                     Some(output.clone())
                 })
             }
-            *state = SurfaceState::Waiting(*gen, s_layer.bbox().size);
+            *state = SurfaceState::Waiting(*generation, s_layer.bbox().size);
         }
     }
 

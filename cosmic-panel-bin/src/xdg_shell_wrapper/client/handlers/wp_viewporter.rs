@@ -2,10 +2,9 @@
 
 use sctk::reexports::{
     client::{
-        delegate_dispatch,
+        Connection, Dispatch, Proxy, QueueHandle, delegate_dispatch,
         globals::{BindError, GlobalList},
         protocol::wl_surface::WlSurface,
-        Connection, Dispatch, Proxy, QueueHandle,
     },
     protocols::wp::viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
 };

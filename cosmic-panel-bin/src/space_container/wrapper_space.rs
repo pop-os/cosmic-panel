@@ -24,18 +24,18 @@ use sctk::{
     compositor::CompositorState,
     output::OutputInfo,
     reexports::client::{
-        protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
         Connection, QueueHandle,
+        protocol::{wl_output::WlOutput, wl_surface as c_wl_surface},
     },
     shell::{
-        wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,
+        wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
     },
 };
 use smithay::{
     desktop::PopupManager,
     output::Output,
-    reexports::wayland_server::{self, protocol::wl_surface, Resource},
+    reexports::wayland_server::{self, Resource, protocol::wl_surface},
 };
 
 use crate::space::PanelSpace;
@@ -639,11 +639,7 @@ impl WrapperSpace for SpaceContainer {
                 Some(p_ret)
             } else {
                 self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
-                    if i != popup_space_i {
-                        s.handle_button(seat_name, press)
-                    } else {
-                        None
-                    }
+                    if i != popup_space_i { s.handle_button(seat_name, press) } else { None }
                 })
             }
         } else {
@@ -680,11 +676,7 @@ impl WrapperSpace for SpaceContainer {
                 Some(p_ret);
             }
             self.space_list.iter_mut().enumerate().find_map(|(i, s)| {
-                if i != popup_space_i {
-                    s.keyboard_enter(seat_name, surface.clone())
-                } else {
-                    None
-                }
+                if i != popup_space_i { s.keyboard_enter(seat_name, surface.clone()) } else { None }
             })
         } else {
             self.space_list.iter_mut().find_map(|s| s.keyboard_enter(seat_name, surface.clone()))
@@ -787,11 +779,7 @@ impl WrapperSpace for SpaceContainer {
                 || !s.popups.is_empty()
         });
 
-        if visible {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        }
+        if visible { Visibility::Visible } else { Visibility::Hidden }
     }
 
     fn raise_window(&mut self, _: &smithay::desktop::Window, _: bool) {}

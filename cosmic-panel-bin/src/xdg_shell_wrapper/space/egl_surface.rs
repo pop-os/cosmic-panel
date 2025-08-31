@@ -5,15 +5,16 @@ use std::sync::Arc;
 use anyhow::Result;
 use libc::{c_int, c_void};
 use sctk::reexports::client::{
-    protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
     Proxy,
+    protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
 };
 use smithay::{
     backend::egl::{
+        EGLError,
         display::EGLDisplayHandle,
         ffi,
         native::{EGLNativeDisplay, EGLNativeSurface, EGLPlatform},
-        wrap_egl_call_ptr, EGLError,
+        wrap_egl_call_ptr,
     },
     egl_platform,
 };

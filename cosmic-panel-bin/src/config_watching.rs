@@ -9,7 +9,7 @@ use cosmic::{
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelContainerConfig};
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
-use smithay::reexports::calloop::{channel, LoopHandle};
+use smithay::reexports::calloop::{LoopHandle, channel};
 use tracing::{error, info};
 
 #[derive(Debug, Clone)]

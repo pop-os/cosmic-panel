@@ -5,34 +5,34 @@ use itertools::Itertools;
 use sctk::{
     data_device_manager::data_offer::receive_to_fd, delegate_subcompositor,
     reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction,
-    shell::WaylandSurface, shm::multi::MultiPool,
+    shm::multi::MultiPool,
 };
 use smithay::{
-    backend::renderer::{damage::OutputDamageTracker, ImportDma},
+    backend::renderer::{ImportDma, damage::OutputDamageTracker},
     delegate_data_device, delegate_dmabuf, delegate_output, delegate_primary_selection,
     delegate_seat,
-    input::{pointer::CursorImageAttributes, Seat, SeatHandler, SeatState},
+    input::{Seat, SeatHandler, SeatState, pointer::CursorImageAttributes},
     reexports::wayland_server::{
+        Resource,
         protocol::{
             wl_data_device_manager::DndAction, wl_data_source::WlDataSource, wl_surface::WlSurface,
         },
-        Resource,
     },
     utils::Transform,
     wayland::{
-        compositor::{with_states, SurfaceAttributes},
+        compositor::{SurfaceAttributes, with_states},
         dmabuf::{DmabufHandler, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
         selection::{
+            SelectionHandler, SelectionSource, SelectionTarget,
             data_device::{
-                set_data_device_focus, with_source_metadata, ClientDndGrabHandler,
-                DataDeviceHandler, ServerDndGrabHandler,
+                ClientDndGrabHandler, DataDeviceHandler, ServerDndGrabHandler,
+                set_data_device_focus, with_source_metadata,
             },
             primary_selection::{
-                set_primary_focus, PrimarySelectionHandler, PrimarySelectionState,
+                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
             },
-            SelectionHandler, SelectionSource, SelectionTarget,
         },
     },
 };

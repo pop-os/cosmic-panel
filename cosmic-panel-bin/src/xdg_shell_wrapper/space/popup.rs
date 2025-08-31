@@ -3,12 +3,12 @@
 use cctk::wayland_client::protocol::wl_surface::WlSurface;
 use sctk::{
     compositor::Region,
-    shell::xdg::{popup::Popup, XdgPositioner},
+    shell::xdg::{XdgPositioner, popup::Popup},
 };
 use smithay::{
     backend::{
         egl::surface::EGLSurface,
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind},
+        renderer::{Bind, damage::OutputDamageTracker, gles::GlesRenderer},
     },
     desktop::PopupManager,
     utils::{Logical, Rectangle, Size},

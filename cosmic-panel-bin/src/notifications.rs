@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
 use smithay::reexports::rustix::{
-    io::{fcntl_getfd, fcntl_setfd, FdFlags},
+    io::{FdFlags, fcntl_getfd, fcntl_setfd},
     {self},
 };
 use std::os::{

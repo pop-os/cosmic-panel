@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::iced::elements::{CosmicMappedInternal, PanelSpaceElement, PopupMappedInternal};
 
-use super::{layout::OverflowSection, PanelSpace};
+use super::{PanelSpace, layout::OverflowSection};
 use cctk::wayland_client::{Proxy, QueueHandle};
 use itertools::Itertools;
 
@@ -11,15 +11,15 @@ use cosmic_panel_config::PanelAnchor;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
+        Bind, Color32F, Frame, Renderer,
         damage::OutputDamageTracker,
         element::{
-            memory::MemoryRenderBufferRenderElement,
-            surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            utils::CropRenderElement,
             AsRenderElements, RenderElement, UnderlyingStorage,
+            memory::MemoryRenderBufferRenderElement,
+            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            utils::CropRenderElement,
         },
         gles::{GlesError, GlesFrame, GlesRenderer},
-        Bind, Color32F, Frame, Renderer,
     },
     reexports::wayland_server::Resource,
     utils::{Buffer, IsAlive, Physical, Point, Rectangle},
@@ -136,10 +136,10 @@ impl PanelSpace {
                     anyhow::bail!("Failed to clear panel.");
                 };
 
-                _ = frame.clear(
-                    Color32F::new(0.0, 0.0, 0.0, 0.0),
-                    &[Rectangle::new((0, 0).into(), dim)],
-                );
+                _ = frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[Rectangle::new(
+                    (0, 0).into(),
+                    dim,
+                )]);
                 if let Ok(sync_point) = frame.finish() {
                     if let Err(err) = sync_point.wait() {
                         tracing::error!("Error waiting for sync point: {:?}", err);
@@ -269,11 +269,7 @@ impl PanelSpace {
                 egl_surface.swap_buffers(None)?;
 
                 for window in self.space.elements().filter_map(|w| {
-                    if let CosmicMappedInternal::Window(w) = w {
-                        Some(w)
-                    } else {
-                        None
-                    }
+                    if let CosmicMappedInternal::Window(w) = w { Some(w) } else { None }
                 }) {
                     let output = *o;
                     let throttle =
@@ -394,7 +390,7 @@ impl PanelSpace {
         }
 
         // render to overflow_popup
-        if let Some((ref mut p, section)) = self.overflow_popup.as_mut().filter(|(p, _)| {
+        if let Some((p, section)) = self.overflow_popup.as_mut().filter(|(p, _)| {
             p.dirty
                 && p.egl_surface.is_some()
                 && p.state.is_none()

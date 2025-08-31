@@ -2,7 +2,7 @@
 
 use sctk::{
     compositor::CompositorHandler,
-    reexports::client::{protocol::wl_surface, Connection, QueueHandle},
+    reexports::client::{Connection, QueueHandle, protocol::wl_surface},
     shell::WaylandSurface,
 };
 use smithay::reexports::wayland_server::protocol::wl_output::Transform;

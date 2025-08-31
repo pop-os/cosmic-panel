@@ -7,21 +7,21 @@ use sctk::{
         data_offer::DataOfferData,
     },
     reexports::client::{
+        Proxy,
         protocol::{
             wl_data_device::WlDataDevice, wl_data_device_manager::DndAction as ClientDndAction,
         },
-        Proxy,
     },
     seat::pointer::{PointerEvent, PointerEventKind, PointerHandler},
 };
 use smithay::{
     input::pointer::GrabStartData,
-    reexports::wayland_server::{protocol::wl_data_device_manager::DndAction, Resource},
+    reexports::wayland_server::{Resource, protocol::wl_data_device_manager::DndAction},
     utils::SERIAL_COUNTER,
     wayland::{
         seat::WaylandFocus,
         selection::data_device::{
-            set_data_device_focus, set_data_device_selection, start_dnd, SourceMetadata,
+            SourceMetadata, set_data_device_focus, set_data_device_selection, start_dnd,
         },
     },
 };

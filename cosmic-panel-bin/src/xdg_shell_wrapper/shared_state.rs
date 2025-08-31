@@ -9,10 +9,10 @@ use smithay::{
     backend::{
         input::KeyState,
         renderer::{
-            damage::OutputDamageTracker,
-            element::surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-            gles::GlesRenderer,
             Bind, ImportDma, ImportEgl,
+            damage::OutputDamageTracker,
+            element::surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+            gles::GlesRenderer,
         },
     },
     desktop::utils::send_frames_surface_tree,
@@ -88,10 +88,10 @@ impl GlobalState {
         if let Some((key_pressed, kbd)) = press {
             kbd.input::<(), _>(
                 self,
-                key_pressed.1 .0.into(),
+                key_pressed.1.0.into(),
                 KeyState::Released,
                 SERIAL_COUNTER.next_serial(),
-                key_pressed.1 .1.wrapping_add(1),
+                key_pressed.1.1.wrapping_add(1),
                 move |_, _modifiers, _keysym| FilterResult::Forward,
             );
         }
@@ -158,7 +158,7 @@ impl GlobalState {
     pub fn draw_dnd_icon(&mut self) {
         // TODO proxied layer surfaces
         if let Some((
-            (egl_surface, wl_surface, ref mut dmg_tracked_renderer, is_dirty, has_frame),
+            (egl_surface, wl_surface, dmg_tracked_renderer, is_dirty, has_frame),
             s_icon,
         )) = self
             .server_state

@@ -3,13 +3,13 @@
 use sctk::{
     output::{Mode as c_Mode, OutputHandler, OutputInfo, OutputState},
     reexports::client::{
-        protocol::{wl_output, wl_output::Subpixel as c_Subpixel},
         Connection, QueueHandle,
+        protocol::{wl_output, wl_output::Subpixel as c_Subpixel},
     },
 };
 use smithay::{
     output::{Mode as s_Mode, Output, PhysicalProperties, Scale, Subpixel as s_Subpixel},
-    reexports::wayland_server::{backend::GlobalId, DisplayHandle},
+    reexports::wayland_server::{DisplayHandle, backend::GlobalId},
     utils::Transform,
 };
 use tracing::{error, info, warn};

@@ -7,7 +7,7 @@ use cctk::{
         toplevel_management::v1::client::zcosmic_toplevel_manager_v1,
     },
     toplevel_info::ToplevelInfo,
-    wayland_client::{protocol::wl_output::WlOutput, Connection},
+    wayland_client::{Connection, protocol::wl_output::WlOutput},
     wayland_protocols::ext::{
         foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
         workspace::v1::client::ext_workspace_handle_v1,

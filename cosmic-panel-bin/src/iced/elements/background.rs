@@ -2,11 +2,11 @@
 
 use calloop::LoopHandle;
 use cosmic::{
-    iced::{id, Color, Length},
+    Theme,
+    iced::{Color, Length, id},
     iced_core::Shadow,
     theme,
     widget::horizontal_space,
-    Theme,
 };
 
 use crate::{

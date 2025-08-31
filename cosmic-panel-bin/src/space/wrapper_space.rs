@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    iced::elements::{target::SpaceTarget, PopupMappedInternal},
+    iced::elements::{PopupMappedInternal, target::SpaceTarget},
     space::panel_space::ClientShrinkSize,
     space_container::SpaceContainer,
     xdg_shell_wrapper::{
@@ -31,37 +31,37 @@ use anyhow::bail;
 use calloop::timer::Timer;
 use cctk::wayland_client::protocol::{wl_pointer::WlPointer, wl_seat};
 use cosmic::iced::id;
-use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, Side, NAME};
-use freedesktop_desktop_entry::{self, DesktopEntry, Iter, PathSource};
+use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME, Side};
+use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::izip;
 use launch_pad::process::Process;
 use sctk::{
     compositor::{CompositorState, Region},
     output::OutputInfo,
     reexports::client::{
-        protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
         Connection, Proxy, QueueHandle,
+        protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface},
     },
-    seat::pointer::{PointerEvent, BTN_LEFT},
+    seat::pointer::{BTN_LEFT, PointerEvent},
     shell::{
+        WaylandSurface,
         wlr_layer::{
             KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
         },
         xdg::popup,
-        WaylandSurface,
     },
 };
 use shlex::Shlex;
 use smithay::{
     backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
-    desktop::{space::SpaceElement, utils::bbox_from_surface_tree, PopupManager, Space, Window},
+    desktop::{PopupManager, Space, Window, space::SpaceElement, utils::bbox_from_surface_tree},
     output::Output,
     reexports::wayland_server::{
-        self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle, Resource,
+        self, DisplayHandle, Resource, protocol::wl_surface::WlSurface as s_WlSurface,
     },
-    utils::{Logical, Rectangle, Scale, Size},
+    utils::{Logical, Rectangle, Size},
     wayland::{
-        compositor::{with_states, SurfaceAttributes},
+        compositor::{SurfaceAttributes, with_states},
         fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
         shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState},
@@ -74,12 +74,12 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use crate::{
     iced::elements::{CosmicMappedInternal, PanelSpaceElement},
     space::{
-        panel_space::{AppletAutoClickAnchor, PanelClient},
         AppletMsg,
+        panel_space::{AppletAutoClickAnchor, PanelClient},
     },
 };
 
-use super::{layout::OverflowSection, panel_space::HoverId, PanelSpace};
+use super::{PanelSpace, layout::OverflowSection, panel_space::HoverId};
 
 struct SpaceFocus<T> {
     target: T,
@@ -285,7 +285,8 @@ impl WrapperSpace for PanelSpace {
                 area = area.saturating_add(r.1.size.w.saturating_mul(r.1.size.h));
                 input_region.add(0, 0, r.1.size.w, r.1.size.h);
             }
-            // must take a grab on all popups to avoid being closed automatically by focus follows cursor...
+            // must take a grab on all popups to avoid being closed automatically by focus
+            // follows cursor...
             if area > 1 {
                 c_popup.xdg_popup().grab(latest_seat, latest_serial);
             }
@@ -471,7 +472,7 @@ impl WrapperSpace for PanelSpace {
                 // This way each applet is at most started once,
                 // even if multiple desktop files in different directories match
                 if let Some(position) =
-                    desktop_ids.iter().position(|(PanelClient { ref name, .. }, ..)| {
+                    desktop_ids.iter().position(|(PanelClient { name, .. }, ..)| {
                         Some(OsString::from(name).as_os_str()) == path.file_stem()
                     })
                 {
@@ -719,13 +720,10 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(
-                                        &key,
-                                        vec![(
-                                            "COSMIC_NOTIFICATIONS".to_string(),
-                                            fd.as_raw_fd().to_string(),
-                                        )],
-                                    )
+                                    .update_process_env(&key, vec![(
+                                        "COSMIC_NOTIFICATIONS".to_string(),
+                                        fd.as_raw_fd().to_string(),
+                                    )])
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);
@@ -761,7 +759,7 @@ impl WrapperSpace for PanelSpace {
                                 .send(AppletMsg::ClientSocketPair(client_id_clone))
                                 .await;
 
-                            applet_env.retain(|(k, v)| k.as_str() != "WAYLAND_SOCKET");
+                            applet_env.retain(|(k, _)| k.as_str() != "WAYLAND_SOCKET");
                             applet_env.push((
                                 "WAYLAND_SOCKET".to_string(),
                                 raw_client_socket.to_string(),
@@ -891,11 +889,7 @@ impl WrapperSpace for PanelSpace {
                 .map(|(i, f)| (i, f.0.clone()))
         } {
             let target = self.s_hovered_surface.iter().find_map(|h| {
-                if h.seat_name.as_str() == seat_name {
-                    Some(h.surface.clone())
-                } else {
-                    None
-                }
+                if h.seat_name.as_str() == seat_name { Some(h.surface.clone()) } else { None }
             });
             if target.is_none() {
                 // close popups when panel is pressed
@@ -1174,7 +1168,7 @@ impl WrapperSpace for PanelSpace {
                         .filter(|s| s.hover_track == cur_hover_track)
                     {
                         // exit early if popup is open on the hover id
-                        if space.popups.first().zip(cur_client_hover_id.as_ref()).is_some_and(|(p, c_id)| matches!(c_id, HoverId::Client(ref c_id) if Some(c_id) == p.s_surface.wl_surface().client().map(|c| c.id()).as_ref())) {
+                        if space.popups.first().zip(cur_client_hover_id.as_ref()).is_some_and(|(p, c_id)| matches!(c_id, HoverId::Client(c_id) if Some(c_id) == p.s_surface.wl_surface().client().map(|c| c.id()).as_ref())) {
                             return calloop::timer::TimeoutAction::Drop;
                         }
 
