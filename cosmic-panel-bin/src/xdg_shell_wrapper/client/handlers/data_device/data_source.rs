@@ -28,20 +28,12 @@ impl DataSourceHandler for GlobalState {
                 .as_ref()
                 .and_then(
                     |sel_source| {
-                        if sel_source.inner() == source {
-                            Some((seat, false))
-                        } else {
-                            None
-                        }
+                        if sel_source.inner() == source { Some((seat, false)) } else { None }
                     },
                 )
                 .or_else(|| {
                     seat.client.dnd_source.as_ref().and_then(|dnd_source| {
-                        if dnd_source.inner() == source {
-                            Some((seat, true))
-                        } else {
-                            None
-                        }
+                        if dnd_source.inner() == source { Some((seat, true)) } else { None }
                     })
                 })
         }) {

@@ -3,10 +3,9 @@
 
 use sctk::reexports::{
     client::{
-        delegate_dispatch,
+        Connection, Dispatch, Proxy, QueueHandle, delegate_dispatch,
         globals::{BindError, GlobalList},
         protocol::wl_surface::WlSurface,
-        Connection, Dispatch, Proxy, QueueHandle,
     },
     protocols::wp::fractional_scale::v1::client::{
         wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,

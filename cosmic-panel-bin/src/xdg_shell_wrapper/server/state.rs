@@ -2,8 +2,8 @@ use smithay::{
     desktop::PopupManager,
     input::{Seat, SeatState},
     reexports::wayland_server::{
-        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
         DisplayHandle,
+        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
     },
     utils::{Logical, Point},
     wayland::{
@@ -13,7 +13,7 @@ use smithay::{
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
         selection::{
-            data_device::DataDeviceState, primary_selection::PrimarySelectionState, SelectionSource,
+            SelectionSource, data_device::DataDeviceState, primary_selection::PrimarySelectionState,
         },
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
@@ -58,7 +58,7 @@ pub struct ServerState {
     pub(crate) seats: Vec<SeatPair>,
     // Smithay State
     pub(crate) compositor_state: CompositorState,
-    pub(crate) cursor_shape: CursorShapeManagerState,
+    pub(crate) _cursor_shape: CursorShapeManagerState,
     pub(crate) xdg_shell_state: XdgShellState,
     pub(crate) shm_state: ShmState,
     pub(crate) _output_manager_state: OutputManagerState,
@@ -80,7 +80,7 @@ impl ServerState {
             last_button: None,
             seats: Vec::new(),
             compositor_state: CompositorState::new::<GlobalState>(&dh),
-            cursor_shape: CursorShapeManagerState::new::<GlobalState>(&dh),
+            _cursor_shape: CursorShapeManagerState::new::<GlobalState>(&dh),
             xdg_shell_state: XdgShellState::new::<GlobalState>(&dh),
             shm_state: ShmState::new::<GlobalState>(&dh, vec![]),
             _output_manager_state: OutputManagerState::new_with_xdg_output::<GlobalState>(&dh),

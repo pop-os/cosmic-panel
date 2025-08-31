@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use crate::{
+    PanelCalloopMsg,
     iced::elements::PanelSpaceElement,
     minimize::MinimizeApplet,
     space::{AppletMsg, PanelColors, PanelSpace},
@@ -14,7 +15,6 @@ use crate::{
         wp_security_context::SecurityContextManager,
         wp_viewporter::ViewporterState,
     },
-    PanelCalloopMsg,
 };
 use cctk::{
     toplevel_info::ToplevelInfo,
@@ -32,7 +32,7 @@ use sctk::{
     output::OutputInfo,
     reexports::{
         calloop,
-        client::{protocol::wl_output::WlOutput, Connection, QueueHandle},
+        client::{Connection, QueueHandle, protocol::wl_output::WlOutput},
     },
     shell::wlr_layer::LayerShell,
     subcompositor::SubcompositorState,
@@ -40,9 +40,7 @@ use sctk::{
 use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
-    reexports::wayland_server::{self, backend::ClientId, protocol::wl_seat},
-    utils::Serial,
-    wayland::shell::xdg::PopupSurface,
+    reexports::wayland_server::{self, backend::ClientId},
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -151,11 +149,7 @@ impl SpaceContainer {
     }
 
     pub fn cur_theme(&self) -> cosmic::Theme {
-        if self.is_dark {
-            self.dark_theme.clone()
-        } else {
-            self.light_theme.clone()
-        }
+        if self.is_dark { self.dark_theme.clone() } else { self.light_theme.clone() }
     }
 
     pub fn cleanup_client(&mut self, old_client_id: ClientId) {

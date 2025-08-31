@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{runtime, sync::mpsc};
 use tracing::{error, info, warn};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Debug)]
 pub enum PanelCalloopMsg {
@@ -45,7 +45,7 @@ mod malloc {
     use std::os::raw::c_int;
     const M_MMAP_THRESHOLD: c_int = -3;
 
-    extern "C" {
+    unsafe extern "C" {
         fn malloc_trim(pad: usize);
         fn mallopt(param: c_int, value: c_int) -> c_int;
     }

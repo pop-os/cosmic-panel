@@ -2,8 +2,8 @@
 
 use sctk::{
     delegate_seat,
-    reexports::client::{protocol::wl_seat, Connection, QueueHandle},
-    seat::{pointer::ThemeSpec, SeatHandler},
+    reexports::client::{Connection, QueueHandle, protocol::wl_seat},
+    seat::{SeatHandler, pointer::ThemeSpec},
 };
 
 use crate::xdg_shell_wrapper::{

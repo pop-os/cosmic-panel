@@ -1,6 +1,6 @@
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cctk::{
-    wayland_client::{protocol::wl_surface::WlSurface, Proxy},
+    wayland_client::{Proxy, protocol::wl_surface::WlSurface},
     wayland_protocols::ext::foreign_toplevel_list::v1::client::ext_foreign_toplevel_handle_v1,
 };
 use smithay::utils::{Logical, Rectangle};

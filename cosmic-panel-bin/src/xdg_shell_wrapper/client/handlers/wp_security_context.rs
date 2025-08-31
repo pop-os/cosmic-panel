@@ -7,9 +7,8 @@ use std::{
 };
 
 use cctk::wayland_client::{
-    delegate_dispatch,
+    Dispatch, Proxy, QueueHandle, delegate_dispatch,
     globals::{BindError, GlobalList},
-    Dispatch, Proxy, QueueHandle,
 };
 use rand::distributions::{Alphanumeric, DistString};
 use rustix::fd::AsFd;
@@ -54,12 +53,10 @@ impl SecurityContextManager {
         let addr = SocketAddr::from_abstract_name(s)?;
         // this also listens on the socket
         let listener = UnixListener::bind_addr(&addr)?;
-        let wp_security_context = self.manager.create_listener(
-            listener.as_fd(),
-            close_fd.as_fd(),
-            qh,
-            SecurityContext { conn: Arc::new(Mutex::new(None)) },
-        );
+        let wp_security_context =
+            self.manager.create_listener(listener.as_fd(), close_fd.as_fd(), qh, SecurityContext {
+                conn: Arc::new(Mutex::new(None)),
+            });
         let conn = UnixStream::connect_addr(&addr)?;
         // XXX make sure no one else can connect to the listener
         drop(close_fd_ours);

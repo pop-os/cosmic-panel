@@ -11,8 +11,8 @@ use sctk::{
     compositor::CompositorState,
     output::OutputInfo,
     reexports::client::{
-        protocol::{wl_output as c_wl_output, wl_surface},
         Connection, QueueHandle,
+        protocol::{wl_output as c_wl_output, wl_surface},
     },
     shell::{
         wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure},
@@ -24,7 +24,7 @@ use smithay::{
     desktop::{PopupManager, Window},
     output::Output,
     reexports::wayland_server::{
-        self, protocol::wl_surface::WlSurface as s_WlSurface, DisplayHandle,
+        self, DisplayHandle, protocol::wl_surface::WlSurface as s_WlSurface,
     },
     wayland::shell::xdg::{PopupSurface, PositionerState},
 };

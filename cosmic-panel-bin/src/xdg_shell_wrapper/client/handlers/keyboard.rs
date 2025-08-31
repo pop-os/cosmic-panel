@@ -52,11 +52,7 @@ impl KeyboardHandler for GlobalState {
         }
         let s_surface =
             self.client_state.proxied_layer_surfaces.iter_mut().find_map(|(_, _, s, c, ..)| {
-                if c.wl_surface() == surface {
-                    Some(s.wl_surface().clone())
-                } else {
-                    None
-                }
+                if c.wl_surface() == surface { Some(s.wl_surface().clone()) } else { None }
             });
 
         if let Some(s_surface) = s_surface {
@@ -140,13 +136,9 @@ impl KeyboardHandler for GlobalState {
         };
         let c_kbd_focus = {
             let c_focused_surface = self.client_state.focused_surface.borrow_mut();
-            c_focused_surface.iter().find_map(|f| {
-                if f.1 == seat_name {
-                    Some(f.0.clone())
-                } else {
-                    None
-                }
-            })
+            c_focused_surface
+                .iter()
+                .find_map(|f| if f.1 == seat_name { Some(f.0.clone()) } else { None })
         };
 
         if let Some(c_focus) = c_kbd_focus {
@@ -208,13 +200,10 @@ impl KeyboardHandler for GlobalState {
     ) {
         if let Some(kbd) =
             self.server_state.seats.iter().find_map(|SeatPair { client, server, .. }| {
-                client.kbd.as_ref().and_then(|k| {
-                    if k == kbd {
-                        server.seat.get_keyboard()
-                    } else {
-                        None
-                    }
-                })
+                client
+                    .kbd
+                    .as_ref()
+                    .and_then(|k| if k == kbd { server.seat.get_keyboard() } else { None })
             })
         {
             match info {

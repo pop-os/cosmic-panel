@@ -3,8 +3,8 @@
 use sctk::{
     delegate_layer,
     shell::{
-        wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,
+        wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
     },
 };
 
@@ -39,7 +39,7 @@ impl LayerShellHandler for GlobalState {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if let Some((_, _, s_layer_surface, _, mut state, ..)) = self
+        if let Some((_, _, s_layer_surface, _, state, ..)) = self
             .client_state
             .proxied_layer_surfaces
             .iter_mut()
@@ -50,14 +50,16 @@ impl LayerShellHandler for GlobalState {
                 SurfaceState::Waiting(generation, size) => {
                     requested_size.0 = size.w as u32;
                     requested_size.1 = size.h as u32;
-                    state = SurfaceState::Dirty(generation);
+                    let generation = *generation;
+                    *state = SurfaceState::Dirty(generation);
                     generation
                 },
-                SurfaceState::Dirty(generation) => generation,
+                SurfaceState::Dirty(generation) => *generation,
                 SurfaceState::WaitingFirst(generation, size) => {
                     requested_size.0 = size.w as u32;
                     requested_size.1 = size.h as u32;
-                    state = SurfaceState::Dirty(generation);
+                    let generation = *generation;
+                    *state = SurfaceState::Dirty(generation);
                     generation
                 },
             };

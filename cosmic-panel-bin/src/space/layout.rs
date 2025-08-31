@@ -1,22 +1,22 @@
 use std::{
     i32,
     slice::IterMut,
-    sync::{atomic::AtomicBool, Arc, MutexGuard},
+    sync::{Arc, MutexGuard, atomic::AtomicBool},
     time::{Duration, Instant},
     u32,
 };
 
 use crate::{
     iced::{
+        IcedElement,
         elements::{
+            CosmicMappedInternal, PanelSpaceElement, PopupMappedInternal,
             background::background_element,
             overflow_button::{
-                self, overflow_button_element, OverflowButton, OverflowButtonElement,
+                self, OverflowButton, OverflowButtonElement, overflow_button_element,
             },
-            overflow_popup::{overflow_popup_element, BORDER_WIDTH},
-            CosmicMappedInternal, PanelSpaceElement, PopupMappedInternal,
+            overflow_popup::{BORDER_WIDTH, overflow_popup_element},
         },
-        IcedElement,
     },
     minimize::MinimizeApplet,
     space::Alignment,
@@ -24,17 +24,17 @@ use crate::{
 };
 
 use super::{
-    panel_space::{ClientShrinkSize, PanelClient},
     PanelSpace,
+    panel_space::{ClientShrinkSize, PanelClient},
 };
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use anyhow::bail;
 use cosmic::widget::Id;
 use cosmic_panel_config::PanelAnchor;
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use sctk::shell::WaylandSurface;
 use smithay::{
-    desktop::{space::SpaceElement, Space, Window},
+    desktop::{Space, Window, space::SpaceElement},
     reexports::wayland_server::Resource,
     utils::{IsAlive, Physical, Rectangle, Size},
     wayland::{
@@ -540,7 +540,8 @@ impl PanelSpace {
             self.space.map_element(CosmicMappedInternal::OverflowButton(right_button), loc, true);
         };
 
-        // XXX this is a bit of a hack around the fact that we want the spacer to be placed before the overflow button
+        // XXX this is a bit of a hack around the fact that we want the spacer to be
+        // placed before the overflow button
         if windows_left.is_empty()
             && !windows_center.is_empty()
             && self.logical_layer_start_overlap > 0
@@ -1169,8 +1170,8 @@ impl PanelSpace {
         }
         if overflow > 0 && !force_smaller {
             tracing::info!(
-                "Overflow not resolved {sum:.1} {overflow}. Forcing lowest priority shrinkable applets to be \
-                 smaller than configured...",
+                "Overflow not resolved {sum:.1} {overflow}. Forcing lowest priority shrinkable \
+                 applets to be smaller than configured...",
             );
             return self.shrink_clients(overflow, clients, section, true);
         }
@@ -1508,6 +1509,7 @@ impl PanelSpace {
             suggested_size,
         );
     }
+
     fn relax_overflow_right(
         &mut self,
         extra_space: u32,

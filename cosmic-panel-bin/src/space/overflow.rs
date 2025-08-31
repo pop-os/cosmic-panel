@@ -1,7 +1,7 @@
 use anyhow::bail;
 use cctk::{
-    sctk::shell::xdg::{popup, XdgPositioner},
-    wayland_client::{protocol::wl_seat::WlSeat, Proxy, QueueHandle},
+    sctk::shell::xdg::{XdgPositioner, popup},
+    wayland_client::{QueueHandle, protocol::wl_seat::WlSeat},
 };
 use cosmic::iced::id;
 
@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-use super::{layout::OverflowSection, PanelSpace};
+use super::{PanelSpace, layout::OverflowSection};
 
 impl PanelSpace {
     pub fn toggle_overflow_popup(

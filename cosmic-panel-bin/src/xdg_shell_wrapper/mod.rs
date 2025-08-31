@@ -93,9 +93,6 @@ pub fn run(
         .expect("Failed to insert cleanup timer.");
     global_state.bind_display(&s_dh);
 
-    let last_cleanup = Instant::now();
-    let five_min = Duration::from_secs(300);
-
     // TODO find better place for this
     // let set_clipboard_once = Rc::new(Cell::new(false));
 

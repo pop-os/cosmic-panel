@@ -11,7 +11,7 @@ use background::BackgroundElement;
 use overflow_button::OverflowButtonElement;
 use overflow_popup::OverflowPopupElement;
 use smithay::{
-    desktop::{space::SpaceElement, Window},
+    desktop::{Window, space::SpaceElement},
     space_elements,
     wayland::{seat::WaylandFocus, shell::xdg::ToplevelSurface},
 };
