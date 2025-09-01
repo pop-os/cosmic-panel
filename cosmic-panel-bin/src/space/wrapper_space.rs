@@ -480,7 +480,7 @@ impl WrapperSpace for PanelSpace {
                     info!(panel_client.name);
 
                     if let Ok(bytes) = fs::read_to_string(&path) {
-                        if let Ok(entry) = DesktopEntry::from_str(&path, &bytes, &locales) {
+                        if let Ok(entry) = DesktopEntry::from_str(&path, &bytes, Some(&locales)) {
                             if let Some(exec) = entry.exec() {
                                 panel_client.path = Some(path.clone());
                                 panel_client.exec = Some(exec.to_string());

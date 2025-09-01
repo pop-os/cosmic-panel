@@ -7,11 +7,10 @@ edition = "2024"
 default = ["wayland-rs"]
 wayland-rs = ["wayland-protocols-wlr", "xdg-shell-wrapper-config", "sctk"]
 [dependencies]
-anyhow = "1.0.68"
-ron = "0.8.0"
-serde = { version = "1.0.152", features = ["derive"] }
-tracing = "0.1.37"
-wayland-protocols-wlr = { version = "0.3.1", features = [
+anyhow = "1.0.99"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1.41"
+wayland-protocols-wlr = { version = "0.3.9", features = [
     "server",
     "client",
 ], optional = true }

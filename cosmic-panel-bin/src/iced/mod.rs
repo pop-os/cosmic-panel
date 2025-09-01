@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
-    sync::{Arc, Mutex, mpsc::Receiver},
+    sync::{Arc, LazyLock, Mutex, mpsc::Receiver},
     time::{Duration, Instant},
 };
 
@@ -30,7 +30,6 @@ use cosmic::{
     widget::Id,
 };
 use iced_tiny_skia::graphics::Viewport;
-use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use smithay::{
     backend::{
@@ -68,7 +67,7 @@ use smithay::{
 pub mod elements;
 pub mod panel_message;
 
-static ID: Lazy<Id> = Lazy::new(|| Id::new("Program"));
+static ID: LazyLock<Id> = LazyLock::new(|| Id::new("Program"));
 
 pub type Element<'a, Message> = cosmic::iced::Element<'a, Message, cosmic::Theme, cosmic::Renderer>;
 

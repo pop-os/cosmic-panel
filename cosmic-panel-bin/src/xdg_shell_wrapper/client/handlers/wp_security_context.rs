@@ -10,7 +10,7 @@ use cctk::wayland_client::{
     Dispatch, Proxy, QueueHandle, delegate_dispatch,
     globals::{BindError, GlobalList},
 };
-use rand::distributions::{Alphanumeric, DistString};
+use rand::distr::{Alphanumeric, SampleString};
 use rustix::fd::AsFd;
 use sctk::globals::GlobalData;
 
@@ -49,7 +49,7 @@ impl SecurityContextManager {
     ) -> std::io::Result<WpSecurityContextV1> {
         // create a close fd that we can use to close the listener
         let (close_fd_ours, close_fd) = rustix::pipe::pipe()?;
-        let s: String = Alphanumeric.sample_string(&mut rand::thread_rng(), 50);
+        let s: String = Alphanumeric.sample_string(&mut rand::rng(), 50);
         let addr = SocketAddr::from_abstract_name(s)?;
         // this also listens on the socket
         let listener = UnixListener::bind_addr(&addr)?;
