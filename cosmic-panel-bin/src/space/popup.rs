@@ -68,7 +68,8 @@ impl PanelSpace {
             .map(|p| (&mut p.popup, Some(&mut p.s_surface)))
             .find(|(p, _)| popup.wl_surface() == p.c_popup.wl_surface())
         {
-            // is there a smithay bug? The acked configure is not valid, and cosmic-comp produces an error after sending it...
+            // is there a smithay bug? The acked configure is not valid, and cosmic-comp
+            // produces an error after sending it...
             // p.c_popup.xdg_surface().ack_configure(config.serial);
             // p.c_popup.wl_surface().commit();
             tracing::info!("Configuring popup: {:?}", config);

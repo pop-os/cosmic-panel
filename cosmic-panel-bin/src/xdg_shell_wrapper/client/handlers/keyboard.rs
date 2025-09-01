@@ -155,6 +155,17 @@ impl KeyboardHandler for GlobalState {
         );
     }
 
+    fn repeat_key(
+        &mut self,
+        _conn: &sctk::reexports::client::Connection,
+        _qh: &sctk::reexports::client::QueueHandle<Self>,
+        _keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: sctk::seat::keyboard::KeyEvent,
+    ) {
+        // TODO
+    }
+
     fn release_key(
         &mut self,
         _conn: &sctk::reexports::client::Connection,
