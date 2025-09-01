@@ -16,7 +16,7 @@ use zbus::{connection::Builder, proxy};
     interface = "com.system76.NotificationsSocket",
     default_path = "/com/system76/NotificationsSocket"
 )]
-trait NotificationsSocket {
+pub trait NotificationsSocket {
     /// get an fd for an applet
     fn get_fd(&self) -> zbus::Result<zbus::zvariant::OwnedFd>;
 }

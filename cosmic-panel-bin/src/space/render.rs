@@ -83,7 +83,7 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
         }
     }
 
-    fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
+    fn underlying_storage(&self, renderer: &mut GlesRenderer) -> Option<UnderlyingStorage<'_>> {
         match self {
             PanelRenderElement::Wayland(e, ..) => e.underlying_storage(renderer),
             PanelRenderElement::Crop(e) => e.underlying_storage(renderer),
