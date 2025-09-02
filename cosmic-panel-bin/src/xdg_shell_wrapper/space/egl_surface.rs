@@ -44,8 +44,7 @@ pub struct ClientEglDisplay {
     pub display: WlDisplay,
 }
 
-static SURFACE_ATTRIBUTES: [c_int; 3] =
-    [ffi::egl::RENDER_BUFFER as c_int, ffi::egl::BACK_BUFFER as c_int, ffi::egl::NONE as c_int];
+static SURFACE_ATTRIBUTES: [c_int; 1] = [ffi::egl::NONE as c_int];
 
 impl EGLNativeDisplay for ClientEglDisplay {
     fn supported_platforms(&self) -> Vec<EGLPlatform<'_>> {

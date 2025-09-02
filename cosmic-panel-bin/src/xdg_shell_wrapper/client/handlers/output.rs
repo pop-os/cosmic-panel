@@ -185,6 +185,7 @@ pub fn c_output_as_s_output(dh: &DisplayHandle, info: &OutputInfo) -> (Output, G
             }, // subpixel information
             make: info.make.clone(),         // make of the monitor
             model: info.model.clone(),       // model of the monitor
+            serial_number: "Unknown".into(), // TODO wlr-output-management-unstable-v1.
         },
     );
     for c_Mode { dimensions, refresh_rate, current, preferred } in &info.modes {

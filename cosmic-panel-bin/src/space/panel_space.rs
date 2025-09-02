@@ -1264,6 +1264,8 @@ impl PanelSpace {
                             renderer
                         } else {
                             unsafe {
+                                _ = egl_context.make_current();
+
                                 let capabilities =
                                     GlesRenderer::supported_capabilities(&egl_context)
                                         .expect("Failed to query EGL Context");
