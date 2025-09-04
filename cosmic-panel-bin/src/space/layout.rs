@@ -810,7 +810,7 @@ impl PanelSpace {
                         ),
                     ),
                     PanelAnchor::Right => (
-                        (0, side as i32 - anim_gap),
+                        (-anim_gap, side as i32),
                         (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
                     ),
                     PanelAnchor::Top => (
@@ -843,7 +843,6 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     }
                 }
-
                 input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
@@ -852,6 +851,7 @@ impl PanelSpace {
                     PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
                     PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
                 };
+
                 if container_lengthwise_pos < self.logical_layer_start_overlap {
                     if self.config.is_horizontal() {
                         loc.0 += self.logical_layer_start_overlap - container_lengthwise_pos;
@@ -872,6 +872,7 @@ impl PanelSpace {
                 input_region.add(loc.0, loc.1, size.0, size.1);
             };
         }
+
         layer.wl_surface().set_input_region(Some(input_region.wl_region()));
 
         self.reorder_overflow_space(OverflowSection::Left);
