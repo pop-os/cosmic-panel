@@ -95,7 +95,7 @@ impl GlobalState {
                 move |_, _modifiers, _keysym| FilterResult::Forward,
             );
         }
-        self.space.cleanup();
+        self.space.cleanup(&self.client_state.compositor_state);
     }
 
     /// set the scale factor for a surface

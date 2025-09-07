@@ -1708,7 +1708,9 @@ impl PanelSpace {
         }
     }
 
-    pub fn cleanup(&mut self) {}
+    pub fn cleanup(&mut self, compositor_state: &sctk::compositor::CompositorState) {
+        self.input_region = Some(Region::new(compositor_state).unwrap());
+    }
 
     pub fn dirty_subsurface(
         &mut self,

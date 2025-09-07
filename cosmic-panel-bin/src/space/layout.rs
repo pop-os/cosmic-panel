@@ -868,7 +868,6 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     }
                 }
-
                 input_region.add(loc.0, loc.1, size.0, size.1);
             };
         }

@@ -545,9 +545,9 @@ impl SpaceContainer {
         }
     }
 
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self, compositor_state: &sctk::compositor::CompositorState) {
         for space in &mut self.space_list {
-            space.cleanup();
+            space.cleanup(compositor_state);
         }
     }
 
