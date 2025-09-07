@@ -136,10 +136,10 @@ impl PanelSpace {
                     anyhow::bail!("Failed to clear panel.");
                 };
 
-                _ = frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[Rectangle::new(
-                    (0, 0).into(),
-                    dim,
-                )]);
+                _ = frame.clear(
+                    Color32F::new(0.0, 0.0, 0.0, 0.0),
+                    &[Rectangle::new((0, 0).into(), dim)],
+                );
                 if let Ok(sync_point) = frame.finish() {
                     if let Err(err) = sync_point.wait() {
                         tracing::error!("Error waiting for sync point: {:?}", err);
@@ -261,10 +261,10 @@ impl PanelSpace {
                     elements.extend(bg);
                 };
 
-                let res =
+                let _res =
                     my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
                 drop(f);
-                let mut dmg = res.damage.cloned();
+                // let mut dmg = res.damage.cloned();
 
                 egl_surface.swap_buffers(None)?;
 
