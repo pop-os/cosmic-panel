@@ -501,14 +501,22 @@ impl PanelSpace {
                 }
             }
         }
-
-        if self.logical_layer_start_overlap > 0 {
+        let layer_major = match self.config.anchor {
+            PanelAnchor::Left | PanelAnchor::Right => (self.dimensions.h),
+            PanelAnchor::Top | PanelAnchor::Bottom => (self.dimensions.w),
+        };
+        let container_length = self.container_length as i32;
+        let is_overlapping_start =
+            layer_major.saturating_sub(container_length) < 2 * self.logical_layer_start_overlap;
+        let is_overlapping_end =
+            layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
+        if is_overlapping_start {
             self.add_spacer_element_to_start(self.logical_layer_start_overlap as u32);
         } else {
             self.clear_spacer_start();
         }
 
-        if self.logical_layer_end_overlap > 0 {
+        if is_overlapping_end {
             self.add_spacer_element_to_end(self.logical_layer_end_overlap as u32);
         } else {
             self.clear_spacer_end();

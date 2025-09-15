@@ -320,6 +320,7 @@ impl PanelSpace {
                 as f64
                 * self.scale
                 + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
+
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
             let size = center_button.geometry().size.to_f64() * self.scale;
             center_sum_scaled
@@ -335,6 +336,7 @@ impl PanelSpace {
                 as f64
                 * self.scale
                 + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
+
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
             let size = right_button.geometry().size.to_f64() * self.scale;
             right_sum_scaled
@@ -540,12 +542,13 @@ impl PanelSpace {
             self.space.map_element(CosmicMappedInternal::OverflowButton(right_button), loc, true);
         };
 
+        let is_overlapping_start =
+            layer_major.saturating_sub(container_length) < 2 * self.logical_layer_start_overlap;
+        let is_overlapping_end =
+            layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
         // XXX this is a bit of a hack around the fact that we want the spacer to be
         // placed before the overflow button
-        if windows_left.is_empty()
-            && !windows_center.is_empty()
-            && self.logical_layer_start_overlap > 0
-        {
+        if windows_left.is_empty() && !windows_center.is_empty() && is_overlapping_start {
             let (_, CosmicMappedInternal::Spacer(s), _) = windows_center.remove(0) else {
                 panic!("No spacer found");
             };
@@ -712,12 +715,13 @@ impl PanelSpace {
                 self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
             }
 
-            let start_overlap = if self.logical_layer_start_overlap > 0 {
+            let start_overlap = if self.logical_layer_start_overlap > 0 && is_overlapping_start {
                 self.logical_layer_start_overlap as i32 + self.config.spacing as i32
             } else {
                 0
             };
-            let end_overlap = if self.logical_layer_end_overlap > 0 {
+
+            let end_overlap = if self.logical_layer_end_overlap > 0 && is_overlapping_end {
                 self.logical_layer_end_overlap as i32 + self.config.spacing as i32
             } else {
                 0
@@ -748,7 +752,7 @@ impl PanelSpace {
                 _ => [border_radius, border_radius, border_radius, border_radius],
             };
 
-            if container_lengthwise_pos < start_overlap {
+            if is_overlapping_start {
                 if self.config.is_horizontal() {
                     loc[0] += start_overlap as f32 - container_lengthwise_pos as f32;
                     w -= start_overlap - container_lengthwise_pos;
@@ -757,7 +761,7 @@ impl PanelSpace {
                     h -= start_overlap - container_lengthwise_pos;
                 }
             }
-            if container_lengthwise_pos < end_overlap {
+            if is_overlapping_end {
                 if self.config.is_horizontal() {
                     w -= end_overlap - container_lengthwise_pos;
                 } else {
@@ -825,8 +829,7 @@ impl PanelSpace {
                         (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
                     ),
                 };
-
-                if container_lengthwise_pos < self.logical_layer_start_overlap {
+                if is_overlapping_start {
                     if self.config.is_horizontal() {
                         loc.0 += self.logical_layer_start_overlap - container_lengthwise_pos;
                         size.0 -= self.logical_layer_start_overlap - container_lengthwise_pos;
@@ -835,7 +838,7 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_start_overlap - container_lengthwise_pos;
                     }
                 }
-                if container_lengthwise_pos < self.logical_layer_end_overlap {
+                if is_overlapping_end {
                     if self.config.is_horizontal() {
                         size.0 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     } else {
@@ -852,7 +855,7 @@ impl PanelSpace {
                     PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
                 };
 
-                if container_lengthwise_pos < self.logical_layer_start_overlap {
+                if is_overlapping_start {
                     if self.config.is_horizontal() {
                         loc.0 += self.logical_layer_start_overlap - container_lengthwise_pos;
                         size.0 -= self.logical_layer_start_overlap - container_lengthwise_pos;
@@ -861,7 +864,7 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_start_overlap - container_lengthwise_pos;
                     }
                 }
-                if container_lengthwise_pos < self.logical_layer_end_overlap {
+                if is_overlapping_end {
                     if self.config.is_horizontal() {
                         size.0 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     } else {
