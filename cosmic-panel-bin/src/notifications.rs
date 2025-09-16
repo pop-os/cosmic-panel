@@ -22,8 +22,11 @@ pub trait NotificationsSocket {
 }
 pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
     info!("Connecting to notifications daemon");
-    let fd_num = std::env::var(PANEL_NOTIFICATIONS_FD)?;
-    let fd = fd_num.parse::<RawFd>()?;
+    let fd_num = std::env::var(PANEL_NOTIFICATIONS_FD)
+        .map_err(|_| anyhow::anyhow!("No {} env var found", PANEL_NOTIFICATIONS_FD))?;
+    let fd = fd_num
+        .parse::<RawFd>()
+        .map_err(|_| anyhow::anyhow!("Invalid {} env var", PANEL_NOTIFICATIONS_FD))?;
     let fd = unsafe { rustix::fd::OwnedFd::from_raw_fd(fd) };
 
     let res = fcntl_getfd(&fd).and_then(|flags| fcntl_setfd(&fd, FdFlags::CLOEXEC.union(flags)));
@@ -33,7 +36,7 @@ pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
         Ok(_) => UnixStream::from(fd),
         // CLOEXEC didn't work, something is wrong with the fd, just close it
         Err(err) => {
-            return Err(err).with_context(|| "Failed to setup session socket");
+            return Err(err.into());
         },
     };
     daemon_stream.set_nonblocking(true)?;
