@@ -218,6 +218,18 @@ impl PanelClient {
     }
 }
 
+impl Drop for PanelClient {
+    fn drop(&mut self) {
+        if let Some(stream) = self.stream.take() {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+
+        if let Some(security_ctx) = self.security_ctx.take() {
+            security_ctx.destroy();
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AnimatableState {
     bg_color: [f32; 4],
@@ -1436,7 +1448,6 @@ impl PanelSpace {
             self.scale,
             smithay::utils::Transform::Flipped180,
         ));
-        self.background_element = None;
         self.space.refresh();
     }
 
@@ -1849,5 +1860,8 @@ impl Drop for PanelSpace {
     fn drop(&mut self) {
         // request processes to stop
         let _ = self.applet_tx.try_send(AppletMsg::Cleanup(self.id()));
+        self.clients_center.lock().unwrap().clear();
+        self.clients_left.lock().unwrap().clear();
+        self.clients_right.lock().unwrap().clear();
     }
 }

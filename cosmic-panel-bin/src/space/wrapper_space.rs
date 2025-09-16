@@ -579,10 +579,10 @@ impl WrapperSpace for PanelSpace {
                                 let privileged_socket = data.conn.lock().unwrap().take().unwrap();
                                 applet_env.push((
                                     "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
-                                    privileged_socket.as_raw_fd().to_string(),
+                                    privileged_socket.0.as_raw_fd().to_string(),
                                 ));
 
-                                fds.push(privileged_socket.into());
+                                fds.push(privileged_socket.0.into());
                                 panel_client.security_ctx = Some(security_context);
                             },
                             Err(why) => {
@@ -693,9 +693,9 @@ impl WrapperSpace for PanelSpace {
                                                 data.conn.lock().unwrap().take().unwrap();
                                             applet_env.push((
                                                 "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
-                                                privileged_socket.as_raw_fd().to_string(),
+                                                privileged_socket.0.as_raw_fd().to_string(),
                                             ));
-                                            fds.push(privileged_socket.into());
+                                            fds.push(privileged_socket.0.into());
                                         })
                                 },
                             )
@@ -720,10 +720,13 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(&key, vec![(
-                                        "COSMIC_NOTIFICATIONS".to_string(),
-                                        fd.as_raw_fd().to_string(),
-                                    )])
+                                    .update_process_env(
+                                        &key,
+                                        vec![(
+                                            "COSMIC_NOTIFICATIONS".to_string(),
+                                            fd.as_raw_fd().to_string(),
+                                        )],
+                                    )
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);

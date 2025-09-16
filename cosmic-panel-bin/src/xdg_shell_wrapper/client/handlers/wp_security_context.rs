@@ -29,7 +29,16 @@ pub struct SecurityContextManager {
 /// Security Context data.
 #[derive(Debug)]
 pub struct SecurityContext {
-    pub conn: Arc<Mutex<Option<UnixStream>>>,
+    pub conn: Arc<Mutex<Option<(UnixStream, UnixListener)>>>,
+}
+
+impl Drop for SecurityContext {
+    fn drop(&mut self) {
+        let mut guard = self.conn.lock().unwrap();
+        if let Some((stream, _)) = guard.take() {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    }
 }
 
 impl SecurityContextManager {
@@ -53,10 +62,12 @@ impl SecurityContextManager {
         let addr = SocketAddr::from_abstract_name(s)?;
         // this also listens on the socket
         let listener = UnixListener::bind_addr(&addr)?;
-        let wp_security_context =
-            self.manager.create_listener(listener.as_fd(), close_fd.as_fd(), qh, SecurityContext {
-                conn: Arc::new(Mutex::new(None)),
-            });
+        let wp_security_context: WpSecurityContextV1 = self.manager.create_listener(
+            listener.as_fd(),
+            close_fd.as_fd(),
+            qh,
+            SecurityContext { conn: Arc::new(Mutex::new(None)) },
+        );
         let conn = UnixStream::connect_addr(&addr)?;
         // XXX make sure no one else can connect to the listener
         drop(close_fd_ours);
@@ -65,11 +76,8 @@ impl SecurityContextManager {
         {
             let data = wp_security_context.data::<SecurityContext>().unwrap();
             let mut guard = data.conn.lock().unwrap();
-            *guard = Some(conn);
+            *guard = Some((conn, listener));
         }
-
-        // XXX the compositor will close the listener fd
-        Box::leak(Box::new(listener));
 
         Ok(wp_security_context)
     }
