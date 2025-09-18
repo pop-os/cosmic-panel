@@ -624,6 +624,7 @@ impl WrapperSpace for PanelSpace {
                         args.len().saturating_sub(2),
                         "--socket=inherit-wayland-socket".to_string(),
                     );
+                    args.insert(args.len().saturating_sub(2), "--die-with-parent".to_string());
                     for (k, v) in &applet_env {
                         args.insert(args.len().saturating_sub(2), format!("--env={k}={v}"))
                     }
