@@ -83,11 +83,15 @@ impl GlobalState {
             let seat = &mut self.server_state.seats[seat_index];
             match e.kind {
                 sctk::seat::pointer::PointerEventKind::Leave { .. } => {
-                    ptr.motion(self, None, &MotionEvent {
-                        location: (0.0, 0.0).into(),
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time: time.try_into().unwrap(),
-                    });
+                    ptr.motion(
+                        self,
+                        None,
+                        &MotionEvent {
+                            location: (0.0, 0.0).into(),
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time: time.try_into().unwrap(),
+                        },
+                    );
                     ptr.frame(self);
 
                     if let Some((..)) = self
@@ -161,19 +165,27 @@ impl GlobalState {
                         }) {
                             *ev = (e.clone(), pointer.clone(), ev.2);
                         } else {
-                            ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
-                                location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time: time.try_into().unwrap(),
-                            });
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time: time.try_into().unwrap(),
+                                },
+                            );
                             ptr.frame(self);
                         }
                     } else {
-                        ptr.motion(self, None, &MotionEvent {
-                            location: Point::from((surface_x, surface_y)),
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time: time.try_into().unwrap(),
-                        });
+                        ptr.motion(
+                            self,
+                            None,
+                            &MotionEvent {
+                                location: Point::from((surface_x, surface_y)),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: time.try_into().unwrap(),
+                            },
+                        );
                         ptr.frame(self);
                     }
                 },
@@ -229,19 +241,27 @@ impl GlobalState {
                         }) {
                             *ev = (e.clone(), pointer.clone(), ev.2);
                         } else {
-                            ptr.motion(self, Some((surface, s_pos)), &MotionEvent {
-                                location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
-                                serial: SERIAL_COUNTER.next_serial(),
-                                time,
-                            });
+                            ptr.motion(
+                                self,
+                                Some((surface, s_pos)),
+                                &MotionEvent {
+                                    location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time,
+                                },
+                            );
                             ptr.frame(self);
                         }
                     } else {
-                        ptr.motion(self, None, &MotionEvent {
-                            location: Point::from((surface_x, surface_y)),
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time,
-                        });
+                        ptr.motion(
+                            self,
+                            None,
+                            &MotionEvent {
+                                location: Point::from((surface_x, surface_y)),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time,
+                            },
+                        );
                         ptr.frame(self);
                         if let Some(themed_pointer) =
                             &self.server_state.seats[seat_index].client.ptr
@@ -267,12 +287,15 @@ impl GlobalState {
                     if let Some(s_surface) = s_surface {
                         kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
 
-                        ptr.button(self, &ButtonEvent {
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time,
-                            button,
-                            state: ButtonState::Pressed,
-                        });
+                        ptr.button(
+                            self,
+                            &ButtonEvent {
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time,
+                                button,
+                                state: ButtonState::Pressed,
+                            },
+                        );
                         ptr.frame(self);
 
                         continue;
@@ -281,12 +304,15 @@ impl GlobalState {
                     let s = self.space.handle_button(&seat_name, true);
 
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
-                    ptr.button(self, &ButtonEvent {
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                        button,
-                        state: ButtonState::Pressed,
-                    });
+                    ptr.button(
+                        self,
+                        &ButtonEvent {
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time,
+                            button,
+                            state: ButtonState::Pressed,
+                        },
+                    );
                     ptr.frame(self);
                 },
                 sctk::seat::pointer::PointerEventKind::Release { time, button, .. } => {
@@ -305,12 +331,15 @@ impl GlobalState {
                     if let Some(s_surface) = s_surface {
                         kbd.set_focus(self, Some(s_surface.into()), SERIAL_COUNTER.next_serial());
 
-                        ptr.button(self, &ButtonEvent {
-                            serial: SERIAL_COUNTER.next_serial(),
-                            time,
-                            button,
-                            state: ButtonState::Released,
-                        });
+                        ptr.button(
+                            self,
+                            &ButtonEvent {
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time,
+                                button,
+                                state: ButtonState::Released,
+                            },
+                        );
                         ptr.frame(self);
 
                         continue;
@@ -319,12 +348,15 @@ impl GlobalState {
                     let s = self.space.handle_button(&seat_name, false);
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
 
-                    ptr.button(self, &ButtonEvent {
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                        button,
-                        state: ButtonState::Released,
-                    });
+                    ptr.button(
+                        self,
+                        &ButtonEvent {
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time,
+                            button,
+                            state: ButtonState::Released,
+                        },
+                    );
                     ptr.frame(self);
                 },
                 sctk::seat::pointer::PointerEventKind::Axis {

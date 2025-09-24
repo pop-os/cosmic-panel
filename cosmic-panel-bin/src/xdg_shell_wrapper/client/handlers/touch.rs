@@ -59,12 +59,16 @@ impl TouchHandler for GlobalState {
         if let Some(ServerPointerFocus { surface, c_pos, s_pos, .. }) =
             self.space.touch_under((location.0 as i32, location.1 as i32), &seat_name, surface)
         {
-            touch.down(self, Some((surface, s_pos)), &touch::DownEvent {
-                slot: Some(id as u32).into(),
-                location: c_pos.to_f64() + Point::from(location),
-                serial: SERIAL_COUNTER.next_serial(),
-                time: time.try_into().unwrap(),
-            });
+            touch.down(
+                self,
+                Some((surface, s_pos)),
+                &touch::DownEvent {
+                    slot: Some(id as u32).into(),
+                    location: c_pos.to_f64() + Point::from(location),
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: time.try_into().unwrap(),
+                },
+            );
             touch.frame(self);
         }
     }
@@ -80,11 +84,14 @@ impl TouchHandler for GlobalState {
     ) {
         let (_, touch) = get_touch_handle(self, touch);
 
-        touch.up(self, &touch::UpEvent {
-            slot: Some(id as u32).into(),
-            serial: SERIAL_COUNTER.next_serial(),
-            time: time.try_into().unwrap(),
-        });
+        touch.up(
+            self,
+            &touch::UpEvent {
+                slot: Some(id as u32).into(),
+                serial: SERIAL_COUNTER.next_serial(),
+                time: time.try_into().unwrap(),
+            },
+        );
     }
 
     fn motion(
@@ -104,11 +111,15 @@ impl TouchHandler for GlobalState {
                 &seat_name,
                 surface.clone(),
             ) {
-                touch.motion(self, Some((surface, s_pos)), &touch::MotionEvent {
-                    slot: Some(id as u32).into(),
-                    location: c_pos.to_f64() + Point::from(location),
-                    time: time.try_into().unwrap(),
-                });
+                touch.motion(
+                    self,
+                    Some((surface, s_pos)),
+                    &touch::MotionEvent {
+                        slot: Some(id as u32).into(),
+                        location: c_pos.to_f64() + Point::from(location),
+                        time: time.try_into().unwrap(),
+                    },
+                );
                 touch.frame(self);
             }
         }
