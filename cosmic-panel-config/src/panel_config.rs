@@ -267,11 +267,18 @@ pub struct AutoHide {
     /// size of the handle in pixels
     /// should be > 0
     pub handle_size: u32,
+    /// time in milliseconds before the panel should un-hide
+    #[serde(default = "_unhide_delay_default")]
+    pub unhide_delay: u32,
+}
+
+const fn _unhide_delay_default() -> u32 {
+    200
 }
 
 impl Default for AutoHide {
     fn default() -> Self {
-        Self { wait_time: 1000, transition_time: 200, handle_size: 4 }
+        Self { wait_time: 1000, transition_time: 200, handle_size: 4, unhide_delay: 200 }
     }
 }
 

@@ -370,6 +370,7 @@ pub struct PanelSpace {
     pub(crate) notification_subscription: Option<ZcosmicOverlapNotificationV1>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
     pub(crate) hover_track: HoverTrack,
+    pub(crate) start_show_instant: Rc<RefCell<Option<Instant>>>,
 }
 
 impl PanelSpace {
@@ -458,6 +459,8 @@ impl PanelSpace {
             toplevel_overlaps: HashSet::new(),
             layer_overlaps: HashMap::new(),
             minimized_toplevels: HashSet::new(),
+
+            start_show_instant: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -730,6 +733,48 @@ impl PanelSpace {
         id
     }
 
+    fn start_show_delay(&mut self) {
+        if self.start_show_instant.borrow().is_none() {
+            self.start_show_instant.borrow_mut().replace(Instant::now());
+        }
+    }
+
+    fn show_delay_done(&self, intellihide: bool) -> bool {
+        let mut start_show_instant_opt = self.start_show_instant.borrow_mut();
+        if intellihide {
+            *start_show_instant_opt = None;
+            return true;
+        }
+        let unhide_delay = if let Some(ref autohide) = self.config.autohide {
+            autohide.unhide_delay
+        } else {
+            *start_show_instant_opt = None;
+            return true;
+        };
+        if let Some(start_show_instant) = *start_show_instant_opt {
+            let start_show_duration =
+                match Instant::now().checked_duration_since(start_show_instant) {
+                    Some(d) => d,
+                    None => {
+                        *start_show_instant_opt = None;
+                        return true;
+                    },
+                };
+            if start_show_duration >= Duration::from_millis(unhide_delay as u64) {
+                *start_show_instant_opt = None;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn reset_show_delay(&mut self) {
+        *self.start_show_instant.borrow_mut() = None;
+    }
+
     pub fn handle_focus(&mut self) {
         let (layer_surface, _) = if let Some(layer_surface) = self.layer.as_ref() {
             (layer_surface, layer_surface.wl_surface())
@@ -790,30 +835,35 @@ impl PanelSpace {
         };
 
         let intellihide = self.overlap_notify.is_some();
+        let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
 
         match self.visibility {
             Visibility::Hidden => {
-                if matches!(cur_hover, FocusStatus::Focused)
-                    || (intellihide && !self.has_toplevel_overlap())
-                {
-                    self.transitioning = true;
-                    // start transition to visible
-                    let margin = match self.config.anchor() {
-                        PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
-                        PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
-                    } + self.config.get_hide_handle().unwrap() as i32;
-                    self.is_dirty = true;
-                    self.visibility = Visibility::TransitionToVisible {
-                        last_instant: Instant::now(),
-                        progress: Duration::new(0, 0),
-                        prev_margin: margin,
-                    };
-                    Self::set_margin(
-                        self.config.anchor,
-                        self.config.get_margin() as i32,
-                        self.additional_gap,
-                        layer_surface,
-                    );
+                if matches!(cur_hover, FocusStatus::Focused) || intellihide_no_toplevel {
+                    if self.show_delay_done(intellihide_no_toplevel) {
+                        self.transitioning = true;
+                        // start transition to visible
+                        let margin = match self.config.anchor() {
+                            PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
+                            PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
+                        } + self.config.get_hide_handle().unwrap() as i32;
+                        self.is_dirty = true;
+                        self.visibility = Visibility::TransitionToVisible {
+                            last_instant: Instant::now(),
+                            progress: Duration::new(0, 0),
+                            prev_margin: margin,
+                        };
+                        Self::set_margin(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            self.additional_gap,
+                            layer_surface,
+                        );
+                    } else {
+                        self.start_show_delay();
+                    }
+                } else {
+                    self.reset_show_delay();
                 }
             },
             Visibility::Visible => {

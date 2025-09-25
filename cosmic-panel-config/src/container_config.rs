@@ -194,6 +194,7 @@ impl Default for CosmicPanelContainerConfig {
                         wait_time: 500,
                         transition_time: 200,
                         handle_size: 2,
+                        unhide_delay: 200,
                     }),
                     margin: 0,
                     opacity: 1.0,
