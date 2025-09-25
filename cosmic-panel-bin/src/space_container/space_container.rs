@@ -4,17 +4,11 @@ use crate::{
     PanelCalloopMsg,
     iced::elements::PanelSpaceElement,
     minimize::MinimizeApplet,
-    space::{AppletMsg, PanelColors, PanelSpace},
+    space::{AppletMsg, PanelColors, PanelSharedState, PanelSpace},
     workspaces_dbus::CosmicWorkspaces,
     xdg_shell_wrapper::{
-        self,
-        client::handlers::overlap::OverlapNotifyV1,
-        client_state::ClientFocus,
-        shared_state::GlobalState,
-        space::{Visibility, WrapperSpace},
-        wp_fractional_scaling::FractionalScalingManager,
-        wp_security_context::SecurityContextManager,
-        wp_viewporter::ViewporterState,
+        client::handlers::overlap::OverlapNotifyV1, shared_state::GlobalState, space::WrapperSpace,
+        wp_fractional_scaling::FractionalScalingManager, wp_viewporter::ViewporterState,
     },
 };
 use cctk::{
@@ -53,10 +47,6 @@ pub struct SpaceContainer {
     pub(crate) space_list: Vec<PanelSpace>,
     pub(crate) renderer: Option<GlesRenderer>,
     pub(crate) s_display: Option<wayland_server::DisplayHandle>,
-    pub(crate) c_focused_surface: Rc<RefCell<ClientFocus>>,
-    pub(crate) c_hovered_surface: Rc<RefCell<ClientFocus>>,
-    pub applet_tx: mpsc::Sender<AppletMsg>,
-    pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub(crate) outputs: Vec<(WlOutput, Output, OutputInfo)>,
     pub(crate) watchers: HashMap<String, RecommendedWatcher>,
     pub(crate) maximized_toplevels: Vec<ToplevelInfo>,
@@ -66,12 +56,10 @@ pub struct SpaceContainer {
     pub(crate) is_dark: bool,
     pub(crate) light_theme: cosmic::Theme,
     pub(crate) dark_theme: cosmic::Theme,
-    pub(crate) security_context_manager: Option<SecurityContextManager>,
     /// map from output name to minimized applet info
     pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
-    pub(crate) loop_handle: calloop::LoopHandle<'static, GlobalState>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
-    pub(crate) cosmic_workspaces: Option<CosmicWorkspaces>,
+    pub(crate) shared: Rc<PanelSharedState>,
 }
 
 impl SpaceContainer {
@@ -110,10 +98,6 @@ impl SpaceContainer {
             space_list: Vec::with_capacity(1),
             renderer: None,
             s_display: None,
-            c_focused_surface: Default::default(),
-            c_hovered_surface: Default::default(),
-            applet_tx: tx,
-            panel_tx,
             outputs: vec![],
             watchers: HashMap::new(),
             maximized_toplevels: Vec::with_capacity(1),
@@ -123,11 +107,17 @@ impl SpaceContainer {
             is_dark,
             light_theme: cosmic::Theme::system(Arc::new(light)),
             dark_theme: cosmic::Theme::system(Arc::new(dark)),
-            security_context_manager: None,
             minimized_applets: HashMap::new(),
-            loop_handle,
             overlap_notify: None,
-            cosmic_workspaces,
+            shared: Rc::new(PanelSharedState {
+                c_focused_surface: Default::default(),
+                c_hovered_surface: Default::default(),
+                applet_tx: tx,
+                panel_tx,
+                security_context_manager: RefCell::new(None),
+                loop_handle,
+                cosmic_workspaces,
+            }),
         }
     }
 
@@ -364,9 +354,7 @@ impl SpaceContainer {
             CosmicPanelOuput::Active => {
                 let mut space = PanelSpace::new(
                     entry.clone(),
-                    self.c_focused_surface.clone(),
-                    self.c_hovered_surface.clone(),
-                    self.applet_tx.clone(),
+                    &self.shared,
                     match entry.background {
                         CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Color(_) => {
                             self.cur_theme()
@@ -375,11 +363,7 @@ impl SpaceContainer {
                         CosmicPanelBackground::Light => self.light_theme.clone(),
                     },
                     self.s_display.clone().unwrap(),
-                    self.security_context_manager.clone(),
-                    self.cosmic_workspaces.clone(),
                     self.connection.as_ref().unwrap(),
-                    self.panel_tx.clone(),
-                    self.loop_handle.clone(),
                 );
                 space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
@@ -444,9 +428,7 @@ impl SpaceContainer {
                 new_config.output = CosmicPanelOuput::Name(output_name.clone());
                 let mut space = PanelSpace::new(
                     new_config.clone(),
-                    self.c_focused_surface.clone(),
-                    self.c_hovered_surface.clone(),
-                    self.applet_tx.clone(),
+                    &self.shared,
                     match entry.background {
                         CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Color(_) => {
                             self.cur_theme()
@@ -455,11 +437,7 @@ impl SpaceContainer {
                         CosmicPanelBackground::Light => self.light_theme.clone(),
                     },
                     self.s_display.clone().unwrap(),
-                    self.security_context_manager.clone(),
-                    self.cosmic_workspaces.clone(),
                     self.connection.as_ref().unwrap(),
-                    self.panel_tx.clone(),
-                    self.loop_handle.clone(),
                 );
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());

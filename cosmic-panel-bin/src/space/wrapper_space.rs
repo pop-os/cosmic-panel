@@ -142,12 +142,12 @@ impl WrapperSpace for PanelSpace {
 
     /// get the client hovered surface of the space
     fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
-        self.c_hovered_surface.clone()
+        self.shared.c_hovered_surface.clone()
     }
 
     /// get the client focused surface of the space
     fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>> {
-        self.c_focused_surface.clone()
+        self.shared.c_focused_surface.clone()
     }
 
     fn add_window(&mut self, w: Window) {
@@ -602,7 +602,7 @@ impl WrapperSpace for PanelSpace {
 
                 fds.push(socket.into());
                 let display_handle = display.clone();
-                let applet_tx_clone = self.applet_tx.clone();
+                let applet_tx_clone = self.shared.applet_tx.clone();
                 let id_clone = panel_client.name.clone();
                 let id_clone_info = panel_client.name.clone();
                 let id_clone_err = panel_client.name.clone();
@@ -792,7 +792,7 @@ impl WrapperSpace for PanelSpace {
 
                     AppletMsg::NewProcess(self.id(), process.with_env(applet_env))
                 };
-                match self.applet_tx.try_send(msg) {
+                match self.shared.applet_tx.try_send(msg) {
                     Ok(_) => {},
                     Err(e) => error!("{e}"),
                 };
@@ -884,7 +884,7 @@ impl WrapperSpace for PanelSpace {
     /// returns false to forward the button press, and true to intercept
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some(prev_foc) = {
-            let c_hovered_surface: &ClientFocus = &self.c_hovered_surface.borrow();
+            let c_hovered_surface: &ClientFocus = &self.shared.c_hovered_surface.borrow();
 
             c_hovered_surface
                 .iter()
@@ -1150,12 +1150,12 @@ impl WrapperSpace for PanelSpace {
                         calloop::timer::TimeoutAction::Drop
                     };
                     if auto_hover_dur.as_millis() > 0 {
-                        _ = self.loop_handle.insert_source(
+                        _ = self.shared.loop_handle.insert_source(
                             Timer::from_duration(auto_hover_dur),
                             move |_, _, data| on_autohover(data),
                         );
                     } else {
-                        _ = self.loop_handle.insert_idle(move |data| {
+                        _ = self.shared.loop_handle.insert_idle(move |data| {
                             _ = on_autohover(data);
                         });
                     }
@@ -1308,13 +1308,13 @@ impl WrapperSpace for PanelSpace {
                     calloop::timer::TimeoutAction::Drop
                 };
                 if auto_hover_dur.as_millis() > 0 {
-                    _ = self
-                        .loop_handle
-                        .insert_source(Timer::from_duration(auto_hover_dur), move |_, _, data| {
-                            on_autohover(data)
-                        });
+                    _ =
+                        self.shared.loop_handle.insert_source(
+                            Timer::from_duration(auto_hover_dur),
+                            move |_, _, data| on_autohover(data),
+                        );
                 } else {
-                    _ = self.loop_handle.insert_idle(move |data| {
+                    _ = self.shared.loop_handle.insert_idle(move |data| {
                         _ = on_autohover(data);
                     });
                 }
@@ -1585,11 +1585,10 @@ impl WrapperSpace for PanelSpace {
         self.right_overflow_popup_id = id::Id::new(format!("right_overflow_popup_{}", self.id()));
         self.center_overflow_popup_id = id::Id::new(format!("center_overflow_popup_{}", self.id()));
 
-        if let Err(err) = self.spawn_clients(
-            self.s_display.clone().unwrap(),
-            qh,
-            self.security_context_manager.clone(),
-        ) {
+        let security_context_manager = self.shared.security_context_manager.borrow().clone();
+        if let Err(err) =
+            self.spawn_clients(self.s_display.clone().unwrap(), qh, security_context_manager)
+        {
             error!(?err, "Failed to spawn clients");
         }
         Ok(())

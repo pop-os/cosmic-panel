@@ -38,8 +38,8 @@ impl PanelSpace {
         }
 
         for (popup, surface, s_surface) in to_destroy {
-            self.c_focused_surface.borrow_mut().retain(|s| s.0 != surface);
-            self.c_hovered_surface.borrow_mut().retain(|s| s.0 != surface);
+            self.shared.c_focused_surface.borrow_mut().retain(|s| s.0 != surface);
+            self.shared.c_hovered_surface.borrow_mut().retain(|s| s.0 != surface);
 
             if let Some(s_surface) = s_surface {
                 self.s_focused_surface

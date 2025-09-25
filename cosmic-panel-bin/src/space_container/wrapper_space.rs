@@ -52,12 +52,12 @@ impl WrapperSpace for SpaceContainer {
 
     /// get the client hovered surface of the space
     fn get_client_hovered_surface(&self) -> Rc<RefCell<ClientFocus>> {
-        self.c_hovered_surface.clone()
+        self.shared.c_hovered_surface.clone()
     }
 
     /// get the client focused surface of the space
     fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>> {
-        self.c_focused_surface.clone()
+        self.shared.c_focused_surface.clone()
     }
 
     /// run after the connection is ready
@@ -74,7 +74,7 @@ impl WrapperSpace for SpaceContainer {
     ) {
         self.overlap_notify = overlap_notify.clone();
         self.connection = Some(conn.clone());
-        self.security_context_manager = security_context_manager.clone();
+        *self.shared.security_context_manager.borrow_mut() = security_context_manager.clone();
 
         // create a space for each config profile which is configured for Active output
         // and call setup on each
@@ -87,9 +87,7 @@ impl WrapperSpace for SpaceContainer {
                     if matches!(config.output, CosmicPanelOuput::Active) {
                         let mut s = PanelSpace::new(
                             config.clone(),
-                            self.c_focused_surface.clone(),
-                            self.c_hovered_surface.clone(),
-                            self.applet_tx.clone(),
+                            &self.shared,
                             match config.background {
                                 CosmicPanelBackground::ThemeDefault
                                 | CosmicPanelBackground::Color(_) => self.cur_theme(),
@@ -97,11 +95,7 @@ impl WrapperSpace for SpaceContainer {
                                 CosmicPanelBackground::Light => self.light_theme.clone(),
                             },
                             self.s_display.clone().unwrap(),
-                            self.security_context_manager.clone(),
-                            self.cosmic_workspaces.clone(),
                             conn,
-                            self.panel_tx.clone(),
-                            self.loop_handle.clone(),
                         );
                         s.setup(
                             compositor_state,
@@ -195,21 +189,15 @@ impl WrapperSpace for SpaceContainer {
                         } else {
                             let mut s = PanelSpace::new(
                                 config.clone(),
-                                self.c_focused_surface.clone(),
-                                self.c_hovered_surface.clone(),
-                                self.applet_tx.clone(),
+                                &self.shared,
                                 c,
                                 self.s_display.clone().unwrap(),
-                                self.security_context_manager.clone(),
-                                self.cosmic_workspaces.clone(),
                                 conn,
-                                self.panel_tx.clone(),
-                                self.loop_handle.clone(),
                             );
                             s.setup(
                                 compositor_state,
                                 fractional_scale_manager,
-                                self.security_context_manager.clone(),
+                                self.shared.security_context_manager.borrow().clone(),
                                 viewport,
                                 layer_state,
                                 conn,
@@ -224,7 +212,7 @@ impl WrapperSpace for SpaceContainer {
                         s.setup(
                             compositor_state,
                             fractional_scale_manager,
-                            self.security_context_manager.clone(),
+                            self.shared.security_context_manager.borrow().clone(),
                             viewport,
                             layer_state,
                             conn,
@@ -258,9 +246,7 @@ impl WrapperSpace for SpaceContainer {
                         } else {
                             let mut s = PanelSpace::new(
                                 config.clone(),
-                                self.c_focused_surface.clone(),
-                                self.c_hovered_surface.clone(),
-                                self.applet_tx.clone(),
+                                &self.shared,
                                 match config.background {
                                     CosmicPanelBackground::ThemeDefault
                                     | CosmicPanelBackground::Color(_) => cur.clone(),
@@ -268,11 +254,7 @@ impl WrapperSpace for SpaceContainer {
                                     CosmicPanelBackground::Light => light.clone(),
                                 },
                                 self.s_display.clone().unwrap(),
-                                self.security_context_manager.clone(),
-                                self.cosmic_workspaces.clone(),
                                 conn,
-                                self.panel_tx.clone(),
-                                self.loop_handle.clone(),
                             );
 
                             if let Some(s_display) = self.s_display.as_ref() {
@@ -558,7 +540,7 @@ impl WrapperSpace for SpaceContainer {
                     continue;
                 }
 
-                let hovered = s.c_hovered_surface.clone();
+                let hovered = s.shared.c_hovered_surface.clone();
                 let mut guard = hovered.borrow_mut();
                 if let Some(f) =
                     guard.iter_mut().find(|f| space_c_wl_surface == &f.0 && f.1 == seat_name)
@@ -705,7 +687,7 @@ impl WrapperSpace for SpaceContainer {
         };
         for s in self.stacked_spaces_by_priority(output_anchor.0.as_str(), output_anchor.1) {
             s.pointer_leave(seat_name, surface.clone());
-            for f in s.c_hovered_surface.borrow_mut().iter_mut() {
+            for f in s.shared.c_hovered_surface.borrow_mut().iter_mut() {
                 if f.1 == seat_name {
                     f.2 = FocusStatus::LastFocused(Instant::now());
                 }
@@ -758,7 +740,7 @@ impl WrapperSpace for SpaceContainer {
 
     fn visibility(&self) -> Visibility {
         let visible = self.space_list.iter().any(|s| {
-            self.c_hovered_surface
+            self.shared.c_hovered_surface
                 .borrow()
                 .iter()
                 .any(|f| matches!(f.2, FocusStatus::Focused))

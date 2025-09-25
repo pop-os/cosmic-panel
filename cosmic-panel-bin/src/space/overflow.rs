@@ -48,7 +48,7 @@ impl PanelSpace {
             return Ok(());
         }
 
-        if let Some(cosmic_workspaces) = &self.cosmic_workspaces {
+        if let Some(cosmic_workspaces) = &self.shared.cosmic_workspaces {
             cosmic_workspaces.hide();
         }
 

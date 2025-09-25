@@ -649,7 +649,7 @@ impl PanelSpace {
                         self.minimize_applet_rect = new_rect;
                         self.last_minimize_update = Instant::now();
                         let output = self.output.as_ref().map(|o| o.1.name()).unwrap_or_default();
-                        _ = self.panel_tx.send(crate::PanelCalloopMsg::MinimizeRect {
+                        _ = self.shared.panel_tx.send(crate::PanelCalloopMsg::MinimizeRect {
                             output,
                             applet_info: MinimizeApplet {
                                 priority: if is_dock { 1 } else { 0 },
@@ -781,7 +781,7 @@ impl PanelSpace {
                 w,
                 h,
                 radius,
-                self.loop_handle.clone(),
+                self.shared.loop_handle.clone(),
                 self.colors.theme.clone(),
                 self.space.id(),
                 loc,
@@ -997,7 +997,7 @@ impl PanelSpace {
                             },
                             popup_major,
                             popup_cross,
-                            self.loop_handle.clone(),
+                            self.shared.loop_handle.clone(),
                             self.colors.theme.clone(),
                             self.space.id(),
                             actual,
@@ -1304,7 +1304,7 @@ impl PanelSpace {
                 },
                 popup_major,
                 popup_cross,
-                self.loop_handle.clone(),
+                self.shared.loop_handle.clone(),
                 self.colors.theme.clone(),
                 self.space.id(),
                 count,
@@ -1351,7 +1351,7 @@ impl PanelSpace {
                 (padding as f32).into(),
                 Arc::new(AtomicBool::new(false)),
                 icon.into(),
-                self.loop_handle.clone(),
+                self.shared.loop_handle.clone(),
                 self.colors.theme.clone(),
                 self.space.id(),
             );
