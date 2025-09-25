@@ -292,6 +292,17 @@ pub enum HoverId {
     Overflow(id::Id),
 }
 
+#[derive(Debug)]
+pub struct PanelSharedState {
+    pub c_focused_surface: Rc<RefCell<ClientFocus>>,
+    pub c_hovered_surface: Rc<RefCell<ClientFocus>>,
+    pub applet_tx: mpsc::Sender<AppletMsg>,
+    pub security_context_manager: RefCell<Option<SecurityContextManager>>,
+    pub cosmic_workspaces: Option<CosmicWorkspaces>,
+    pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
+    pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
+}
+
 // space for the cosmic panel
 #[derive(Debug)]
 pub struct PanelSpace {
@@ -321,8 +332,6 @@ pub struct PanelSpace {
     pub container_length: i32,
     pub is_dirty: bool,
     pub space_event: Rc<Cell<Option<SpaceEvent>>>,
-    pub c_focused_surface: Rc<RefCell<ClientFocus>>,
-    pub c_hovered_surface: Rc<RefCell<ClientFocus>>,
     pub s_focused_surface: ServerFocus,
     pub s_hovered_surface: ServerPtrFocus,
     pub visibility: Visibility,
@@ -336,22 +345,17 @@ pub struct PanelSpace {
     pub subsurfaces: Vec<WrapperSubsurface>,
     pub start_instant: Instant,
     pub colors: PanelColors,
-    pub applet_tx: mpsc::Sender<AppletMsg>,
     pub input_region: Option<Region>,
     pub has_frame: bool,
     pub scale: f64,
-    pub security_context_manager: Option<SecurityContextManager>,
-    pub cosmic_workspaces: Option<CosmicWorkspaces>,
     pub animate_state: Option<AnimateState>,
     pub maximized: bool,
-    pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub minimize_applet_rect: Rectangle<i32, Logical>,
     pub scale_change_retries: u32,
     /// Extra gap for stacked panels. Logical coordinate space.
     pub additional_gap: i32,
     /// Target gap for the panel on its anchored edge. Logical coordinate space.
     pub anchor_gap: i32,
-    pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
     pub left_overflow_button_id: id::Id,
     pub center_overflow_button_id: id::Id,
     pub right_overflow_button_id: id::Id,
@@ -371,28 +375,24 @@ pub struct PanelSpace {
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
     pub(crate) hover_track: HoverTrack,
     pub(crate) start_show_instant: Rc<RefCell<Option<Instant>>>,
+    pub shared: Rc<PanelSharedState>,
 }
 
 impl PanelSpace {
     /// create a new space for the cosmic panel
     pub fn new(
         config: CosmicPanelConfig,
-        c_focused_surface: Rc<RefCell<ClientFocus>>,
-        c_hovered_surface: Rc<RefCell<ClientFocus>>,
-        applet_tx: mpsc::Sender<AppletMsg>,
+        shared: &Rc<PanelSharedState>,
         theme: cosmic::Theme,
         s_display: DisplayHandle,
-        security_context_manager: Option<SecurityContextManager>,
-        cosmic_workspaces: Option<CosmicWorkspaces>,
         conn: &Connection,
-        panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
-        loop_handle: calloop::LoopHandle<'static, GlobalState>,
     ) -> Self {
         let name = format!("{}-{}", config.name, config.output);
         let visibility =
             if config.autohide.is_some() { Visibility::Hidden } else { Visibility::Visible };
         Self {
             config,
+            shared: shared.clone(),
             space: Space::default(),
             overflow_left: Space::default(),
             overflow_center: Space::default(),
@@ -416,28 +416,21 @@ impl PanelSpace {
             subsurfaces: Default::default(),
             visibility,
             start_instant: Instant::now(),
-            c_focused_surface,
-            c_hovered_surface,
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
             colors: PanelColors::new(theme),
-            applet_tx,
             actual_size: (0, 0).into(),
             input_region: None,
             damage_tracked_renderer: None,
             is_dirty: false,
             has_frame: true,
             scale: 1.0,
-            security_context_manager,
-            cosmic_workspaces,
             animate_state: None,
             maximized: false,
-            panel_tx,
             minimize_applet_rect: Default::default(),
             container_length: 0,
             scale_change_retries: 0,
             additional_gap: 0,
-            loop_handle,
             left_overflow_button_id: id::Id::new(format!("{}-left-overflow-button", name)),
             center_overflow_button_id: id::Id::new(format!("{}-center-overflow-button", name)),
             right_overflow_button_id: id::Id::new(format!("{}-right-overflow-button", name)),
@@ -783,8 +776,8 @@ impl PanelSpace {
         };
 
         let cur_hover = {
-            let c_focused_surface = self.c_focused_surface.borrow();
-            let c_hovered_surface = self.c_hovered_surface.borrow();
+            let c_focused_surface = self.shared.c_focused_surface.borrow();
+            let c_hovered_surface = self.shared.c_hovered_surface.borrow();
             // no transition if not configured for autohide
             let no_hover_focus =
                 c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
@@ -1233,10 +1226,12 @@ impl PanelSpace {
                     if let Some(w) = p.popup.viewport.as_ref() {
                         w.destroy();
                     }
-                    self.c_focused_surface
+                    self.shared
+                        .c_focused_surface
                         .borrow_mut()
                         .retain(|s| s.0 != *p.popup.c_popup.wl_surface());
-                    self.c_hovered_surface
+                    self.shared
+                        .c_hovered_surface
                         .borrow_mut()
                         .retain(|s| s.0 != *p.popup.c_popup.wl_surface());
                     self.s_focused_surface.retain(|s| {
@@ -1942,7 +1937,7 @@ impl PanelSpace {
 impl Drop for PanelSpace {
     fn drop(&mut self) {
         // request processes to stop
-        let _ = self.applet_tx.try_send(AppletMsg::Cleanup(self.id()));
+        let _ = self.shared.applet_tx.try_send(AppletMsg::Cleanup(self.id()));
         self.clients_center.lock().unwrap().clear();
         self.clients_left.lock().unwrap().clear();
         self.clients_right.lock().unwrap().clear();

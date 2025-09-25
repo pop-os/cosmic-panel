@@ -10,7 +10,7 @@ mod render;
 pub mod spacer;
 mod wrapper_space;
 
-pub(crate) use panel_space::{AppletMsg, PanelColors, PanelSpace};
+pub(crate) use panel_space::{AppletMsg, PanelColors, PanelSharedState, PanelSpace};
 pub(crate) use spacer::Spacer;
 
 #[derive(Debug)]

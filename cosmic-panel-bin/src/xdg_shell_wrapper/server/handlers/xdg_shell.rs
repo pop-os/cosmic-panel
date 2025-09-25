@@ -96,7 +96,7 @@ impl XdgShellHandler for GlobalState {
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        if let Some(cosmic_workspaces) = &self.space.cosmic_workspaces {
+        if let Some(cosmic_workspaces) = &self.space.shared.cosmic_workspaces {
             cosmic_workspaces.hide();
         }
     }

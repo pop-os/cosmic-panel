@@ -25,6 +25,7 @@ impl ToplevelInfoSpace for SpaceContainer {
         self.toplevels.push(info.clone());
         self.apply_toplevel_changes();
         _ = self
+            .shared
             .panel_tx
             .send(crate::PanelCalloopMsg::UpdateToplevel(info.foreign_toplevel.clone()));
 
@@ -44,6 +45,7 @@ impl ToplevelInfoSpace for SpaceContainer {
             *info_1 = info.clone();
         }
         _ = self
+            .shared
             .panel_tx
             .send(crate::PanelCalloopMsg::UpdateToplevel(info.foreign_toplevel.clone()));
         self.apply_toplevel_changes();
