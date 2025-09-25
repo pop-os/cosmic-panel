@@ -194,10 +194,6 @@ impl WrapperSpace for PanelSpace {
         latest_seat: &wl_seat::WlSeat,
         latest_serial: u32,
     ) -> anyhow::Result<()> {
-        if let Some(cosmic_workspaces) = &self.cosmic_workspaces {
-            cosmic_workspaces.hide();
-        }
-
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
         let mut clear_exclude = Vec::new();
