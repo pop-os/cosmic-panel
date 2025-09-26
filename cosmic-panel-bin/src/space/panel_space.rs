@@ -775,6 +775,8 @@ impl PanelSpace {
             return;
         };
 
+        let intellihide = self.overlap_notify.is_some();
+
         let cur_hover = {
             let c_focused_surface = self.shared.c_focused_surface.borrow();
             let c_hovered_surface = self.shared.c_hovered_surface.borrow();
@@ -792,7 +794,7 @@ impl PanelSpace {
             };
 
             let f = c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || !self.has_toplevel_overlap() {
+                if self.animate_state.is_some() || (intellihide && !self.has_toplevel_overlap()) {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -1119,7 +1121,9 @@ impl PanelSpace {
         }
         self.is_dirty = true;
         self.additional_gap = gap;
-        if (!self.has_toplevel_overlap() || matches!(self.visibility, Visibility::Visible))
+        let intellihide = self.overlap_notify.is_some();
+        if ((intellihide && !self.has_toplevel_overlap())
+            || matches!(self.visibility, Visibility::Visible))
             && !matches!(
                 self.space_event.as_ref().get(),
                 Some(SpaceEvent::WaitConfigure { first, .. }) if first
