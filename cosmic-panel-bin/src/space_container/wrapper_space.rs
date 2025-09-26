@@ -772,9 +772,6 @@ impl WrapperSpace for SpaceContainer {
             .find(|s| s.layer.as_ref().map(|s| s.wl_surface()) == Some(layer.wl_surface()))
         {
             space.configure_panel_layer(layer, configure, &mut self.renderer);
-            if matches!(space.visibility(), Visibility::Visible) || !space.has_toplevel_overlap() {
-                space.output.as_ref().map(|o| (o.1.name(), space.config.anchor));
-            }
         }
         self.apply_toplevel_changes()
     }
