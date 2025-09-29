@@ -915,7 +915,6 @@ impl WrapperSpace for PanelSpace {
             }
             target
         } else {
-            dbg!("no previous focus");
             if press {
                 self.close_popups(|_| false);
             }
