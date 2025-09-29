@@ -889,7 +889,15 @@ impl WrapperSpace for PanelSpace {
             c_hovered_surface
                 .iter()
                 .enumerate()
-                .find(|(_, f)| f.1 == seat_name)
+                .find(|(_, f)| {
+                    f.1 == seat_name
+                        && (self.layer.as_ref().is_some_and(|s| s.wl_surface() == &f.0)
+                            || self.popups.iter().any(|p| p.popup.c_popup.wl_surface() == &f.0)
+                            || self
+                                .overflow_popup
+                                .as_ref()
+                                .is_some_and(|p| p.0.c_popup.wl_surface() == &f.0))
+                })
                 .map(|(i, f)| (i, f.0.clone()))
         } {
             let target = self.s_hovered_surface.iter().find_map(|h| {
@@ -903,6 +911,7 @@ impl WrapperSpace for PanelSpace {
             }
             target
         } else {
+            dbg!("no previous focus");
             if press {
                 self.close_popups(|_| false);
             }
