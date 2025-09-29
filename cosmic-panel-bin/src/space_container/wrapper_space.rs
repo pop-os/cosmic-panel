@@ -349,6 +349,8 @@ impl WrapperSpace for SpaceContainer {
         // add popup to the space with a client that matches the window
         let p_client = s_surface.wl_surface().client().map(|c| c.id());
 
+        self.space_list.iter_mut().for_each(|space| space.close_popups(|_| false));
+
         if let Some(space) = self.space_list.iter_mut().find(|space| {
             space
                 .clients_center
