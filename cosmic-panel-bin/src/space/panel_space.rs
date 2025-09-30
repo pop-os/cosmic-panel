@@ -522,8 +522,8 @@ impl PanelSpace {
             }
         }
         let layer_major = match self.config.anchor {
-            PanelAnchor::Left | PanelAnchor::Right => (self.dimensions.h),
-            PanelAnchor::Top | PanelAnchor::Bottom => (self.dimensions.w),
+            PanelAnchor::Left | PanelAnchor::Right => self.dimensions.h,
+            PanelAnchor::Top | PanelAnchor::Bottom => self.dimensions.w,
         };
         let container_length = self.container_length as i32;
         let is_overlapping_start =
@@ -1650,6 +1650,26 @@ impl PanelSpace {
                 self.anchor_gap = 0;
                 needs_commit = true;
             }
+        }
+
+        // try to force rearrangement
+        if config.autohide.is_some() && self.config.autohide.is_none()
+            || config.autohide.is_none() && self.config.autohide.is_some()
+        {
+            if let Some(l) = self.layer.as_ref() {
+                let (w, h) = match self.config.anchor() {
+                    PanelAnchor::Left | PanelAnchor::Right => {
+                        (self.dimensions.w.saturating_add(1), self.dimensions.h)
+                    },
+                    PanelAnchor::Top | PanelAnchor::Bottom => {
+                        (self.dimensions.w, self.dimensions.h.saturating_add(1))
+                    },
+                };
+
+                l.set_size(w as u32, h as u32);
+                needs_commit = true;
+            }
+            self.is_dirty = true;
         }
 
         if config.anchor_gap != self.config.anchor_gap {
