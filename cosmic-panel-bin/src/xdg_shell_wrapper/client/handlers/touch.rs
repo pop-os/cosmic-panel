@@ -12,9 +12,13 @@ use sctk::{
     seat::touch::TouchHandler,
 };
 use smithay::{
-    input::touch::{self, TouchHandle},
+    backend::input::ButtonState,
+    input::{touch::{self, TouchHandle}, pointer::ButtonEvent},
     utils::{Point, SERIAL_COUNTER},
 };
+
+// Timeout in milliseconds for converting touch to click
+const TOUCH_CLICK_TIMEOUT_MS: u32 = 200;
 
 fn get_touch_handle(state: &GlobalState, touch: &WlTouch) -> (String, TouchHandle<GlobalState>) {
     let seat_index = state
@@ -82,9 +86,51 @@ impl TouchHandler for GlobalState {
         time: u32,
         id: i32,
     ) {
-        let (_, touch) = get_touch_handle(self, touch);
+        let (seat_name, touch_handle) = get_touch_handle(self, touch);
 
-        touch.up(
+        // Check if we should generate a synthetic click event
+        let seat_index = self
+            .server_state
+            .seats
+            .iter()
+            .position(|seat_pair| {
+                seat_pair.client.touch.as_ref().map(|t| t == touch).unwrap_or(false)
+            })
+            .unwrap();
+        
+        let seat_pair = &self.server_state.seats[seat_index];
+        let (_, touch_down_time) = seat_pair.client.last_touch_down;
+        let time_diff = time.saturating_sub(touch_down_time);
+        
+        // If touch up happened quickly after touch down, generate a synthetic click
+        if time_diff <= TOUCH_CLICK_TIMEOUT_MS {
+            // Get the pointer handle to generate synthetic button events
+            let ptr = seat_pair.server.seat.get_pointer().unwrap();
+            
+            // Generate synthetic button press followed by button release
+            ptr.button(
+                self,
+                &ButtonEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                    button: 0x110, // BTN_LEFT (272 decimal, 0x110 hex)
+                    state: ButtonState::Pressed,
+                },
+            );
+            ptr.button(
+                self,
+                &ButtonEvent {
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time,
+                    button: 0x110, // BTN_LEFT 
+                    state: ButtonState::Released,
+                },
+            );
+            ptr.frame(self);
+        }
+
+        // Handle the regular touch up event
+        touch_handle.up(
             self,
             &touch::UpEvent {
                 slot: Some(id as u32).into(),
