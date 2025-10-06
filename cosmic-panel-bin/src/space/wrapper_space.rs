@@ -492,6 +492,10 @@ impl WrapperSpace for PanelSpace {
                                 panel_client.shrink_priority = entry
                                     .desktop_entry("X-OverflowPriority")
                                     .and_then(|x| x.parse::<u32>().ok());
+                                panel_client.padding_shrinkable = entry
+                                    .desktop_entry("X-CosmicShrinkable")
+                                    .map(|x| x == "true")
+                                    .unwrap_or_default();
 
                                 panel_client.minimize_priority = if let Some(x_minimize_entry) =
                                     entry.desktop_entry("X-MinimizeApplet")

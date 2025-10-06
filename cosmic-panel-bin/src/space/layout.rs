@@ -16,6 +16,7 @@ use crate::{
                 self, OverflowButton, OverflowButtonElement, overflow_button_element,
             },
             overflow_popup::{BORDER_WIDTH, overflow_popup_element},
+            target::SpaceTarget,
         },
     },
     minimize::MinimizeApplet,
@@ -48,10 +49,17 @@ impl PanelSpace {
         self.remap_attempts = self.remap_attempts.saturating_sub(1);
 
         let make_indices_contiguous =
-            |windows: &mut Vec<(usize, CosmicMappedInternal, Option<u32>)>| {
+            |windows: &mut Vec<(usize, CosmicMappedInternal, Option<u32>, bool)>| {
                 windows.sort_by(|(a_i, ..), (b_i, ..)| a_i.cmp(b_i));
                 for (j, (i, ..)) in windows.iter_mut().enumerate() {
                     *i = j;
+                }
+                for i in 0..windows.len() {
+                    let Some(prev_shrinkable) = windows.get(i + 1) else {
+                        windows[i].3 &= false;
+                        continue;
+                    };
+                    windows[i].3 &= prev_shrinkable.3;
                 }
             };
 
@@ -112,14 +120,14 @@ impl PanelSpace {
                 };
                 self.clients_left.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
                     if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else if w
                         .toplevel()
                         .and_then(|t| t.wl_surface().client())
                         .zip(c.client.as_ref())
                         .is_some_and(|(c, w_c)| c.id() == w_c.id())
                     {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else {
                         None
                     }
@@ -139,14 +147,14 @@ impl PanelSpace {
                 };
                 self.clients_center.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
                     if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else if w
                         .toplevel()
                         .and_then(|t| t.wl_surface().client())
                         .zip(c.client.as_ref())
                         .is_some_and(|(c, w_c)| c.id() == w_c.id())
                     {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else {
                         None
                     }
@@ -165,14 +173,14 @@ impl PanelSpace {
                 };
                 self.clients_right.lock().unwrap().iter().enumerate().find_map(|(i, c)| {
                     if matches!(w, CosmicMappedInternal::Spacer(ref s) if s.name == c.name) {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else if w
                         .toplevel()
                         .and_then(|t| t.wl_surface().client())
                         .zip(c.client.as_ref())
                         .is_some_and(|(c, w_c)| c.id() == w_c.id())
                     {
-                        Some((i, w.clone(), c.minimize_priority))
+                        Some((i, w.clone(), c.minimize_priority, c.padding_shrinkable))
                     } else {
                         None
                     }
@@ -205,14 +213,16 @@ impl PanelSpace {
 
     pub(crate) fn layout(
         &mut self,
-        mut windows_left: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
-        mut windows_center: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
-        mut windows_right: Vec<(usize, CosmicMappedInternal, Option<u32>)>,
+        mut windows_left: Vec<(usize, CosmicMappedInternal, Option<u32>, bool)>,
+        mut windows_center: Vec<(usize, CosmicMappedInternal, Option<u32>, bool)>,
+        mut windows_right: Vec<(usize, CosmicMappedInternal, Option<u32>, bool)>,
         mut left_overflow_button: Option<OverflowButtonElement>,
         mut right_overflow_button: Option<OverflowButtonElement>,
         mut center_overflow_button: Option<OverflowButtonElement>,
     ) -> anyhow::Result<()> {
         self.space.refresh();
+        let applet_padding = self.config.get_applet_padding(true);
+
         let mut bg_color = self.bg_color();
         for c in 0..3 {
             bg_color[c] *= bg_color[3];
@@ -253,10 +263,11 @@ impl PanelSpace {
         }
 
         fn map_fn(
-            (i, w, _): &(usize, CosmicMappedInternal, Option<u32>),
+            (i, w, _, padding_shrinkable): &(usize, CosmicMappedInternal, Option<u32>, bool),
             anchor: PanelAnchor,
             alignment: Alignment,
-        ) -> (Alignment, usize, i32, i32, i32) {
+            applet_padding: u16,
+        ) -> (Alignment, usize, i32, i32, i32, i32) {
             let (mut size, mut suggested_bounds) = w
                 .toplevel()
                 .map(|t| {
@@ -290,21 +301,33 @@ impl PanelSpace {
             }
 
             match anchor {
-                PanelAnchor::Left | PanelAnchor::Right => {
-                    (alignment, *i, size.h, size.w, suggested_bounds.h.min(size.h))
-                },
-                PanelAnchor::Top | PanelAnchor::Bottom => {
-                    (alignment, *i, size.w, size.h, suggested_bounds.w.min(suggested_bounds.w))
-                },
+                PanelAnchor::Left | PanelAnchor::Right => (
+                    alignment,
+                    *i,
+                    size.h,
+                    size.w,
+                    suggested_bounds.h.min(size.h),
+                    if *padding_shrinkable { applet_padding as i32 } else { 0 },
+                ),
+                PanelAnchor::Top | PanelAnchor::Bottom => (
+                    alignment,
+                    *i,
+                    size.w,
+                    size.h,
+                    suggested_bounds.w.min(suggested_bounds.w),
+                    if *padding_shrinkable { applet_padding as i32 } else { 0 },
+                ),
             }
         }
 
-        let left = windows_left.iter().map(|e| map_fn(e, anchor, Alignment::Left));
+        let left = windows_left.iter().map(|e| map_fn(e, anchor, Alignment::Left, applet_padding));
 
-        let left_sum_scaled =
-            left.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>() as f64
-                * self.scale
-                + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
+        let left_sum_scaled = left
+            .clone()
+            .map(|(_, _, _, _, suggested_length, padding)| suggested_length - padding)
+            .sum::<i32>() as f64
+            * self.scale
+            + spacing_scaled * windows_left.len().saturating_sub(1) as f64;
         let left_sum_scaled = if let Some(left_button) = left_overflow_button.as_ref() {
             let size = left_button.geometry().size.to_f64() * self.scale;
             left_sum_scaled
@@ -314,12 +337,14 @@ impl PanelSpace {
             left_sum_scaled
         };
 
-        let center = windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center));
-        let center_sum_scaled =
-            center.clone().map(|(_, _, _, _, suggested_length)| suggested_length).sum::<i32>()
-                as f64
-                * self.scale
-                + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
+        let center =
+            windows_center.iter().map(|e| map_fn(e, anchor, Alignment::Center, applet_padding));
+        let center_sum_scaled = center
+            .clone()
+            .map(|(_, _, _, _, suggested_length, padding)| suggested_length - padding)
+            .sum::<i32>() as f64
+            * self.scale
+            + spacing_scaled * windows_center.len().saturating_sub(1) as f64;
 
         let center_sum_scaled = if let Some(center_button) = center_overflow_button.as_ref() {
             let size = center_button.geometry().size.to_f64() * self.scale;
@@ -330,12 +355,15 @@ impl PanelSpace {
             center_sum_scaled
         };
 
-        let right = windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right));
-        let right_sum_scaled =
-            right.clone().map(|(_, _, _length, _, suggested_length)| suggested_length).sum::<i32>()
-                as f64
-                * self.scale
-                + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
+        let right =
+            windows_right.iter().map(|e| map_fn(e, anchor, Alignment::Right, applet_padding));
+        let right_sum_scaled = right
+            .clone()
+            .map(|(_, _, _length, _, suggested_length, padding)| suggested_length - padding)
+            .sum::<i32>() as f64
+            * self.scale
+            + applet_padding as f64
+            + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
 
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {
             let size = right_button.geometry().size.to_f64() * self.scale;
@@ -353,7 +381,7 @@ impl PanelSpace {
             as i32;
         let new_list_thickness = (2.0 * padding_scaled
             + chain!(left.clone(), center.clone(), right.clone())
-                .map(|(_, _, _, thickness, _)| thickness)
+                .map(|(_, _, _, thickness, _, _)| thickness)
                 .max()
                 .unwrap_or(0) as f64
                 * self.scale) as i32;
@@ -549,7 +577,7 @@ impl PanelSpace {
         // XXX this is a bit of a hack around the fact that we want the spacer to be
         // placed before the overflow button
         if windows_left.is_empty() && !windows_center.is_empty() && is_overlapping_start {
-            let (_, CosmicMappedInternal::Spacer(s), _) = windows_center.remove(0) else {
+            let (_, CosmicMappedInternal::Spacer(s), _, _) = windows_center.remove(0) else {
                 panic!("No spacer found");
             };
             let size = s.bbox().size.to_f64();
@@ -587,12 +615,13 @@ impl PanelSpace {
             center_pos += size.h + spacing_u32 as f64;
         }
 
-        let mut map_windows = |windows: IterMut<'_, (usize, CosmicMappedInternal, Option<u32>)>,
+        let mut map_windows = |windows: IterMut<
+            '_,
+            (usize, CosmicMappedInternal, Option<u32>, bool),
+        >,
                                mut prev|
          -> f64 {
-            for (_, w, minimize_priority) in windows {
-                // XXX this is a hack to get the logical size of the window
-                // TODO improve how this is done
+            for (_, w, minimize_priority, padding_shrinkable) in windows {
                 let mut size = w.geometry().size.to_f64();
                 let configured_size =
                     w.toplevel().and_then(|t| t.current_state().bounds).unwrap_or_else(|| {
@@ -622,7 +651,8 @@ impl PanelSpace {
                             ),
                     );
                     (x, y) = (cur.0 as i32, cur.1);
-                    prev += size.w + spacing_u32 as f64;
+                    prev += size.w + spacing_u32 as f64
+                        - if *padding_shrinkable { applet_padding } else { 0 } as f64;
                     self.space.map_element(w.clone(), (x, y), false);
                 } else {
                     let cur = (
@@ -634,7 +664,8 @@ impl PanelSpace {
                         cur,
                     );
                     (x, y) = (cur.0, cur.1 as i32);
-                    prev += size.h + spacing_u32 as f64;
+                    prev += size.h + spacing_u32 as f64
+                        - if *padding_shrinkable { applet_padding } else { 0 } as f64;
                     self.space.map_element(w.clone(), (x, y), false);
                 }
                 if minimize_priority.is_some() {
@@ -684,6 +715,23 @@ impl PanelSpace {
                 (crosswise_pos, left_pos.round() as i32)
             };
             self.space.map_element(CosmicMappedInternal::OverflowButton(left_button), loc, false);
+        }
+        for s in self.s_hovered_surface.iter().map(|s| s.surface.clone()) {
+            let element = match s {
+                SpaceTarget::OverflowButton(b) => CosmicMappedInternal::OverflowButton(b),
+                SpaceTarget::Surface(ref s) => {
+                    let Some(w) = windows_left
+                        .iter()
+                        .chain(windows_center.iter())
+                        .chain(windows_right.iter())
+                        .find(|w| w.1.wl_surface().is_some_and(|w| w.as_ref() == s))
+                    else {
+                        continue;
+                    };
+                    w.1.clone()
+                },
+            };
+            self.space.raise_element(&element, false);
         }
         self.space.refresh();
 
