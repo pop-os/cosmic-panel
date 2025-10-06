@@ -113,7 +113,6 @@ impl PanelSpace {
             let hovered_clients: HashSet<_> = self
                 .s_hovered_surface
                 .iter()
-                .chain(self.s_hovered_surface.iter())
                 .filter_map(|c| c.surface.wl_surface().map(|s| s.id()))
                 .collect();
             tracing::trace!("Rendering space");
