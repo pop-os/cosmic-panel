@@ -221,7 +221,7 @@ impl PanelSpace {
         mut center_overflow_button: Option<OverflowButtonElement>,
     ) -> anyhow::Result<()> {
         self.space.refresh();
-        let applet_padding = self.config.get_applet_padding(true);
+        let applet_padding = self.config.size.get_applet_shrinkable_padding(true);
 
         let mut bg_color = self.bg_color();
         for c in 0..3 {
@@ -362,7 +362,6 @@ impl PanelSpace {
             .map(|(_, _, _length, _, suggested_length, padding)| suggested_length - padding)
             .sum::<i32>() as f64
             * self.scale
-            + applet_padding as f64
             + spacing_scaled * windows_right.len().saturating_sub(1) as f64;
 
         let right_sum_scaled = if let Some(right_button) = right_overflow_button.as_ref() {

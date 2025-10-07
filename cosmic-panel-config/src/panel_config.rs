@@ -194,6 +194,34 @@ impl PanelSize {
         }
     }
 
+    pub fn get_applet_shrinkable_padding(&self, is_symbolic: bool) -> u16 {
+        if is_symbolic {
+            match self {
+                PanelSize::XS => 12,
+                PanelSize::S => 14,
+                PanelSize::M => 18,
+                PanelSize::L => 20,
+                PanelSize::XL => 20,
+                PanelSize::Custom(s) => {
+                    let s = (*s).max(16) / 4 * 4;
+                    4 + (s / 4) as u16
+                },
+            }
+        } else {
+            match self {
+                PanelSize::XS => 8,
+                PanelSize::S => 8,
+                PanelSize::M => 12,
+                PanelSize::L => 12,
+                PanelSize::XL => 16,
+                PanelSize::Custom(s) => {
+                    let s = (*s).max(16) / 4 * 4;
+                    4 + (s * 3 / 20) as u16
+                },
+            }
+        }
+    }
+
     pub fn get_applet_icon_size_with_padding(&self, is_symbolic: bool) -> u32 {
         self.get_applet_icon_size(is_symbolic) + self.get_applet_padding(is_symbolic) as u32 * 2
     }
