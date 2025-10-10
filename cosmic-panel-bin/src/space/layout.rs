@@ -705,7 +705,10 @@ impl PanelSpace {
         };
         if !self.background_element.as_ref().is_some_and(|e| {
             e.with_program(|p| {
-                p.logical_height == h && p.logical_width == w && self.bg_color() == p.color
+                p.logical_height == h
+                    && p.logical_width == w
+                    && self.bg_color() == p.color
+                    && p.scale == self.scale
             })
         }) || self.animate_state.as_ref().is_some()
             || self.transitioning
@@ -783,6 +786,7 @@ impl PanelSpace {
                 self.space.id(),
                 loc,
                 self.bg_color(),
+                self.scale,
             );
             bg.output_enter(&output, Rectangle::default());
             self.background_element = Some(bg.clone());
