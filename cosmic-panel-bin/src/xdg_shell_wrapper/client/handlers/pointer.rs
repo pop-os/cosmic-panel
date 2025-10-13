@@ -381,11 +381,13 @@ impl GlobalState {
                     let mut af = AxisFrame::new(time).source(source);
 
                     if !horizontal.is_none() {
-                        if horizontal.discrete.abs() > 0 {
+                        if horizontal.value120 != 0 {
+                            af = af.v120(Axis::Horizontal, horizontal.value120);
+                        } else if horizontal.discrete != 0 {
                             af = af.v120(Axis::Horizontal, horizontal.discrete * 120);
                         }
-                        if horizontal.absolute.abs() > 0.0 {
-                            af = af.value(Axis::Horizontal, horizontal.absolute * 120.);
+                        if horizontal.absolute != 0.0 {
+                            af = af.value(Axis::Horizontal, horizontal.absolute);
                         }
                         if horizontal.stop {
                             af = af.stop(Axis::Horizontal);
@@ -393,11 +395,13 @@ impl GlobalState {
                     }
 
                     if !vertical.is_none() {
-                        if vertical.discrete.abs() > 0 {
+                        if vertical.value120 != 0 {
+                            af = af.v120(Axis::Vertical, vertical.value120);
+                        } else if vertical.discrete != 0 {
                             af = af.v120(Axis::Vertical, vertical.discrete * 120);
                         }
-                        if vertical.absolute.abs() > 0.0 {
-                            af = af.value(Axis::Vertical, vertical.absolute * 120.);
+                        if vertical.absolute != 0.0 {
+                            af = af.value(Axis::Vertical, vertical.absolute);
                         }
                         if vertical.stop {
                             af = af.stop(Axis::Vertical);
