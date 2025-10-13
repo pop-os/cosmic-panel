@@ -26,6 +26,7 @@ pub fn background_element(
     panel_id: usize,
     logical_pos: [f32; 2],
     color: [f32; 4],
+    scale: f64,
 ) -> BackgroundElement {
     IcedElement::new(
         Background {
@@ -35,6 +36,7 @@ pub fn background_element(
             radius,
             logical_pos: (logical_pos[0].round() as i32, logical_pos[1].round() as i32),
             color,
+            scale,
         },
         (logical_width, logical_height),
         loop_handle,
@@ -51,6 +53,7 @@ pub struct Background {
     pub radius: [f32; 4],
     pub logical_pos: (i32, i32),
     pub color: [f32; 4],
+    pub scale: f64,
 }
 
 impl Program for Background {
