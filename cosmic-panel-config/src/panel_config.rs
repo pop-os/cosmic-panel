@@ -410,6 +410,8 @@ pub struct CosmicPanelConfig {
     /// autohover popup delay duration in milliseconds
     /// If None, then it is disabled
     pub autohover_delay_ms: Option<u32>,
+    /// padding overlap ratio
+    pub padding_overlap: f32,
 }
 
 impl PartialEq for CosmicPanelConfig {
@@ -464,6 +466,7 @@ impl Default for CosmicPanelConfig {
             margin: 4,
             opacity: 0.8,
             autohover_delay_ms: Some(500),
+            padding_overlap: 0.5,
         }
     }
 }
@@ -477,6 +480,10 @@ pub enum Side {
 
 #[cfg(feature = "wayland-rs")]
 impl CosmicPanelConfig {
+    pub fn padding_overlap(&self) -> f32 {
+        self.padding_overlap.clamp(0., 1.)
+    }
+
     /// get the applet size given its side
     pub fn get_effective_applet_size(&self, side: Side) -> PanelSize {
         match side {
