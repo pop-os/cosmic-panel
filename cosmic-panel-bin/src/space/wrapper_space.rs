@@ -451,6 +451,8 @@ impl WrapperSpace for PanelSpace {
             let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
             let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
             let config_spacing = ron::ser::to_string(&self.config.spacing).unwrap_or_default();
+            let config_padding_overlap =
+                ron::ser::to_string(&self.config.padding_overlap()).unwrap_or_default();
             let config_name = self.config.name.clone();
             let env_vars = vec![
                 ("COSMIC_PANEL_NAME".to_string(), config_name),
@@ -458,6 +460,7 @@ impl WrapperSpace for PanelSpace {
                 ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
+                ("COSMIC_PANEL_PADDING_OVERLAP".to_string(), config_padding_overlap),
                 ("RUST_BACKTRACE".to_string(), "1".to_string()),
             ];
             info!("{:?}", &desktop_ids);
@@ -493,6 +496,10 @@ impl WrapperSpace for PanelSpace {
                                 panel_client.shrink_priority = entry
                                     .desktop_entry("X-OverflowPriority")
                                     .and_then(|x| x.parse::<u32>().ok());
+                                panel_client.padding_shrinkable = entry
+                                    .desktop_entry("X-CosmicShrinkable")
+                                    .map(|x| x == "true")
+                                    .unwrap_or_default();
 
                                 panel_client.minimize_priority = if let Some(x_minimize_entry) =
                                     entry.desktop_entry("X-MinimizeApplet")
