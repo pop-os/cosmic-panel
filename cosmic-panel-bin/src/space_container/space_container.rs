@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+    sync::Arc,
+};
 
 use crate::{
     PanelCalloopMsg,
@@ -92,6 +97,17 @@ impl SpaceContainer {
             },
         };
 
+        if let Some(cosmic_workspaces) = &cosmic_workspaces {
+            loop_handle.insert_source(
+                cosmic_workspaces.is_shown_event_source(),
+                move |event, (), state| {
+                    if let calloop::channel::Event::Msg(value) = event {
+                        state.space.update_workspaces_shown(value);
+                    }
+                },
+            );
+        }
+
         Self {
             connection: None,
             config,
@@ -117,6 +133,7 @@ impl SpaceContainer {
                 security_context_manager: RefCell::new(None),
                 loop_handle,
                 cosmic_workspaces,
+                workspaces_shown: Cell::new(false),
             }),
         }
     }
@@ -565,6 +582,14 @@ impl SpaceContainer {
                 qh,
                 wlsurface,
             );
+        }
+    }
+
+    fn update_workspaces_shown(&mut self, shown: bool) {
+        dbg!(shown);
+        self.shared.workspaces_shown.set(shown);
+        for i in &mut self.space_list {
+            i.update_workspaces_shown();
         }
     }
 }
