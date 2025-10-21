@@ -303,6 +303,7 @@ pub struct PanelSharedState {
     pub cosmic_workspaces: Option<CosmicWorkspaces>,
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
+    pub workspaces_shown: Cell<bool>,
 }
 
 // space for the cosmic panel
@@ -786,6 +787,11 @@ impl PanelSpace {
 
         let intellihide = self.overlap_notify.is_some();
 
+        // Panel should remain visibile until workspaces overview is no longer shown
+        if self.shared.workspaces_shown.get() {
+            return;
+        }
+
         let cur_hover = {
             let c_focused_surface = self.shared.c_focused_surface.borrow();
             let c_hovered_surface = self.shared.c_hovered_surface.borrow();
@@ -1021,6 +1027,41 @@ impl PanelSpace {
                     }
                 }
             },
+        }
+    }
+
+    // Show auto-hide panels when workspace overlay is shown
+    pub fn update_workspaces_shown(&mut self) {
+        let (layer_surface, _) = if let Some(layer_surface) = self.layer.as_ref() {
+            (layer_surface, layer_surface.wl_surface())
+        } else {
+            return;
+        };
+
+        // If panel isn't autohide, nothing to do
+        if self.config.autohide.is_none() {
+            return;
+        }
+
+        if self.shared.workspaces_shown.get() {
+            // Change to visibile state, without transition
+
+            self.transitioning = true;
+            self.is_dirty = true;
+            let panel_size =
+                if self.config().is_horizontal() { self.dimensions.h } else { self.dimensions.w };
+
+            self.anchor_gap = 0;
+            self.visibility = Visibility::Visible;
+            Self::set_margin(
+                self.config.anchor,
+                self.config.get_margin() as i32,
+                self.additional_gap,
+                layer_surface,
+            );
+        } else {
+            // Transition visibility
+            self.handle_focus();
         }
     }
 
