@@ -30,7 +30,7 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1,
-    wayland_client::Connection,
+    sctk::shell::wlr_layer::Layer, wayland_client::Connection,
 };
 
 use cosmic::iced::id;
@@ -89,6 +89,7 @@ use wayland_protocols::{
     },
     xdg::shell::client::xdg_positioner::ConstraintAdjustment,
 };
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
@@ -1027,6 +1028,8 @@ impl PanelSpace {
             return;
         };
 
+        // XXX only change if autohide?
+
         if self.shared.workspaces_shown.get() {
             self.transitioning = true;
             self.is_dirty = true;
@@ -1047,8 +1050,20 @@ impl PanelSpace {
                 self.additional_gap,
                 layer_surface,
             );
+
+            layer_surface.set_layer(Layer::Overlay);
         } else {
             eprintln!("hidden");
+            let layer = match self.config().layer() {
+                zwlr_layer_shell_v1::Layer::Background => Layer::Background,
+                zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
+                zwlr_layer_shell_v1::Layer::Top => Layer::Top,
+                zwlr_layer_shell_v1::Layer::Overlay => Layer::Overlay,
+                _ => {
+                    return;
+                },
+            };
+            layer_surface.set_layer(layer);
             self.handle_focus();
         }
     }
