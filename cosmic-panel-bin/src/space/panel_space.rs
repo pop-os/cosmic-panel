@@ -1029,6 +1029,9 @@ impl PanelSpace {
         };
 
         // XXX only change if autohide?
+        if self.config.autohide.is_none() {
+            return;
+        }
 
         if self.shared.workspaces_shown.get() {
             self.transitioning = true;
