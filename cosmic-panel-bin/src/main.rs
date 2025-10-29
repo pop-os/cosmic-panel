@@ -71,8 +71,13 @@ fn main() -> Result<()> {
     #[cfg(target_env = "gnu")]
     malloc::limit_mmap_threshold();
     let fmt_layer = fmt::layer().with_target(false);
-    let filter_layer =
-        EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("warn")).unwrap();
+    let filter_layer = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        if cfg!(debug_assertions) {
+            EnvFilter::new(format!("warn,{}=debug", env!("CARGO_CRATE_NAME")))
+        } else {
+            EnvFilter::new("warn")
+        }
+    });
     if let Ok(journal_layer) = tracing_journald::layer() {
         tracing_subscriber::registry().with(journal_layer).with(filter_layer).init();
     } else {
