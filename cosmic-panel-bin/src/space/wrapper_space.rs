@@ -458,7 +458,6 @@ impl WrapperSpace for PanelSpace {
                 ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
-                ("RUST_BACKTRACE".to_string(), "1".to_string()),
             ];
             info!("{:?}", &desktop_ids);
 
