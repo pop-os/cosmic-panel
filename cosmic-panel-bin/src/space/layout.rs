@@ -221,7 +221,9 @@ impl PanelSpace {
         mut center_overflow_button: Option<OverflowButtonElement>,
     ) -> anyhow::Result<()> {
         self.space.refresh();
-        let applet_padding = self.config.size.get_applet_shrinkable_padding(true) / 2;
+        let padding_overlap = self.config.padding_overlap();
+        let applet_padding =
+            self.config.size.get_applet_shrinkable_padding(true) as f32 * padding_overlap;
 
         let mut bg_color = self.bg_color();
         for c in 0..3 {
@@ -266,7 +268,7 @@ impl PanelSpace {
             (i, w, _, padding_shrinkable): &(usize, CosmicMappedInternal, Option<u32>, bool),
             anchor: PanelAnchor,
             alignment: Alignment,
-            applet_padding: u16,
+            applet_padding: f32,
         ) -> (Alignment, usize, i32, i32, i32, i32) {
             let (mut size, mut suggested_bounds) = w
                 .toplevel()
@@ -654,7 +656,7 @@ impl PanelSpace {
                     );
                     (x, y) = (cur.0 as i32, cur.1);
                     prev += size.w + spacing_u32 as f64
-                        - if *padding_shrinkable { applet_padding } else { 0 } as f64;
+                        - if *padding_shrinkable { applet_padding } else { 0. } as f64;
                     self.space.map_element(w.clone(), (x, y), false);
                 } else {
                     let cur = (
@@ -667,7 +669,7 @@ impl PanelSpace {
                     );
                     (x, y) = (cur.0, cur.1 as i32);
                     prev += size.h + spacing_u32 as f64
-                        - if *padding_shrinkable { applet_padding } else { 0 } as f64;
+                        - if *padding_shrinkable { applet_padding } else { 0. } as f64;
                     self.space.map_element(w.clone(), (x, y), false);
                 }
                 if minimize_priority.is_some() {
@@ -1004,6 +1006,16 @@ impl PanelSpace {
             pos_a.cmp(&pos_b)
         });
 
+        let (major_padding, cross_padding) = (
+            self.config.size.get_applet_shrinkable_padding(true),
+            self.config.size.get_applet_padding(true),
+        );
+
+        let (applet_size_unit_major, applet_size_unit_cross) = (
+            self.config.size.get_applet_icon_size(true) + 2 * major_padding as u32,
+            self.config.size.get_applet_icon_size(true) + 2 * cross_padding as u32,
+        );
+
         for e in elements {
             match &e {
                 PopupMappedInternal::Window(w) => {
@@ -1012,11 +1024,9 @@ impl PanelSpace {
                     } else {
                         let x_i = overflow_cnt % 8;
                         let mut x = BORDER_WIDTH as i32
-                            + padding
-                            + x_i as i32 * (applet_size_unit as i32 + spacing);
+                            + x_i as i32 * (applet_size_unit_major as i32 + spacing);
                         let mut y = BORDER_WIDTH as i32
-                            + padding
-                            + (overflow_cnt / 8) as i32 * (applet_size_unit as i32 + spacing);
+                            + (overflow_cnt / 8) as i32 * (applet_size_unit_cross as i32 + spacing);
                         if !self.config.is_horizontal() {
                             std::mem::swap(&mut x, &mut y);
                         }
@@ -1029,12 +1039,10 @@ impl PanelSpace {
                     if prev_cnt != cur_cnt {
                         let actual = cur_cnt.saturating_sub(1);
                         let mut popup_major = 2. * BORDER_WIDTH as f32
-                            + actual.min(8) as f32 * applet_size_unit as f32
-                            + 2. * padding as f32
+                            + actual.min(8) as f32 * applet_size_unit_major as f32
                             + (actual.min(8).saturating_sub(1) as f32) * spacing as f32;
                         let mut popup_cross = 2. * BORDER_WIDTH as f32
-                            + (actual as f32 / 8.).ceil().min(1.0) * applet_size_unit as f32
-                            + 2. * padding as f32;
+                            + (actual as f32 / 8.).ceil().min(1.0) * applet_size_unit_cross as f32;
                         if !self.config.is_horizontal() {
                             std::mem::swap(&mut popup_major, &mut popup_cross);
                         }
@@ -1093,17 +1101,27 @@ impl PanelSpace {
                 continue;
             };
             if let Some(shrink_min_size) = c.shrink_min_size {
-                overflow_partition.shrinkable.push((w.0, w.1 as i32, shrink_min_size));
+                overflow_partition.shrinkable.push(ShrinkableClient {
+                    window: w.0,
+                    priority: w.1 as i32,
+                    shrink_size: shrink_min_size,
+                    padding_overlap: 0.0,
+                });
             } else if c.shrink_priority.is_some() {
                 overflow_partition.movable.push(w);
             } else {
                 // make shrinkable if no shrink priority with lowest priority so it is moved
                 // last
-                overflow_partition.shrinkable.push((w.0, -1, ClientShrinkSize::AppletUnit(1)));
+                overflow_partition.shrinkable.push(ShrinkableClient {
+                    window: w.0,
+                    priority: -1,
+                    shrink_size: ClientShrinkSize::AppletUnit(1),
+                    padding_overlap: 0.0,
+                });
             }
         }
         // sort by priority
-        overflow_partition.shrinkable.sort_by(|(_, a, _), (_, b, _)| b.cmp(a));
+        overflow_partition.shrinkable.sort_by(|a, b| b.priority.cmp(&a.priority));
         overflow_partition.movable.sort_by(|(_, a), (_, b)| b.cmp(a));
         overflow_partition
     }
@@ -1149,7 +1167,9 @@ impl PanelSpace {
         let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
 
         let mut sum = 0.;
-        for (w, priority, min_units) in clients.shrinkable.iter_mut() {
+        for ShrinkableClient { window: w, priority, shrink_size: min_units, .. } in
+            clients.shrinkable.iter_mut()
+        {
             if overflow == 0 {
                 break;
             }
@@ -1248,6 +1268,15 @@ impl PanelSpace {
             tracing::info!("Needs at least 2 movable clients to move to overflow space.");
             return overflow;
         }
+        let (major_padding, cross_padding) = (
+            self.config.size.get_applet_shrinkable_padding(true),
+            self.config.size.get_applet_padding(true),
+        );
+        let (h_padding, v_padding) = if self.config.is_horizontal() {
+            (major_padding as f32, cross_padding as f32)
+        } else {
+            (cross_padding as f32, major_padding as f32)
+        };
         info!("Moving clients to overflow space {section:?} {overflow}");
         let overflow_space = match section {
             OverflowSection::Left => &mut self.overflow_left,
@@ -1255,12 +1284,19 @@ impl PanelSpace {
             OverflowSection::Right => &mut self.overflow_right,
         };
         let mut overflow_cnt = overflow_space.elements().count();
-        let applet_size_unit = self.config.size.get_applet_icon_size(true)
-            + 2 * self.config.size.get_applet_padding(true) as u32;
+        let (applet_size_unit_major, applet_size_unit_cross) = (
+            self.config.size.get_applet_icon_size(true) + 2 * major_padding as u32,
+            self.config.size.get_applet_icon_size(true) + 2 * cross_padding as u32,
+        );
+        let (applet_size_unit_h, applet_size_unit_v) = if is_horizontal {
+            (applet_size_unit_major, applet_size_unit_cross)
+        } else {
+            (applet_size_unit_cross, applet_size_unit_major)
+        };
         let spacing = self.config.spacing;
 
         if overflow_cnt == 0 {
-            overflow += applet_size_unit + spacing;
+            overflow += applet_size_unit_major + spacing;
         }
         let space = &mut self.space;
 
@@ -1280,20 +1316,18 @@ impl PanelSpace {
             }
             let diff = if is_horizontal { bbox.size.w as u32 } else { bbox.size.h as u32 };
             overflow = overflow.saturating_sub(diff);
-            let padding = self.config.padding as i32;
-            // TODO spacing & padding
+
             let x_i = overflow_cnt % 8;
-            let mut x = padding
-                + x_i as i32 * (applet_size_unit as i32 + spacing as i32)
-                + BORDER_WIDTH as i32;
+            let mut x =
+                x_i as i32 * (applet_size_unit_major as i32 + spacing as i32) + BORDER_WIDTH as i32;
             let mut y = BORDER_WIDTH as i32
-                + (overflow_cnt / 8) as i32 * (applet_size_unit + spacing) as i32;
+                + (overflow_cnt / 8) as i32 * (applet_size_unit_cross + spacing) as i32;
             if !self.config.is_horizontal() {
                 std::mem::swap(&mut x, &mut y);
             }
 
             space.unmap_elem(&CosmicMappedInternal::Window(w.0.clone()));
-            overflow_space.map_element(PopupMappedInternal::Window(w.0.clone()), (x, y), true);
+            overflow_space.map_element(PopupMappedInternal::Window(w.0.clone()), (x, y / 2), true);
             // Rows of 8 with configured applet size
             if let Some(t) = w.0.toplevel() {
                 with_states(t.wl_surface(), |states| {
@@ -1302,8 +1336,8 @@ impl PanelSpace {
                     });
                 });
                 t.with_pending_state(|s| {
-                    s.size = Some((applet_size_unit as i32, applet_size_unit as i32).into());
-                    s.bounds = Some((applet_size_unit as i32, applet_size_unit as i32).into());
+                    s.size = Some((applet_size_unit_h as i32, applet_size_unit_v as i32).into());
+                    s.bounds = Some((applet_size_unit_h as i32, applet_size_unit_v as i32).into());
                 });
 
                 t.send_pending_configure();
@@ -1317,14 +1351,12 @@ impl PanelSpace {
             .count();
 
         let space = self.config.spacing as f32;
-        let padding = self.config.padding as f32;
+
         let mut popup_major = 2. * BORDER_WIDTH as f32
-            + overflow_cnt.min(8) as f32 * applet_size_unit as f32
-            + 2. * padding
+            + overflow_cnt.min(8) as f32 * applet_size_unit_major as f32
             + (overflow_cnt.min(8).saturating_sub(1) as f32) * space;
         let mut popup_cross = 2. * BORDER_WIDTH as f32
-            + (overflow_cnt as f32 / 8.).ceil().min(1.0) * applet_size_unit as f32
-            + 2. * padding;
+            + (overflow_cnt as f32 / 8.).ceil().min(1.0) * applet_size_unit_cross as f32;
         if !self.config.is_horizontal() {
             std::mem::swap(&mut popup_major, &mut popup_cross);
         }
@@ -1345,6 +1377,7 @@ impl PanelSpace {
                 }
             })
             .cloned();
+
         let new_popup = |count| {
             PopupMappedInternal::Popup(overflow_popup_element(
                 match section {
@@ -1388,7 +1421,6 @@ impl PanelSpace {
             };
 
             let icon_size = self.config.size.get_applet_icon_size(true);
-            let padding = self.config.size.get_applet_padding(true);
             let icon = if self.config.is_horizontal() {
                 "view-more-horizontal-symbolic"
             } else {
@@ -1398,7 +1430,7 @@ impl PanelSpace {
                 id,
                 (0, 0).into(),
                 u16::try_from(icon_size).unwrap_or(32),
-                (padding as f32).into(),
+                [v_padding, h_padding].into(),
                 Arc::new(AtomicBool::new(false)),
                 icon.into(),
                 self.shared.loop_handle.clone(),
@@ -1601,7 +1633,7 @@ impl PanelSpace {
         if self.remap_attempts > 0 {
             return;
         }
-        for (w, ..) in
+        for ShrinkableClient { window: w, .. } in
             clients.constrained_shrinkables(self.config.is_horizontal(), self.scale).drain(..).rev()
         {
             let expand = extra_space as i32;
@@ -1707,11 +1739,19 @@ pub enum OverflowSection {
     Right,
 }
 
+#[derive(Debug, Clone)]
+pub struct ShrinkableClient {
+    window: Window,
+    priority: i32,
+    shrink_size: ClientShrinkSize,
+    padding_overlap: f32,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct OverflowClientPartition {
     /// windows for clients that can be shrunk, but not moved to the overflow
     /// popup
-    pub(crate) shrinkable: Vec<(Window, i32, ClientShrinkSize)>,
+    pub(crate) shrinkable: Vec<ShrinkableClient>,
     /// windows for clients that can be moved to the overflow popup, but not
     /// shrunk
     pub(crate) movable: Vec<(Window, u32)>,
@@ -1719,14 +1759,10 @@ pub struct OverflowClientPartition {
 }
 
 impl OverflowClientPartition {
-    fn constrained_shrinkables(
-        &self,
-        is_horizontal: bool,
-        scale: f64,
-    ) -> Vec<(Window, i32, ClientShrinkSize)> {
+    fn constrained_shrinkables(&self, is_horizontal: bool, scale: f64) -> Vec<ShrinkableClient> {
         self.shrinkable
             .iter()
-            .filter(|(w, ..)| {
+            .filter(|ShrinkableClient { window: w, .. }| {
                 w.toplevel().is_some_and(|t| {
                     let state = t.current_state();
                     let cur_size = w.geometry().size;
@@ -1753,7 +1789,7 @@ impl OverflowClientPartition {
 
     fn shrinkable_is_relaxed(&self, is_horizontal: bool, scale: f64) -> bool {
         self.shrinkable.is_empty() || {
-            self.shrinkable.iter().all(|(w, ..)| {
+            self.shrinkable.iter().all(|ShrinkableClient { window: w, .. }| {
                 w.toplevel().is_some_and(|t| {
                     let state = t.current_state();
                     let cur_size = w.geometry().size;
