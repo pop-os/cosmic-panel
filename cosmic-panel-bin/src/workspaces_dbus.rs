@@ -40,6 +40,19 @@ impl CosmicWorkspaces {
             .into_stream())
     }
 
+    pub fn is_shown_event_source(&self) -> calloop::channel::Channel<bool> {
+        let (sender, channel) = calloop::channel::channel();
+        let workspaces = self.clone();
+        self.runtime.spawn(async move {
+            use futures::StreamExt;
+            let mut stream = workspaces.is_shown_stream().await.unwrap();
+            while let Some(value) = stream.next().await {
+                sender.send(value);
+            }
+        });
+        channel
+    }
+
     pub fn hide(&self) {
         let proxy = self.proxy.clone();
         self.runtime.spawn(async move {

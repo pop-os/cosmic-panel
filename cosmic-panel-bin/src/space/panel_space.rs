@@ -30,7 +30,7 @@ use crate::{
 };
 use cctk::{
     cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1,
-    wayland_client::Connection,
+    sctk::shell::wlr_layer::Layer, wayland_client::Connection,
 };
 
 use cosmic::iced::id;
@@ -89,6 +89,7 @@ use wayland_protocols::{
     },
     xdg::shell::client::xdg_positioner::ConstraintAdjustment,
 };
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
@@ -301,6 +302,7 @@ pub struct PanelSharedState {
     pub cosmic_workspaces: Option<CosmicWorkspaces>,
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
+    pub workspaces_shown: Cell<bool>,
 }
 
 // space for the cosmic panel
@@ -777,6 +779,10 @@ impl PanelSpace {
 
         let intellihide = self.overlap_notify.is_some();
 
+        if self.shared.workspaces_shown.get() {
+            return;
+        }
+
         let cur_hover = {
             let c_focused_surface = self.shared.c_focused_surface.borrow();
             let c_hovered_surface = self.shared.c_hovered_surface.borrow();
@@ -1012,6 +1018,56 @@ impl PanelSpace {
                     }
                 }
             },
+        }
+    }
+
+    pub fn update_workspaces_shown(&mut self) {
+        let (layer_surface, _) = if let Some(layer_surface) = self.layer.as_ref() {
+            (layer_surface, layer_surface.wl_surface())
+        } else {
+            return;
+        };
+
+        // XXX only change if autohide?
+        if self.config.autohide.is_none() {
+            return;
+        }
+
+        if self.shared.workspaces_shown.get() {
+            self.transitioning = true;
+            self.is_dirty = true;
+            let panel_size =
+                if self.config().is_horizontal() { self.dimensions.h } else { self.dimensions.w };
+
+            /*
+            if self.config.exclusive_zone() {
+                layer_surface.set_exclusive_zone(panel_size);
+            }
+            */
+
+            self.anchor_gap = 0;
+            self.visibility = Visibility::Visible;
+            Self::set_margin(
+                self.config.anchor,
+                self.config.get_margin() as i32,
+                self.additional_gap,
+                layer_surface,
+            );
+
+            layer_surface.set_layer(Layer::Overlay);
+        } else {
+            eprintln!("hidden");
+            let layer = match self.config().layer() {
+                zwlr_layer_shell_v1::Layer::Background => Layer::Background,
+                zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
+                zwlr_layer_shell_v1::Layer::Top => Layer::Top,
+                zwlr_layer_shell_v1::Layer::Overlay => Layer::Overlay,
+                _ => {
+                    return;
+                },
+            };
+            layer_surface.set_layer(layer);
+            self.handle_focus();
         }
     }
 
