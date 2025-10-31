@@ -164,6 +164,7 @@ impl Default for CosmicPanelContainerConfig {
                     margin: 0,
                     opacity: 1.0,
                     autohover_delay_ms: Some(500),
+                    padding_overlap: 0.5,
                 },
                 CosmicPanelConfig {
                     name: "Dock".to_string(),
@@ -186,7 +187,7 @@ impl Default for CosmicPanelContainerConfig {
                     size_wings: None,
                     size_center: None,
                     expand_to_edges: false,
-                    padding: 0,
+                    padding: 4,
                     spacing: 4,
                     border_radius: 160,
                     exclusive_zone: false,
@@ -199,6 +200,7 @@ impl Default for CosmicPanelContainerConfig {
                     margin: 0,
                     opacity: 1.0,
                     autohover_delay_ms: Some(500),
+                    padding_overlap: 0.5,
                 },
             ],
         }

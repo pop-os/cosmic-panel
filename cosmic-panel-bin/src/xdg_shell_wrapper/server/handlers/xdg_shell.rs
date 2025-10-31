@@ -114,6 +114,14 @@ impl XdgShellHandler for GlobalState {
     fn popup_destroyed(&mut self, surface: PopupSurface) {
         self.server_state.popup_manager.commit(surface.wl_surface());
     }
+
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        self.space.minimize_window(surface.clone());
+    }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        self.space.maximize_window(surface.clone());
+    }
 }
 
 // Xdg Shell
