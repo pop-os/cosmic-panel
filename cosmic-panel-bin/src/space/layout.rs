@@ -67,7 +67,7 @@ impl PanelSpace {
         let mut right_overflow_button = None;
         let mut center_overflow_button = None;
 
-        let to_map = self
+        let mut to_map = self
             .space
             .elements()
             .cloned()

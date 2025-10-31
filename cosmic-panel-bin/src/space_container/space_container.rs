@@ -36,6 +36,7 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     output::Output,
     reexports::wayland_server::{self, backend::ClientId},
+    wayland::shell::xdg::ToplevelSurface,
 };
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -567,6 +568,22 @@ impl SpaceContainer {
                 qh,
                 wlsurface,
             );
+        }
+    }
+
+    pub(crate) fn minimize_window(&mut self, surface: ToplevelSurface) {
+        for space in &mut self.space_list {
+            if space.minimize_window(surface.clone()) {
+                break;
+            }
+        }
+    }
+
+    pub(crate) fn maximize_window(&mut self, surface: ToplevelSurface) {
+        for space in &mut self.space_list {
+            if space.unminimize_window(surface.clone()) {
+                break;
+            }
         }
     }
 }

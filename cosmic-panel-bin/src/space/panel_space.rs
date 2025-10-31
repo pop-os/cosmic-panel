@@ -75,7 +75,7 @@ use smithay::{
         compositor::with_states,
         fractional_scale::with_fractional_scale,
         seat::WaylandFocus,
-        shell::xdg::{PopupSurface, PositionerState},
+        shell::xdg::{PopupSurface, PositionerState, ToplevelSurface},
     },
 };
 use tokio::sync::{mpsc, oneshot};
@@ -313,6 +313,7 @@ pub struct PanelSpace {
     pub c_display: Option<WlDisplay>,
     pub config: CosmicPanelConfig,
     pub space: Space<CosmicMappedInternal>,
+    pub unmapped_windows: Vec<CosmicMappedInternal>,
     pub damage_tracked_renderer: Option<OutputDamageTracker>,
     pub clients_left: Clients,
     pub clients_center: Clients,
@@ -396,6 +397,7 @@ impl PanelSpace {
             config,
             shared: shared.clone(),
             space: Space::default(),
+            unmapped_windows: Vec::new(),
             overflow_left: Space::default(),
             overflow_center: Space::default(),
             overflow_right: Space::default(),
@@ -1938,6 +1940,55 @@ impl PanelSpace {
                 },
                 s_surface: wlsurface.clone(),
             });
+        }
+    }
+
+    pub fn minimize_window(&mut self, surface: ToplevelSurface) -> bool {
+        let w = self
+            .space
+            .elements()
+            .find(|e| {
+                if let CosmicMappedInternal::Window(w) = e {
+                    if let Some(t) = w.toplevel() {
+                        return *t == surface;
+                    }
+                }
+                false
+            })
+            .cloned();
+
+        if let Some(window) = w {
+            self.space.unmap_elem(&window);
+            self.unmapped_windows.push(window);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn unminimize_window(&mut self, surface: ToplevelSurface) -> bool {
+        let pos = self.unmapped_windows.iter().position(|e| {
+            if let CosmicMappedInternal::Window(w) = e {
+                if let Some(t) = w.toplevel() {
+                    return *t == surface;
+                }
+            }
+            false
+        });
+
+        if let Some(idx) = pos {
+            let window = self.unmapped_windows.remove(idx);
+            if let Some(wl_surface) = window.wl_surface() {
+                with_states(&wl_surface, |states| {
+                    with_fractional_scale(states, |fractional_scale| {
+                        fractional_scale.set_preferred_scale(self.scale);
+                    });
+                });
+            }
+            self.space.map_element(window, (0, 0), false);
+            true
+        } else {
+            false
         }
     }
 }
