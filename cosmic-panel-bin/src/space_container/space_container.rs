@@ -295,6 +295,8 @@ impl SpaceContainer {
         || self.config.config_list.iter().any(|c| {
             // size changed
             c.name == entry.name && c.size != entry.size
+            // spacing changed
+            || (c.name == entry.name && c.spacing != entry.spacing)
             // size overrides changed
             || (c.name == entry.name && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
             // output changed
