@@ -459,7 +459,7 @@ impl Default for CosmicPanelConfig {
             size_center: Default::default(),
             expand_to_edges: true,
             padding: 4,
-            spacing: 4,
+            spacing: 0,
             exclusive_zone: true,
             autohide: Some(AutoHide::default()),
             border_radius: 8,
