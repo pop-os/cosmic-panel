@@ -712,6 +712,7 @@ impl PanelSpace {
             })
         }) || self.animate_state.as_ref().is_some()
             || self.transitioning
+            || self.is_background_dirty
         {
             self.transitioning = false;
             if let Some(bg) = self.background_element.take() {
@@ -795,6 +796,7 @@ impl PanelSpace {
                 (loc[0] as i32, loc[1] as i32),
                 false,
             );
+            self.is_background_dirty = false;
         }
         input_region.subtract(0, 0, i32::MAX, i32::MAX);
         let anim_gap = self.anchor_gap;

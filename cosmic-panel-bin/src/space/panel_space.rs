@@ -365,6 +365,7 @@ pub struct PanelSpace {
     pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
     pub remap_attempts: u32,
     pub background_element: Option<BackgroundElement>,
+    pub is_background_dirty: bool,
     pub last_minimize_update: Instant,
     pub(crate) minimized_toplevels: HashSet<wayland_backend::client::ObjectId>,
     pub(crate) toplevel_overlaps: HashSet<wayland_backend::client::ObjectId>,
@@ -440,6 +441,7 @@ impl PanelSpace {
             overflow_popup: None,
             remap_attempts: 0,
             background_element: None,
+            is_background_dirty: false,
             last_minimize_update: Instant::now() - Duration::from_secs(1),
             anchor_gap: 0,
             notification_subscription: None,
@@ -485,6 +487,7 @@ impl PanelSpace {
 
     pub fn apply_layer_overlaps(&mut self) {
         self.is_dirty = true;
+        self.is_background_dirty = true;
         self.logical_layer_start_overlap = 0;
         self.logical_layer_end_overlap = 0;
         for rect in self.layer_overlaps.values() {
