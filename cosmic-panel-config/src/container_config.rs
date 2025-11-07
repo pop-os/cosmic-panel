@@ -1,8 +1,17 @@
 use crate::{CosmicPanelBackground, CosmicPanelConfig, CosmicPanelOuput};
-use cosmic_config::{Config, ConfigGet, ConfigSet, CosmicConfigEntry};
+use cosmic_config::{
+    Config, ConfigGet, ConfigSet, CosmicConfigEntry, cosmic_config_derive::CosmicConfigEntry,
+};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use xdg_shell_wrapper_config::{Layer, WrapperConfig, WrapperOutput};
+
+#[derive(Default, Debug, Deserialize, Serialize, Clone, PartialEq, CosmicConfigEntry)]
+#[version = 1]
+#[serde(deny_unknown_fields)]
+pub struct CosmicPanelContainerConfigEntry {
+    pub entries: Vec<String>,
+}
 
 /// Config structure for the cosmic panel
 #[derive(Debug, Deserialize, Serialize, Clone)]
