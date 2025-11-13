@@ -35,9 +35,13 @@ impl CosmicWorkspaces {
     pub async fn is_shown_stream(&self) -> zbus::Result<impl Stream<Item = bool> + 'static> {
         let shown_stream = self.proxy.receive_shown().await?;
         let hidden_stream = self.proxy.receive_hidden().await?;
-        // handle name owner loss?
-        Ok(ordered_stream::join(shown_stream.map(|_| true), hidden_stream.map(|_| false))
-            .into_stream())
+        // Also check if the name owner is lost (cosmic-workspaces stopped or restarted)
+        let owner_stream = self.proxy.0.receive_owner_changed().await?;
+        Ok(ordered_stream::join(
+            ordered_stream::join(shown_stream.map(|_| true), hidden_stream.map(|_| false)),
+            owner_stream.filter_map(|owner| if owner.is_none() { Some(false) } else { None }),
+        )
+        .into_stream())
     }
 
     pub fn hide(&self) {
