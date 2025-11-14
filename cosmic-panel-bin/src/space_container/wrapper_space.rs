@@ -256,6 +256,16 @@ impl WrapperSpace for SpaceContainer {
                                 self.s_display.clone().unwrap(),
                                 conn,
                             );
+                            s.setup(
+                                compositor_state,
+                                fractional_scale_manager,
+                                self.shared.security_context_manager.borrow().clone(),
+                                viewport,
+                                layer_state,
+                                conn,
+                                qh,
+                                self.overlap_notify.clone(),
+                            );
 
                             if let Some(s_display) = self.s_display.as_ref() {
                                 s.set_display_handle(s_display.clone());
