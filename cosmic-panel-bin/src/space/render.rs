@@ -250,7 +250,7 @@ impl PanelSpace {
                         Point::from((
                             (pos.0 as f64 * self.scale) as i32,
                             (pos.1 as f64 * self.scale) as i32,
-                        )) + anim_gap_translation,
+                        )),
                         self.scale.into(),
                         1.0,
                     )
