@@ -1413,14 +1413,13 @@ impl PanelSpace {
             self.is_dirty = true;
             self.space.refresh();
         }
-
-        if self.space.elements().all(|e| !matches!(e, CosmicMappedInternal::OverflowButton(_))) {
+        let id = match section {
+            OverflowSection::Left => self.left_overflow_button_id.clone(),
+            OverflowSection::Center => self.center_overflow_button_id.clone(),
+            OverflowSection::Right => self.right_overflow_button_id.clone(),
+        };
+        if self.space.elements().all(|e| !matches!(e, CosmicMappedInternal::OverflowButton(e) if e.with_program(|p| p.id == id))) {
             let overflow_button_loc = (0, 0);
-            let id = match section {
-                OverflowSection::Left => self.left_overflow_button_id.clone(),
-                OverflowSection::Center => self.center_overflow_button_id.clone(),
-                OverflowSection::Right => self.right_overflow_button_id.clone(),
-            };
 
             let icon_size = self.config.size.get_applet_icon_size(true);
             let icon = if self.config.is_horizontal() {
