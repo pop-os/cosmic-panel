@@ -458,6 +458,11 @@ impl PanelSpace {
             / (3.min(num_lists) as f64);
         let one_half = layer_major as f64 / (2.min(num_lists) as f64);
         let larger_side = left_sum.max(right_sum);
+        let larger_side = if left_overflow_button.is_some() || right_overflow_button.is_some() {
+            larger_side.max(container_length as f64 / 3.)
+        } else {
+            larger_side
+        };
 
         let mut target_center_len =
             (layer_major as f64 - larger_side * (2.)).max(one_third).min(layer_major as f64);
@@ -499,7 +504,6 @@ impl PanelSpace {
             + self.config.size.get_applet_padding(true) as f64 * 2.)
             * -1.5 // allows some wiggle room
             * self.scale) as i32;
-
         let center_overflow = (center_sum - target_center_len) as i32;
         if center_overflow < suggested_size {
             // check if it can be expanded
