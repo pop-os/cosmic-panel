@@ -825,6 +825,10 @@ impl PanelSpace {
                                         .iter()
                                         .any(|p| p.popup.c_popup.wl_surface() == surface)
                             }))
+                        || self
+                            .overflow_popup
+                            .as_ref()
+                            .is_some_and(|(p, _)| p.c_popup.wl_surface() == surface)
                     {
                         match (&acc, &f) {
                             (FocusStatus::LastFocused(t_acc), FocusStatus::LastFocused(t_cur)) => {
