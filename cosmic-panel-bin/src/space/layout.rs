@@ -921,16 +921,10 @@ impl PanelSpace {
                 bail!("output missing");
             };
             let mut loc = match self.config.anchor {
-                PanelAnchor::Left => [
-                    self.config.margin as f32 + self.anchor_gap as f32,
-                    container_lengthwise_pos as f32,
-                ],
-                PanelAnchor::Right => [-self.anchor_gap as f32, container_lengthwise_pos as f32],
-                PanelAnchor::Bottom => [container_lengthwise_pos as f32, -self.anchor_gap as f32],
-                PanelAnchor::Top => [
-                    container_lengthwise_pos as f32,
-                    self.config.margin as f32 + self.anchor_gap as f32,
-                ],
+                PanelAnchor::Left => [self.config.margin as f32, container_lengthwise_pos as f32],
+                PanelAnchor::Right => [0., container_lengthwise_pos as f32],
+                PanelAnchor::Bottom => [container_lengthwise_pos as f32, 0.],
+                PanelAnchor::Top => [container_lengthwise_pos as f32, self.config.margin as f32],
             };
 
             let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
@@ -985,7 +979,6 @@ impl PanelSpace {
             self.is_background_dirty = false;
         }
         input_region.subtract(0, 0, i32::MAX, i32::MAX);
-        let anim_gap = self.anchor_gap;
 
         // disable input regions for hidden stacked panels
         if !matches!(self.visibility, Visibility::Hidden) || self.additional_gap == 0 {
@@ -1000,24 +993,18 @@ impl PanelSpace {
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => (
                         (-1, side as i32),
-                        (
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
-                            container_length,
-                        ),
+                        (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
                     ),
                     PanelAnchor::Right => (
-                        (-anim_gap, side as i32),
+                        (0, side as i32),
                         (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
                     ),
                     PanelAnchor::Top => (
                         (side as i32, -1),
-                        (
-                            container_length,
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
-                        ),
+                        (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
                     ),
                     PanelAnchor::Bottom => (
-                        (side as i32, 0 - anim_gap),
+                        (side as i32, 0),
                         (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
                     ),
                 };
@@ -1041,10 +1028,10 @@ impl PanelSpace {
                 input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
-                    PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                    PanelAnchor::Right => ((-anim_gap, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                    PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
-                    PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
+                    PanelAnchor::Left => ((-1, 0), (new_dim.w + 1, new_dim.h)),
+                    PanelAnchor::Right => ((0, 0), (new_dim.w + 1, new_dim.h)),
+                    PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1)),
+                    PanelAnchor::Bottom => ((0, 0), (new_dim.w, new_dim.h + 1)),
                 };
 
                 if is_overlapping_start {

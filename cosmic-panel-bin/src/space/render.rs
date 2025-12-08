@@ -7,7 +7,6 @@ use cctk::wayland_client::{Proxy, QueueHandle};
 use itertools::Itertools;
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
-use cosmic_panel_config::PanelAnchor;
 use sctk::shell::WaylandSurface;
 use smithay::{
     backend::renderer::{
@@ -161,14 +160,6 @@ impl PanelSpace {
                 return Ok(());
             }
 
-            let anim_gap_physical = (self.anchor_gap as f64) * self.scale;
-            let anim_gap_translation = Point::from(match self.config.anchor {
-                PanelAnchor::Left => (anim_gap_physical, 0.),
-                PanelAnchor::Right => (-anim_gap_physical, 0.),
-                PanelAnchor::Top => (0., anim_gap_physical),
-                PanelAnchor::Bottom => (0., -anim_gap_physical),
-            })
-            .to_i32_round();
             if let Some((o, _info)) = &self.output.as_ref().map(|(_, o, info)| (o, info)) {
                 let mut elements = self
                     .space
@@ -180,8 +171,7 @@ impl PanelSpace {
                             .unwrap_or_default()
                             .to_f64()
                             .to_physical(self.scale)
-                            .to_i32_round()
-                            + anim_gap_translation;
+                            .to_i32_round();
 
                         if let CosmicMappedInternal::OverflowButton(b) = w {
                             return Some(
