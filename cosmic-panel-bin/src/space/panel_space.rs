@@ -858,7 +858,7 @@ impl PanelSpace {
                     if self.show_delay_done(intellihide_no_toplevel) {
                         self.transitioning = true;
                         // start transition to visible
-                        let margin = match self.config.anchor() {
+                        let hidden_offset = match self.config.anchor() {
                             PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
                             PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
                         } + self.config.get_hide_handle().unwrap() as i32;
@@ -866,14 +866,9 @@ impl PanelSpace {
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
-                            prev_margin: margin,
+                            prev_margin: hidden_offset,
                         };
-                        Self::set_margin(
-                            self.config.anchor,
-                            self.config.get_margin() as i32,
-                            self.additional_gap,
-                            layer_surface,
-                        );
+                        // Don't reset margin here - let the animation handle it frame by frame
                     } else {
                         self.start_show_delay();
                     }
@@ -894,6 +889,12 @@ impl PanelSpace {
                     {
                         self.transitioning = true;
                         self.is_dirty = true;
+                        // Set exclusive zone to handle size at START of hide animation
+                        // to avoid per-frame relayout in the compositor
+                        if self.config.exclusive_zone() {
+                            let handle = self.config.get_hide_handle().unwrap() as i32;
+                            layer_surface.set_exclusive_zone(handle);
+                        }
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
@@ -941,19 +942,28 @@ impl PanelSpace {
                     let cur_pix = (progress_norm * target as f32) as i32;
 
                     if progress >= total_t {
-                        if self.config.exclusive_zone() {
-                            layer_surface.set_exclusive_zone(panel_size);
-                        }
-
-                        self.anchor_gap = target;
+                        // Exclusive zone was already set to handle size at animation start
+                        Self::set_margin_with_offset(
+                            self.config.anchor,
+                            self.config.get_margin() as i32,
+                            self.additional_gap,
+                            target,
+                            layer_surface,
+                            true, // commit immediately at end of animation
+                        );
                         self.visibility = Visibility::Hidden;
                     } else {
                         if prev_margin != cur_pix {
-                            if self.config.exclusive_zone() {
-                                layer_surface.set_exclusive_zone(panel_size - cur_pix);
-                            }
-
-                            self.anchor_gap = cur_pix;
+                            // Only update margin during animation, not exclusive zone
+                            // Exclusive zone was set at animation start to avoid per-frame relayout
+                            Self::set_margin_with_offset(
+                                self.config.anchor,
+                                self.config.get_margin() as i32,
+                                self.additional_gap,
+                                cur_pix,
+                                layer_surface,
+                                true, // commit immediately during animation for smooth frames
+                            );
                         }
                         self.close_popups(|_| false);
                         self.visibility = Visibility::TransitionToHidden {
@@ -1004,11 +1014,11 @@ impl PanelSpace {
                     let cur_pix = ((1.0 - progress_norm) * start as f32) as i32;
 
                     if progress >= total_t {
+                        // Set exclusive zone to full panel size at END of show animation
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(panel_size);
                         }
 
-                        self.anchor_gap = 0;
                         self.visibility = Visibility::Visible;
                         Self::set_margin(
                             self.config.anchor,
@@ -1018,11 +1028,16 @@ impl PanelSpace {
                         );
                     } else {
                         if prev_margin != cur_pix {
-                            if self.config.exclusive_zone() {
-                                layer_surface.set_exclusive_zone(panel_size - cur_pix);
-                            }
-
-                            self.anchor_gap = cur_pix;
+                            // Only update margin during animation, not exclusive zone
+                            // Exclusive zone will be set at animation end to avoid per-frame relayout
+                            Self::set_margin_with_offset(
+                                self.config.anchor,
+                                self.config.get_margin() as i32,
+                                self.additional_gap,
+                                cur_pix,
+                                layer_surface,
+                                true, // commit immediately during animation for smooth frames
+                            );
                         }
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: now,
@@ -1092,12 +1107,41 @@ impl PanelSpace {
         additional_gap: i32,
         layer_surface: &LayerSurface,
     ) {
+        Self::set_margin_with_offset(anchor, margin, additional_gap, 0, layer_surface, false);
+    }
+
+    /// Set margin with an additional offset on the anchor edge for animation.
+    /// `anchor_offset` is negative to push the panel off-screen (hiding),
+    /// and zero when fully visible.
+    ///
+    /// If `commit_immediately` is true, commits the surface right away without
+    /// waiting for the next frame callback. This is used during animations to
+    /// reduce latency.
+    fn set_margin_with_offset(
+        anchor: PanelAnchor,
+        margin: i32,
+        additional_gap: i32,
+        anchor_offset: i32,
+        layer_surface: &LayerSurface,
+        commit_immediately: bool,
+    ) {
         match anchor {
-            PanelAnchor::Left => layer_surface.set_margin(margin, 0, margin, additional_gap),
-            PanelAnchor::Right => layer_surface.set_margin(margin, additional_gap, margin, 0),
-            PanelAnchor::Top => layer_surface.set_margin(additional_gap, margin, 0, margin),
-            PanelAnchor::Bottom => layer_surface.set_margin(0, margin, additional_gap, margin),
+            PanelAnchor::Left => {
+                layer_surface.set_margin(margin, 0, margin, additional_gap + anchor_offset)
+            },
+            PanelAnchor::Right => {
+                layer_surface.set_margin(margin, additional_gap + anchor_offset, margin, 0)
+            },
+            PanelAnchor::Top => {
+                layer_surface.set_margin(additional_gap + anchor_offset, margin, 0, margin)
+            },
+            PanelAnchor::Bottom => {
+                layer_surface.set_margin(0, margin, additional_gap + anchor_offset, margin)
+            },
         };
+        if commit_immediately {
+            layer_surface.wl_surface().commit();
+        }
     }
 
     pub fn constrain_dim(
@@ -1268,14 +1312,16 @@ impl PanelSpace {
                         if self.config.exclusive_zone() {
                             layer_surface.set_exclusive_zone(list_thickness as i32);
                         }
-                        Self::set_margin(
+                        let hidden_offset = -(list_thickness as i32)
+                            + self.config.get_hide_handle().unwrap_or_default() as i32;
+                        Self::set_margin_with_offset(
                             self.config.anchor,
                             self.config.get_margin() as i32,
                             self.additional_gap,
+                            hidden_offset,
                             layer_surface,
+                            false, // don't commit here, we commit below
                         );
-                        self.anchor_gap = -(list_thickness as i32)
-                            + self.config.get_hide_handle().unwrap_or_default() as i32;
                     }
                     layer_surface.wl_surface().commit();
                     layer_surface.wl_surface().frame(qh, layer_surface.wl_surface().clone());

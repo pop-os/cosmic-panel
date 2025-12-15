@@ -100,14 +100,20 @@ pub fn run(
     loop {
         let iter_start = Instant::now();
 
-        let visibility = matches!(global_state.space.visibility(), Visibility::Hidden);
+        let visibility = global_state.space.visibility();
+        let is_hidden = matches!(visibility, Visibility::Hidden);
+        let is_animating = matches!(
+            visibility,
+            Visibility::TransitionToHidden { .. } | Visibility::TransitionToVisible { .. }
+        );
         // dispatch desktop client events
-        let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
-            Duration::from_millis(300)
+        // Use fast 16ms polling during animations for smooth frames
+        let dur = if is_hidden && !is_animating {
+            Duration::from_millis(300).max(prev_dur)
         } else {
+            // During animation or when visible, always use 16ms for smooth 60fps
             Duration::from_millis(16)
-        }
-        .max(prev_dur);
+        };
 
         event_loop.dispatch(dur, &mut global_state)?;
 
@@ -139,9 +145,15 @@ pub fn run(
         }
         global_state.iter_count += 1;
 
-        let new_visibility_hidden = matches!(global_state.space.visibility(), Visibility::Hidden);
+        let new_visibility = global_state.space.visibility();
+        let new_is_hidden = matches!(new_visibility, Visibility::Hidden);
+        let new_is_animating = matches!(
+            new_visibility,
+            Visibility::TransitionToHidden { .. } | Visibility::TransitionToVisible { .. }
+        );
 
-        if visibility != new_visibility_hidden {
+        // Reset timing when visibility state changes or animation starts/stops
+        if is_hidden != new_is_hidden || is_animating != new_is_animating {
             prev_dur = Duration::from_millis(16);
             continue;
         }
@@ -149,13 +161,21 @@ pub fn run(
             .checked_duration_since(iter_start)
             .and_then(|spent| dur.checked_sub(spent))
         {
-            std::thread::sleep(dur.min(Duration::from_millis(if new_visibility_hidden {
-                50
+            // During animation, don't sleep - process frames as fast as possible
+            // When hidden (not animating), can sleep longer to save power
+            let max_sleep = if new_is_animating {
+                Duration::from_millis(1) // Minimal sleep during animation
+            } else if new_is_hidden {
+                Duration::from_millis(50)
             } else {
-                16
-            })));
+                Duration::from_millis(16)
+            };
+            std::thread::sleep(dur.min(max_sleep));
         } else {
-            prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur).min(Duration::from_millis(100));
+            // Only increase prev_dur when not animating
+            if !new_is_animating {
+                prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur).min(Duration::from_millis(100));
+            }
         }
     }
 }
