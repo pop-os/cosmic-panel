@@ -167,7 +167,7 @@ impl Default for CosmicPanelContainerConfig {
                     expand_to_edges: true,
                     padding: 0,
                     spacing: 0,
-                    border_radius: 0,
+                    border_radius: Some(0),
                     exclusive_zone: true,
                     autohide: None,
                     margin: 0,
@@ -198,7 +198,7 @@ impl Default for CosmicPanelContainerConfig {
                     expand_to_edges: false,
                     padding: 4,
                     spacing: 0,
-                    border_radius: 12,
+                    border_radius: None,
                     exclusive_zone: false,
                     autohide: Some(crate::AutoHide {
                         wait_time: 500,

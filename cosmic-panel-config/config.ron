@@ -35,7 +35,7 @@
             spacing: 2,
             exclusive_zone: true,
             autohide: None,
-            border_radius: 0,
+            border_radius: Some(0),
             margin: 0,
             opacity: 1.0
         ),
@@ -65,7 +65,7 @@
                 transition_time: 200,
                 handle_size: 2,
             )),
-            border_radius: 160,
+            border_radius: None,
             margin: 0,
             opacity: 1.0
         ),
