@@ -412,6 +412,9 @@ pub struct CosmicPanelConfig {
     pub autohover_delay_ms: Option<u32>,
     /// padding overlap ratio
     pub padding_overlap: f32,
+    /// keep panel styling when windows are maximized
+    #[serde(default)]
+    pub keep_style_on_maximize: bool,
 }
 
 impl PartialEq for CosmicPanelConfig {
@@ -438,6 +441,7 @@ impl PartialEq for CosmicPanelConfig {
             && self.size_center == other.size_center
             && self.size_wings == other.size_wings
             && (self.opacity - other.opacity).abs() < 0.01
+            && self.keep_style_on_maximize == other.keep_style_on_maximize
     }
 }
 
@@ -467,6 +471,7 @@ impl Default for CosmicPanelConfig {
             opacity: 0.8,
             autohover_delay_ms: Some(500),
             padding_overlap: 0.5,
+            keep_style_on_maximize: false,
         }
     }
 }
@@ -688,10 +693,10 @@ impl CosmicPanelConfig {
     }
 
     pub fn maximize(&mut self) {
-        self.opacity = 1.0;
-        if self.autohide().is_some() {
+        if self.keep_style_on_maximize || self.autohide().is_some() {
             return;
         }
+        self.opacity = 1.0;
         self.expand_to_edges = true;
         self.margin = 0;
         self.border_radius = 0;
