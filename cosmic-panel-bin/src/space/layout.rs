@@ -330,7 +330,7 @@ impl PanelSpace {
         self.space.refresh();
         let padding_overlap = self.config.padding_overlap();
         let applet_padding =
-            self.config.size.get_applet_shrinkable_padding(true) as f32 * padding_overlap;
+            self.config.get_applet_shrinkable_padding(true) as f32 * padding_overlap;
 
         let mut bg_color = self.bg_color();
         for c in 0..3 {
@@ -547,29 +547,52 @@ impl PanelSpace {
         let center_sum = center_sum_scaled / self.scale;
         let right_sum = right_sum_scaled / self.scale;
 
+        let output_length = new_list_dim_length.max(1);
+        let dock_length = if is_dock {
+            self.config
+                .dock_length_percent
+                .and_then(|p| (p > 0 && p <= 100).then_some(p))
+                .map(|p| ((output_length as f32) * (p as f32 / 100.0)).round() as i32)
+                .unwrap_or(new_logical_length)
+                .clamp(1, output_length)
+        } else {
+            output_length
+        };
         let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
-            (new_logical_length as f32
-                + (new_list_dim_length - new_logical_length) as f32 * anim_state.cur.expanded)
+            (dock_length as f32 + (output_length - dock_length) as f32 * anim_state.cur.expanded)
                 as i32
         } else if is_dock {
-            new_logical_length
+            dock_length
         } else {
-            new_list_dim_length
+            output_length
         };
         self.container_length = container_length;
-        let container_lengthwise_pos = (new_list_dim_length - container_length) / 2;
+        let dock_position = self
+            .config
+            .dock_position_percent
+            .map(|p| p.clamp(0, 100))
+            .unwrap_or(50) as f32
+            / 100.0;
+        let container_lengthwise_pos = if is_dock {
+            let available = (output_length - container_length).max(0);
+            (available as f32 * dock_position).round() as i32
+        } else {
+            0
+        };
 
-        let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
+        let layout_major = if is_dock { container_length } else { layer_major };
+        let layout_start = if is_dock { container_lengthwise_pos as f64 } else { 0.0 };
 
-        let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
-        let mut right_pos = new_list_dim_length as f64
-            - container_lengthwise_pos as f64
-            - right_sum
-            - padding_u32 as f64;
+        let mut center_pos = layout_start + layout_major as f64 / 2. - center_sum / 2.;
 
-        let one_third = (layer_major as f64 - (spacing_u32 * num_lists.saturating_sub(1)) as f64)
+        let left_pos = layout_start + padding_u32 as f64;
+        let mut right_pos =
+            layout_start + layout_major as f64 - right_sum - padding_u32 as f64;
+
+        let one_third = (layout_major as f64
+            - (spacing_u32 * num_lists.saturating_sub(1)) as f64)
             / (3.min(num_lists) as f64);
-        let one_half = layer_major as f64 / (2.min(num_lists) as f64);
+        let one_half = layout_major as f64 / (2.min(num_lists) as f64);
         let larger_side = left_sum.max(right_sum);
         let larger_side = if left_overflow_button.is_some() || right_overflow_button.is_some() {
             larger_side.max(container_length as f64 / 3.)
@@ -578,14 +601,14 @@ impl PanelSpace {
         };
 
         let mut target_center_len =
-            (layer_major as f64 - larger_side * (2.)).max(one_third).min(layer_major as f64);
+            (layout_major as f64 - larger_side * (2.)).max(one_third).min(layout_major as f64);
         if num_lists == 1 {
             target_center_len -= padding_u32 as f64 * 2.;
         } else {
             target_center_len -= spacing_u32 as f64;
         }
         let target_left_len = if !has_center {
-            (layer_major as f64
+            (layout_major as f64
                 - right_sum.min(one_half)
                 - (spacing_u32 as f64) / 2.
                 - padding_u32 as f64)
@@ -597,10 +620,10 @@ impl PanelSpace {
                 - padding_u32 as f64)
                 .max(one_third)
         }
-        .min(layer_major as f64);
+        .min(layout_major as f64);
 
         let target_right_len = if !has_center {
-            (layer_major as f64
+            (layout_major as f64
                 - left_sum.min(one_half)
                 - (spacing_u32 as f64) / 2.
                 - padding_u32 as f64)
@@ -612,9 +635,9 @@ impl PanelSpace {
                 - padding_u32 as f64)
                 .max(one_third)
         }
-        .min(layer_major as f64);
-        let suggested_size = ((self.config.size.get_applet_icon_size(true) as f64
-            + self.config.size.get_applet_padding(true) as f64 * 2.)
+        .min(layout_major as f64);
+        let suggested_size = ((self.config.get_applet_icon_size(true) as f64
+            + self.config.get_applet_padding(true) as f64 * 2.)
             * -1.5 // allows some wiggle room
             * self.scale) as i32;
         let center_overflow = (center_sum - target_center_len) as i32;
@@ -990,34 +1013,28 @@ impl PanelSpace {
         // disable input regions for hidden stacked panels
         if !matches!(self.visibility, Visibility::Hidden) || self.additional_gap == 0 {
             if is_dock {
-                let (layer_length, actual_length) = if self.config.is_horizontal() {
-                    (new_dim.w, self.actual_size.w)
-                } else {
-                    (new_dim.h, self.actual_size.h)
-                };
-                let side = (layer_length as u32 - actual_length as u32) / 2;
-
+                let side = container_lengthwise_pos;
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => (
-                        (-1, side as i32),
+                        (-1, side),
                         (
                             new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
                             container_length,
                         ),
                     ),
                     PanelAnchor::Right => (
-                        (-anim_gap, side as i32),
+                        (-anim_gap, side),
                         (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
                     ),
                     PanelAnchor::Top => (
-                        (side as i32, -1),
+                        (side, -1),
                         (
                             container_length,
                             new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
                         ),
                     ),
                     PanelAnchor::Bottom => (
-                        (side as i32, 0 - anim_gap),
+                        (side, 0 - anim_gap),
                         (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
                     ),
                 };
@@ -1108,7 +1125,7 @@ impl PanelSpace {
         let mut overflow_cnt: usize = 0;
         let cur_cnt = elements.len();
 
-        let applet_size_unit = self.config.size.get_applet_icon_size_with_padding(true);
+        let applet_size_unit = self.config.get_applet_icon_size_with_padding(true);
         let padding = self.config.padding as i32;
         let spacing = self.config.spacing as i32;
         let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
@@ -1143,13 +1160,13 @@ impl PanelSpace {
         });
 
         let (major_padding, cross_padding) = (
-            self.config.size.get_applet_shrinkable_padding(true),
-            self.config.size.get_applet_padding(true),
+            self.config.get_applet_shrinkable_padding(true),
+            self.config.get_applet_padding(true),
         );
 
         let (applet_size_unit_major, applet_size_unit_cross) = (
-            self.config.size.get_applet_icon_size(true) + 2 * major_padding as u32,
-            self.config.size.get_applet_icon_size(true) + 2 * cross_padding as u32,
+            self.config.get_applet_icon_size(true) + 2 * major_padding as u32,
+            self.config.get_applet_icon_size(true) + 2 * cross_padding as u32,
         );
 
         for e in elements {
@@ -1212,7 +1229,7 @@ impl PanelSpace {
     ) -> OverflowClientPartition {
         let mut overflow_partition = OverflowClientPartition::default();
         overflow_partition.suggested_size =
-            (self.config.size.get_applet_icon_size_with_padding(true) as f64
+            (self.config.get_applet_icon_size_with_padding(true) as f64
                 + 2. * self.config.get_applet_padding(true) as f64)
                 .round() as u32;
         for c in clients {
@@ -1300,7 +1317,7 @@ impl PanelSpace {
         force_smaller: bool,
     ) -> u32 {
         info!("Overflow: {overflow} in section {section:?}");
-        let unit_size = self.config.size.get_applet_icon_size_with_padding(true);
+        let unit_size = self.config.get_applet_icon_size_with_padding(true);
 
         let mut sum = 0.;
         for ShrinkableClient { window: w, priority, shrink_size: min_units, .. } in
@@ -1405,8 +1422,8 @@ impl PanelSpace {
             return overflow;
         }
         let (major_padding, cross_padding) = (
-            self.config.size.get_applet_shrinkable_padding(true),
-            self.config.size.get_applet_padding(true),
+            self.config.get_applet_shrinkable_padding(true),
+            self.config.get_applet_padding(true),
         );
         let (h_padding, v_padding) = if self.config.is_horizontal() {
             (major_padding as f32, cross_padding as f32)
@@ -1421,8 +1438,8 @@ impl PanelSpace {
         };
         let mut overflow_cnt = overflow_space.elements().count();
         let (applet_size_unit_major, applet_size_unit_cross) = (
-            self.config.size.get_applet_icon_size(true) + 2 * major_padding as u32,
-            self.config.size.get_applet_icon_size(true) + 2 * cross_padding as u32,
+            self.config.get_applet_icon_size(true) + 2 * major_padding as u32,
+            self.config.get_applet_icon_size(true) + 2 * cross_padding as u32,
         );
         let (applet_size_unit_h, applet_size_unit_v) = if is_horizontal {
             (applet_size_unit_major, applet_size_unit_cross)
@@ -1555,7 +1572,7 @@ impl PanelSpace {
         if self.space.elements().all(|e| !matches!(e, CosmicMappedInternal::OverflowButton(e) if e.with_program(|p| p.id == id))) {
             let overflow_button_loc = (0, 0);
 
-            let icon_size = self.config.size.get_applet_icon_size(true);
+            let icon_size = self.config.get_applet_icon_size(true);
             let icon = if self.config.is_horizontal() {
                 "view-more-horizontal-symbolic"
             } else {
@@ -1632,8 +1649,8 @@ impl PanelSpace {
         let left = self.clients_left.lock().unwrap();
         let mut clients = self.shrinkable_clients(left.iter());
         drop(left);
-        let suggested_size = self.config.size.get_applet_icon_size(true)
-            + self.config.size.get_applet_padding(true) as u32 * 2;
+        let suggested_size = self.config.get_applet_icon_size(true)
+            + self.config.get_applet_padding(true) as u32 * 2;
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             Self::move_from_overflow(
                 extra_space,
@@ -1662,8 +1679,8 @@ impl PanelSpace {
         let mut clients = self.shrinkable_clients(center.iter());
         drop(center);
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            let suggested_size = self.config.size.get_applet_icon_size(true)
-                + self.config.size.get_applet_padding(true) as u32 * 2;
+            let suggested_size = self.config.get_applet_icon_size(true)
+                + self.config.get_applet_padding(true) as u32 * 2;
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
@@ -1707,8 +1724,8 @@ impl PanelSpace {
                 _ => {},
             };
         }
-        let suggested_size = self.config.size.get_applet_icon_size(true)
-            + self.config.size.get_applet_padding(true) as u32 * 2;
+        let suggested_size = self.config.get_applet_icon_size(true)
+            + self.config.get_applet_padding(true) as u32 * 2;
         self.relax_overflow_left(u32::MAX, &mut left_overflow_button);
         self.relax_overflow_center(u32::MAX, &mut center_overflow_button);
         self.relax_overflow_right(u32::MAX, &mut right_overflow_button);
@@ -1744,8 +1761,8 @@ impl PanelSpace {
         let mut clients = self.shrinkable_clients(right.iter());
 
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            let suggested_size = self.config.size.get_applet_icon_size(true)
-                + self.config.size.get_applet_padding(true) as u32 * 2;
+            let suggested_size = self.config.get_applet_icon_size(true)
+                + self.config.get_applet_padding(true) as u32 * 2;
             Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),

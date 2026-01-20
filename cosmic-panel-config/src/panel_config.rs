@@ -397,6 +397,14 @@ pub struct CosmicPanelConfig {
     /// space between panel plugins
     pub spacing: u32,
     pub border_radius: u32,
+    /// optional dock icon size override
+    pub dock_icon_size: Option<u16>,
+    /// optional dock corner radius override
+    pub dock_corner_radius: Option<u16>,
+    /// optional dock length override as percent of output (0 = auto)
+    pub dock_length_percent: Option<u16>,
+    /// optional dock position override as percent of available space (0-100)
+    pub dock_position_percent: Option<u16>,
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
@@ -432,6 +440,10 @@ impl PartialEq for CosmicPanelConfig {
             && self.padding == other.padding
             && self.spacing == other.spacing
             && self.border_radius == other.border_radius
+            && self.dock_icon_size == other.dock_icon_size
+            && self.dock_corner_radius == other.dock_corner_radius
+            && self.dock_length_percent == other.dock_length_percent
+            && self.dock_position_percent == other.dock_position_percent
             && self.exclusive_zone == other.exclusive_zone
             && self.autohide == other.autohide
             && self.margin == other.margin
@@ -463,6 +475,10 @@ impl Default for CosmicPanelConfig {
             exclusive_zone: true,
             autohide: Some(AutoHide::default()),
             border_radius: 8,
+            dock_icon_size: None,
+            dock_corner_radius: None,
+            dock_length_percent: None,
+            dock_position_percent: None,
             margin: 4,
             opacity: 0.8,
             autohover_delay_ms: Some(500),
@@ -513,11 +529,25 @@ impl CosmicPanelConfig {
 
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
-        self.size.get_applet_icon_size(is_symbolic)
+        self.dock_icon_size
+            .map(u32::from)
+            .unwrap_or_else(|| self.size.get_applet_icon_size(is_symbolic))
     }
 
     pub fn get_applet_padding(&self, is_symbolic: bool) -> u16 {
         self.size.get_applet_padding(is_symbolic)
+    }
+
+    pub fn get_applet_shrinkable_padding(&self, is_symbolic: bool) -> u16 {
+        self.size.get_applet_shrinkable_padding(is_symbolic)
+    }
+
+    pub fn get_applet_icon_size_with_padding(&self, is_symbolic: bool) -> u32 {
+        self.get_applet_icon_size(is_symbolic) + self.get_applet_padding(is_symbolic) as u32 * 2
+    }
+
+    pub fn get_effective_border_radius(&self) -> u32 {
+        self.dock_corner_radius.map(u32::from).unwrap_or(self.border_radius)
     }
 
     /// get the priority of the panel
