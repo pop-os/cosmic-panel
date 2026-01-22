@@ -2,6 +2,7 @@ use itertools::Itertools;
 use sctk::shell::xdg::XdgPositioner;
 use smithay::delegate_xdg_shell;
 use smithay::desktop::{PopupKind, Window};
+use smithay::input::Seat;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::utils::{SERIAL_COUNTER, Serial};
@@ -76,7 +77,17 @@ impl XdgShellHandler for GlobalState {
     ) {
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+    // TODO: Validate serial
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, _serial: Serial) {
+        let seat = Seat::from_resource(&seat).unwrap();
+        let Some(seat_pair) = self.server_state.seats.iter().find(|s| s.server.seat == seat) else {
+            return;
+        };
+        let _ = self.space.grab_popup(
+            surface,
+            seat_pair.client._seat.clone(),
+            seat_pair.client.get_serial_of_last_seat_event(),
+        );
         if let Some(cosmic_workspaces) = &self.space.shared.cosmic_workspaces {
             cosmic_workspaces.hide();
         }
