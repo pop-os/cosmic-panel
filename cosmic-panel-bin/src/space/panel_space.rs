@@ -1533,7 +1533,7 @@ impl PanelSpace {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity),
                 border_radius: self.config.get_effective_border_radius(),
-                expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
+                expanded: if self.config.expand_to_edges_effective() { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
             let cur = start.clone();
@@ -1752,7 +1752,7 @@ impl PanelSpace {
             }
         }
 
-        if self.config.expand_to_edges != config.expand_to_edges {
+        if self.config.expand_to_edges_effective() != config.expand_to_edges_effective() {
             self.reset_overflow();
         }
 
@@ -1766,13 +1766,13 @@ impl PanelSpace {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity),
                 border_radius: self.config.get_effective_border_radius(),
-                expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
+                expanded: if self.config.expand_to_edges_effective() { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
             let end = AnimatableState {
                 bg_color,
                 border_radius: config.get_effective_border_radius(),
-                expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
+                expanded: if config.expand_to_edges_effective() { 1.0 } else { 0.0 },
                 gap: config.get_effective_anchor_gap() as u16,
             };
             if let Some(animated_state) = self.animate_state.as_mut() {

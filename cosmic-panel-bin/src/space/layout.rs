@@ -161,8 +161,7 @@ impl PanelSpace {
             })
             .collect_vec();
 
-        let is_dock = !self.config.expand_to_edges()
-            || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
+        let is_dock_layout = self.config.name.eq_ignore_ascii_case("Dock");
         let mut windows_left = to_map
             .iter()
             .cloned()
@@ -296,7 +295,7 @@ impl PanelSpace {
             .collect_vec();
         make_indices_contiguous(&mut windows_right);
 
-        if is_dock {
+        if is_dock_layout {
             windows_center = windows_left
                 .drain(..)
                 .chain(windows_center)
@@ -348,8 +347,9 @@ impl PanelSpace {
             PanelAnchor::Left | PanelAnchor::Right => (self.dimensions.w, self.dimensions.h),
             PanelAnchor::Top | PanelAnchor::Bottom => (self.dimensions.h, self.dimensions.w),
         };
-        let is_dock = !self.config.expand_to_edges();
-        if is_dock {
+        let is_compact = !self.config.expand_to_edges_effective();
+        let is_dock_layout = self.config.name.eq_ignore_ascii_case("Dock");
+        if is_dock_layout {
             if let Some(left_button) = left_overflow_button.take() {
                 self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(left_button));
             }
@@ -548,7 +548,7 @@ impl PanelSpace {
         let right_sum = right_sum_scaled / self.scale;
 
         let output_length = new_list_dim_length.max(1);
-        let dock_length = if is_dock {
+        let dock_length = if is_compact || self.animate_state.is_some() {
             self.config
                 .dock_length_percent
                 .and_then(|p| (p > 0 && p <= 100).then_some(p))
@@ -561,7 +561,7 @@ impl PanelSpace {
         let container_length = if let Some(anim_state) = self.animate_state.as_ref() {
             (dock_length as f32 + (output_length - dock_length) as f32 * anim_state.cur.expanded)
                 as i32
-        } else if is_dock {
+        } else if is_compact {
             dock_length
         } else {
             output_length
@@ -573,15 +573,15 @@ impl PanelSpace {
             .map(|p| p.clamp(0, 100))
             .unwrap_or(50) as f32
             / 100.0;
-        let container_lengthwise_pos = if is_dock {
+        let container_lengthwise_pos = if is_compact {
             let available = (output_length - container_length).max(0);
             (available as f32 * dock_position).round() as i32
         } else {
             0
         };
 
-        let layout_major = if is_dock { container_length } else { layer_major };
-        let layout_start = if is_dock { container_lengthwise_pos as f64 } else { 0.0 };
+        let layout_major = if is_compact { container_length } else { layer_major };
+        let layout_start = if is_compact { container_lengthwise_pos as f64 } else { 0.0 };
 
         let mut center_pos = layout_start + layout_major as f64 / 2. - center_sum / 2.;
 
@@ -649,7 +649,7 @@ impl PanelSpace {
             bail!("overflow: {}", overflow)
         }
 
-        if !is_dock && self.animate_state.is_none() {
+        if !is_dock_layout && self.animate_state.is_none() {
             let left_overflow = (left_sum - target_left_len) as i32;
 
             if left_overflow < suggested_size {
@@ -844,7 +844,7 @@ impl PanelSpace {
                         _ = self.shared.panel_tx.send(crate::PanelCalloopMsg::MinimizeRect {
                             output,
                             applet_info: MinimizeApplet {
-                                priority: if is_dock { 1 } else { 0 },
+                                priority: if is_dock_layout { 1 } else { 0 },
                                 rect: new_rect,
                                 surface: layer.wl_surface().clone(),
                             },
@@ -903,7 +903,7 @@ impl PanelSpace {
         } else {
             panel_size.h = container_length_scaled;
         }
-        let (mut w, mut h) = if is_dock {
+        let (mut w, mut h) = if is_compact {
             if self.config.is_horizontal() {
                 (container_length, new_dim.h)
             } else {
@@ -1012,7 +1012,7 @@ impl PanelSpace {
 
         // disable input regions for hidden stacked panels
         if !matches!(self.visibility, Visibility::Hidden) || self.additional_gap == 0 {
-            if is_dock {
+            if is_compact {
                 let side = container_lengthwise_pos;
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => (
@@ -1290,7 +1290,7 @@ impl PanelSpace {
         let g = self.clients_center.lock().unwrap();
         let left_g = self.clients_left.lock().unwrap();
         let right_g = self.clients_right.lock().unwrap();
-        let center: Vec<&PanelClient> = if self.config.expand_to_edges {
+        let center: Vec<&PanelClient> = if self.config.expand_to_edges_effective() {
             g.iter().collect()
         } else {
             left_g.iter().chain(g.iter()).chain(right_g.iter()).collect()

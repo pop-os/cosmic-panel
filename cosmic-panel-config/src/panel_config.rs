@@ -405,6 +405,9 @@ pub struct CosmicPanelConfig {
     pub dock_length_percent: Option<u16>,
     /// optional dock position override as percent of available space (0-100)
     pub dock_position_percent: Option<u16>,
+    /// enable custom dock/panel length even when extend_to_edges is set
+    #[serde(default)]
+    pub dock_custom_length: bool,
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
@@ -444,6 +447,7 @@ impl PartialEq for CosmicPanelConfig {
             && self.dock_corner_radius == other.dock_corner_radius
             && self.dock_length_percent == other.dock_length_percent
             && self.dock_position_percent == other.dock_position_percent
+            && self.dock_custom_length == other.dock_custom_length
             && self.exclusive_zone == other.exclusive_zone
             && self.autohide == other.autohide
             && self.margin == other.margin
@@ -479,6 +483,7 @@ impl Default for CosmicPanelConfig {
             dock_corner_radius: None,
             dock_length_percent: None,
             dock_position_percent: None,
+            dock_custom_length: false,
             margin: 4,
             opacity: 0.8,
             autohover_delay_ms: Some(500),
@@ -550,11 +555,15 @@ impl CosmicPanelConfig {
         self.dock_corner_radius.map(u32::from).unwrap_or(self.border_radius)
     }
 
+    pub fn expand_to_edges_effective(&self) -> bool {
+        self.expand_to_edges && !self.dock_custom_length
+    }
+
     /// get the priority of the panel
     /// higher priority panels will be created first and given more space when
     /// competing for space
     pub fn get_priority(&self) -> u32 {
-        let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
+        let mut priority = if self.expand_to_edges_effective() { 10000 } else { 0 };
         if self.autohide().is_none() {
             priority += 1000;
         }
@@ -571,7 +580,7 @@ impl CosmicPanelConfig {
     }
 
     pub fn get_stack_priority(&self) -> u32 {
-        let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
+        let mut priority = if self.expand_to_edges_effective() { 10000 } else { 0 };
         // XXX for stack priority, most significant value is autohide
         if self.autohide().is_none() {
             priority += 100000;
@@ -723,6 +732,7 @@ impl CosmicPanelConfig {
             return;
         }
         self.expand_to_edges = true;
+        self.dock_custom_length = false;
         self.margin = 0;
         self.border_radius = 0;
         self.anchor_gap = false;

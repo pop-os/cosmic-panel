@@ -172,6 +172,7 @@ impl Default for CosmicPanelContainerConfig {
                     dock_corner_radius: None,
                     dock_length_percent: None,
                     dock_position_percent: None,
+                    dock_custom_length: false,
                     exclusive_zone: true,
                     autohide: None,
                     margin: 0,
@@ -207,6 +208,7 @@ impl Default for CosmicPanelContainerConfig {
                     dock_corner_radius: None,
                     dock_length_percent: None,
                     dock_position_percent: None,
+                    dock_custom_length: false,
                     exclusive_zone: false,
                     autohide: Some(crate::AutoHide {
                         wait_time: 500,
