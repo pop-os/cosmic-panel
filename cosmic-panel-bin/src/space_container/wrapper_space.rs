@@ -29,7 +29,7 @@ use smithay::reexports::wayland_server::{self, Resource};
 
 use crate::space::PanelSpace;
 
-use super::SpaceContainer;
+use super::{SpaceContainer, space_for_client_mut};
 
 impl WrapperSpace for SpaceContainer {
     type Config = CosmicPanelContainerConfig;
@@ -299,16 +299,7 @@ impl WrapperSpace for SpaceContainer {
         // add window to the space with a client that matches the window
         let w_client = s_top_level.toplevel().and_then(|t| t.wl_surface().client().map(|c| c.id()));
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().zip(w_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
+        if let Some(space) = space_for_client_mut(&mut self.space_list, w_client) {
             space.add_window(s_top_level);
         }
     }
@@ -330,16 +321,7 @@ impl WrapperSpace for SpaceContainer {
         // add popup to the space with a client that matches the window
         let p_client = s_surface.wl_surface().client().map(|c| c.id());
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
+        if let Some(space) = space_for_client_mut(&mut self.space_list, p_client) {
             space.add_popup(
                 compositor_state,
                 fractional_scale_manager,
@@ -367,16 +349,7 @@ impl WrapperSpace for SpaceContainer {
         // add popup to the space with a client that matches the window
         let p_client = popup.wl_surface().client().map(|c| c.id());
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
+        if let Some(space) = space_for_client_mut(&mut self.space_list, p_client) {
             space.reposition_popup(popup, positioner_state, token)?
         }
         anyhow::bail!("Failed to find popup with matching client id")
@@ -435,16 +408,7 @@ impl WrapperSpace for SpaceContainer {
         // add window to the space with a client that matches the window
         let w_client = w.client().map(|c| c.id());
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().zip(w_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
+        if let Some(space) = space_for_client_mut(&mut self.space_list, w_client) {
             space.dirty_window(dh, w);
         }
     }
@@ -457,16 +421,7 @@ impl WrapperSpace for SpaceContainer {
         // add window to the space with a client that matches the window
         let p_client = w.client().map(|c| c.id());
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
-            space
-                .clients_center
-                .lock()
-                .unwrap()
-                .iter()
-                .chain(space.clients_left.lock().unwrap().iter())
-                .chain(space.clients_right.lock().unwrap().iter())
-                .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
+        if let Some(space) = space_for_client_mut(&mut self.space_list, p_client) {
             space.dirty_popup(dh, w);
         }
     }
