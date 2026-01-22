@@ -31,14 +31,7 @@ impl XdgShellHandler for GlobalState {
             Ok(p) => p,
             Err(_) => return,
         };
-        if let Some(f_seat) = self.server_state.seats.iter().find(|s| {
-            self.client_state
-                .hovered_surface
-                .borrow()
-                .iter()
-                .chain(self.client_state.focused_surface.borrow().iter())
-                .any(|f| f.1 == s.name && matches!(f.2, FocusStatus::Focused))
-        }) && self
+        if self
             .space
             .add_popup(
                 &self.client_state.compositor_state,
@@ -50,8 +43,6 @@ impl XdgShellHandler for GlobalState {
                 surface.clone(),
                 positioner,
                 positioner_state,
-                &f_seat.client._seat,
-                f_seat.client.get_serial_of_last_seat_event(),
             )
             .is_ok()
         {
