@@ -397,6 +397,17 @@ pub struct CosmicPanelConfig {
     /// space between panel plugins
     pub spacing: u32,
     pub border_radius: u32,
+    /// optional dock icon size override
+    pub dock_icon_size: Option<u16>,
+    /// optional dock corner radius override
+    pub dock_corner_radius: Option<u16>,
+    /// optional dock length override as percent of output (0 = auto)
+    pub dock_length_percent: Option<u16>,
+    /// optional dock position override as percent of available space (0-100)
+    pub dock_position_percent: Option<u16>,
+    /// enable custom dock/panel length even when extend_to_edges is set
+    #[serde(default)]
+    pub dock_custom_length: bool,
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
@@ -432,6 +443,11 @@ impl PartialEq for CosmicPanelConfig {
             && self.padding == other.padding
             && self.spacing == other.spacing
             && self.border_radius == other.border_radius
+            && self.dock_icon_size == other.dock_icon_size
+            && self.dock_corner_radius == other.dock_corner_radius
+            && self.dock_length_percent == other.dock_length_percent
+            && self.dock_position_percent == other.dock_position_percent
+            && self.dock_custom_length == other.dock_custom_length
             && self.exclusive_zone == other.exclusive_zone
             && self.autohide == other.autohide
             && self.margin == other.margin
@@ -463,6 +479,11 @@ impl Default for CosmicPanelConfig {
             exclusive_zone: true,
             autohide: Some(AutoHide::default()),
             border_radius: 8,
+            dock_icon_size: None,
+            dock_corner_radius: None,
+            dock_length_percent: None,
+            dock_position_percent: None,
+            dock_custom_length: false,
             margin: 4,
             opacity: 0.8,
             autohover_delay_ms: Some(500),
@@ -513,18 +534,36 @@ impl CosmicPanelConfig {
 
     /// get applet icon dimensions
     pub fn get_applet_icon_size(&self, is_symbolic: bool) -> u32 {
-        self.size.get_applet_icon_size(is_symbolic)
+        self.dock_icon_size
+            .map(u32::from)
+            .unwrap_or_else(|| self.size.get_applet_icon_size(is_symbolic))
     }
 
     pub fn get_applet_padding(&self, is_symbolic: bool) -> u16 {
         self.size.get_applet_padding(is_symbolic)
     }
 
+    pub fn get_applet_shrinkable_padding(&self, is_symbolic: bool) -> u16 {
+        self.size.get_applet_shrinkable_padding(is_symbolic)
+    }
+
+    pub fn get_applet_icon_size_with_padding(&self, is_symbolic: bool) -> u32 {
+        self.get_applet_icon_size(is_symbolic) + self.get_applet_padding(is_symbolic) as u32 * 2
+    }
+
+    pub fn get_effective_border_radius(&self) -> u32 {
+        self.dock_corner_radius.map(u32::from).unwrap_or(self.border_radius)
+    }
+
+    pub fn expand_to_edges_effective(&self) -> bool {
+        self.expand_to_edges && !self.dock_custom_length
+    }
+
     /// get the priority of the panel
     /// higher priority panels will be created first and given more space when
     /// competing for space
     pub fn get_priority(&self) -> u32 {
-        let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
+        let mut priority = if self.expand_to_edges_effective() { 10000 } else { 0 };
         if self.autohide().is_none() {
             priority += 1000;
         }
@@ -541,7 +580,7 @@ impl CosmicPanelConfig {
     }
 
     pub fn get_stack_priority(&self) -> u32 {
-        let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
+        let mut priority = if self.expand_to_edges_effective() { 10000 } else { 0 };
         // XXX for stack priority, most significant value is autohide
         if self.autohide().is_none() {
             priority += 100000;
@@ -693,6 +732,7 @@ impl CosmicPanelConfig {
             return;
         }
         self.expand_to_edges = true;
+        self.dock_custom_length = false;
         self.margin = 0;
         self.border_radius = 0;
         self.anchor_gap = false;
