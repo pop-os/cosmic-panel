@@ -186,8 +186,6 @@ pub trait WrapperSpace {
         s_surface: PopupSurface,
         positioner: XdgPositioner,
         positioner_state: PositionerState,
-        latest_seat: &WlSeat,
-        latest_serial: u32,
     ) -> anyhow::Result<()>;
 
     /// handle a button press or release on a client surface

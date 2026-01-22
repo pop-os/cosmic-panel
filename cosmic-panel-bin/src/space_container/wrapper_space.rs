@@ -326,8 +326,6 @@ impl WrapperSpace for SpaceContainer {
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
-        c_seat: &WlSeat,
-        last_serial: u32,
     ) -> anyhow::Result<()> {
         // add popup to the space with a client that matches the window
         let p_client = s_surface.wl_surface().client().map(|c| c.id());
@@ -343,8 +341,6 @@ impl WrapperSpace for SpaceContainer {
                 s_surface,
                 positioner,
                 positioner_state,
-                c_seat,
-                last_serial,
             )
         } else {
             anyhow::bail!("failed to find a matching panel space for this popup.")

@@ -36,49 +36,35 @@ impl XdgShellHandler for GlobalState {
             Ok(p) => p,
             Err(_) => return,
         };
-        if let Some(f_seat) = self.server_state.seats.iter().find(|s| {
-            self.client_state
-                .hovered_surface
-                .borrow()
+        if self
+            .space
+            .add_popup(
+                &self.client_state.compositor_state,
+                self.client_state.fractional_scaling_manager.as_ref(),
+                self.client_state.viewporter_state.as_ref(),
+                &self.client_state.connection,
+                &self.client_state.queue_handle,
+                &mut self.client_state.xdg_shell_state,
+                surface.clone(),
+                positioner,
+                positioner_state,
+            )
+            .is_ok()
+        {
+            self.server_state.popup_manager.track_popup(PopupKind::Xdg(surface.clone())).unwrap();
+            self.server_state.popup_manager.commit(surface.wl_surface());
+            for kbd in self
+                .server_state
+                .seats
                 .iter()
-                .chain(self.client_state.focused_surface.borrow().iter())
-                .any(|f| f.1 == s.name && matches!(f.2, FocusStatus::Focused))
-        }) {
-            if self
-                .space
-                .add_popup(
-                    &self.client_state.compositor_state,
-                    self.client_state.fractional_scaling_manager.as_ref(),
-                    self.client_state.viewporter_state.as_ref(),
-                    &self.client_state.connection,
-                    &self.client_state.queue_handle,
-                    &mut self.client_state.xdg_shell_state,
-                    surface.clone(),
-                    positioner,
-                    positioner_state,
-                    &f_seat.client._seat,
-                    f_seat.client.get_serial_of_last_seat_event(),
-                )
-                .is_ok()
+                .filter_map(|s| s.server.seat.get_keyboard())
+                .collect_vec()
             {
-                self.server_state
-                    .popup_manager
-                    .track_popup(PopupKind::Xdg(surface.clone()))
-                    .unwrap();
-                self.server_state.popup_manager.commit(surface.wl_surface());
-                for kbd in self
-                    .server_state
-                    .seats
-                    .iter()
-                    .filter_map(|s| s.server.seat.get_keyboard())
-                    .collect_vec()
-                {
-                    kbd.set_focus(
-                        self,
-                        Some(SpaceTarget::Surface(surface.wl_surface().clone())),
-                        SERIAL_COUNTER.next_serial(),
-                    );
-                }
+                kbd.set_focus(
+                    self,
+                    Some(SpaceTarget::Surface(surface.wl_surface().clone())),
+                    SERIAL_COUNTER.next_serial(),
+                );
             }
         }
     }

@@ -191,8 +191,6 @@ impl WrapperSpace for PanelSpace {
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
-        latest_seat: &wl_seat::WlSeat,
-        latest_serial: u32,
     ) -> anyhow::Result<()> {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
@@ -285,14 +283,7 @@ impl WrapperSpace for PanelSpace {
                 area = area.saturating_add(r.1.size.w.saturating_mul(r.1.size.h));
                 input_region.add(0, 0, r.1.size.w, r.1.size.h);
             }
-            // must take a grab on all popups to avoid being closed automatically by focus
-            // follows cursor...
-            if area > 1 {
-                c_popup.xdg_popup().grab(latest_seat, latest_serial);
-            }
             c_wl_surface.set_input_region(Some(input_region.wl_region()));
-        } else {
-            c_popup.xdg_popup().grab(latest_seat, latest_serial);
         }
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
