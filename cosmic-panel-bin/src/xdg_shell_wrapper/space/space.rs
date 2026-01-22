@@ -188,6 +188,9 @@ pub trait WrapperSpace {
         positioner_state: PositionerState,
     ) -> anyhow::Result<()>;
 
+    /// Add a grab for the popup
+    fn grab_popup(&mut self, popup: PopupSurface, seat: WlSeat, serial: u32) -> anyhow::Result<()>;
+
     /// handle a button press or release on a client surface
     /// optionally returns an interacted server wl surface
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget>;

@@ -340,6 +340,18 @@ impl WrapperSpace for PanelSpace {
         Ok(())
     }
 
+    fn grab_popup(
+        &mut self,
+        popup: PopupSurface,
+        seat: wl_seat::WlSeat,
+        serial: u32,
+    ) -> anyhow::Result<()> {
+        if let Some(p) = self.popups.iter().find(|wp| wp.s_surface == popup) {
+            p.popup.c_popup.xdg_popup().grab(&seat, serial);
+        }
+        Ok(())
+    }
+
     fn reposition_popup(
         &mut self,
         popup: PopupSurface,

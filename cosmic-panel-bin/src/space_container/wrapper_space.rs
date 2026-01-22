@@ -347,6 +347,21 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
+    fn grab_popup(
+        &mut self,
+        s_surface: smithay::wayland::shell::xdg::PopupSurface,
+        seat: WlSeat,
+        serial: u32,
+    ) -> anyhow::Result<()> {
+        let p_client = s_surface.wl_surface().client().map(|c| c.id());
+
+        if let Some(space) = space_for_client_mut(&mut self.space_list, p_client) {
+            space.grab_popup(s_surface, seat, serial)
+        } else {
+            anyhow::bail!("Failed to find popup with matching client id")
+        }
+    }
+
     fn reposition_popup(
         &mut self,
         popup: smithay::wayland::shell::xdg::PopupSurface,
