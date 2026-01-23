@@ -191,8 +191,6 @@ impl WrapperSpace for PanelSpace {
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
-        latest_seat: &wl_seat::WlSeat,
-        latest_serial: u32,
     ) -> anyhow::Result<()> {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
         let c_wl_surface = compositor_state.create_surface(qh);
@@ -285,14 +283,7 @@ impl WrapperSpace for PanelSpace {
                 area = area.saturating_add(r.1.size.w.saturating_mul(r.1.size.h));
                 input_region.add(0, 0, r.1.size.w, r.1.size.h);
             }
-            // must take a grab on all popups to avoid being closed automatically by focus
-            // follows cursor...
-            if area > 1 {
-                c_popup.xdg_popup().grab(latest_seat, latest_serial);
-            }
             c_wl_surface.set_input_region(Some(input_region.wl_region()));
-        } else {
-            c_popup.xdg_popup().grab(latest_seat, latest_serial);
         }
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
@@ -346,6 +337,18 @@ impl WrapperSpace for PanelSpace {
             s_surface,
         });
 
+        Ok(())
+    }
+
+    fn grab_popup(
+        &mut self,
+        popup: PopupSurface,
+        seat: wl_seat::WlSeat,
+        serial: u32,
+    ) -> anyhow::Result<()> {
+        if let Some(p) = self.popups.iter().find(|wp| wp.s_surface == popup) {
+            p.popup.c_popup.xdg_popup().grab(&seat, serial);
+        }
         Ok(())
     }
 
@@ -1390,16 +1393,28 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn keyboard_leave(&mut self, seat_name: &str, f: Option<c_wl_surface::WlSurface>) {
-        // if not a leaf, return early
         if let Some(surface) = f.as_ref() {
+            // if not a leaf, return early
             if self.popups.iter().any(|p| p.popup.parent == *surface) {
                 return;
             }
-        }
-        if self.layer.as_ref().zip(f).is_some_and(|l| l.0.wl_surface() == &l.1)
-            && (self.popups.iter().any(|p| p.popup.grab) || self.overflow_popup.is_some())
-        {
-            return;
+
+            if self.layer.as_ref().is_some_and(|l| l.wl_surface() == surface)
+                && (self.popups.iter().any(|p| p.popup.grab) || self.overflow_popup.is_some())
+            {
+                return;
+            }
+
+            // Ignore event for wl_surface that isn't our layer or popup (i.e. a different panel)
+            if !self.layer.as_ref().is_some_and(|l| l.wl_surface() == surface)
+                && !self
+                    .overflow_popup
+                    .as_ref()
+                    .is_some_and(|(p, _)| p.c_popup.wl_surface() == surface)
+                && !self.popups.iter().any(|p| p.popup.c_popup.wl_surface() == surface)
+            {
+                return;
+            }
         }
 
         self.s_focused_surface.retain(|(_, name)| name != seat_name);
