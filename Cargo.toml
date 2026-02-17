@@ -30,5 +30,3 @@ cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//co
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 # xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 
-# [patch."https://github.com/pop-os/libcosmic"]
-# cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "zbus-4" }
