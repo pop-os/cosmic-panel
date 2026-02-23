@@ -6,7 +6,7 @@ use cosmic::{
     iced::{Color, Length, id},
     iced_core::Shadow,
     theme,
-    widget::{container, horizontal_space},
+    widget::{container, space},
 };
 
 use crate::{
@@ -52,7 +52,7 @@ impl Program for OverflowPopup {
         let height = self.logical_height;
         let border_width = BORDER_WIDTH as f32;
         Element::from(
-            cosmic::widget::container(horizontal_space().width(Length::Fixed(width)))
+            cosmic::widget::container(space::horizontal().width(Length::Fixed(width)))
                 .width(Length::Fixed(width))
                 .height(Length::Fixed(height))
                 .class(theme::Container::custom(move |theme| {
@@ -69,6 +69,7 @@ impl Program for OverflowPopup {
                         },
                         shadow: Shadow::default(),
                         icon_color: Some(cosmic.background.on.into()),
+                        snap: true,
                     }
                 })),
         )

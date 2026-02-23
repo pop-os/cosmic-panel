@@ -39,8 +39,8 @@ pub fn overflow_button_element(
     let Padding { top, right, bottom, left } = button_padding;
     let button_padding = Padding { top, right, bottom, left };
     let size = (
-        (icon_size + button_padding.horizontal()).round() as i32,
-        (icon_size + button_padding.vertical()).round() as i32,
+        (icon_size + button_padding.x()).round() as i32,
+        (icon_size + button_padding.y()).round() as i32,
     );
     IcedElement::new(
         OverflowButton::new(
@@ -182,8 +182,8 @@ impl Program for OverflowButton {
                 )
                 .align_x(cosmic::iced::Alignment::Center)
                 .align_y(cosmic::iced::Alignment::Center)
-                .width(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal()))
-                .height(Length::Fixed(self.icon_size as f32 + self.button_padding.horizontal())),
+                .width(Length::Fixed(self.icon_size as f32 + self.button_padding.x()))
+                .height(Length::Fixed(self.icon_size as f32 + self.button_padding.y())),
             )
             .selected(self.selected.load(Ordering::Relaxed))
             .class(Button::AppletIcon)

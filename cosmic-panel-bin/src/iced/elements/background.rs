@@ -6,11 +6,11 @@ use cosmic::{
     iced::{Color, Length, id},
     iced_core::Shadow,
     theme,
-    widget::horizontal_space,
+    widget::space,
 };
 
 use crate::{
-    iced::{Element, IcedElement, Program},
+    iced::{Element, IcedElement, Program, ProgramWrapper},
     xdg_shell_wrapper::shared_state::GlobalState,
 };
 
@@ -66,7 +66,7 @@ impl Program for Background {
 
         let color = self.color;
         Element::from(
-            cosmic::widget::container(horizontal_space().width(Length::Fixed(width)))
+            cosmic::widget::container(space::horizontal().width(Length::Fixed(width)))
                 .width(Length::Fixed(width))
                 .height(Length::Fixed(height))
                 .class(theme::Container::custom(move |theme| {
@@ -81,6 +81,7 @@ impl Program for Background {
                             color: cosmic.background.divider.into(),
                         },
                         shadow: Shadow::default(),
+                        snap: true,
                         icon_color: Some(cosmic.background.on.into()),
                     }
                 })),

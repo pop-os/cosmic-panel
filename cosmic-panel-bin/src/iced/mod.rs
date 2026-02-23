@@ -1,17 +1,22 @@
+mod state;
+
 use std::{
     borrow::Cow,
+    cell::{OnceCell, RefCell},
     collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
+    rc::Rc,
     sync::{Arc, LazyLock, Mutex, mpsc::Receiver},
     time::{Duration, Instant},
 };
 
-use crate::xdg_shell_wrapper::shared_state::GlobalState;
+use crate::{iced::state::State, xdg_shell_wrapper::shared_state::GlobalState};
+use calloop::EventLoop;
 use cosmic::{
     Theme,
     iced::{
-        Limits, Point as IcedPoint, Size as IcedSize, Task,
+        self, Limits, Point as IcedPoint, Size as IcedSize, Task,
         advanced::widget::Tree,
         event::Event,
         futures::{FutureExt, StreamExt},
@@ -22,11 +27,7 @@ use cosmic::{
     },
     iced_core::{Color, Font, Length, Pixels, clipboard::Null as NullClipboard, renderer::Style},
     iced_renderer::Renderer as IcedRenderer,
-    iced_runtime::{
-        Action, Debug,
-        program::{Program as IcedProgram, State},
-        task::into_stream,
-    },
+    iced_runtime::{Action, task::into_stream},
     widget::Id,
 };
 use iced_tiny_skia::graphics::Viewport;
@@ -69,6 +70,9 @@ pub mod panel_message;
 
 static ID: LazyLock<Id> = LazyLock::new(|| Id::new("Program"));
 
+thread_local! {
+pub static EVENT_LOOP_HANDLE: OnceCell<RefCell<LoopHandle<'static, GlobalState>>> = OnceCell::new();
+}
 pub type Element<'a, Message> = cosmic::iced::Element<'a, Message, cosmic::Theme, cosmic::Renderer>;
 
 pub struct IcedElement<P: Program + Send + 'static>(Arc<Mutex<IcedElementInternal<P>>>);
@@ -102,6 +106,26 @@ impl<P: Program + Send + 'static> Hash for IcedElement<P> {
     }
 }
 
+pub trait IcedProgram {
+    type Message: std::fmt::Debug + Send;
+    fn update(&mut self, _message: Self::Message) -> Task<Self::Message> {
+        Task::none()
+    }
+    fn view(&self) -> Element<'_, Self::Message>;
+
+    fn background_color(&self) -> Color {
+        Color::TRANSPARENT
+    }
+
+    fn foreground(
+        &self,
+        _pixels: &mut tiny_skia::PixmapMut<'_>,
+        _damage: &[Rectangle<i32, BufferCoords>],
+        _scale: f32,
+    ) {
+    }
+}
+
 pub trait Program {
     type Message: std::fmt::Debug + Send;
     fn update(
@@ -127,17 +151,59 @@ pub trait Program {
     }
 }
 
+pub struct MyExecutor {
+    // scheduler: Scheduler<Option<<P as Program>::Message>>,
+    // executor_token: Option<RegistrationToken>,
+    // rx: Receiver<Option<<P as Program>::Message>>,
+    scheduler: Scheduler<()>,
+    executor_token: Option<RegistrationToken>,
+}
+
+impl iced::Executor for MyExecutor {
+    fn new() -> Result<Self, futures::io::Error>
+    where
+        Self: Sized,
+    {
+        let (executor, scheduler) = calloop::futures::executor().map_err(|_| {
+            futures::io::Error::new(futures::io::ErrorKind::Other, "Failed to create executor")
+        })?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = EVENT_LOOP_HANDLE.with(|l| {
+            let g = l.get().unwrap().borrow();
+            g.clone()
+        });
+
+        let executor_token = handle
+            .insert_source(executor, move |message, _, _| {
+                let _ = tx.send(message);
+            })
+            .map_err(|_| {
+                futures::io::Error::new(
+                    futures::io::ErrorKind::Other,
+                    "Failed to insert executor into event loop",
+                )
+            })?;
+        Ok(MyExecutor { scheduler, executor_token: Some(executor_token) })
+    }
+
+    fn spawn(&self, future: impl Future<Output = ()> + cosmic::iced_futures::MaybeSend + 'static) {
+        self.scheduler.schedule(future).unwrap();
+    }
+
+    fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
+        panic!("block_on is not supported");
+    }
+}
+
 struct ProgramWrapper<P: Program>(P, LoopHandle<'static, GlobalState>);
 impl<P: Program> IcedProgram for ProgramWrapper<P> {
     type Message = <P as Program>::Message;
-    type Renderer = cosmic::Renderer;
-    type Theme = cosmic::Theme;
 
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    fn update(&mut self, message: <P as Program>::Message) -> Task<<P as Program>::Message> {
         self.0.update(message, &self.1)
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> cosmic::Element<'_, <P as Program>::Message> {
         self.0.view()
     }
 }
@@ -159,7 +225,6 @@ struct IcedElementInternal<P: Program + Send + 'static> {
     theme: Theme,
     renderer: cosmic::Renderer,
     state: State<ProgramWrapper<P>>,
-    debug: Debug,
 
     // futures
     handle: LoopHandle<'static, GlobalState>,
@@ -183,13 +248,11 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             tracing::warn!("Missing force_update call");
         }
         let mut renderer = IcedRenderer::new(Font::default(), Pixels(16.0));
-        let mut debug = Debug::new();
         let state = State::new(
             ID.clone(),
             ProgramWrapper(self.state.program().0.clone(), handle.clone()),
             IcedSize::new(self.size.w as f32, self.size.h as f32),
             &mut renderer,
-            &mut debug,
         );
         let request_redraws = self.request_redraws;
 
@@ -204,7 +267,6 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             touch_map: HashMap::new(),
             renderer,
             state,
-            debug,
             handle,
             scheduler,
             executor_token,
@@ -224,7 +286,6 @@ impl<P: Program + Send + 'static> fmt::Debug for IcedElementInternal<P> {
             .field("theme", &"...")
             .field("renderer", &"...")
             .field("state", &"...")
-            .field("debug", &self.debug)
             .field("handle", &self.handle)
             .field("scheduler", &self.scheduler)
             .field("executor_token", &self.executor_token)
@@ -250,14 +311,12 @@ impl<P: Program + Send + 'static> IcedElement<P> {
     ) -> IcedElement<P> {
         let size = size.into();
         let mut renderer = IcedRenderer::new(Font::default(), Pixels(16.0));
-        let mut debug = Debug::new();
 
         let state = State::new(
             ID.clone(),
             ProgramWrapper(program, handle.clone()),
             IcedSize::new(size.w as f32, size.h as f32),
             &mut renderer,
-            &mut debug,
         );
 
         let (executor, scheduler) = calloop::futures::executor().expect("Out of file descriptors");
@@ -278,7 +337,6 @@ impl<P: Program + Send + 'static> IcedElement<P> {
             theme,
             renderer,
             state,
-            debug,
             handle,
             scheduler,
             executor_token,
@@ -298,14 +356,15 @@ impl<P: Program + Send + 'static> IcedElement<P> {
 
     pub fn minimum_size(&self) -> Size<i32, Logical> {
         let internal = self.0.lock().unwrap();
-        let element = internal.state.program().0.view();
+        let mut element = internal.state.program().0.view();
+        let tree = &mut Tree::new(element.as_widget());
         let node = element
-            .as_widget()
+            .as_widget_mut()
             .layout(
                 // TODO Avoid creating a new tree here?
-                &mut Tree::new(element.as_widget()),
+                tree,
                 &internal.renderer,
-                &Limits::new(IcedSize::ZERO, IcedSize::INFINITY)
+                &Limits::new(IcedSize::ZERO, IcedSize::INFINITE)
                     .width(Length::Shrink)
                     .height(Length::Shrink),
             )
@@ -393,7 +452,6 @@ impl<P: Program + Send + 'static> IcedElementInternal<P> {
                     text_color: self.theme.cosmic().on_bg_color().into(),
                 },
                 &mut NullClipboard,
-                &mut self.debug,
             )
             .1;
 
@@ -860,7 +918,6 @@ where
             if size.w > 0 && size.h > 0 {
                 let state_ref = &internal_ref.state;
                 let mut clip_mask = tiny_skia::Mask::new(size.w as u32, size.h as u32).unwrap();
-                let overlay = internal_ref.debug.overlay();
 
                 _ = buffer.render().draw(|buf| {
                     let mut pixels =
@@ -882,7 +939,6 @@ where
                         &viewport,
                         &damage,
                         background_color,
-                        &overlay,
                     );
 
                     let damage = damage

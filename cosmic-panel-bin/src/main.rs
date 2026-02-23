@@ -7,8 +7,11 @@ mod space_container;
 mod workspaces_dbus;
 mod xdg_shell_wrapper;
 
-use crate::xdg_shell_wrapper::{
-    client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
+use crate::{
+    iced::EVENT_LOOP_HANDLE,
+    xdg_shell_wrapper::{
+        client_state::ClientState, run, server_state::ServerState, shared_state::GlobalState,
+    },
 };
 use anyhow::Result;
 use calloop::channel::Sender;
@@ -23,6 +26,7 @@ use minimize::MinimizeApplet;
 use notifications::notifications_conn;
 use smithay::reexports::{calloop, wayland_server::backend::ClientId};
 use std::{
+    cell::RefCell,
     collections::HashMap,
     mem,
     os::fd::{AsRawFd, OwnedFd},
@@ -108,6 +112,8 @@ fn main() -> Result<()> {
     let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
 
     let event_loop = calloop::EventLoop::try_new()?;
+    let handle = event_loop.handle();
+    EVENT_LOOP_HANDLE.with(move |l| l.set(RefCell::new(handle)));
 
     let mut space = space_container::SpaceContainer::new(
         config,
