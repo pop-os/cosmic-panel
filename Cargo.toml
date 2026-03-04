@@ -31,7 +31,7 @@ cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//co
 # xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 
 [patch."https://github.com/pop-os/libcosmic"]
-cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "iced-rebase" }
-libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "iced-rebase" }
-cosmic-theme = { git = "https://github.com/pop-os/libcosmic//", package = "cosmic-theme", branch = "iced-rebase" }
-iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic//", branch = "iced-rebase" }
+cosmic-config = { git = "https://github.com/pop-os/libcosmic//" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic//" }
+cosmic-theme = { git = "https://github.com/pop-os/libcosmic//" }
+iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic//" }
