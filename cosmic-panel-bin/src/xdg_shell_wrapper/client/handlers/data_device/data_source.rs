@@ -96,6 +96,7 @@ impl DataSourceHandler for GlobalState {
             .iter()
             .any(|f| f.1 == seat.name && matches!(f.2, FocusStatus::Focused))
         {
+            /*
             let offer = match seat.client.dnd_offer.take() {
                 Some(offer) => offer,
                 None => return,
@@ -113,6 +114,7 @@ impl DataSourceHandler for GlobalState {
             if let Some(pointer) = seat.client.ptr.as_ref().map(|p| p.pointer().clone()) {
                 self.pointer_frame(conn, qh, &pointer, &[pointer_event]);
             }
+            */
         } else if let Some(dnd_source) = seat.server.dnd_source.take() {
             dnd_source.cancelled();
             seat.server.dnd_icon = None;

@@ -7,30 +7,33 @@ use sctk::data_device_manager::data_offer::receive_to_fd;
 use sctk::delegate_subcompositor;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::shm::multi::MultiPool;
-use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::input::pointer::CursorImageAttributes;
-use smithay::input::{Seat, SeatHandler, SeatState};
-use smithay::reexports::wayland_server::Resource;
-use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
-use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::Transform;
-use smithay::wayland::compositor::{SurfaceAttributes, with_states};
-use smithay::wayland::dmabuf::{DmabufHandler, ImportNotifier};
-use smithay::wayland::output::OutputHandler;
-use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::selection::data_device::{
-    ClientDndGrabHandler, DataDeviceHandler, ServerDndGrabHandler, set_data_device_focus,
-    with_source_metadata,
-};
-use smithay::wayland::selection::primary_selection::{
-    PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
-};
-use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 use smithay::{
+    backend::renderer::ImportDma,
     delegate_data_device, delegate_dmabuf, delegate_output, delegate_primary_selection,
     delegate_seat,
+    input::{
+        Seat, SeatHandler, SeatState,
+        dnd::{DndAction, DndGrabHandler, DndTarget, SourceMetadata},
+        pointer::CursorImageAttributes,
+    },
+    reexports::wayland_server::{
+        Resource,
+        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
+    },
+    utils::{Logical, Point, Transform},
+    wayland::{
+        compositor::{SurfaceAttributes, with_states},
+        dmabuf::{DmabufHandler, ImportNotifier},
+        output::OutputHandler,
+        seat::WaylandFocus,
+        selection::{
+            SelectionHandler, SelectionSource, SelectionTarget,
+            data_device::{DataDeviceHandler, WaylandDndGrabHandler, set_data_device_focus},
+            primary_selection::{
+                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+            },
+        },
+    },
 };
 use tracing::{error, info, trace};
 
@@ -189,24 +192,60 @@ impl DataDeviceHandler for GlobalState {
     }
 }
 
-impl ClientDndGrabHandler for GlobalState {
-    fn started(&mut self, source: Option<WlDataSource>, icon: Option<WlSurface>, seat: Seat<Self>) {
+impl DndGrabHandler for GlobalState {
+    fn dropped(
+        &mut self,
+        _: Option<DndTarget<'_, Self>>,
+        _: bool,
+        seat: Seat<Self>,
+        _location: Point<f64, Logical>,
+    ) {
+        let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
+            Some(s) => s,
+            None => return,
+        };
+        // XXX is this correct?
+        seat.server.dnd_source = None;
+        seat.server.dnd_icon = None;
+        seat.client.dnd_icon = None;
+        seat.client.dnd_source = None;
+    }
+}
+
+use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::input::dnd::DnDGrab;
+use smithay::input::dnd::GrabType;
+use smithay::input::dnd::Source;
+use smithay::input::pointer::Focus;
+use smithay::utils::Serial;
+impl WaylandDndGrabHandler for GlobalState {
+    fn dnd_requested<S: Source>(
+        &mut self,
+        source: S,
+        icon: Option<WlSurface>,
+        seat: Seat<Self>,
+        serial: Serial,
+        type_: GrabType,
+    ) {
+        // TODO icon
+
+        println!("dnd_requested");
+
         let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
             Some(s) => s,
             None => return,
         };
 
-        if let Some(source) = source.as_ref() {
+        if let Some(metadata) = source.metadata() {
             seat.client.next_dnd_offer_is_mine = true;
-            let metadata = with_source_metadata(source, |metadata| metadata.clone()).unwrap();
             let mut actions = ClientDndAction::empty();
-            if metadata.dnd_action.contains(DndAction::Copy) {
+            if metadata.dnd_actions.contains(&DndAction::Copy) {
                 actions |= ClientDndAction::Copy;
             }
-            if metadata.dnd_action.contains(DndAction::Move) {
+            if metadata.dnd_actions.contains(&DndAction::Move) {
                 actions |= ClientDndAction::Move;
             }
-            if metadata.dnd_action.contains(DndAction::Ask) {
+            if metadata.dnd_actions.contains(&DndAction::Ask) {
                 actions |= ClientDndAction::Ask;
             }
 
@@ -245,22 +284,40 @@ impl ClientDndGrabHandler for GlobalState {
             seat.client.dnd_source = Some(dnd_source);
         }
 
-        seat.server.dnd_source = source;
+        //seat.server.dnd_source = source;
         seat.server.dnd_icon = icon;
-    }
 
-    fn dropped(&mut self, _: Option<WlSurface>, _: bool, seat: Seat<Self>) {
-        let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
-            Some(s) => s,
-            None => return,
-        };
-        // XXX is this correct?
-        seat.server.dnd_source = None;
-        seat.server.dnd_icon = None;
-        seat.client.dnd_icon = None;
-        seat.client.dnd_source = None;
+        let seat = seat.server.seat.clone();
+        match type_ {
+            GrabType::Pointer => {
+                let pointer = seat.get_pointer().unwrap();
+                let start_data = pointer.grab_start_data().unwrap();
+                pointer.set_grab(
+                    self,
+                    DnDGrab::new_pointer(
+                        &self.server_state.display_handle,
+                        start_data,
+                        source,
+                        seat,
+                    ),
+                    serial,
+                    Focus::Keep,
+                );
+            },
+            GrabType::Touch => {
+                let touch = seat.get_touch().unwrap();
+                let start_data = touch.grab_start_data().unwrap();
+                touch.set_grab(
+                    self,
+                    DnDGrab::new_touch(&self.server_state.display_handle, start_data, source, seat),
+                    serial,
+                );
+            },
+        }
     }
 }
+
+/*
 impl ServerDndGrabHandler for GlobalState {
     fn send(&mut self, mime_type: String, fd: OwnedFd, seat: Seat<Self>) {
         let seat = match self.server_state.seats.iter().find(|s| s.server.seat == seat) {
@@ -311,6 +368,67 @@ impl ServerDndGrabHandler for GlobalState {
         if let Some(offer) = seat.client.dnd_offer.as_ref() {
             offer.set_actions(c_action, c_action)
         }
+    }
+}
+*/
+
+use sctk::data_device_manager::data_offer::DragOffer;
+// TODO rename
+use crate::xdg_shell_wrapper::client_state::ClientSeat;
+pub(crate) struct ServerGrabSource {
+    pub metadata: smithay::input::dnd::SourceMetadata,
+    pub dnd_offer: DragOffer,
+}
+
+impl smithay::utils::IsAlive for ServerGrabSource {
+    fn alive(&self) -> bool {
+        println!("FOO");
+        //todo!()
+        true
+    }
+}
+
+impl smithay::input::dnd::Source for ServerGrabSource {
+    fn metadata(&self) -> Option<SourceMetadata> {
+        Some(self.metadata.clone())
+    }
+
+    fn choose_action(&self, action: smithay::input::dnd::DndAction) {
+        println!("CHOOSE_ACTION?");
+        // XXX actions?
+        //
+        let mut c_action = ClientDndAction::empty();
+        if action == DndAction::Copy {
+            c_action |= ClientDndAction::Copy;
+        }
+        if action == DndAction::Move {
+            c_action |= ClientDndAction::Move;
+        }
+        if action == DndAction::Ask {
+            c_action |= ClientDndAction::Ask;
+        }
+
+        self.dnd_offer.set_actions(c_action, c_action)
+    }
+
+    fn send(&self, mime_type: &str, fd: OwnedFd) {
+        println!("FOO");
+        receive_to_fd(self.dnd_offer.inner(), mime_type.to_owned(), fd)
+    }
+
+    fn drop_performed(&self) {
+        println!("FOO");
+        println!("DROP_PERFORMED?");
+    }
+
+    fn cancel(&self) {
+        println!("FOO");
+        self.dnd_offer.destroy();
+    }
+
+    fn finished(&self) {
+        println!("FOO");
+        self.dnd_offer.finish();
     }
 }
 

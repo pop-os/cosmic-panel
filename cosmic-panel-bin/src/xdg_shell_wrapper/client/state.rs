@@ -71,7 +71,6 @@ pub(crate) struct ClientSeat {
     pub(crate) copy_paste_source: Option<CopyPasteSource>,
     pub(crate) dnd_source: Option<DragSource>,
     pub(crate) selection_offer: Option<SelectionOffer>,
-    pub(crate) dnd_offer: Option<DragOffer>,
     pub(crate) next_selection_offer_is_mine: bool,
     pub(crate) next_dnd_offer_is_mine: bool,
     pub(crate) dnd_icon:

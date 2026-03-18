@@ -133,10 +133,10 @@ impl PanelSpace {
                     anyhow::bail!("Failed to clear panel.");
                 };
 
-                _ = frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[Rectangle::new(
-                    (0, 0).into(),
-                    dim,
-                )]);
+                _ = frame.clear(
+                    Color32F::new(0.0, 0.0, 0.0, 0.0),
+                    &[Rectangle::new((0, 0).into(), dim)],
+                );
                 if let Ok(sync_point) = frame.finish() {
                     if let Err(err) = sync_point.wait() {
                         tracing::error!("Error waiting for sync point: {:?}", err);
@@ -196,23 +196,25 @@ impl PanelSpace {
                         }
 
                         w.toplevel().map(|t| {
-                            let configured_size = t.current_state().size.map(|s| {
-                                let mut r = Rectangle::new(
-                                    self.space
-                                        .element_location(w)
-                                        .unwrap_or_default()
-                                        .to_f64()
-                                        .to_physical_precise_round(self.scale),
-                                    s.to_f64().to_physical_precise_round(self.scale),
-                                );
-                                if r.size.w == 0 {
-                                    r.size.w = i32::MAX;
-                                }
-                                if r.size.h == 0 {
-                                    r.size.h = i32::MAX;
-                                }
-                                r
-                            });
+                            let configured_size = t
+                                .with_committed_state(|s| s.as_ref().and_then(|s| s.size))
+                                .map(|s| {
+                                    let mut r = Rectangle::new(
+                                        self.space
+                                            .element_location(w)
+                                            .unwrap_or_default()
+                                            .to_f64()
+                                            .to_physical_precise_round(self.scale),
+                                        s.to_f64().to_physical_precise_round(self.scale),
+                                    );
+                                    if r.size.w == 0 {
+                                        r.size.w = i32::MAX;
+                                    }
+                                    if r.size.h == 0 {
+                                        r.size.h = i32::MAX;
+                                    }
+                                    r
+                                });
 
                             render_elements_from_surface_tree(
                                 renderer,
@@ -428,19 +430,20 @@ impl PanelSpace {
                             .to_physical(self.scale)
                             .to_i32_round();
 
-                        let configured_size = t.current_state().size.map(|s| {
-                            let mut r = Rectangle::new(
-                                loc,
-                                s.to_f64().to_physical_precise_round(self.scale),
-                            );
-                            if r.size.w == 0 {
-                                r.size.w = i32::MAX;
-                            }
-                            if r.size.h == 0 {
-                                r.size.h = i32::MAX;
-                            }
-                            r
-                        });
+                        let configured_size =
+                            t.with_committed_state(|s| s.as_ref().and_then(|s| s.size)).map(|s| {
+                                let mut r = Rectangle::new(
+                                    loc,
+                                    s.to_f64().to_physical_precise_round(self.scale),
+                                );
+                                if r.size.w == 0 {
+                                    r.size.w = i32::MAX;
+                                }
+                                if r.size.h == 0 {
+                                    r.size.h = i32::MAX;
+                                }
+                                r
+                            });
                         Some(
                             render_elements_from_surface_tree(
                                 renderer,

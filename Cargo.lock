@@ -728,6 +728,7 @@ dependencies = [
  "cosmic-panel-config",
  "cosmic-theme",
  "freedesktop-desktop-entry",
+ "futures",
  "iced_tiny_skia",
  "itertools",
  "launch-pad",
@@ -739,6 +740,7 @@ dependencies = [
  "rand 0.10.0",
  "ron",
  "shlex",
+ "smallvec",
  "smithay",
  "smithay-client-toolkit",
  "tiny-skia",
@@ -3730,7 +3732,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/smithay/smithay?rev=20d2dac#20d2dacd71394b5f96f6ace0a70a6f20dc62c0c6"
+source = "git+https://github.com/smithay/smithay?rev=89e58f7#89e58f77983ea10ce2c7ad0f5bf07ac826beab67"
 dependencies = [
  "appendlist",
  "atomic_float",
