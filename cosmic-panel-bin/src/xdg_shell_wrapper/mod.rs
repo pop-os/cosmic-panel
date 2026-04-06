@@ -95,6 +95,8 @@ pub fn run(
     // TODO find better place for this
     // let set_clipboard_once = Rc::new(Cell::new(false));
 
+    const MAX_CONSECUTIVE_ERRORS: u32 = 10;
+    let mut consecutive_errors: u32 = 0;
     let mut prev_dur = Duration::from_millis(16);
     loop {
         let iter_start = Instant::now();
@@ -108,7 +110,23 @@ pub fn run(
         }
         .max(prev_dur);
 
-        event_loop.dispatch(dur, &mut global_state)?;
+        match event_loop.dispatch(dur, &mut global_state) {
+            Ok(()) => {
+                consecutive_errors = 0;
+            },
+            Err(e) => {
+                consecutive_errors += 1;
+                tracing::warn!(
+                    "Event loop dispatch error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {e}"
+                );
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    tracing::error!("Too many consecutive dispatch errors, exiting");
+                    return Err(e.into());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            },
+        }
 
         // rendering
         {
@@ -118,7 +136,7 @@ pub fn run(
                 &s_dh,
                 &global_state.client_state.queue_handle,
                 &mut global_state.server_state.popup_manager,
-                global_state.start_time.elapsed().as_millis().try_into()?,
+                global_state.start_time.elapsed().as_millis().try_into().unwrap_or(u32::MAX),
                 Some(dur),
             );
         }
@@ -127,14 +145,18 @@ pub fn run(
         if let Some(renderer) = global_state.space.renderer() {
             global_state.client_state.draw_layer_surfaces(
                 renderer,
-                global_state.start_time.elapsed().as_millis().try_into()?,
+                global_state.start_time.elapsed().as_millis().try_into().unwrap_or(u32::MAX),
             );
         }
 
         // dispatch server events
         {
-            server_display.dispatch_clients(&mut global_state)?;
-            server_display.flush_clients()?;
+            if let Err(e) = server_display.dispatch_clients(&mut global_state) {
+                tracing::warn!("Server client dispatch error: {e}");
+            }
+            if let Err(e) = server_display.flush_clients() {
+                tracing::warn!("Server client flush error: {e}");
+            }
         }
         global_state.iter_count += 1;
 

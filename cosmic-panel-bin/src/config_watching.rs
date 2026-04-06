@@ -53,13 +53,17 @@ pub fn watch_cosmic_theme(
     let theme_watcher_mode = config_mode_helper
         .watch(move |helper, _keys| match ThemeMode::get_entry(helper) {
             Ok(entry) => {
-                entries_tx_clone.send(ThemeUpdate::Mode(entry.is_dark)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Mode(entry.is_dark)) {
+                    tracing::warn!("Failed to send theme mode update: {e}");
+                }
             },
             Err((err, entry)) => {
                 for e in err {
                     error!("Failed to get theme entry value: {:?}", e);
                 }
-                entries_tx_clone.send(ThemeUpdate::Mode(entry.is_dark)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Mode(entry.is_dark)) {
+                    tracing::warn!("Failed to send theme mode update: {e}");
+                }
             },
         })
         .map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -68,13 +72,17 @@ pub fn watch_cosmic_theme(
     let theme_watcher_light = config_light_helper
         .watch(move |helper, _keys| match Theme::get_entry(helper) {
             Ok(entry) => {
-                entries_tx_clone.send(ThemeUpdate::Light(entry)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Light(entry)) {
+                    tracing::warn!("Failed to send light theme update: {e}");
+                }
             },
             Err((err, entry)) => {
                 for e in err {
                     error!("Failed to get theme entry value: {:?}", e);
                 }
-                entries_tx_clone.send(ThemeUpdate::Light(entry)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Light(entry)) {
+                    tracing::warn!("Failed to send light theme update: {e}");
+                }
             },
         })
         .map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -83,13 +91,17 @@ pub fn watch_cosmic_theme(
     let theme_watcher_dark = config_dark_helper
         .watch(move |helper, _keys| match Theme::get_entry(helper) {
             Ok(entry) => {
-                entries_tx_clone.send(ThemeUpdate::Dark(entry)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Dark(entry)) {
+                    tracing::warn!("Failed to send dark theme update: {e}");
+                }
             },
             Err((err, entry)) => {
                 for e in err {
                     error!("Failed to get theme entry value: {:?}", e);
                 }
-                entries_tx_clone.send(ThemeUpdate::Dark(entry)).unwrap();
+                if let Err(e) = entries_tx_clone.send(ThemeUpdate::Dark(entry)) {
+                    tracing::warn!("Failed to send dark theme update: {e}");
+                }
             },
         })
         .map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -135,24 +147,33 @@ pub fn watch_config(
 
                     let entries_tx_clone = entries_tx_clone.clone();
                     let name_clone = entry.name.clone();
-                    let helper = CosmicPanelConfig::cosmic_config(&name_clone)
-                        .expect("Failed to load cosmic config");
-                    let watcher = helper
-                        .watch(move |helper, _keys| {
-                            let new = match CosmicPanelConfig::get_entry(helper) {
-                                Ok(entry) => entry,
-                                Err((err, entry)) => {
-                                    for error in err {
-                                        error!("Failed to get entry value: {:?}", error);
-                                    }
-                                    entry
-                                },
-                            };
-                            entries_tx_clone
-                                .send(ConfigUpdate::EntryChanged(new))
-                                .expect("Failed to send Config Update");
-                        })
-                        .expect("Failed to watch cosmic config");
+                    let helper = match CosmicPanelConfig::cosmic_config(&name_clone) {
+                        Ok(h) => h,
+                        Err(err) => {
+                            error!("Failed to load cosmic config for {name_clone}: {err:?}");
+                            continue;
+                        },
+                    };
+                    let watcher = match helper.watch(move |helper, _keys| {
+                        let new = match CosmicPanelConfig::get_entry(helper) {
+                            Ok(entry) => entry,
+                            Err((err, entry)) => {
+                                for error in err {
+                                    error!("Failed to get entry value: {:?}", error);
+                                }
+                                entry
+                            },
+                        };
+                        if let Err(e) = entries_tx_clone.send(ConfigUpdate::EntryChanged(new)) {
+                            tracing::warn!("Failed to send config update: {e}");
+                        }
+                    }) {
+                        Ok(w) => w,
+                        Err(err) => {
+                            error!("Failed to watch cosmic config for {name_clone}: {err:?}");
+                            continue;
+                        },
+                    };
                     state.space.watchers.insert(entry.name.clone(), watcher);
 
                     state.space.update_space(
@@ -195,49 +216,58 @@ pub fn watch_config(
         };
     })?;
 
-    let cosmic_config_entries =
-        CosmicPanelContainerConfig::cosmic_config().expect("Failed to load cosmic config");
+    let cosmic_config_entries = CosmicPanelContainerConfig::cosmic_config()
+        .map_err(|e| anyhow!(format!("Failed to load cosmic panel container config: {e:?}")))?;
     info!("Watching panel config entries for changes {:?}", cosmic_config_entries);
 
     let entries_tx_clone = entries_tx.clone();
     let entries_watcher = cosmic_config_entries
         .watch(move |helper, keys| match helper.get::<Vec<String>>(&keys[0]) {
             Ok(entries) => {
-                entries_tx_clone
-                    .send(ConfigUpdate::Entries(entries))
-                    .expect("Failed to send entries");
+                if let Err(e) = entries_tx_clone.send(ConfigUpdate::Entries(entries)) {
+                    tracing::warn!("Failed to send config entries update: {e}");
+                }
             },
             Err(err) => {
                 error!("Failed to get entries: {:?}", err);
             },
         })
-        .expect("Failed to watch cosmic config");
+        .map_err(|e| anyhow!(format!("Failed to watch cosmic panel container config: {e:?}")))?;
 
     let mut watchers = HashMap::from([("entries".to_string(), entries_watcher)]);
 
     for entry in &config.config_list {
         let entries_tx_clone = entries_tx.clone();
         let name_clone = entry.name.clone();
-        let helper =
-            CosmicPanelConfig::cosmic_config(&name_clone).expect("Failed to load cosmic config");
+        let helper = match CosmicPanelConfig::cosmic_config(&name_clone) {
+            Ok(h) => h,
+            Err(err) => {
+                error!("Failed to load cosmic config for {name_clone}: {err:?}");
+                continue;
+            },
+        };
         info!("Watching panel config entry: {:?}", helper);
-        let watcher = helper
-            .watch(move |helper, keys| {
-                info!("Entry changed: {:?}", keys);
-                let new = match CosmicPanelConfig::get_entry(helper) {
-                    Ok(entry) => entry,
-                    Err((err, entry)) => {
-                        for error in err {
-                            error!("Failed to get entry value: {:?}", error);
-                        }
-                        entry
-                    },
-                };
-                entries_tx_clone
-                    .send(ConfigUpdate::EntryChanged(new))
-                    .expect("Failed to send Config Update");
-            })
-            .expect("Failed to watch cosmic config");
+        let watcher = match helper.watch(move |helper, keys| {
+            info!("Entry changed: {:?}", keys);
+            let new = match CosmicPanelConfig::get_entry(helper) {
+                Ok(entry) => entry,
+                Err((err, entry)) => {
+                    for error in err {
+                        error!("Failed to get entry value: {:?}", error);
+                    }
+                    entry
+                },
+            };
+            if let Err(e) = entries_tx_clone.send(ConfigUpdate::EntryChanged(new)) {
+                tracing::warn!("Failed to send config update: {e}");
+            }
+        }) {
+            Ok(w) => w,
+            Err(err) => {
+                error!("Failed to watch cosmic config for {name_clone}: {err:?}");
+                continue;
+            },
+        };
         watchers.insert(entry.name.clone(), watcher);
     }
 

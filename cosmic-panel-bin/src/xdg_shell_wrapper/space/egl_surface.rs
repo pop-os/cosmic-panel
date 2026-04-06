@@ -59,7 +59,7 @@ unsafe impl EGLNativeSurface for ClientEglSurface {
     ) -> Result<*const c_void, EGLError> {
         let ptr = self.wl_egl_surface.ptr();
         if ptr.is_null() {
-            panic!("recieved a null pointer for the wl_egl_surface.");
+            return Err(EGLError::BadNativeWindow);
         }
         wrap_egl_call_ptr(|| unsafe {
             ffi::egl::CreatePlatformWindowSurfaceEXT(

@@ -553,7 +553,7 @@ impl PanelSpace {
         // update input region of panel when list changes
         let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
             (Some(r), Some(layer)) => (r, layer),
-            _ => panic!("input region or layer missing"),
+            _ => anyhow::bail!("input region or layer missing, skipping layout"),
         };
 
         // must use logical coordinates for layout here
@@ -601,7 +601,7 @@ impl PanelSpace {
         // placed before the overflow button
         if windows_left.is_empty() && !windows_center.is_empty() && is_overlapping_start {
             let (_, CosmicMappedInternal::Spacer(s), ..) = windows_center.remove(0) else {
-                panic!("No spacer found");
+                anyhow::bail!("Expected spacer at beginning of center list, skipping layout");
             };
             let size = s.bbox().size.to_f64();
             let crosswise_pos = if self.config.is_horizontal() {

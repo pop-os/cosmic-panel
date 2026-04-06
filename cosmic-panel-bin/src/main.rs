@@ -316,6 +316,19 @@ fn main() -> Result<()> {
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
     client_state.init_toplevel_manager_state();
-    run(space, client_state, server_state, event_loop, server_display)?;
-    Ok(())
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run(space, client_state, server_state, event_loop, server_display)
+    }));
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            error!("Panel exited with error: {e:?}");
+            std::process::exit(1);
+        },
+        Err(panic_info) => {
+            error!("Panel panicked: {panic_info:?}");
+            std::process::exit(1);
+        },
+    }
 }

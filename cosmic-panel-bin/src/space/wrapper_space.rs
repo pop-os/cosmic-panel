@@ -5,7 +5,7 @@ use std::os::unix::prelude::AsRawFd;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::{fs, mem, panic};
+use std::{fs, mem};
 
 use crate::iced::elements::PopupMappedInternal;
 use crate::iced::elements::target::SpaceTarget;
@@ -385,9 +385,12 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|name| {
-                    let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, None, c, Some(s))
+                .filter_map(|name| match get_client_sock(&mut display) {
+                    Ok((c, s)) => Some(PanelClient::new(name, None, c, Some(s))),
+                    Err(e) => {
+                        tracing::error!("Failed to create client socket for applet {name}: {e}");
+                        None
+                    },
                 })
                 .collect();
 
@@ -398,9 +401,12 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|name| {
-                    let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, None, c, Some(s))
+                .filter_map(|name| match get_client_sock(&mut display) {
+                    Ok((c, s)) => Some(PanelClient::new(name, None, c, Some(s))),
+                    Err(e) => {
+                        tracing::error!("Failed to create client socket for applet {name}: {e}");
+                        None
+                    },
                 })
                 .collect();
 
@@ -411,9 +417,12 @@ impl WrapperSpace for PanelSpace {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .map(|name| {
-                    let (c, s) = get_client_sock(&mut display);
-                    PanelClient::new(name, None, c, Some(s))
+                .filter_map(|name| match get_client_sock(&mut display) {
+                    Ok((c, s)) => Some(PanelClient::new(name, None, c, Some(s))),
+                    Err(e) => {
+                        tracing::error!("Failed to create client socket for applet {name}: {e}");
+                        None
+                    },
                 })
                 .collect();
 
@@ -594,7 +603,11 @@ impl WrapperSpace for PanelSpace {
                 let id_clone_info = panel_client.name.clone();
                 let id_clone_err = panel_client.name.clone();
                 let Some(client) = panel_client.client.as_ref() else {
-                    panic!("Failed to get client");
+                    tracing::error!(
+                        "Failed to get client for applet: {}, skipping",
+                        panel_client.name
+                    );
+                    continue;
                 };
                 let client_id = client.id();
                 let client_id_info = client.id();
@@ -660,8 +673,7 @@ impl WrapperSpace for PanelSpace {
                         let my_list = my_list.clone();
                         let mut display_handle = display_handle.clone();
                         let applet_tx_clone = applet_tx_clone.clone();
-                        let (c, client_socket) = get_client_sock(&mut display_handle);
-                        let raw_client_socket = client_socket.as_raw_fd();
+                        let client_sock_result = get_client_sock(&mut display_handle);
                         let mut applet_env = Vec::with_capacity(1);
                         let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
                         let should_restart = is_restarting && err_code.is_some();
@@ -697,6 +709,18 @@ impl WrapperSpace for PanelSpace {
                                 _ = pman.stop_process(key).await;
                                 return;
                             }
+
+                            let (c, client_socket) = match client_sock_result {
+                                Ok(pair) => pair,
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to create client socket for applet restart: {e}"
+                                    );
+                                    _ = pman.stop_process(key).await;
+                                    return;
+                                },
+                            };
+                            let raw_client_socket = client_socket.as_raw_fd();
 
                             if is_notification_applet {
                                 let (tx, rx) = oneshot::channel();

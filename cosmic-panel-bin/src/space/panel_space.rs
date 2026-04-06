@@ -1639,10 +1639,13 @@ impl PanelSpace {
         // can't animate anchor changes
         // return early
         if config.anchor() != self.config.anchor() {
-            panic!(
-                "Can't apply anchor changes when orientation changes. Requires re-creation of the \
-                 panel."
+            tracing::error!(
+                "Cannot apply anchor change from {:?} to {:?} without panel re-creation, \
+                 ignoring config update",
+                self.config.anchor(),
+                config.anchor()
             );
+            return;
         }
 
         let mut needs_commit = false;

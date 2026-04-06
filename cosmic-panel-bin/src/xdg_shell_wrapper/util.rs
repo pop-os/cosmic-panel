@@ -22,18 +22,16 @@ pub fn smootherstep(t: f32) -> f32 {
 }
 
 /// helper function for inserting a wrapped applet client
-pub fn get_client_sock(display: &mut wayland_server::DisplayHandle) -> (Client, UnixStream) {
-    let (display_sock, client_sock) = UnixStream::pair().unwrap();
+pub fn get_client_sock(
+    display: &mut wayland_server::DisplayHandle,
+) -> Result<(Client, UnixStream)> {
+    let (display_sock, client_sock) = UnixStream::pair()?;
 
-    (
-        display
-            .insert_client(
-                display_sock,
-                Arc::new(WrapperClientCompositorState { compositor_state: Default::default() }),
-            )
-            .unwrap(),
-        client_sock,
-    )
+    let client = display.insert_client(
+        display_sock,
+        Arc::new(WrapperClientCompositorState { compositor_state: Default::default() }),
+    )?;
+    Ok((client, client_sock))
 }
 
 pub(crate) fn write_and_attach_buffer(

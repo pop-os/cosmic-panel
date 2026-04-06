@@ -776,8 +776,16 @@ impl WrapperSpace for SpaceContainer {
     }
 
     fn close_layer(&mut self, layer: &LayerSurface) {
+        let before = self.space_list.len();
         self.space_list
             .retain(|s| s.layer.as_ref().map(|s| s.wl_surface()) != Some(layer.wl_surface()));
+        let removed = before - self.space_list.len();
+        if removed > 0 {
+            tracing::warn!(
+                "Layer surface closed, removed {removed} panel space(s) ({} remaining)",
+                self.space_list.len()
+            );
+        }
     }
 
     fn output_leave(
@@ -786,7 +794,13 @@ impl WrapperSpace for SpaceContainer {
         _s_output: Output,
     ) -> anyhow::Result<()> {
         self.outputs.retain(|o| o.0 != c_output);
+        let before = self.space_list.len();
         self.space_list.retain(|s| s.output.as_ref().map(|o| &o.0) != Some(&c_output));
+        let removed = before - self.space_list.len();
+        tracing::info!(
+            "Output leave: removed {removed} panel space(s) ({} remaining)",
+            self.space_list.len()
+        );
         Ok(())
     }
 
