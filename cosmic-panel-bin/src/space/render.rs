@@ -21,7 +21,7 @@ use smithay::backend::renderer::element::{AsRenderElements, RenderElement, Under
 use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer};
 use smithay::backend::renderer::{Bind, Color32F, Frame, Renderer};
 use smithay::reexports::wayland_server::Resource;
-use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle};
+use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle, user_data::UserDataMap};
 use smithay::wayland::seat::WaylandFocus;
 
 pub(crate) enum PanelRenderElement {
@@ -73,11 +73,12 @@ impl RenderElement<GlesRenderer> for PanelRenderElement {
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         opaque_regions: &[Rectangle<i32, Physical>],
+        cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
         match self {
-            Self::Wayland(e, ..) => e.draw(frame, src, dst, damage, opaque_regions),
-            Self::Crop(e) => e.draw(frame, src, dst, damage, opaque_regions),
-            Self::Iced(e) => e.draw(frame, src, dst, damage, opaque_regions),
+            Self::Wayland(e, ..) => e.draw(frame, src, dst, damage, opaque_regions, cache),
+            Self::Crop(e) => e.draw(frame, src, dst, damage, opaque_regions, cache),
+            Self::Iced(e) => e.draw(frame, src, dst, damage, opaque_regions, cache),
         }
     }
 
