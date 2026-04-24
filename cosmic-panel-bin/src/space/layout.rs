@@ -16,7 +16,7 @@ use crate::space::Alignment;
 use crate::xdg_shell_wrapper::space::Visibility;
 
 use super::PanelSpace;
-use super::panel_space::{ClientShrinkSize, PanelClient};
+use super::panel_space::{ClientShrinkSize, DragSection, PanelClient};
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use anyhow::bail;
 use cosmic::widget::Id;
@@ -193,6 +193,60 @@ impl PanelSpace {
         let mut windows_left = map_clients(&self.clients_left);
         let mut windows_center = map_clients(&self.clients_center);
         let mut windows_right = map_clients(&self.clients_right);
+
+        if let Some(drag) = self.drag_state.as_ref().filter(|d| d.is_active) {
+            let drag_name = drag.applet_name.clone();
+            let preview_section = drag.preview_section;
+            let preview_index = drag.preview_index;
+
+            let drag_client_id = self
+                .clients_left
+                .lock()
+                .unwrap()
+                .iter()
+                .chain(self.clients_center.lock().unwrap().iter())
+                .chain(self.clients_right.lock().unwrap().iter())
+                .find(|c| c.name == drag_name)
+                .and_then(|c| c.client.as_ref())
+                .map(|c| c.id());
+
+            if let Some(drag_client_id) = drag_client_id {
+                let dragged = if let Some(pos) = windows_left.iter().position(|(_, w, ..)| {
+                    w.toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .is_some_and(|c| c.id() == drag_client_id)
+                }) {
+                    Some(windows_left.remove(pos))
+                } else if let Some(pos) = windows_center.iter().position(|(_, w, ..)| {
+                    w.toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .is_some_and(|c| c.id() == drag_client_id)
+                }) {
+                    Some(windows_center.remove(pos))
+                } else if let Some(pos) = windows_right.iter().position(|(_, w, ..)| {
+                    w.toplevel()
+                        .and_then(|t| t.wl_surface().client())
+                        .is_some_and(|c| c.id() == drag_client_id)
+                }) {
+                    Some(windows_right.remove(pos))
+                } else {
+                    None
+                };
+
+                if let Some(dragged_window) = dragged {
+                    let target_list = match preview_section {
+                        DragSection::Left => &mut windows_left,
+                        DragSection::Center => &mut windows_center,
+                        DragSection::Right => &mut windows_right,
+                    };
+                    let insert_idx = preview_index.min(target_list.len());
+                    target_list.insert(insert_idx, dragged_window);
+                    for (j, (i, ..)) in target_list.iter_mut().enumerate() {
+                        *i = j;
+                    }
+                }
+            }
+        }
 
         let is_dock = !self.config.expand_to_edges()
             || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));

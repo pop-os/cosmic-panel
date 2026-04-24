@@ -40,6 +40,11 @@ pub enum PanelCalloopMsg {
     RestartSpace(CosmicPanelConfig, WlOutput),
     MinimizeRect { output: String, applet_info: MinimizeApplet },
     UpdateToplevel(ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1),
+    ReorderPlugins {
+        panel_name: String,
+        plugins_wings: Option<(Vec<String>, Vec<String>)>,
+        plugins_center: Option<Vec<String>>,
+    },
 }
 
 /// Access glibc malloc tunables.
@@ -185,6 +190,16 @@ fn main() -> Result<()> {
                     },
                     PanelCalloopMsg::MinimizeRect { output, applet_info } => {
                         minimize::set_rectangles(state, output, applet_info)
+                    },
+                    PanelCalloopMsg::ReorderPlugins { panel_name, plugins_wings, plugins_center } => {
+                        for entry in &mut state.space.config.config_list {
+                            if entry.name == panel_name {
+                                entry.plugins_wings = plugins_wings;
+                                entry.plugins_center = plugins_center;
+                                break;
+                            }
+                        }
+                        let _ = state.space.config.write_entries();
                     },
                 },
                 calloop::channel::Event::Closed => {},
