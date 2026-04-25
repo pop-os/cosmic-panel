@@ -863,6 +863,10 @@ impl WrapperSpace for PanelSpace {
     }
 
     /// returns false to forward the button press, and true to intercept
+    fn is_pending_drag(&self) -> bool {
+        self.drag_state.as_ref().is_some_and(|d| !d.is_active)
+    }
+
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some(prev_foc) = {
             let c_hovered_surface: &ClientFocus = &self.shared.c_hovered_surface.borrow();
@@ -916,12 +920,17 @@ impl WrapperSpace for PanelSpace {
                             is_active: false,
                             preview_section: section,
                             preview_index: idx,
+                            anim_t: 1.0,
+                            anim_start: None,
+                            prev_positions: std::collections::HashMap::new(),
                         });
                     }
                 }
             } else {
                 if self.drag_state.as_ref().is_some_and(|d| d.is_active) {
                     self.commit_drag_reorder();
+
+                    return None;
                 } else {
                     self.drag_state = None;
                 }
@@ -1353,7 +1362,18 @@ impl WrapperSpace for PanelSpace {
             }
         }
         if self.drag_state.as_ref().is_some_and(|d| d.is_active) {
-            if self.update_drag_preview() {
+            let anim_running = if let Some(drag) = self.drag_state.as_mut() {
+                if let Some(start) = drag.anim_start {
+                    const ANIM_MS: f32 = 180.0;
+                    drag.anim_t = (start.elapsed().as_millis() as f32 / ANIM_MS).min(1.0);
+                    drag.anim_t < 1.0
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if self.update_drag_preview() || anim_running {
                 self.is_dirty = true;
             }
         }

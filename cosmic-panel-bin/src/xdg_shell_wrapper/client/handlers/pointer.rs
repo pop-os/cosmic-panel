@@ -275,13 +275,17 @@ impl GlobalState {
                     let s = self.space.handle_button(&seat_name, true);
 
                     kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
-                    ptr.button(self, &ButtonEvent {
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                        button,
-                        state: ButtonState::Pressed,
-                    });
-                    ptr.frame(self);
+                    if self.space.is_pending_drag() {
+                        self.server_state.suppressed_drag_press = Some((time, button));
+                    } else {
+                        ptr.button(self, &ButtonEvent {
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time,
+                            button,
+                            state: ButtonState::Pressed,
+                        });
+                        ptr.frame(self);
+                    }
                 },
                 sctk::seat::pointer::PointerEventKind::Release { time, button, .. } => {
                     self.server_state.last_button.replace(button);
@@ -310,16 +314,39 @@ impl GlobalState {
                         continue;
                     }
 
+                    let suppressed = self.server_state.suppressed_drag_press.take();
                     let s = self.space.handle_button(&seat_name, false);
-                    kbd.set_focus(self, s, SERIAL_COUNTER.next_serial());
+                    kbd.set_focus(self, s.clone(), SERIAL_COUNTER.next_serial());
 
-                    ptr.button(self, &ButtonEvent {
-                        serial: SERIAL_COUNTER.next_serial(),
-                        time,
-                        button,
-                        state: ButtonState::Released,
-                    });
-                    ptr.frame(self);
+                    match suppressed {
+                        Some((press_time, press_button)) if s.is_some() => {
+                            ptr.button(self, &ButtonEvent {
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: press_time,
+                                button: press_button,
+                                state: ButtonState::Pressed,
+                            });
+                            ptr.frame(self);
+                            ptr.button(self, &ButtonEvent {
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time,
+                                button,
+                                state: ButtonState::Released,
+                            });
+                            ptr.frame(self);
+                        },
+                        Some(_) => {
+                        },
+                        None => {
+                            ptr.button(self, &ButtonEvent {
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time,
+                                button,
+                                state: ButtonState::Released,
+                            });
+                            ptr.frame(self);
+                        },
+                    }
                 },
                 sctk::seat::pointer::PointerEventKind::Axis {
                     time,

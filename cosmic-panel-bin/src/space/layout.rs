@@ -26,7 +26,7 @@ use sctk::shell::WaylandSurface;
 use smithay::desktop::space::SpaceElement;
 use smithay::desktop::{Space, Window};
 use smithay::reexports::wayland_server::Resource;
-use smithay::utils::{IsAlive, Physical, Rectangle, Size};
+use smithay::utils::{IsAlive, Logical, Physical, Point, Rectangle, Size};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use smithay::wayland::seat::WaylandFocus;
@@ -267,6 +267,64 @@ impl PanelSpace {
             right_overflow_button,
             center_overflow_button,
         );
+
+        let anim_info = self.drag_state.as_ref().and_then(|drag| {
+            if drag.is_active && drag.anim_t < 1.0 && !drag.prev_positions.is_empty() {
+                Some((drag.anim_t, drag.prev_positions.clone()))
+            } else {
+                None
+            }
+        });
+        if let Some((raw_t, prev_positions)) = anim_info {
+            // ease-out-cubic
+            let t = 1.0_f32 - (1.0_f32 - raw_t).powi(3);
+            let is_h = self.config.is_horizontal();
+            let client_to_name: Vec<(_, String)> = {
+                let l = self.clients_left.lock().unwrap();
+                let c = self.clients_center.lock().unwrap();
+                let r = self.clients_right.lock().unwrap();
+                l.iter()
+                    .chain(c.iter())
+                    .chain(r.iter())
+                    .filter_map(|pc| pc.client.as_ref().map(|wc| (wc.id(), pc.name.clone())))
+                    .collect()
+            };
+            let updates: Vec<(CosmicMappedInternal, Point<i32, Logical>)> = self
+                .space
+                .elements()
+                .filter_map(|elem| {
+                    if let CosmicMappedInternal::Window(w) = elem {
+                        let client_id = w
+                            .toplevel()
+                            .and_then(|t| t.wl_surface().client())
+                            .map(|c| c.id())?;
+                        let (_, name) =
+                            client_to_name.iter().find(|(id, _)| *id == client_id)?;
+                        let &prev_major = prev_positions.get(name)?;
+                        let geo = self.space.element_geometry(elem)?;
+                        let cur_major = if is_h { geo.loc.x } else { geo.loc.y };
+                        let lerped = (prev_major as f32 * (1.0 - t)
+                            + cur_major as f32 * t)
+                            .round() as i32;
+                        if lerped == cur_major {
+                            return None;
+                        }
+                        let new_loc = if is_h {
+                            Point::from((lerped, geo.loc.y))
+                        } else {
+                            Point::from((geo.loc.x, lerped))
+                        };
+                        Some((elem.clone(), new_loc))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for (elem, loc) in updates {
+                self.space.map_element(elem, loc, false);
+            }
+        }
+
         if let Err(e) = res.as_ref() {
             info!("Requires relayout: {:?}", e);
         }

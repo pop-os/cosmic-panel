@@ -276,6 +276,9 @@ pub struct AppletDragState {
     pub is_active: bool,
     pub preview_section: DragSection,
     pub preview_index: usize,
+    pub anim_t: f32,
+    pub anim_start: Option<Instant>,
+    pub prev_positions: std::collections::HashMap<String, i32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -1766,6 +1769,39 @@ impl PanelSpace {
         let preview_index = section_pos.iter().filter(|&&c| c < major_cursor).count();
 
         let changed = drag.preview_section != preview_section || drag.preview_index != preview_index;
+        if changed {
+            let is_h = self.config.is_horizontal();
+            let name_for_client: Vec<(_, String)> = {
+                let l = self.clients_left.lock().unwrap();
+                let c = self.clients_center.lock().unwrap();
+                let r = self.clients_right.lock().unwrap();
+                l.iter()
+                    .chain(c.iter())
+                    .chain(r.iter())
+                    .filter_map(|pc| pc.client.as_ref().map(|wc| (wc.id(), pc.name.clone())))
+                    .collect()
+            };
+            let mut prev_pos = std::collections::HashMap::new();
+            for elem in self.space.elements() {
+                if let CosmicMappedInternal::Window(w) = elem {
+                    if let Some(client_id) =
+                        w.wl_surface().and_then(|s| s.client().map(|c| c.id()))
+                    {
+                        if let Some((_, name)) =
+                            name_for_client.iter().find(|(id, _)| *id == client_id)
+                        {
+                            if let Some(geo) = self.space.element_geometry(elem) {
+                                let major = if is_h { geo.loc.x } else { geo.loc.y };
+                                prev_pos.insert(name.clone(), major);
+                            }
+                        }
+                    }
+                }
+            }
+            drag.prev_positions = prev_pos;
+            drag.anim_start = Some(Instant::now());
+            drag.anim_t = 0.0;
+        }
         drag.preview_section = preview_section;
         drag.preview_index = preview_index;
         changed

@@ -601,6 +601,10 @@ impl WrapperSpace for SpaceContainer {
         }
     }
 
+    fn is_pending_drag(&self) -> bool {
+        self.space_list.iter().any(|s| s.is_pending_drag())
+    }
+
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some((popup_space_i, popup_space)) =
             self.space_list.iter_mut().enumerate().find(|(_, s)| !s.popups.is_empty())
