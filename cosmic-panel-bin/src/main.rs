@@ -194,7 +194,8 @@ fn main() -> Result<()> {
 
     std::thread::spawn(move || -> anyhow::Result<()> {
         let rt = runtime::Builder::new_current_thread().enable_all().build()?;
-        let mut process_ids: HashMap<String, Vec<ProcessKey>> = HashMap::new();
+        // Keyed as <panel_id, applet_name, process keys>
+        let mut process_ids: HashMap<String, HashMap<String, Vec<ProcessKey>>> = HashMap::new();
 
         rt.block_on(async move {
             let process_manager = ProcessManager::new().await;
@@ -217,14 +218,19 @@ fn main() -> Result<()> {
             while let Some(msg) = applet_rx.recv().await {
                 tracing::trace!("Applet Message: {msg:?}");
                 match msg {
-                    space::AppletMsg::NewProcess(id, process) => {
+                    space::AppletMsg::NewProcess(panel_id, applet_name, process) => {
                         if let Ok(key) = process_manager.start(process).await {
-                            let entry = process_ids.entry(id).or_default();
-                            entry.push(key);
+                            process_ids
+                                .entry(panel_id)
+                                .or_default()
+                                .entry(applet_name)
+                                .or_default()
+                                .push(key);
                         }
                     },
                     space::AppletMsg::NewNotificationsProcess(
-                        id,
+                        panel_id,
+                        applet_name,
                         mut process,
                         mut env,
                         mut fds,
@@ -272,16 +278,29 @@ fn main() -> Result<()> {
                         process = process.with_env(env);
                         info!("Starting notifications applet");
                         if let Ok(key) = process_manager.start(process).await {
-                            let entry = process_ids.entry(id).or_default();
-                            entry.push(key);
+                            process_ids
+                                .entry(panel_id)
+                                .or_default()
+                                .entry(applet_name)
+                                .or_default()
+                                .push(key);
                         }
                     },
                     space::AppletMsg::ClientSocketPair(client_id) => {
                         let _ = calloop_tx.send(PanelCalloopMsg::ClientSocketPair(client_id));
                     },
-                    space::AppletMsg::Cleanup(id) => {
-                        for id in process_ids.remove(&id).unwrap_or_default() {
-                            let _ = process_manager.stop_process(id).await;
+                    space::AppletMsg::Cleanup(panel_id) => {
+                        for (_, keys) in process_ids.remove(&panel_id).unwrap_or_default() {
+                            for key in keys {
+                                let _ = process_manager.stop_process(key).await;
+                            }
+                        }
+                    },
+                    space::AppletMsg::CleanupApplet(panel_id, applet_name) => {
+                        if let Some(panel_map) = process_ids.get_mut(&panel_id) {
+                            for key in panel_map.remove(&applet_name).unwrap_or_default() {
+                                let _ = process_manager.stop_process(key).await;
+                            }
                         }
                     },
                     space::AppletMsg::NeedNewNotificationFd(sender) => {
