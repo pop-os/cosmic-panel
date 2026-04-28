@@ -313,6 +313,7 @@ fn main() -> Result<()> {
     let mut server_state = ServerState::new(s_dh.clone());
 
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+    space.corner_radius_manager = client_state.cosmic_corner_radius_manager.clone();
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
     client_state.init_toplevel_manager_state();
