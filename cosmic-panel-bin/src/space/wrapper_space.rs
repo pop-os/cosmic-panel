@@ -38,7 +38,7 @@ use sctk::reexports::client::{Connection, Proxy, QueueHandle};
 use sctk::seat::pointer::{BTN_LEFT, PointerEvent};
 use sctk::shell::WaylandSurface;
 use sctk::shell::wlr_layer::{
-    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
+    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
 };
 use sctk::shell::xdg::popup;
 use shlex::Shlex;
@@ -1528,6 +1528,7 @@ impl WrapperSpace for PanelSpace {
         let input_region = Region::new(compositor_state)?;
         client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
         self.input_region.replace(input_region);
+        self.compositor_state = Some(compositor_state.clone());
 
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
@@ -1557,6 +1558,20 @@ impl WrapperSpace for PanelSpace {
 
         self.output =
             izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
+        if let Some(blur_manager) = self.blur_manager.as_ref() {
+            self.blur_surface =
+                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
+            self.corner_radius_wlr = self.corner_radius_manager.as_ref().map(|m| {
+                m.get_corner_radius_layer(
+                    match client_surface.kind() {
+                        SurfaceKind::Wlr(w) => w,
+                        _ => unimplemented!(),
+                    },
+                    &qh,
+                    (),
+                )
+            });
+        }
         self.layer = Some(client_surface);
         self.layer_fractional_scale = fractional_scale;
         self.layer_viewport = viewport;

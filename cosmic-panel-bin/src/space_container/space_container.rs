@@ -13,6 +13,8 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
+use cctk::cosmic_protocols::corner_radius;
+use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::toplevel_info::ToplevelInfo;
 use cctk::wayland_client::protocol::wl_seat::WlSeat;
 use cctk::workspace::{Workspace, WorkspaceGroup};
@@ -59,6 +61,7 @@ pub struct SpaceContainer {
     pub(crate) minimized_applets: HashMap<String, MinimizeApplet>,
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
     pub(crate) shared: Rc<PanelSharedState>,
+    pub(crate) corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
 }
 
 impl SpaceContainer {
@@ -129,10 +132,11 @@ impl SpaceContainer {
                 cosmic_workspaces,
                 workspaces_shown: Cell::new(false),
             }),
+            corner_radius_manager: None,
         }
     }
 
-    pub fn set_dark(&mut self, theme: theme::CosmicTheme) {
+    pub fn set_dark(&mut self, theme: theme::CosmicTheme, blur_enabled: bool) {
         self.dark_theme = cosmic::Theme::system(Arc::new(theme));
 
         for space in &mut self.space_list {
@@ -146,7 +150,7 @@ impl SpaceContainer {
         }
     }
 
-    pub fn set_light(&mut self, theme: theme::CosmicTheme) {
+    pub fn set_light(&mut self, theme: theme::CosmicTheme, blur_enabled: bool) {
         self.light_theme = cosmic::Theme::system(Arc::new(theme));
 
         for space in &mut self.space_list {
@@ -197,7 +201,7 @@ impl SpaceContainer {
         }
     }
 
-    pub(crate) fn set_theme_mode(&mut self, is_dark: bool) {
+    pub(crate) fn set_theme_mode(&mut self, is_dark: bool, blur_enabled: bool) {
         let changed = self.is_dark != is_dark;
         self.is_dark = is_dark;
         if changed {
@@ -352,8 +356,10 @@ impl SpaceContainer {
             return;
         }
 
+        let mut blur_manager = None;
         // remove old one if it exists
         self.space_list.retain(|s| {
+            blur_manager = s.blur_manager.clone();
             // keep if the name is different or the output is different
             s.config.name != entry.name
                 || force_output.is_some()
@@ -377,7 +383,10 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.connection.as_ref().unwrap(),
+                    qh,
+                    self.corner_radius_manager.as_ref(),
                 );
+                space.enable_blur_capacity(blur_manager.as_ref());
                 space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
                     compositor_state,
@@ -428,8 +437,10 @@ impl SpaceContainer {
                 if !is_recreated {
                     continue;
                 }
+                let mut space_blur_manager = None;
                 // remove old one if it exists
                 self.space_list.retain(|s| {
+                    space_blur_manager = s.blur_manager.clone();
                     // keep if the name is different or the output is different
                     s.config.name != c.name
                         || s.output.as_ref().is_some_and(|(_, o, _)| o.name() != output_name)
@@ -451,7 +462,10 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.connection.as_ref().unwrap(),
+                    qh,
+                    self.corner_radius_manager.as_ref(),
                 );
+                space.enable_blur_capacity(space_blur_manager.as_ref());
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
                 }

@@ -795,6 +795,14 @@ impl PanelSpace {
         } else {
             (new_dim.w, new_dim.h)
         };
+        let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
+        let radius = match (self.config.anchor, self.gap()) {
+            (PanelAnchor::Right, 0) => [border_radius, 0., 0., border_radius],
+            (PanelAnchor::Left, 0) => [0., border_radius, border_radius, 0.],
+            (PanelAnchor::Bottom, 0) => [border_radius, border_radius, 0., 0.],
+            (PanelAnchor::Top, 0) => [0., 0., border_radius, border_radius],
+            _ => [border_radius, border_radius, border_radius, border_radius],
+        };
         if !self.background_element.as_ref().is_some_and(|e| {
             e.with_program(|p| {
                 p.logical_height == h
@@ -839,15 +847,6 @@ impl PanelSpace {
                 ],
             };
 
-            let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
-            let radius = match (self.config.anchor, self.gap()) {
-                (PanelAnchor::Right, 0) => [border_radius, 0., 0., border_radius],
-                (PanelAnchor::Left, 0) => [0., border_radius, border_radius, 0.],
-                (PanelAnchor::Bottom, 0) => [border_radius, border_radius, 0., 0.],
-                (PanelAnchor::Top, 0) => [0., 0., border_radius, border_radius],
-                _ => [border_radius, border_radius, border_radius, border_radius],
-            };
-
             if is_overlapping_start {
                 if self.config.is_horizontal() {
                     loc[0] += start_overlap as f32 - container_lengthwise_pos as f32;
@@ -890,9 +889,12 @@ impl PanelSpace {
             );
             self.is_background_dirty = false;
         }
-        input_region.subtract(0, 0, i32::MAX, i32::MAX);
+        if self.animate_state.is_none() {
+            input_region.subtract(0, 0, i32::MAX, i32::MAX);
+        }
         let anim_gap = self.anchor_gap;
 
+        let radius = [radius[0] as u32, radius[1] as u32, radius[2] as u32, radius[3] as u32];
         // disable input regions for hidden stacked panels
         if !matches!(self.visibility, Visibility::Hidden) || self.additional_gap == 0 {
             if is_dock {
@@ -944,7 +946,11 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     }
                 }
-                input_region.add(loc.0, loc.1, size.0, size.1);
+                if self.animate_state.is_none() {
+                    input_region.add(loc.0, loc.1, size.0, size.1);
+
+                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                }
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
@@ -969,11 +975,16 @@ impl PanelSpace {
                         size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     }
                 }
-                input_region.add(loc.0, loc.1, size.0, size.1);
+                if self.animate_state.is_none() {
+                    input_region.add(loc.0, loc.1, size.0, size.1);
+                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                }
             };
         }
 
-        layer.wl_surface().set_input_region(Some(input_region.wl_region()));
+        if self.animate_state.is_none() {
+            layer.wl_surface().set_input_region(Some(input_region.wl_region()));
+        }
 
         self.reorder_overflow_space(OverflowSection::Left);
         self.reorder_overflow_space(OverflowSection::Center);

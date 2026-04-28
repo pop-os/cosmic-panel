@@ -21,6 +21,7 @@ use smithay::wayland::compositor::with_states;
 use smithay::wayland::dmabuf::DmabufState;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use tracing::{error, info};
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
 
 use crate::space_container::SpaceContainer;
 use crate::xdg_shell_wrapper::client_state::ClientState;
@@ -219,6 +220,15 @@ impl GlobalState {
 
             *is_dirty = false;
             *has_frame = None;
+        }
+    }
+
+    pub(crate) fn enable_blur_capacity(&mut self) {
+        self.client_state.blur_enabled = true;
+        for space in &mut self.space.space_list {
+            space.enable_blur_capacity(
+                self.client_state.ext_background_effect_manager.as_ref().map(|bm| &bm.manager),
+            );
         }
     }
 }
