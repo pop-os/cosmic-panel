@@ -1,7 +1,11 @@
 use crate::space_container::SpaceContainer;
+use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::{
+    self, ExtBackgroundEffectManager,
+};
 use crate::xdg_shell_wrapper::server_state::ServerState;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
+use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::toplevel_info::ToplevelInfoState;
 use cctk::toplevel_management::ToplevelManagerState;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
@@ -49,6 +53,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tracing::error;
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 
@@ -145,6 +150,8 @@ pub struct ClientState {
     pub security_context_manager: Option<SecurityContextManager>,
     /// overlap notifications subscription
     pub overlap_notify: Option<OverlapNotifyV1>,
+    pub ext_background_effect_manager: Option<ExtBackgroundEffectManager>,
+    pub cosmic_corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
 
     pub(crate) connection: Connection,
     /// queue handle
@@ -160,6 +167,7 @@ pub struct ClientState {
     pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
     pub(crate) touch_surfaces: HashMap<i32, WlSurface>,
+    pub(crate) blur_enabled: bool,
 
     pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
 
@@ -195,6 +203,11 @@ impl Debug for ClientState {
             .field("viewporter_state", &self.viewporter_state)
             .field("toplevel_info_state", &self.toplevel_info_state)
             .field("toplevel_manager_state", &())
+            .field("workspace_state", &self.workspace_state)
+            .field("security_context_manager", &self.security_context_manager)
+            .field("overlap_notify", &self.overlap_notify)
+            .field("ext_background_effect_manager", &self.ext_background_effect_manager)
+            .field("cosmic_corner_radius_manager", &self.cosmic_corner_radius_manager)
             .field("connection", &self.connection)
             .field("queue_handle", &self.queue_handle)
             .field("focused_surface", &self.focused_surface)
@@ -275,46 +288,53 @@ impl ClientState {
         let compositor_state =
             CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
 
-        let client_state = ClientState {
-            focused_surface: space.get_client_focused_surface(),
-            hovered_surface: space.get_client_hovered_surface(),
-            proxied_layer_surfaces: Vec::new(),
-            pending_layer_surfaces: Vec::new(),
+        let client_state =
+            ClientState {
+                focused_surface: space.get_client_focused_surface(),
+                hovered_surface: space.get_client_hovered_surface(),
+                proxied_layer_surfaces: Vec::new(),
+                pending_layer_surfaces: Vec::new(),
 
-            queue_handle: qh.clone(),
-            connection: connection.clone(),
-            seat_state: SeatState::new(&globals, &qh),
-            output_state: OutputState::new(&globals, &qh),
-            subcompositor: SubcompositorState::bind(
-                compositor_state.wl_compositor().clone(),
-                &globals,
-                &qh,
-            )
-            .expect("wl_subsureface not available"),
-            compositor_state,
-            shm_state: Shm::bind(&globals, &qh).expect("wl_shm not available"),
-            xdg_shell_state: XdgShell::bind(&globals, &qh).expect("xdg shell not available"),
-            layer_state: LayerShell::bind(&globals, &qh).expect("layer shell is not available"),
-            data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
-                .expect("data device manager is not available"),
-            overlap_notify: overlap_notify.ok(),
+                queue_handle: qh.clone(),
+                connection: connection.clone(),
+                seat_state: SeatState::new(&globals, &qh),
+                output_state: OutputState::new(&globals, &qh),
+                subcompositor: SubcompositorState::bind(
+                    compositor_state.wl_compositor().clone(),
+                    &globals,
+                    &qh,
+                )
+                .expect("wl_subsureface not available"),
+                compositor_state,
+                shm_state: Shm::bind(&globals, &qh).expect("wl_shm not available"),
+                xdg_shell_state: XdgShell::bind(&globals, &qh).expect("xdg shell not available"),
+                layer_state: LayerShell::bind(&globals, &qh).expect("layer shell is not available"),
+                data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
+                    .expect("data device manager is not available"),
+                overlap_notify: overlap_notify.ok(),
+                ext_background_effect_manager:
+                    ext_background_effect::ExtBackgroundEffectManager::new(&globals, &qh).ok(),
+                cosmic_corner_radius_manager: registry_state
+                    .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
+                    .ok(),
 
-            outputs: Default::default(),
-            touch_surfaces: HashMap::new(),
-            registry_state,
-            multipool: None,
-            cursor_surface: None,
-            cursor_scale: None,
-            cursor_vp: None,
-            last_key_pressed: Vec::new(),
-            fractional_scaling_manager,
-            viewporter_state,
-            toplevel_info_state: None,
-            toplevel_manager_state: None,
-            workspace_state: None,
-            security_context_manager,
-            delayed_surface_motion: HashMap::new(),
-        };
+                outputs: Default::default(),
+                touch_surfaces: HashMap::new(),
+                registry_state,
+                multipool: None,
+                cursor_surface: None,
+                cursor_scale: None,
+                cursor_vp: None,
+                last_key_pressed: Vec::new(),
+                fractional_scaling_manager,
+                viewporter_state,
+                toplevel_info_state: None,
+                toplevel_manager_state: None,
+                workspace_state: None,
+                security_context_manager,
+                delayed_surface_motion: HashMap::new(),
+                blur_enabled: false,
+            };
 
         WaylandSource::new(connection, event_queue).insert(loop_handle).unwrap();
 

@@ -37,13 +37,13 @@ pub fn watch_cosmic_theme(
     handle.insert_source(entries_rx, move |event, _, state| {
         match event {
             channel::Event::Msg(ThemeUpdate::Dark(theme)) => {
-                state.space.set_dark(theme);
+                state.space.set_dark(theme, state.client_state.blur_enabled);
             },
             channel::Event::Msg(ThemeUpdate::Mode(is_dark)) => {
-                state.space.set_theme_mode(is_dark);
+                state.space.set_theme_mode(is_dark, state.client_state.blur_enabled);
             },
             channel::Event::Msg(ThemeUpdate::Light(theme)) => {
-                state.space.set_light(theme);
+                state.space.set_light(theme, state.client_state.blur_enabled);
             },
             channel::Event::Closed => {},
         };

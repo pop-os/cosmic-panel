@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use crate::iced::elements::background::BackgroundElement;
 use crate::iced::elements::{PanelSpaceElement, PopupMappedInternal};
 use crate::workspaces_dbus::CosmicWorkspaces;
+use crate::xdg_shell_wrapper::client::handlers::cosmic_corner_radius::CornerRadius;
 use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
 use crate::xdg_shell_wrapper::server_state::{ServerFocus, ServerPtrFocus};
@@ -24,21 +25,24 @@ use crate::xdg_shell_wrapper::util::smootherstep;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
+use cctk::cosmic_protocols::corner_radius;
+use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1;
 use cctk::sctk::shell::wlr_layer::Layer;
 use cctk::wayland_client::Connection;
 
-use cosmic::iced::id;
+use cosmic::iced::{border, id};
+use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
 use freedesktop_desktop_entry::PathSource;
 use launch_pad::process::Process;
-use sctk::compositor::Region;
+use sctk::compositor::{CompositorState, Region};
 use sctk::output::OutputInfo;
 use sctk::reexports::calloop;
 use sctk::reexports::client::protocol::wl_display::WlDisplay;
 use sctk::reexports::client::protocol::wl_output as c_wl_output;
 use sctk::reexports::client::{Proxy, QueueHandle};
 use sctk::shell::WaylandSurface;
-use sctk::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
+use sctk::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure, SurfaceKind};
 use sctk::shell::xdg::XdgPositioner;
 use sctk::subcompositor::SubcompositorState;
 use smithay::backend::egl::EGLContext;
@@ -63,6 +67,10 @@ use smithay::wayland::shell::xdg::{PopupSurface, PositionerState, ToplevelSurfac
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::{
+    self, ExtBackgroundEffectSurfaceV1,
+};
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::security_context::v1::client::wp_security_context_v1::WpSecurityContextV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
@@ -236,11 +244,16 @@ pub struct AnimateState {
 pub struct PanelColors {
     pub theme: cosmic::Theme,
     pub color_override: Option<[f32; 4]>,
+    pub blur_enabled: bool,
 }
 
 impl PanelColors {
     pub fn new(theme: cosmic::Theme) -> Self {
-        Self { theme, color_override: None }
+        Self { theme, color_override: None, blur_enabled: false }
+    }
+
+    pub fn enable_blur(&mut self) {
+        self.blur_enabled = true;
     }
 
     pub fn with_color_override(mut self, color_override: Option<[f32; 4]>) -> Self {
@@ -248,11 +261,19 @@ impl PanelColors {
         self
     }
 
-    pub fn bg_color(&self, alpha: f32) -> [f32; 4] {
+    pub fn bg_color(&self, mut alpha: f32) -> [f32; 4] {
+        if self.theme.cosmic().frosted_panel {
+            alpha *= self.theme.cosmic().alpha_map.blurred_alpha(self.theme.cosmic().frosted);
+        }
+
         self.color_override.unwrap_or_else(|| {
             let c = self.theme.cosmic().bg_color();
             [c.red, c.green, c.blue, alpha]
         })
+    }
+
+    pub fn panel_blur(&self) -> bool {
+        self.theme.cosmic().frosted_panel
     }
 }
 
@@ -330,6 +351,11 @@ pub struct PanelSpace {
     pub subsurfaces: Vec<WrapperSubsurface>,
     pub start_instant: Instant,
     pub colors: PanelColors,
+    pub blur_manager: Option<ExtBackgroundEffectManagerV1>,
+    pub blur_surface: Option<ExtBackgroundEffectSurfaceV1>,
+    pub corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
+    pub corner_radius_wlr: Option<CosmicCornerRadiusLayerV1>,
+    pub compositor_state: Option<CompositorState>,
     pub input_region: Option<Region>,
     pub has_frame: bool,
     pub scale: f64,
@@ -362,6 +388,7 @@ pub struct PanelSpace {
     pub(crate) hover_track: HoverTrack,
     pub(crate) start_show_instant: Rc<RefCell<Option<Instant>>>,
     pub shared: Rc<PanelSharedState>,
+    qh: QueueHandle<GlobalState>,
 }
 
 impl PanelSpace {
@@ -372,6 +399,8 @@ impl PanelSpace {
         theme: cosmic::Theme,
         s_display: DisplayHandle,
         conn: &Connection,
+        qh: &QueueHandle<GlobalState>,
+        corner_radius_manager: Option<&CosmicCornerRadiusManagerV1>,
     ) -> Self {
         let name = format!("{}-{}", config.name, config.output);
         let visibility =
@@ -443,6 +472,13 @@ impl PanelSpace {
             minimized_toplevels: HashSet::new(),
 
             start_show_instant: Rc::new(RefCell::new(None)),
+            qh: qh.clone(),
+
+            blur_surface: None,
+            blur_manager: None,
+            compositor_state: None,
+            corner_radius_manager: corner_radius_manager.cloned(),
+            corner_radius_wlr: None,
         }
     }
 
@@ -2022,6 +2058,84 @@ impl PanelSpace {
             false
         }
     }
+
+    pub(crate) fn blur(
+        &self,
+        rect: smithay::utils::Rectangle<i32, Logical>,
+        mut corners: [u32; 4],
+    ) {
+        if self.colors.panel_blur() {
+            if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
+                let gap =
+                    (self.gap() as u32).min(rect.size.h as u32 / 2).min(rect.size.w as u32 / 2);
+
+                let padding = match self.config.anchor {
+                    PanelAnchor::Left => [rect.loc.y, 0, rect.loc.y, gap as i32],
+                    PanelAnchor::Right => [rect.loc.y, gap as i32, rect.loc.y, 0],
+                    PanelAnchor::Top => [gap as i32, rect.loc.x, 0, rect.loc.x],
+                    PanelAnchor::Bottom => [0, rect.loc.x, gap as i32, rect.loc.x],
+                };
+                corner_radius_wlr.set_padding(padding[0], padding[1], padding[2], padding[3]);
+
+                for corner in &mut corners {
+                    *corner = (*corner).min(rect.size.h.min(rect.size.w) as u32 / 2 - gap);
+                }
+
+                corner_radius_wlr.set_radius(corners[0], corners[1], corners[2], corners[3]);
+            }
+            if let Some((blur_surface, compositor_state)) =
+                self.blur_surface.as_ref().zip(self.compositor_state.as_ref())
+            {
+                let Ok(blur_region) = Region::new(compositor_state) else {
+                    tracing::error!("Failed to create input region for blur");
+                    return;
+                };
+                let (x, y) = match self.config.anchor {
+                    PanelAnchor::Left => (self.anchor_gap, 0),
+                    PanelAnchor::Right => (-self.anchor_gap, 0),
+                    PanelAnchor::Top => (0, self.anchor_gap),
+                    PanelAnchor::Bottom => (0, -self.anchor_gap),
+                };
+                blur_region.add(x, y, rect.size.w, rect.size.h);
+                blur_surface.set_blur_region(Some(blur_region.wl_region()));
+            }
+        } else if let Some(blur_surface) = self.blur_surface.as_ref() {
+            blur_surface.set_blur_region(None);
+        }
+    }
+
+    pub(crate) fn enable_blur_capacity(
+        &mut self,
+        blur_manager: Option<&ExtBackgroundEffectManagerV1>,
+    ) {
+        if let Some(blur_manager) = blur_manager
+            && self.blur_surface.is_none()
+        {
+            self.colors.enable_blur();
+
+            if let Some(surface) = self.layer.as_ref() {
+                self.blur_surface =
+                    Some(blur_manager.get_background_effect(surface.wl_surface(), &self.qh, ()));
+                self.corner_radius_wlr = self.corner_radius_manager.as_ref().map(|m| {
+                    m.get_corner_radius_layer(
+                        match surface.kind() {
+                            SurfaceKind::Wlr(w) => w,
+                            _ => unimplemented!(),
+                        },
+                        &self.qh,
+                        (),
+                    )
+                });
+            }
+            self.blur_manager = Some(blur_manager.clone());
+        } else if let Some(blur_surface) = self.blur_surface.take()
+            && blur_manager.is_none()
+        {
+            blur_surface.destroy();
+            self.blur_manager = None;
+        }
+        self.is_dirty = true;
+    }
 }
 
 impl Drop for PanelSpace {
@@ -2031,5 +2145,11 @@ impl Drop for PanelSpace {
         self.clients_center.lock().unwrap().clear();
         self.clients_left.lock().unwrap().clear();
         self.clients_right.lock().unwrap().clear();
+        if let Some(blur_surface) = self.blur_surface.take() {
+            blur_surface.destroy();
+        }
+        if let Some(corner_radius_wlr) = self.corner_radius_wlr.take() {
+            corner_radius_wlr.destroy();
+        }
     }
 }
