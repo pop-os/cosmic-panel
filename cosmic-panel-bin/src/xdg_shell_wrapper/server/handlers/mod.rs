@@ -231,7 +231,6 @@ impl DataDeviceHandler for GlobalState {
             client_preferred |= ClientDndAction::Ask;
         }
         offer.set_actions(client_actions, client_preferred);
-        dbg!("set actions", client_actions, client_preferred);
         preferred
     }
 }
@@ -273,14 +272,10 @@ impl WaylandDndGrabHandler for GlobalState {
     ) {
         // TODO icon
 
-        println!("FOO dnd_requested");
-
         let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
             Some(s) => s,
             None => return,
         };
-
-        dbg!("FOO DND REQUESTED 2");
 
         if let Some(metadata) = source.metadata() {
             seat.client.next_dnd_offer_is_mine = true;
@@ -294,7 +289,6 @@ impl WaylandDndGrabHandler for GlobalState {
             if metadata.dnd_actions.contains(&DndAction::Ask) {
                 actions |= ClientDndAction::Ask;
             }
-            dbg!(&metadata.mime_types);
 
             let dnd_source = self.client_state.data_device_manager.create_drag_and_drop_source(
                 &self.client_state.queue_handle,
@@ -310,7 +304,6 @@ impl WaylandDndGrabHandler for GlobalState {
                         .create_surface(&self.client_state.queue_handle)
                 });
 
-                dbg!("FOO DND CLIENT START");
                 dnd_source.start_drag(
                     &seat.client.data_device,
                     &focus.0,
@@ -318,30 +311,31 @@ impl WaylandDndGrabHandler for GlobalState {
                     seat.client.get_serial_of_last_seat_event(),
                 );
                 if let Some(client_surface) = c_icon_surface.as_ref() {
-                    dbg!("FOO DND ICON SURFACE CREATED");
                     client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
                     client_surface.commit();
 
-                    seat.client.dnd_icon = Some((
-                        None,
-                        client_surface.clone(),
-                        OutputDamageTracker::new((32, 32), 1., Transform::Flipped180),
-                        false,
-                        Some(0),
-                    ));
+                    seat.client.dnd_icon = Some(DndIcon {
+                        surface: client_surface.clone(),
+                        egl_surface: None,
+                        output_tracker: OutputDamageTracker::new(
+                            (32, 32),
+                            self.space.space_list[0].scale,
+                            Transform::Flipped180,
+                        ),
+                        is_ready: false,
+                        has_frame: false,
+                    });
                 }
             }
             seat.client.dnd_source = Some(dnd_source);
         }
 
-        dbg!("FOO DND REQUESTED 3");
         //seat.server.dnd_source = source;
         seat.server.dnd_icon = icon;
 
         let seat = seat.server.seat.clone();
         match type_ {
             GrabType::Pointer => {
-                dbg!("Starting server pointer grab for DND");
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
                 pointer.set_grab(
@@ -426,7 +420,7 @@ impl ServerDndGrabHandler for GlobalState {
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
-use crate::xdg_shell_wrapper::client_state::ClientSeat;
+use crate::xdg_shell_wrapper::client_state::{ClientSeat, DndIcon};
 pub(crate) struct ServerGrabSource {
     pub metadata: smithay::input::dnd::SourceMetadata,
     pub dnd_offer: DragOffer,

@@ -66,7 +66,7 @@ pub struct ServerState {
     pub(crate) _fractional_scale_state: FractionalScaleManagerState,
     pub(crate) _viewporter_state: ViewporterState,
     pub(crate) corner_radius_state: CornerRadiusState,
-    pub(crate) background_effect_state: BackgroundEffectState,
+    pub(crate) _background_effect_state: BackgroundEffectState,
 }
 
 impl ServerState {
@@ -89,7 +89,7 @@ impl ServerState {
             _fractional_scale_state: FractionalScaleManagerState::new::<GlobalState>(&dh),
             _viewporter_state: ViewporterState::new::<GlobalState>(&dh),
             corner_radius_state: CornerRadiusState::new::<GlobalState>(&dh),
-            background_effect_state: BackgroundEffectState::new::<GlobalState>(&dh),
+            _background_effect_state: BackgroundEffectState::new::<GlobalState>(&dh),
 
             dmabuf_state: None,
         }
