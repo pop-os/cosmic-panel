@@ -4,6 +4,7 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
+use smithay::wayland::background_effect::BackgroundEffectState;
 use smithay::wayland::compositor::CompositorState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
@@ -19,6 +20,7 @@ use smithay::wayland::viewporter::ViewporterState;
 
 use crate::iced::elements::target::SpaceTarget;
 use crate::xdg_shell_wrapper::client_state::ClientSeat;
+use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::CornerRadiusState;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 /// list of focused surfaces and the seats that focus them
@@ -63,6 +65,8 @@ pub struct ServerState {
     pub(crate) layer_shell_state: WlrLayerShellState,
     pub(crate) _fractional_scale_state: FractionalScaleManagerState,
     pub(crate) _viewporter_state: ViewporterState,
+    pub(crate) corner_radius_state: CornerRadiusState,
+    pub(crate) background_effect_state: BackgroundEffectState,
 }
 
 impl ServerState {
@@ -84,6 +88,8 @@ impl ServerState {
             layer_shell_state: WlrLayerShellState::new::<GlobalState>(&dh),
             _fractional_scale_state: FractionalScaleManagerState::new::<GlobalState>(&dh),
             _viewporter_state: ViewporterState::new::<GlobalState>(&dh),
+            corner_radius_state: CornerRadiusState::new::<GlobalState>(&dh),
+            background_effect_state: BackgroundEffectState::new::<GlobalState>(&dh),
             dmabuf_state: None,
         }
     }
