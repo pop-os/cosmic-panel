@@ -129,6 +129,7 @@ impl DataDeviceHandler for GlobalState {
         } else if c_action.contains(ClientDndAction::Ask) {
             dnd_actions.push(DndAction::Ask);
         }
+        dbg!(&dnd_actions);
 
         let metadata = SourceMetadata { mime_types, dnd_actions };
         let (x, y) = (offer.x, offer.y);
@@ -142,6 +143,7 @@ impl DataDeviceHandler for GlobalState {
             offer.surface.clone(),
             &ptr,
         );
+        dbg!(seat.client.next_dnd_offer_is_mine);
 
         // TODO: touch vs pointer start data
         if !seat.client.next_dnd_offer_is_mine {
@@ -157,6 +159,7 @@ impl DataDeviceHandler for GlobalState {
                 use smithay::input::dnd::DnDGrab;
                 use smithay::input::pointer::Focus;
                 let source = ServerGrabSource { metadata, dnd_offer: offer };
+                dbg!("START DND GRAB");
                 let dnd_grab = DnDGrab::new_pointer(
                     &self.server_state.display_handle,
                     pointer_start_data,
@@ -176,6 +179,7 @@ impl DataDeviceHandler for GlobalState {
         qh: &sctk::reexports::client::QueueHandle<Self>,
         data_device: &WlDataDevice,
     ) {
+        println!("Leave");
         let seat = match self
             .server_state
             .seats
@@ -227,6 +231,7 @@ impl DataDeviceHandler for GlobalState {
         _x: f64,
         _y: f64,
     ) {
+        // println!("Motion");
         // treat it as pointer motion
         let seat = match self
             .server_state
@@ -278,6 +283,7 @@ impl DataDeviceHandler for GlobalState {
         qh: &sctk::reexports::client::QueueHandle<Self>,
         data_device: &WlDataDevice,
     ) {
+        println!("Drop performed");
         // treat it as pointer button release
         let seat = match self
             .server_state
