@@ -15,7 +15,7 @@ use smithay::wayland::compositor::{CompositorHandler, CompositorState, get_role}
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{delegate_compositor, delegate_shm};
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
 use crate::xdg_shell_wrapper::client_state::{SurfaceState, WrapperClientCompositorState};
@@ -185,6 +185,8 @@ impl CompositorHandler for GlobalState {
                     1.0,
                     scale,
                     viewport,
+                    None,
+                    None,
                 ));
             }
             if let Some((
@@ -196,6 +198,7 @@ impl CompositorHandler for GlobalState {
                 scale,
                 _,
                 viewport,
+                ..,
             )) = self
                 .client_state
                 .proxied_layer_surfaces
@@ -258,7 +261,6 @@ impl CompositorHandler for GlobalState {
                 },
             };
             if let Some(c_icon) = seat.client.dnd_icon.as_mut() {
-                dbg!("Committing DND icon");
                 let size = bbox_from_surface_tree(surface, (0, 0)).size;
 
                 if let Some(renderer) = self.space.renderer() {

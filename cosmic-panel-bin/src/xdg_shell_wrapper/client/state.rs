@@ -10,6 +10,7 @@ use cctk::toplevel_info::ToplevelInfoState;
 use cctk::toplevel_management::ToplevelManagerState;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::workspace::WorkspaceState;
+use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
 use sctk::compositor::CompositorState;
 use sctk::data_device_manager::DataDeviceManagerState;
 use sctk::data_device_manager::data_device::DataDevice;
@@ -54,6 +55,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tracing::error;
 use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 
@@ -176,6 +178,7 @@ pub struct ClientState {
         Option<wl_output::WlOutput>,
         String,
     )>,
+
     pub(crate) proxied_layer_surfaces: Vec<(
         EGLSurface,
         OutputDamageTracker,
@@ -185,6 +188,8 @@ pub struct ClientState {
         f64,
         Option<WpFractionalScaleV1>,
         Option<WpViewport>,
+        Option<CosmicCornerRadiusLayerV1>, // TODO destroy on drop
+        Option<ExtBackgroundEffectSurfaceV1>, // TODO destroy on drop
     )>,
 }
 

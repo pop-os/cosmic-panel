@@ -4,7 +4,7 @@ use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 
 use itertools::Itertools;
-use sctk::data_device_manager::{data_device::DataDeviceData, data_offer::receive_to_fd};
+use sctk::data_device_manager::data_offer::receive_to_fd;
 use sctk::delegate_subcompositor;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::shm::multi::MultiPool;
@@ -17,10 +17,7 @@ use smithay::{
         dnd::{DndAction, DndGrabHandler, DndTarget, SourceMetadata},
         pointer::CursorImageAttributes,
     },
-    reexports::wayland_server::{
-        Resource,
-        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
-    },
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Transform},
     wayland::{
         compositor::{SurfaceAttributes, with_states},
@@ -288,7 +285,6 @@ impl WaylandDndGrabHandler for GlobalState {
             if metadata.dnd_actions.contains(&DndAction::Ask) {
                 actions |= ClientDndAction::Ask;
             }
-            dbg!(&metadata.mime_types);
 
             let dnd_source = self.client_state.data_device_manager.create_drag_and_drop_source(
                 &self.client_state.queue_handle,
@@ -311,7 +307,6 @@ impl WaylandDndGrabHandler for GlobalState {
                     seat.client.get_serial_of_last_seat_event(),
                 );
                 if let Some(client_surface) = c_icon_surface.as_ref() {
-                    dbg!("FOO DND ICON SURFACE CREATED");
                     client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
                     client_surface.commit();
 
@@ -331,14 +326,12 @@ impl WaylandDndGrabHandler for GlobalState {
             seat.client.dnd_source = Some(dnd_source);
         }
 
-        dbg!("FOO DND REQUESTED 3");
         //seat.server.dnd_source = source;
         seat.server.dnd_icon = icon;
 
         let seat = seat.server.seat.clone();
         match type_ {
             GrabType::Pointer => {
-                dbg!("Starting server pointer grab for DND");
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
                 pointer.set_grab(

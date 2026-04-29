@@ -1,15 +1,11 @@
 // proxy requests from clients for popups or layer surfaces
 
-use std::{
-    any::{Any, TypeId},
-    sync::Mutex,
-};
+use std::{any::TypeId, sync::Mutex};
 
+use sctk::{compositor::Region, shell::WaylandSurface};
 use smithay::{
     delegate_background_effect,
-    reexports::wayland_server::{
-        DisplayHandle, New, Resource, Weak, protocol::wl_surface::WlSurface,
-    },
+    reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
     utils::{HookId, Logical, Rectangle},
     wayland::{
         background_effect::{Capability, ExtBackgroundEffectHandler},
@@ -18,7 +14,6 @@ use smithay::{
         },
     },
 };
-use wayland_protocols::ext::background_effect::v1::server::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
@@ -49,7 +44,37 @@ impl BlurHandler for GlobalState {
                 return;
             }
         }
-        // TODO handle proxied layer shell surfaces
+
+        for (_, _, s_layer_shell_surface, c_layer_shell_surface, _, _, _, _, _, blur_surface) in
+            &mut self.client_state.proxied_layer_surfaces
+        {
+            if s_layer_shell_surface.wl_surface() == surface {
+                continue;
+            }
+
+            let Some(ext_background_effect_manager) =
+                self.client_state.ext_background_effect_manager.as_mut()
+            else {
+                break;
+            };
+
+            let new_blur_surface = ext_background_effect_manager
+                .blur(c_layer_shell_surface.wl_surface(), &self.client_state.queue_handle);
+
+            if let Some(ref region) = region {
+                let Ok(wl_region) = Region::new(&self.client_state.compositor_state) else {
+                    break;
+                };
+                for r in region {
+                    wl_region.add(r.loc.x, r.loc.y, r.size.w, r.size.h);
+                }
+                new_blur_surface.set_blur_region(Some(wl_region.wl_region()));
+            } else {
+                new_blur_surface.set_blur_region(None);
+            }
+
+            *blur_surface = Some(new_blur_surface);
+        }
     }
 }
 

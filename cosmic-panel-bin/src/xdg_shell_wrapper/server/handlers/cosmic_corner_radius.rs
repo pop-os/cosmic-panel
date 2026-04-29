@@ -6,6 +6,7 @@ use cosmic_protocols::corner_radius::v1::server::cosmic_corner_radius_toplevel_v
 use cosmic_protocols::corner_radius::v1::server::{
     cosmic_corner_radius_manager_v1, cosmic_corner_radius_toplevel_v1,
 };
+use sctk::shell::wlr_layer::SurfaceKind;
 use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_popup::XdgPopup;
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::server::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
@@ -26,6 +27,8 @@ use smithay::{
 };
 use std::sync::Mutex;
 use wayland_backend::server::GlobalId;
+
+use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 type ToplevelHookId = Mutex<Option<(HookId, Weak<CosmicCornerRadiusToplevelV1>)>>;
 type LayerHookId = Mutex<Option<(HookId, Weak<CosmicCornerRadiusLayerV1>)>>;
@@ -63,10 +66,6 @@ impl CornerRadiusState {
 
 pub trait CornerRadiusHandler: XdgShellHandler + WlrLayerShellHandler {
     fn corner_radius_state(&mut self) -> &mut CornerRadiusState;
-    fn set_corner_radius(&mut self, data: &CornerRadiusData);
-    fn unset_corner_radius(&mut self, data: &CornerRadiusData);
-    fn set_padding(&mut self, data: &CornerRadiusData);
-    fn unset_padding(&mut self, data: &CornerRadiusData);
     fn commit_xdg(&mut self, corners: CacheableCorners, wl_surface: &WlSurface);
     fn commit_wlr(
         &mut self,
@@ -320,8 +319,6 @@ where
                     *pending = CacheableCorners(None);
                 });
                 drop(guard);
-
-                state.unset_corner_radius(data);
             },
             cosmic_corner_radius_toplevel_v1::Request::SetRadius {
                 top_left,
@@ -357,8 +354,6 @@ where
                     *pending = CacheableCorners(guard.corners);
                 });
                 drop(guard);
-
-                state.set_corner_radius(data);
             },
             cosmic_corner_radius_toplevel_v1::Request::UnsetRadius => {
                 let mut guard = data.lock().unwrap();
@@ -391,8 +386,6 @@ where
                     *pending = CacheableCorners(None);
                 });
                 drop(guard);
-
-                state.unset_corner_radius(data);
             },
             _ => unimplemented!(),
         }
@@ -450,9 +443,6 @@ where
                     *pending = CacheablePadding(None);
                 });
                 drop(guard);
-
-                state.unset_corner_radius(data);
-                state.unset_padding(data);
             },
             cosmic_corner_radius_layer_v1::Request::SetRadius {
                 top_left,
@@ -482,8 +472,6 @@ where
                     *pending = CacheableCorners(guard.corners);
                 });
                 drop(guard);
-
-                state.set_corner_radius(data);
             },
             cosmic_corner_radius_layer_v1::Request::UnsetRadius => {
                 let mut guard = data.lock().unwrap();
@@ -508,8 +496,6 @@ where
                     *pending = CacheableCorners(None);
                 });
                 drop(guard);
-
-                state.unset_corner_radius(data);
             },
             cosmic_corner_radius_layer_v1::Request::SetPadding { top, right, bottom, left } => {
                 let mut guard = data.lock().unwrap();
@@ -534,8 +520,6 @@ where
                     *pending = CacheablePadding(guard.padding);
                 });
                 drop(guard);
-
-                state.set_padding(data);
             },
             cosmic_corner_radius_layer_v1::Request::UnsetPadding => {
                 let mut guard = data.lock().unwrap();
@@ -560,8 +544,6 @@ where
                     *pending = CacheablePadding(None);
                 });
                 drop(guard);
-
-                state.unset_padding(data);
             },
             _ => unimplemented!(),
         }
@@ -760,40 +742,10 @@ macro_rules! delegate_corner_radius {
         ] => CornerRadiusState);
     };
 }
-pub(crate) use delegate_corner_radius;
-
-use smithay::utils::Size;
-use smithay::wayland::compositor::SurfaceData;
-
-use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 impl CornerRadiusHandler for GlobalState {
     fn corner_radius_state(&mut self) -> &mut CornerRadiusState {
         &mut self.server_state.corner_radius_state
-    }
-
-    fn set_corner_radius(&mut self, data: &CornerRadiusData) {
-        if force_redraw(self, data).is_none() {
-            tracing::warn!("Failed to force redraw for corner radius change.");
-        }
-    }
-
-    fn unset_corner_radius(&mut self, data: &CornerRadiusData) {
-        if force_redraw(self, data).is_none() {
-            tracing::warn!("Failed to force redraw for corner radius reset.");
-        }
-    }
-
-    fn set_padding(&mut self, data: &CornerRadiusData) {
-        if force_redraw(self, data).is_none() {
-            tracing::warn!("Failed to force redraw for corner radius change.");
-        }
-    }
-
-    fn unset_padding(&mut self, data: &CornerRadiusData) {
-        if force_redraw(self, data).is_none() {
-            tracing::warn!("Failed to force redraw for corner radius reset.");
-        }
     }
 
     fn commit_xdg(&mut self, corners: CacheableCorners, wl_surface: &WlSurface) {
@@ -810,68 +762,53 @@ impl CornerRadiusHandler for GlobalState {
         padding: CacheablePadding,
         wl_surface: &WlSurface,
     ) {
-        todo!()
+        for (_, _, s_layer_shell_surface, c_layer_shell_surface, _, _, _, _, corner, _) in
+            &mut self.client_state.proxied_layer_surfaces
+        {
+            if s_layer_shell_surface.wl_surface() == wl_surface {
+                continue;
+            }
+
+            let Some(cosmic_corner_radius_manager) =
+                self.client_state.cosmic_corner_radius_manager.as_ref()
+            else {
+                break;
+            };
+
+            let SurfaceKind::Wlr(wlr) = c_layer_shell_surface.kind() else {
+                break;
+            };
+
+            let corner_surface = cosmic_corner_radius_manager.get_corner_radius_layer(
+                wlr,
+                &self.client_state.queue_handle,
+                (),
+            );
+
+            if let Some(padding) = padding.0 {
+                corner_surface.set_padding(
+                    padding.top,
+                    padding.right,
+                    padding.bottom,
+                    padding.left,
+                );
+            } else {
+                corner_surface.unset_padding();
+            }
+
+            if let Some(corners) = corners.0 {
+                corner_surface.set_radius(
+                    corners.top_left,
+                    corners.top_right,
+                    corners.bottom_right,
+                    corners.bottom_left,
+                );
+            } else {
+                corner_surface.unset_radius();
+            }
+            *corner = Some(corner_surface);
+        }
     }
-}
-
-fn force_redraw(state: &mut GlobalState, data: &CornerRadiusData) -> Option<()> {
-    let guard = data.lock().unwrap();
-    // let shell = state.common.shell.read();
-
-    // let output = match &guard.surface {
-    //     CornerRadiusSurface::Toplevel(toplevel) => {
-    //         let toplevel = toplevel.upgrade().ok()?;
-    //         let surface = state.common.xdg_shell_state.get_toplevel(&toplevel)?;
-    //         shell.visible_output_for_surface(surface.wl_surface())?
-    //     },
-    //     CornerRadiusSurface::Popup(popup) => {
-    //         let popup = popup.upgrade().ok()?;
-    //         let surface = state.common.xdg_shell_state.get_popup(&popup)?;
-    //         shell.visible_output_for_surface(surface.wl_surface())?
-    //     },
-    //     CornerRadiusSurface::Layer(layer) => {
-    //         let layer = layer.upgrade().ok()?;
-    //         let surface = state
-    //             .common
-    //             .layer_shell_state
-    //             .layer_surfaces()
-    //             .find(|l| l.shell_surface() == &layer)?;
-    //         shell.visible_output_for_surface(surface.wl_surface())?
-    //     },
-    // };
-
-    // state.backend.schedule_render(output);
-    Some(())
-}
-
-pub fn surface_corners(states: &SurfaceData, size: Size<i32, Logical>) -> Option<[u8; 4]> {
-    let mut guard = states.cached_state.get::<CacheableCorners>();
-
-    // guard against corner radius being too large, potentially disconnecting the outline
-    let half_min_dim = u8::try_from(size.w.min(size.h) / 2).unwrap_or(u8::MAX);
-    let corners = guard.current().0?;
-
-    Some([
-        u8::try_from(corners.top_left).unwrap_or(u8::MAX).min(half_min_dim),
-        u8::try_from(corners.top_right).unwrap_or(u8::MAX).min(half_min_dim),
-        u8::try_from(corners.bottom_right).unwrap_or(u8::MAX).min(half_min_dim),
-        u8::try_from(corners.bottom_left).unwrap_or(u8::MAX).min(half_min_dim),
-    ])
-}
-
-pub fn surface_padding(states: &SurfaceData, size: Size<i32, Logical>) -> Option<[i32; 4]> {
-    let mut guard = states.cached_state.get::<CacheablePadding>();
-
-    // guard against padding being too large
-    let half_min_dim = size.w.min(size.h) / 2;
-    let padding = guard.current().0?;
-
-    Some([
-        padding.top.min(half_min_dim),
-        padding.right.min(half_min_dim),
-        padding.bottom.min(half_min_dim),
-        padding.left.min(half_min_dim),
-    ])
 }
 
 pub fn _pad_rect(
