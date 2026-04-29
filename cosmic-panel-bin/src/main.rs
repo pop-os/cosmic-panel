@@ -87,7 +87,6 @@ fn main() -> Result<()> {
     let usage = "USAGE: cosmic-panel";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
-            println!("{}", usage);
             std::process::exit(1);
         },
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
@@ -101,7 +100,6 @@ fn main() -> Result<()> {
             },
         },
         _ => {
-            println!("{}", usage);
             std::process::exit(1);
         },
     };
