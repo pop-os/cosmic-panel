@@ -58,6 +58,15 @@ use super::handlers::wp_security_context::SecurityContextManager;
 use super::handlers::wp_viewporter::ViewporterState;
 
 #[derive(Debug)]
+pub(crate) struct DndIcon {
+    pub(crate) egl_surface: Option<EGLSurface>,
+    pub(crate) surface: WlSurface,
+    pub(crate) output_tracker: OutputDamageTracker,
+    pub(crate) is_ready: bool,
+    pub(crate) has_frame: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct ClientSeat {
     pub(crate) _seat: WlSeat,
     pub(crate) kbd: Option<wl_keyboard::WlKeyboard>,
@@ -73,8 +82,7 @@ pub(crate) struct ClientSeat {
     pub(crate) selection_offer: Option<SelectionOffer>,
     pub(crate) next_selection_offer_is_mine: bool,
     pub(crate) next_dnd_offer_is_mine: bool,
-    pub(crate) dnd_icon:
-        Option<(Option<EGLSurface>, WlSurface, OutputDamageTracker, bool, Option<u32>)>,
+    pub(crate) dnd_icon: Option<DndIcon>,
 }
 
 impl ClientSeat {

@@ -40,8 +40,6 @@ impl DataDeviceHandler for GlobalState {
         _qh: &sctk::reexports::client::QueueHandle<Self>,
         data_device: &WlDataDevice,
     ) {
-        println!("selection");
-
         let seat = match self
             .server_state
             .seats
@@ -72,7 +70,6 @@ impl DataDeviceHandler for GlobalState {
             mime_types,
             (),
         );
-        println!("set");
     }
 
     fn enter(
@@ -84,8 +81,6 @@ impl DataDeviceHandler for GlobalState {
         _y: f64,
         surface: &WlSurface,
     ) {
-        println!("Enter");
-
         let seat = match self
             .server_state
             .seats
@@ -151,22 +146,7 @@ impl DataDeviceHandler for GlobalState {
         // TODO: touch vs pointer start data
         if !seat.client.next_dnd_offer_is_mine {
             let focus = server_focus;
-            eprintln!("START DND");
-            /* TODO start server drag
-            start_dnd(
-                &self.server_state.display_handle.clone(),
-                &seat.server.seat.clone(),
-                self,
-                SERIAL_COUNTER.next_serial(),
-                Some(GrabStartData {
-                    focus: focus.map(|f| (f.surface, f.s_pos.to_f64())),
-                    button: 0x110, // assume left button for now, maybe there is another way..
-                    location: (x, y).into(),
-                }),
-                None,
-                metadata,
-            );
-            */
+
             let pointer_start_data = GrabStartData {
                 focus: focus.map(|f| (f.surface, f.s_pos.to_f64())),
                 button: 0x110, // assume left button for now, maybe there is another way..
@@ -185,6 +165,8 @@ impl DataDeviceHandler for GlobalState {
                 );
                 pointer.set_grab(self, dnd_grab, SERIAL_COUNTER.next_serial(), Focus::Keep);
             }
+        } else {
+            tracing::info!("Internal DND not starting server drag");
         }
     }
 

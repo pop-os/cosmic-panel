@@ -3,7 +3,7 @@ use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 
 use itertools::Itertools;
-use sctk::data_device_manager::data_offer::receive_to_fd;
+use sctk::data_device_manager::{data_device::DataDeviceData, data_offer::receive_to_fd};
 use sctk::delegate_subcompositor;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::shm::multi::MultiPool;
@@ -190,6 +190,47 @@ impl DataDeviceHandler for GlobalState {
     ) -> &mut smithay::wayland::selection::data_device::DataDeviceState {
         &mut self.server_state.data_device_state
     }
+
+    fn action_choice(
+        &mut self,
+        available: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+        preferred: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+    ) -> smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction {
+        use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction as WlDndAction;
+        let dnd_seat =
+            match self.server_state.seats.iter_mut().find(|s| s.client.dnd_source.is_some()) {
+                Some(s) => s,
+                None => return preferred,
+            };
+
+        let offer = match dnd_seat.client.data_device.data().drag_offer() {
+            Some(offer) => offer,
+            None => return preferred,
+        };
+
+        let mut client_actions = ClientDndAction::empty();
+        if available.contains(WlDndAction::Copy) {
+            client_actions |= ClientDndAction::Copy;
+        }
+        if available.contains(WlDndAction::Move) {
+            client_actions |= ClientDndAction::Move;
+        }
+        if available.contains(WlDndAction::Ask) {
+            client_actions |= ClientDndAction::Ask;
+        }
+        let mut client_preferred = ClientDndAction::empty();
+        if preferred.contains(WlDndAction::Copy) {
+            client_preferred |= ClientDndAction::Copy;
+        }
+        if preferred.contains(WlDndAction::Move) {
+            client_preferred |= ClientDndAction::Move;
+        }
+        if preferred.contains(WlDndAction::Ask) {
+            client_preferred |= ClientDndAction::Ask;
+        }
+        offer.set_actions(client_actions, client_preferred);
+        preferred
+    }
 }
 
 impl DndGrabHandler for GlobalState {
@@ -229,8 +270,6 @@ impl WaylandDndGrabHandler for GlobalState {
     ) {
         // TODO icon
 
-        println!("dnd_requested");
-
         let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
             Some(s) => s,
             None => return,
@@ -262,6 +301,7 @@ impl WaylandDndGrabHandler for GlobalState {
                         .compositor_state
                         .create_surface(&self.client_state.queue_handle)
                 });
+
                 dnd_source.start_drag(
                     &seat.client.data_device,
                     &focus.0,
@@ -272,13 +312,17 @@ impl WaylandDndGrabHandler for GlobalState {
                     client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
                     client_surface.commit();
 
-                    seat.client.dnd_icon = Some((
-                        None,
-                        client_surface.clone(),
-                        OutputDamageTracker::new((32, 32), 1., Transform::Flipped180),
-                        false,
-                        Some(0),
-                    ));
+                    seat.client.dnd_icon = Some(DndIcon {
+                        surface: client_surface.clone(),
+                        egl_surface: None,
+                        output_tracker: OutputDamageTracker::new(
+                            (32, 32),
+                            self.space.space_list[0].scale,
+                            Transform::Flipped180,
+                        ),
+                        is_ready: false,
+                        has_frame: false,
+                    });
                 }
             }
             seat.client.dnd_source = Some(dnd_source);
@@ -374,7 +418,7 @@ impl ServerDndGrabHandler for GlobalState {
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
-use crate::xdg_shell_wrapper::client_state::ClientSeat;
+use crate::xdg_shell_wrapper::client_state::{ClientSeat, DndIcon};
 pub(crate) struct ServerGrabSource {
     pub metadata: smithay::input::dnd::SourceMetadata,
     pub dnd_offer: DragOffer,
@@ -382,7 +426,7 @@ pub(crate) struct ServerGrabSource {
 
 impl smithay::utils::IsAlive for ServerGrabSource {
     fn alive(&self) -> bool {
-        println!("FOO");
+        println!("FOO ALIVE");
         //todo!()
         true
     }
@@ -390,11 +434,12 @@ impl smithay::utils::IsAlive for ServerGrabSource {
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
+        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
     fn choose_action(&self, action: smithay::input::dnd::DndAction) {
-        println!("CHOOSE_ACTION?");
+        println!("FOO CHOOSE_ACTION?");
         // XXX actions?
         //
         let mut c_action = ClientDndAction::empty();
@@ -412,22 +457,21 @@ impl smithay::input::dnd::Source for ServerGrabSource {
     }
 
     fn send(&self, mime_type: &str, fd: OwnedFd) {
-        println!("FOO");
+        println!("FOO SEND");
         receive_to_fd(self.dnd_offer.inner(), mime_type.to_owned(), fd)
     }
 
     fn drop_performed(&self) {
-        println!("FOO");
-        println!("DROP_PERFORMED?");
+        println!("FOO DROP_PERFORMED");
     }
 
     fn cancel(&self) {
-        println!("FOO");
+        println!("FOO CANCEL");
         self.dnd_offer.destroy();
     }
 
     fn finished(&self) {
-        println!("FOO");
+        println!("FOO FINISHED");
         self.dnd_offer.finish();
     }
 }

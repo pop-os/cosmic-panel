@@ -84,7 +84,6 @@ impl ServerState {
             layer_shell_state: WlrLayerShellState::new::<GlobalState>(&dh),
             _fractional_scale_state: FractionalScaleManagerState::new::<GlobalState>(&dh),
             _viewporter_state: ViewporterState::new::<GlobalState>(&dh),
-
             dmabuf_state: None,
         }
     }
