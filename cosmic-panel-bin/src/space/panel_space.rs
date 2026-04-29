@@ -15,6 +15,7 @@ use crate::workspaces_dbus::CosmicWorkspaces;
 use crate::xdg_shell_wrapper::client::handlers::cosmic_corner_radius::CornerRadius;
 use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
+use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::{CacheableCorners, Corners};
 use crate::xdg_shell_wrapper::server_state::{ServerFocus, ServerPtrFocus};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::{
@@ -25,7 +26,6 @@ use crate::xdg_shell_wrapper::util::smootherstep;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
-use cctk::cosmic_protocols::corner_radius;
 use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1;
 use cctk::sctk::shell::wlr_layer::Layer;
@@ -58,6 +58,7 @@ use smithay::desktop::{PopupManager, Space};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
 use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Rectangle, Size};
 use smithay::wayland::compositor::with_states;
@@ -388,7 +389,7 @@ pub struct PanelSpace {
     pub(crate) hover_track: HoverTrack,
     pub(crate) start_show_instant: Rc<RefCell<Option<Instant>>>,
     pub shared: Rc<PanelSharedState>,
-    qh: QueueHandle<GlobalState>,
+    pub(crate) qh: QueueHandle<GlobalState>,
 }
 
 impl PanelSpace {
@@ -2134,6 +2135,74 @@ impl PanelSpace {
             self.blur_manager = None;
         }
         self.is_dirty = true;
+    }
+
+    pub(crate) fn update_popup_corners(
+        &mut self,
+        corners: CacheableCorners,
+        surface: &WlSurface,
+    ) -> bool {
+        let Some(popup) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == surface)
+        else {
+            return false;
+        };
+        let Some(corner_manager) = self.corner_radius_manager.as_ref() else {
+            return false;
+        };
+
+        let corners_surface = popup.popup.corner_radius.take().unwrap_or_else(|| {
+            corner_manager.get_corner_radius_surface(
+                popup.popup.c_popup.xdg_surface(),
+                &self.qh,
+                (),
+            )
+        });
+
+        if let Some(Corners { top_left, top_right, bottom_right, bottom_left }) = corners.0 {
+            corners_surface.set_radius(top_left, top_right, bottom_right, bottom_left);
+        } else {
+            corners_surface.unset_radius();
+        }
+
+        popup.popup.corner_radius = Some(corners_surface);
+
+        true
+    }
+
+    pub(crate) fn commit_popup_blur(
+        &mut self,
+        region: Option<&Vec<Rectangle<i32, Logical>>>,
+        surface: &WlSurface,
+    ) -> bool {
+        let Some(popup) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == surface)
+        else {
+            return false;
+        };
+        let Some(blur_manager) = self.blur_manager.as_ref() else {
+            return false;
+        };
+
+        let blur_surface = popup.popup.blur_surface.take().unwrap_or_else(|| {
+            blur_manager.get_background_effect(popup.popup.c_popup.wl_surface(), &self.qh, ())
+        });
+
+        let Some(compositor_state) = self.compositor_state.as_ref() else {
+            tracing::error!("Missing compositor state");
+            return false;
+        };
+
+        let region = region.map(|r| {
+            let wl_region = Region::new(compositor_state).unwrap();
+            for Rectangle { loc, size } in r {
+                wl_region.add(loc.x, loc.y, size.w, size.h);
+            }
+            wl_region
+        });
+        blur_surface.set_blur_region(region.as_ref().map(|r| r.wl_region()));
+
+        popup.popup.blur_surface = Some(blur_surface);
+
+        true
     }
 }
 

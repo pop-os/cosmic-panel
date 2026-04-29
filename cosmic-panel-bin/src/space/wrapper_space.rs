@@ -327,6 +327,8 @@ impl WrapperSpace for PanelSpace {
                     .map(|p| p.wl_surface().clone())
                     .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
                 grab: true,
+                blur_surface: None,
+                corner_radius: None,
             },
             s_surface,
         });
