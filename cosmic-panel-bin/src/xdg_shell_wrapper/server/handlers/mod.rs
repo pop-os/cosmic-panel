@@ -288,6 +288,7 @@ impl WaylandDndGrabHandler for GlobalState {
             if metadata.dnd_actions.contains(&DndAction::Ask) {
                 actions |= ClientDndAction::Ask;
             }
+            dbg!(&metadata.mime_types);
 
             let dnd_source = self.client_state.data_device_manager.create_drag_and_drop_source(
                 &self.client_state.queue_handle,
@@ -310,6 +311,7 @@ impl WaylandDndGrabHandler for GlobalState {
                     seat.client.get_serial_of_last_seat_event(),
                 );
                 if let Some(client_surface) = c_icon_surface.as_ref() {
+                    dbg!("FOO DND ICON SURFACE CREATED");
                     client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
                     client_surface.commit();
 
@@ -329,12 +331,14 @@ impl WaylandDndGrabHandler for GlobalState {
             seat.client.dnd_source = Some(dnd_source);
         }
 
+        dbg!("FOO DND REQUESTED 3");
         //seat.server.dnd_source = source;
         seat.server.dnd_icon = icon;
 
         let seat = seat.server.seat.clone();
         match type_ {
             GrabType::Pointer => {
+                dbg!("Starting server pointer grab for DND");
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
                 pointer.set_grab(
@@ -364,7 +368,7 @@ impl WaylandDndGrabHandler for GlobalState {
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
-use crate::xdg_shell_wrapper::client_state::{ClientSeat, DndIcon};
+use crate::xdg_shell_wrapper::client_state::DndIcon;
 pub(crate) struct ServerGrabSource {
     pub metadata: smithay::input::dnd::SourceMetadata,
     pub dnd_offer: DragOffer,
@@ -378,6 +382,7 @@ impl smithay::utils::IsAlive for ServerGrabSource {
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
+        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
