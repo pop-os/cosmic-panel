@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use cctk::wayland_client::protocol::wl_surface::WlSurface;
+use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_toplevel_v1::CosmicCornerRadiusToplevelV1;
 use sctk::compositor::Region;
 use sctk::shell::xdg::XdgPositioner;
 use sctk::shell::xdg::popup::Popup;
@@ -11,6 +12,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::PopupManager;
 use smithay::utils::{Logical, Rectangle, Size};
 use smithay::wayland::shell::xdg::PopupSurface;
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 
@@ -41,11 +43,27 @@ pub struct WrapperPopup {
     pub s_surface: PopupSurface,
 }
 
+impl Drop for PanelPopup {
+    fn drop(&mut self) {
+        if let Some(blur) = self.blur_surface.take() {
+            blur.destroy();
+        }
+        if let Some(corners) = self.corner_radius.take() {
+            corners.destroy();
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PanelPopup {
     // XXX implicitly drops egl_surface first to avoid segfault
     /// the egl surface
     pub egl_surface: Option<EGLSurface>,
+
+    /// blur
+    pub blur_surface: Option<ExtBackgroundEffectSurfaceV1>,
+    /// corners
+    pub corner_radius: Option<CosmicCornerRadiusToplevelV1>,
 
     /// the popup on the layer shell surface
     pub c_popup: Popup,

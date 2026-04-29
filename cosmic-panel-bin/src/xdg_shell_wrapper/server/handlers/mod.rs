@@ -44,7 +44,9 @@ use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::util::write_and_attach_buffer;
 
 pub(crate) mod compositor;
+pub(crate) mod cosmic_corner_radius;
 pub(crate) mod cursor;
+pub(crate) mod ext_background_effect;
 pub(crate) mod fractional;
 pub(crate) mod layer;
 pub(crate) mod viewporter;
