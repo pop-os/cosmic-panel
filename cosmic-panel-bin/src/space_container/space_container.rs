@@ -76,13 +76,26 @@ impl SpaceContainer {
 
         let light = Theme::light_config()
             .ok()
-            .and_then(|c| Theme::get_entry(&c).ok())
+            .map(|c| {
+                Theme::get_entry(&c).unwrap_or_else(|e| {
+                    for e in e.0 {
+                        tracing::warn!("Error loading light theme: {e:?}");
+                    }
+                    e.1
+                })
+            })
             .unwrap_or_else(Theme::light_default);
         let dark = Theme::dark_config()
             .ok()
-            .and_then(|c| Theme::get_entry(&c).ok())
+            .map(|c| {
+                Theme::get_entry(&c).unwrap_or_else(|e| {
+                    for e in e.0 {
+                        tracing::warn!("Error loading dark theme: {e:?}");
+                    }
+                    e.1
+                })
+            })
             .unwrap_or_else(Theme::dark_default);
-
         let cosmic_workspaces = match CosmicWorkspaces::new() {
             Ok(cosmic_workspaces) => Some(cosmic_workspaces),
             Err(err) => {
