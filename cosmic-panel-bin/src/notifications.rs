@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cosmic_notifications_util::PANEL_NOTIFICATIONS_FD;
+use cosmic_notifications_config::PANEL_NOTIFICATIONS_FD;
 use smithay::reexports::rustix::io::{FdFlags, fcntl_getfd, fcntl_setfd};
 use smithay::reexports::rustix::{self};
 use std::os::fd::{FromRawFd, RawFd};

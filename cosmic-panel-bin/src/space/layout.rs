@@ -900,26 +900,26 @@ impl PanelSpace {
 
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => (
-                        (-1, side as i32),
+                        (0, side as i32),
                         (
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
+                            new_logical_crosswise_dim + self.gap() as i32 + anim_gap,
                             container_length,
                         ),
                     ),
                     PanelAnchor::Right => (
                         (-anim_gap, side as i32),
-                        (new_logical_crosswise_dim + self.gap() as i32 + 1, container_length),
+                        (new_logical_crosswise_dim + self.gap() as i32, container_length),
                     ),
                     PanelAnchor::Top => (
-                        (side as i32, -1),
+                        (side as i32, 0),
                         (
                             container_length,
-                            new_logical_crosswise_dim + self.gap() as i32 + 1 + anim_gap,
+                            new_logical_crosswise_dim + self.gap() as i32 + anim_gap,
                         ),
                     ),
                     PanelAnchor::Bottom => (
-                        (side as i32, 0 - anim_gap),
-                        (container_length, new_logical_crosswise_dim + self.gap() as i32 + 1),
+                        (side as i32, -anim_gap),
+                        (container_length, new_logical_crosswise_dim + self.gap() as i32),
                     ),
                 };
                 if is_overlapping_start {
@@ -942,10 +942,10 @@ impl PanelSpace {
                 input_region.add(loc.0, loc.1, size.0, size.1);
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
-                    PanelAnchor::Left => ((-1, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                    PanelAnchor::Right => ((-anim_gap, 0), (new_dim.w + 1 + anim_gap, new_dim.h)),
-                    PanelAnchor::Top => ((0, -1), (new_dim.w, new_dim.h + 1 + anim_gap)),
-                    PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + 1 + anim_gap)),
+                    PanelAnchor::Left => ((0, 0), (new_dim.w + anim_gap, new_dim.h)),
+                    PanelAnchor::Right => ((-anim_gap, 0), (new_dim.w + anim_gap, new_dim.h)),
+                    PanelAnchor::Top => ((0, 0), (new_dim.w, new_dim.h + anim_gap)),
+                    PanelAnchor::Bottom => ((0, -anim_gap), (new_dim.w, new_dim.h + anim_gap)),
                 };
 
                 if is_overlapping_start {

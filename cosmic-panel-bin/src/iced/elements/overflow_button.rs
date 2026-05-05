@@ -9,8 +9,8 @@ use calloop::LoopHandle;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::{self};
 use cosmic::Element;
+use cosmic::iced::core::id;
 use cosmic::iced::{Length, Padding};
-use cosmic::iced_core::id;
 use cosmic::theme::{self, Button};
 use cosmic::widget::{Id, button, layer_container};
 use smithay::utils::{Logical, Point, Size};
@@ -167,10 +167,8 @@ impl Program for OverflowButton {
             button::custom(
                 layer_container(
                     cosmic::widget::icon(cosmic::widget::icon::from_name(self.icon.clone()).into())
-                        .class(theme::Svg::Custom(Rc::new(|theme| {
-                            cosmic::iced_widget::svg::Style {
-                                color: Some(theme.cosmic().background.on.into()),
-                            }
+                        .class(theme::Svg::Custom(Rc::new(|theme| cosmic::widget::svg::Style {
+                            color: Some(theme.cosmic().background.on.into()),
                         })))
                         .width(Length::Fixed(self.icon_size as f32))
                         .height(Length::Fixed(self.icon_size as f32)),

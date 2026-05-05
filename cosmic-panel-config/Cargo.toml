@@ -10,7 +10,7 @@ wayland-rs = ["wayland-protocols-wlr", "xdg-shell-wrapper-config", "sctk"]
 anyhow = "1.0.102"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.44"
-wayland-protocols-wlr = { version = "0.3.11", features = [
+wayland-protocols-wlr = { version = "0.3.12", features = [
     "server",
     "client",
 ], optional = true }

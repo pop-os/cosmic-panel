@@ -1,8 +1,8 @@
 // popup for rendering overflow items in their own space
 
 use calloop::LoopHandle;
+use cosmic::iced::core::Shadow;
 use cosmic::iced::{Color, Length, id};
-use cosmic::iced_core::Shadow;
 use cosmic::widget::{container, space};
 use cosmic::{Theme, theme};
 

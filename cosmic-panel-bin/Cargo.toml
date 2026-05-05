@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 calloop = { version = "0.14.4", features = ["executor"] }
-ordered-float = "5.1.0"
+ordered-float = "5.3.0"
 smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = [
     "use_system_lib",
     "desktop",
@@ -21,13 +21,13 @@ smithay = { git = "https://github.com/smithay/smithay", default-features = false
 # sctk = { git = "https://github.com/smithay/client-toolkit", package = "smithay-client-toolkit", features = ["calloop", "xkbcommon"] }
 sctk.workspace = true
 # sctk = { package = "smithay-client-toolkit", path = "../../fork/client-toolkit", default-features = false, features = ["calloop", "xkbcommon"] }
-wayland-protocols = { version = "0.32.11", features = ["staging"] }
+wayland-protocols = { version = "0.32.12", features = ["staging"] }
 
 xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper-config" }
 cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols" }
 # cctk = { package = "cosmic-client-toolkit", path = "../../cosmic-protocols/client-toolkit" }
-wayland-egl = "0.32.10"
-wayland-protocols-wlr = { version = "0.3.11", features = ["client"] }
+wayland-egl = "0.32.11"
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "std",
@@ -62,8 +62,8 @@ iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic/" }
 tiny-skia = "0.11"
 ron = "0.12"
 rand = "0.10"
-cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }
-# cosmic-notifications-util = { path = "../../cosmic-notifications-daemon/cosmic-notifications-util", default-features = false }
-wayland-backend = { version = "0.3.14", features = ["client_system"] }
-zbus = { version = "5.14", features = ["tokio", "p2p"] }
+cosmic-notifications-config = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }
+# cosmic-notifications-util = { path = "../../cosmic-notifications/cosmic-notifications-config", default-features = false }
+wayland-backend = { version = "0.3.15", features = ["client_system"] }
+zbus = { version = "5.15", features = ["tokio", "p2p"] }
 ordered-stream = "0.2.0"

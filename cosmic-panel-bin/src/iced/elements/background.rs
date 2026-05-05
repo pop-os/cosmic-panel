@@ -1,8 +1,8 @@
 // Element for rendering a panel background
 
 use calloop::LoopHandle;
+use cosmic::iced::core::Shadow;
 use cosmic::iced::{Color, Length, id};
-use cosmic::iced_core::Shadow;
 use cosmic::widget::space;
 use cosmic::{Theme, theme};
 

@@ -13,19 +13,20 @@ use crate::iced::state::State;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cosmic::Theme;
 use cosmic::iced::advanced::widget::Tree;
+use cosmic::iced::core::clipboard::Null as NullClipboard;
+use cosmic::iced::core::renderer::Style;
+use cosmic::iced::core::{Color, Font, Length, Pixels};
 use cosmic::iced::event::Event;
 use cosmic::iced::futures::{self, FutureExt, StreamExt};
 use cosmic::iced::keyboard::{Event as KeyboardEvent, Modifiers as IcedModifiers};
 use cosmic::iced::mouse::{Button as MouseButton, Cursor, Event as MouseEvent, ScrollDelta};
+use cosmic::iced::runtime::Action;
+use cosmic::iced::runtime::task::into_stream;
 use cosmic::iced::touch::{Event as TouchEvent, Finger};
 use cosmic::iced::window::Event as WindowEvent;
-use cosmic::iced::{self, Limits, Point as IcedPoint, Size as IcedSize, Task};
-use cosmic::iced_core::clipboard::Null as NullClipboard;
-use cosmic::iced_core::renderer::Style;
-use cosmic::iced_core::{Color, Font, Length, Pixels};
-use cosmic::iced_renderer::Renderer as IcedRenderer;
-use cosmic::iced_runtime::Action;
-use cosmic::iced_runtime::task::into_stream;
+use cosmic::iced::{
+    self, Limits, Point as IcedPoint, Renderer as IcedRenderer, Size as IcedSize, Task,
+};
 use cosmic::widget::Id;
 use iced_tiny_skia::graphics::Viewport;
 use ordered_float::OrderedFloat;
@@ -169,7 +170,10 @@ impl iced::Executor for MyExecutor {
         Ok(MyExecutor { scheduler, executor_token: Some(executor_token) })
     }
 
-    fn spawn(&self, future: impl Future<Output = ()> + cosmic::iced_futures::MaybeSend + 'static) {
+    fn spawn(
+        &self,
+        future: impl Future<Output = ()> + iced::runtime::futures::MaybeSend + 'static,
+    ) {
         self.scheduler.schedule(future).unwrap();
     }
 
