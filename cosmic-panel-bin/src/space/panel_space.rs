@@ -69,7 +69,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use wayland_protocols::xdg::shell::client::xdg_positioner::ConstraintAdjustment;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
-use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor, Side};
 
 use crate::PanelCalloopMsg;
 use crate::iced::elements::CosmicMappedInternal;
@@ -78,28 +78,35 @@ use super::Spacer;
 use super::layout::OverflowSection;
 
 pub enum AppletMsg {
-    NewProcess(String, Process),
-    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
+    NewProcess(String, String, Process),
+    NewNotificationsProcess(String, String, Process, Vec<(String, String)>, Vec<OwnedFd>),
     NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
+    CleanupApplet(String, String),
 }
 
 impl Debug for AppletMsg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NewProcess(arg0, _) => f.debug_tuple("NewProcess").field(arg0).finish(),
-            Self::NewNotificationsProcess(arg0, _, arg2, arg3) => f
+            Self::NewProcess(arg0, arg1, _) => {
+                f.debug_tuple("NewProcess").field(arg0).field(arg1).finish()
+            },
+            Self::NewNotificationsProcess(arg0, arg1, _, arg3, arg4) => f
                 .debug_tuple("NewNotificationsProcess")
                 .field(arg0)
-                .field(arg2)
+                .field(arg1)
                 .field(arg3)
+                .field(arg4)
                 .finish(),
             Self::NeedNewNotificationFd(arg0) => {
                 f.debug_tuple("NeedNewNotificationFd").field(arg0).finish()
             },
             Self::ClientSocketPair(arg0) => f.debug_tuple("ClientSocketPair").field(arg0).finish(),
             Self::Cleanup(arg0) => f.debug_tuple("Cleanup").field(arg0).finish(),
+            Self::CleanupApplet(arg0, arg1) => {
+                f.debug_tuple("CleanupApplet").field(arg0).field(arg1).finish()
+            },
         }
     }
 }
@@ -2020,6 +2027,147 @@ impl PanelSpace {
         } else {
             false
         }
+    }
+
+    /// Remove a single applet by name: stops its process and unmaps its surface.
+    pub fn remove_applet(&mut self, name: &str) {
+        let panel_id = self.id();
+
+        let mut client_id = None;
+        let lists =
+            [self.clients_left.clone(), self.clients_center.clone(), self.clients_right.clone()];
+        for list in &lists {
+            let mut guard = list.lock().unwrap();
+            if let Some(pos) = guard.iter().position(|c| c.name == name) {
+                client_id = guard[pos].client.as_ref().map(|c| c.id());
+                guard.remove(pos);
+                break;
+            }
+        }
+
+        if let Some(ref cid) = client_id {
+            // Unmap from main space
+            let to_unmap = self
+                .space
+                .elements()
+                .find(|e| {
+                    e.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().map(|c| c.id()).as_ref() == Some(cid)
+                    })
+                })
+                .cloned();
+            if let Some(w) = to_unmap {
+                self.space.unmap_elem(&w);
+            }
+
+            // Unmap from overflow spaces
+            let to_unmap = self
+                .overflow_left
+                .elements()
+                .find(|e| {
+                    e.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().map(|c| c.id()).as_ref() == Some(cid)
+                    })
+                })
+                .cloned();
+            if let Some(w) = to_unmap {
+                self.overflow_left.unmap_elem(&w);
+            }
+            let to_unmap = self
+                .overflow_center
+                .elements()
+                .find(|e| {
+                    e.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().map(|c| c.id()).as_ref() == Some(cid)
+                    })
+                })
+                .cloned();
+            if let Some(w) = to_unmap {
+                self.overflow_center.unmap_elem(&w);
+            }
+            let to_unmap = self
+                .overflow_right
+                .elements()
+                .find(|e| {
+                    e.toplevel().is_some_and(|t| {
+                        t.wl_surface().client().map(|c| c.id()).as_ref() == Some(cid)
+                    })
+                })
+                .cloned();
+            if let Some(w) = to_unmap {
+                self.overflow_right.unmap_elem(&w);
+            }
+        }
+
+        let _ = self
+            .shared
+            .applet_tx
+            .try_send(AppletMsg::CleanupApplet(panel_id, name.to_string()));
+        self.is_dirty = true;
+    }
+
+    /// Move an applet to a different zone without restarting its process.
+    pub fn move_applet(&mut self, name: &str, new_side: Side) {
+        let lists = [
+            (self.clients_left.clone(), Side::WingStart),
+            (self.clients_center.clone(), Side::Center),
+            (self.clients_right.clone(), Side::WingEnd),
+        ];
+
+        let mut found_client = None;
+        for (list, side) in &lists {
+            if *side == new_side {
+                continue;
+            }
+            let mut guard = list.lock().unwrap();
+            if let Some(pos) = guard.iter().position(|c| c.name == name) {
+                found_client = Some(guard.remove(pos));
+                break;
+            }
+        }
+
+        if let Some(client) = found_client {
+            let target = match new_side {
+                Side::WingStart => &self.clients_left,
+                Side::Center => &self.clients_center,
+                Side::WingEnd => &self.clients_right,
+            };
+            target.lock().unwrap().push(client);
+            self.is_dirty = true;
+        }
+    }
+
+    /// Reorder zone lists to match the new config order after hot-plug changes.
+    pub fn reorder_applets(
+        &mut self,
+        new_left: &[String],
+        new_center: &[String],
+        new_right: &[String],
+    ) {
+        fn reorder(guard: &mut Vec<PanelClient>, names: &[String]) {
+            let mut result = Vec::with_capacity(guard.len());
+            for name in names {
+                if let Some(pos) = guard.iter().position(|c| &c.name == name) {
+                    result.push(guard.remove(pos));
+                }
+            }
+            result.append(guard);
+            *guard = result;
+        }
+
+        {
+            let mut guard = self.clients_left.lock().unwrap();
+            reorder(&mut guard, new_left);
+        }
+        {
+            let mut guard = self.clients_center.lock().unwrap();
+            reorder(&mut guard, new_center);
+        }
+        {
+            let mut guard = self.clients_right.lock().unwrap();
+            reorder(&mut guard, new_right);
+        }
+        self.is_dirty = true;
     }
 }
 

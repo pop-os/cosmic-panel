@@ -21,7 +21,7 @@ use cosmic::iced::id;
 use cosmic::theme;
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
-    PanelAnchor,
+    PanelAnchor, Side,
 };
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
@@ -300,6 +300,35 @@ impl SpaceContainer {
         // recreate the original if: output changed
         // or if the output is the same, but the priority changes to conflict with an
         // adjacent panel or if applet size changes
+        // A change to only the plugin list is handled via hot-plug without recreating the space.
+        let plugins_only_changed = !output_count_mismatch
+            && force_output.is_none()
+            && self.config.config_list.iter().any(|c| {
+                c.name == entry.name
+                    && (c.plugins_center != entry.plugins_center
+                        || c.plugins_wings != entry.plugins_wings)
+            })
+            && !self.config.config_list.iter().any(|c| {
+                c.name == entry.name && c.size != entry.size
+                    || (c.name == entry.name && c.spacing != entry.spacing)
+                    || (c.name == entry.name
+                        && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
+                    || (entry.output != CosmicPanelOuput::All
+                        && (c.name == entry.name && c.output != entry.output))
+                    || opposite_anchor.is_some()
+                    || (c.name == entry.name
+                        && (c.is_horizontal() != entry.is_horizontal()
+                            || c.size != entry.size
+                            || c.background != entry.background))
+                    || c.name != entry.name
+                        && Some(c.anchor) != opposite_anchor
+                        && (old_priority < c.get_priority() && new_priority > c.get_priority()
+                            || old_priority > c.get_priority() && new_priority < c.get_priority())
+                    || c.name != entry.name
+                        && old_priority != new_priority
+                        && c.anchor == entry.anchor
+            });
+
         let must_recreate =
         // implies that there is at least one output which needs to be recreated
         output_count_mismatch
@@ -315,13 +344,11 @@ impl SpaceContainer {
             (c.name == entry.name && c.output != entry.output))
             // panel anchor change forces restart
             || opposite_anchor.is_some()
-            // applet restarts are required
+            // structural applet restarts are required (plugin list changes handled by hot-plug)
             || (c.name == entry.name
                 && (c.is_horizontal() != entry.is_horizontal()
                 || c.size != entry.size
-                || c.background != entry.background
-                || c.plugins_center != entry.plugins_center
-                || c.plugins_wings != entry.plugins_wings))
+                || c.background != entry.background))
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
@@ -330,6 +357,9 @@ impl SpaceContainer {
             // || self.space_list.iter().any(|s| s.has_layer_overlap())
 
         );
+
+        // Capture old config before updating the list so hot_plug_applets can diff it.
+        let old_config = self.config.config_list.iter().find(|c| c.name == entry.name).cloned();
 
         self.config.config_list.retain(|c| c.name != entry.name);
         self.config.config_list.push(entry.clone());
@@ -348,6 +378,13 @@ impl SpaceContainer {
                 entry.output = space.config.output.clone();
                 space.update_config(entry.clone(), bg_color, true);
             }
+
+            if plugins_only_changed {
+                if let Some(old) = old_config {
+                    self.hot_plug_applets(&old, &entry, qh);
+                }
+            }
+
             self.apply_toplevel_changes();
             return;
         }
@@ -474,6 +511,75 @@ impl SpaceContainer {
             }
         }
         self.apply_toplevel_changes();
+    }
+
+    /// Apply hot-plug changes when only the plugin list changed (no structural recreation needed).
+    fn hot_plug_applets(
+        &mut self,
+        old: &CosmicPanelConfig,
+        new: &CosmicPanelConfig,
+        qh: &QueueHandle<GlobalState>,
+    ) {
+        use std::collections::HashMap;
+
+        // Build (name, side) maps from old and new configs.
+        let build_map = |cfg: &CosmicPanelConfig| -> HashMap<String, Side> {
+            let mut map = HashMap::new();
+            for name in cfg.plugins_left().unwrap_or_default() {
+                map.entry(name).or_insert(Side::WingStart);
+            }
+            for name in cfg.plugins_center().unwrap_or_default() {
+                map.entry(name).or_insert(Side::Center);
+            }
+            for name in cfg.plugins_right().unwrap_or_default() {
+                map.entry(name).or_insert(Side::WingEnd);
+            }
+            map
+        };
+
+        let old_map = build_map(old);
+        let new_map = build_map(new);
+
+        let removed: Vec<String> =
+            old_map.keys().filter(|k| !new_map.contains_key(*k)).cloned().collect();
+        let added: Vec<(String, Side)> = new_map
+            .iter()
+            .filter(|(k, _)| !old_map.contains_key(*k))
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        let moved: Vec<(String, Side)> = old_map
+            .iter()
+            .filter_map(|(k, old_side)| {
+                new_map.get(k).and_then(|new_side| {
+                    if old_side != new_side { Some((k.clone(), *new_side)) } else { None }
+                })
+            })
+            .collect();
+
+        let new_left = new.plugins_left().unwrap_or_default();
+        let new_center = new.plugins_center().unwrap_or_default();
+        let new_right = new.plugins_right().unwrap_or_default();
+
+        for space in &mut self.space_list {
+            if space.config.name != new.name {
+                continue;
+            }
+
+            for name in &removed {
+                space.remove_applet(name);
+            }
+            for (name, new_side) in &moved {
+                space.move_applet(name, *new_side);
+            }
+
+            for (name, side) in &added {
+                if let Err(err) = space.spawn_applet(name, *side, qh) {
+                    error!("Failed to spawn hot-plug applet {}: {}", name, err);
+                }
+            }
+
+            space.reorder_applets(&new_left, &new_center, &new_right);
+        }
     }
 
     pub fn stacked_spaces_by_priority(
