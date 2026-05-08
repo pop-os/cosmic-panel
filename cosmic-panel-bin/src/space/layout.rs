@@ -839,7 +839,7 @@ impl PanelSpace {
                 ],
             };
 
-            let border_radius = self.border_radius().min(w as u32).min(h as u32) as f32 / 2.;
+            let border_radius = (self.border_radius() as f32).min(w as f32 / 2.).min(h as f32 / 2.);
             let radius = match (self.config.anchor, self.gap()) {
                 (PanelAnchor::Right, 0) => [border_radius, 0., 0., border_radius],
                 (PanelAnchor::Left, 0) => [0., border_radius, border_radius, 0.],
