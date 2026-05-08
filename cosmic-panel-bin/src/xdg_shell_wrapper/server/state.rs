@@ -49,6 +49,9 @@ pub struct ServerState {
     pub(crate) display_handle: DisplayHandle,
     // pub(crate) selected_data_provider: SelectedDataProvider,
     pub(crate) last_button: Option<u32>,
+    /// when a press on an applet is suppressed (awaiting drag-or-click decision),
+    /// stores (time_ms, button_code) to replay on release if no drag occurred.
+    pub(crate) suppressed_drag_press: Option<(u32, u32)>,
     pub(crate) seats: Vec<SeatPair>,
     // Smithay State
     pub(crate) compositor_state: CompositorState,
@@ -72,6 +75,7 @@ impl ServerState {
             popup_manager: PopupManager::default(),
             display_handle: dh.clone(),
             last_button: None,
+            suppressed_drag_press: None,
             seats: Vec::new(),
             compositor_state: CompositorState::new::<GlobalState>(&dh),
             _cursor_shape: CursorShapeManagerState::new::<GlobalState>(&dh),

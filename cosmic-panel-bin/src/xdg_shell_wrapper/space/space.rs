@@ -174,6 +174,12 @@ pub trait WrapperSpace {
     /// optionally returns an interacted server wl surface
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget>;
 
+    /// returns true if a button press on an applet is pending (awaiting drag-or-click decision).
+    /// the caller should suppress forwarding the press event to the applet.
+    fn is_pending_drag(&self) -> bool {
+        false
+    }
+
     /// keyboard focus lost handler
     fn keyboard_leave(&mut self, seat_name: &str, surface: Option<wl_surface::WlSurface>);
 

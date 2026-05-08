@@ -54,6 +54,7 @@ use smithay::desktop::{PopupManager, Space};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
 use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as s_WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Rectangle, Size};
 use smithay::wayland::compositor::with_states;
@@ -256,6 +257,30 @@ impl PanelColors {
     }
 }
 
+pub const DRAG_LONG_PRESS_MS: u64 = 400;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragSection {
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppletDragState {
+    pub applet_name: String,
+    pub source_section: DragSection,
+    pub source_index: usize,
+    pub cursor_pos: (i32, i32),
+    pub press_started: Instant,
+    pub is_active: bool,
+    pub preview_section: DragSection,
+    pub preview_index: usize,
+    pub anim_t: f32,
+    pub anim_start: Option<Instant>,
+    pub prev_positions: std::collections::HashMap<String, i32>,
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HoverTrack {
     pub hover_id: Option<HoverId>,
@@ -362,6 +387,7 @@ pub struct PanelSpace {
     pub(crate) hover_track: HoverTrack,
     pub(crate) start_show_instant: Rc<RefCell<Option<Instant>>>,
     pub shared: Rc<PanelSharedState>,
+    pub drag_state: Option<AppletDragState>,
 }
 
 impl PanelSpace {
@@ -442,6 +468,7 @@ impl PanelSpace {
             minimized_toplevels: HashSet::new(),
 
             start_show_instant: Rc::new(RefCell::new(None)),
+            drag_state: None,
         }
     }
 
@@ -1622,6 +1649,236 @@ impl PanelSpace {
                 positioner.set_parent_size(parent_size.w, parent_size.h);
             }
         }
+    }
+
+    pub fn find_applet_for_surface(
+        &self,
+        wl_surface: &s_WlSurface,
+    ) -> Option<(String, DragSection, usize)> {
+        let client_id = wl_surface.client().map(|c| c.id())?;
+        for (i, c) in self.clients_left.lock().unwrap().iter().enumerate() {
+            if c.client.as_ref().is_some_and(|w| w.id() == client_id) {
+                return Some((c.name.clone(), DragSection::Left, i));
+            }
+        }
+        for (i, c) in self.clients_center.lock().unwrap().iter().enumerate() {
+            if c.client.as_ref().is_some_and(|w| w.id() == client_id) {
+                return Some((c.name.clone(), DragSection::Center, i));
+            }
+        }
+        for (i, c) in self.clients_right.lock().unwrap().iter().enumerate() {
+            if c.client.as_ref().is_some_and(|w| w.id() == client_id) {
+                return Some((c.name.clone(), DragSection::Right, i));
+            }
+        }
+        None
+    }
+
+    pub fn update_drag_preview(&mut self) -> bool {
+        let Some(drag) = self.drag_state.as_mut() else { return false };
+        if !drag.is_active {
+            return false;
+        }
+
+        let (cursor_x, cursor_y) = drag.cursor_pos;
+        let major_cursor = if self.config.is_horizontal() { cursor_x } else { cursor_y };
+        let panel_major = if self.config.is_horizontal() {
+            self.dimensions.w
+        } else {
+            self.dimensions.h
+        };
+
+        let preview_section = if major_cursor < panel_major / 3 {
+            DragSection::Left
+        } else if major_cursor > 2 * panel_major / 3 {
+            DragSection::Right
+        } else {
+            DragSection::Center
+        };
+
+        let drag_name = drag.applet_name.clone();
+
+        let left_ids: Vec<_> = self
+            .clients_left
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.client.as_ref().map(|wc| wc.id()))
+            .collect();
+        let center_ids: Vec<_> = self
+            .clients_center
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.client.as_ref().map(|wc| wc.id()))
+            .collect();
+        let right_ids: Vec<_> = self
+            .clients_right
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.client.as_ref().map(|wc| wc.id()))
+            .collect();
+
+        let drag_client_id: Option<_> = {
+            let left = self.clients_left.lock().unwrap();
+            let center = self.clients_center.lock().unwrap();
+            let right = self.clients_right.lock().unwrap();
+            left.iter()
+                .chain(center.iter())
+                .chain(right.iter())
+                .find(|c| c.name == drag_name)
+                .and_then(|c| c.client.as_ref())
+                .map(|wc| wc.id())
+        };
+
+        let mut left_pos: Vec<i32> = vec![];
+        let mut center_pos: Vec<i32> = vec![];
+        let mut right_pos: Vec<i32> = vec![];
+
+        for elem in self.space.elements() {
+            if let CosmicMappedInternal::Window(w) = elem {
+                let Some(client_id) = w.wl_surface().and_then(|s| s.client().map(|c| c.id()))
+                else {
+                    continue;
+                };
+                if drag_client_id.as_ref().is_some_and(|id| *id == client_id) {
+                    continue;
+                }
+                let Some(geo) = self.space.element_geometry(elem) else { continue };
+                let center = if self.config.is_horizontal() {
+                    geo.loc.x + geo.size.w / 2
+                } else {
+                    geo.loc.y + geo.size.h / 2
+                };
+                if left_ids.contains(&client_id) {
+                    left_pos.push(center);
+                } else if center_ids.contains(&client_id) {
+                    center_pos.push(center);
+                } else if right_ids.contains(&client_id) {
+                    right_pos.push(center);
+                }
+            }
+        }
+
+        let section_pos = match preview_section {
+            DragSection::Left => &left_pos,
+            DragSection::Center => &center_pos,
+            DragSection::Right => &right_pos,
+        };
+        let preview_index = section_pos.iter().filter(|&&c| c < major_cursor).count();
+
+        let changed = drag.preview_section != preview_section || drag.preview_index != preview_index;
+        if changed {
+            let is_h = self.config.is_horizontal();
+            let name_for_client: Vec<(_, String)> = {
+                let l = self.clients_left.lock().unwrap();
+                let c = self.clients_center.lock().unwrap();
+                let r = self.clients_right.lock().unwrap();
+                l.iter()
+                    .chain(c.iter())
+                    .chain(r.iter())
+                    .filter_map(|pc| pc.client.as_ref().map(|wc| (wc.id(), pc.name.clone())))
+                    .collect()
+            };
+            let mut prev_pos = std::collections::HashMap::new();
+            for elem in self.space.elements() {
+                if let CosmicMappedInternal::Window(w) = elem {
+                    if let Some(client_id) =
+                        w.wl_surface().and_then(|s| s.client().map(|c| c.id()))
+                    {
+                        if let Some((_, name)) =
+                            name_for_client.iter().find(|(id, _)| *id == client_id)
+                        {
+                            if let Some(geo) = self.space.element_geometry(elem) {
+                                let major = if is_h { geo.loc.x } else { geo.loc.y };
+                                prev_pos.insert(name.clone(), major);
+                            }
+                        }
+                    }
+                }
+            }
+            drag.prev_positions = prev_pos;
+            drag.anim_start = Some(Instant::now());
+            drag.anim_t = 0.0;
+        }
+        drag.preview_section = preview_section;
+        drag.preview_index = preview_index;
+        changed
+    }
+
+    pub fn commit_drag_reorder(&mut self) {
+        let Some(drag) = self.drag_state.take() else { return };
+        if !drag.is_active {
+            return;
+        }
+
+        let removed = {
+            let mut src = match drag.source_section {
+                DragSection::Left => self.clients_left.lock().unwrap(),
+                DragSection::Center => self.clients_center.lock().unwrap(),
+                DragSection::Right => self.clients_right.lock().unwrap(),
+            };
+            let pos = src.iter().position(|c| c.name == drag.applet_name);
+            pos.map(|i| src.remove(i))
+        };
+
+        let Some(applet_client) = removed else { return };
+
+        {
+            let mut dst = match drag.preview_section {
+                DragSection::Left => self.clients_left.lock().unwrap(),
+                DragSection::Center => self.clients_center.lock().unwrap(),
+                DragSection::Right => self.clients_right.lock().unwrap(),
+            };
+            let insert_idx = drag.preview_index.min(dst.len());
+            dst.insert(insert_idx, applet_client);
+        }
+
+        let plugins_left: Vec<String> = self
+            .clients_left
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| !c.name.starts_with("spacer-"))
+            .map(|c| c.name.clone())
+            .collect();
+        let plugins_right: Vec<String> = self
+            .clients_right
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| !c.name.starts_with("spacer-"))
+            .map(|c| c.name.clone())
+            .collect();
+        let plugins_center: Vec<String> = self
+            .clients_center
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| !c.name.starts_with("spacer-"))
+            .map(|c| c.name.clone())
+            .collect();
+
+        let new_plugins_wings =
+            if plugins_left.is_empty() && plugins_right.is_empty() {
+                None
+            } else {
+                Some((plugins_left, plugins_right))
+            };
+        let new_plugins_center =
+            if plugins_center.is_empty() { None } else { Some(plugins_center) };
+
+        self.config.plugins_wings = new_plugins_wings.clone();
+        self.config.plugins_center = new_plugins_center.clone();
+
+        let _ = self.shared.panel_tx.send(PanelCalloopMsg::ReorderPlugins {
+            panel_name: self.config.name.clone(),
+            plugins_wings: new_plugins_wings,
+            plugins_center: new_plugins_center,
+        });
+
+        self.is_dirty = true;
     }
 
     pub fn update_config(

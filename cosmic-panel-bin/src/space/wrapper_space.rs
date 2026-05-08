@@ -61,7 +61,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use crate::iced::elements::{CosmicMappedInternal, PanelSpaceElement};
 use crate::space::AppletMsg;
-use crate::space::panel_space::{AppletAutoClickAnchor, PanelClient};
+use crate::space::panel_space::{AppletAutoClickAnchor, AppletDragState, DRAG_LONG_PRESS_MS, PanelClient};
 
 use super::PanelSpace;
 use super::layout::OverflowSection;
@@ -863,6 +863,10 @@ impl WrapperSpace for PanelSpace {
     }
 
     /// returns false to forward the button press, and true to intercept
+    fn is_pending_drag(&self) -> bool {
+        self.drag_state.as_ref().is_some_and(|d| !d.is_active)
+    }
+
     fn handle_button(&mut self, seat_name: &str, press: bool) -> Option<SpaceTarget> {
         if let Some(prev_foc) = {
             let c_hovered_surface: &ClientFocus = &self.shared.c_hovered_surface.borrow();
@@ -890,11 +894,55 @@ impl WrapperSpace for PanelSpace {
                     self.close_popups(|_| false);
                 }
             }
+
+            if press {
+                if let Some(SpaceTarget::Surface(ref srv_surface)) = target {
+                    if let Some((name, section, idx)) =
+                        self.find_applet_for_surface(srv_surface)
+                    {
+                        let cursor_pos = self
+                            .s_hovered_surface
+                            .iter()
+                            .find(|h| h.seat_name == seat_name)
+                            .map(|h| {
+                                (
+                                    h.c_pos.x + h.s_pos.x as i32,
+                                    h.c_pos.y + h.s_pos.y as i32,
+                                )
+                            })
+                            .unwrap_or((0, 0));
+                        self.drag_state = Some(AppletDragState {
+                            applet_name: name,
+                            source_section: section,
+                            source_index: idx,
+                            cursor_pos,
+                            press_started: Instant::now(),
+                            is_active: false,
+                            preview_section: section,
+                            preview_index: idx,
+                            anim_t: 1.0,
+                            anim_start: None,
+                            prev_positions: std::collections::HashMap::new(),
+                        });
+                    }
+                }
+            } else {
+                if self.drag_state.as_ref().is_some_and(|d| d.is_active) {
+                    self.commit_drag_reorder();
+
+                    return None;
+                } else {
+                    self.drag_state = None;
+                }
+            }
+
             target
         } else {
             if press {
                 self.close_popups(|_| false);
             }
+            // cancel any in-flight drag when the cursor leaves the panel
+            self.drag_state = None;
             // no hover found
             // if has keyboard focus remove it and close popups
             self.keyboard_leave(seat_name, None);
@@ -910,6 +958,16 @@ impl WrapperSpace for PanelSpace {
         c_wl_surface: c_wl_surface::WlSurface,
         pointer: &WlPointer,
     ) -> Option<ServerPointerFocus> {
+        if let Some(drag) = self.drag_state.as_mut() {
+            drag.cursor_pos = (x, y);
+            if !drag.is_active
+                && drag.press_started.elapsed().as_millis() as u64 >= DRAG_LONG_PRESS_MS
+            {
+                drag.is_active = true;
+                self.is_dirty = true;
+            }
+        }
+
         let mut prev_hover =
             self.s_hovered_surface.iter_mut().enumerate().find(|(_, f)| f.seat_name == seat_name);
         let prev_foc = self.s_focused_surface.iter_mut().find(|f| f.1 == seat_name);
@@ -1301,6 +1359,22 @@ impl WrapperSpace for PanelSpace {
                 }
             } else {
                 self.hover_track.set_hover_id(None);
+            }
+        }
+        if self.drag_state.as_ref().is_some_and(|d| d.is_active) {
+            let anim_running = if let Some(drag) = self.drag_state.as_mut() {
+                if let Some(start) = drag.anim_start {
+                    const ANIM_MS: f32 = 180.0;
+                    drag.anim_t = (start.elapsed().as_millis() as f32 / ANIM_MS).min(1.0);
+                    drag.anim_t < 1.0
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if self.update_drag_preview() || anim_running {
+                self.is_dirty = true;
             }
         }
         ret
