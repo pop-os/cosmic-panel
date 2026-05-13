@@ -88,34 +88,7 @@ impl DataSourceHandler for GlobalState {
             seat.client.next_dnd_offer_is_mine = false;
         }
 
-        // cancel server DnD or drop it
-        if self
-            .client_state
-            .focused_surface
-            .borrow()
-            .iter()
-            .any(|f| f.1 == seat.name && matches!(f.2, FocusStatus::Focused))
-        {
-            /*
-            let offer = match seat.client.dnd_offer.take() {
-                Some(offer) => offer,
-                None => return,
-            };
-
-            let pointer_event = PointerEvent {
-                surface: offer.surface,
-                kind: PointerEventKind::Release {
-                    serial: offer.serial,
-                    time: offer.time.unwrap_or_default(),
-                    button: 0x110,
-                },
-                position: (offer.x, offer.y),
-            };
-            if let Some(pointer) = seat.client.ptr.as_ref().map(|p| p.pointer().clone()) {
-                self.pointer_frame(conn, qh, &pointer, &[pointer_event]);
-            }
-            */
-        } else if let Some(dnd_source) = seat.server.dnd_source.take() {
+        if let Some(dnd_source) = seat.server.dnd_source.take() {
             dnd_source.cancelled();
             seat.server.dnd_icon = None;
             seat.server.seat.get_pointer().unwrap().unset_grab(
