@@ -1,3 +1,4 @@
+use cctk::wayland_client::Proxy;
 use smithay::wayland::viewporter::ViewportCachedState;
 use std::os::fd::OwnedFd;
 use std::sync::Mutex;
@@ -426,20 +427,16 @@ pub(crate) struct ServerGrabSource {
 
 impl smithay::utils::IsAlive for ServerGrabSource {
     fn alive(&self) -> bool {
-        println!("FOO ALIVE");
-        //todo!()
-        true
+        self.dnd_offer.inner().is_alive()
     }
 }
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
-        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
     fn choose_action(&self, action: smithay::input::dnd::DndAction) {
-        println!("FOO CHOOSE_ACTION?");
         // XXX actions?
         //
         let mut c_action = ClientDndAction::empty();
@@ -457,21 +454,16 @@ impl smithay::input::dnd::Source for ServerGrabSource {
     }
 
     fn send(&self, mime_type: &str, fd: OwnedFd) {
-        println!("FOO SEND");
         receive_to_fd(self.dnd_offer.inner(), mime_type.to_owned(), fd)
     }
 
-    fn drop_performed(&self) {
-        println!("FOO DROP_PERFORMED");
-    }
+    fn drop_performed(&self) {}
 
     fn cancel(&self) {
-        println!("FOO CANCEL");
         self.dnd_offer.destroy();
     }
 
     fn finished(&self) {
-        println!("FOO FINISHED");
         self.dnd_offer.finish();
     }
 }
