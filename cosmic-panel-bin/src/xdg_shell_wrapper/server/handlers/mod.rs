@@ -269,8 +269,6 @@ impl WaylandDndGrabHandler for GlobalState {
         serial: Serial,
         type_: GrabType,
     ) {
-        // TODO icon
-
         let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
             Some(s) => s,
             None => return,
@@ -361,61 +359,6 @@ impl WaylandDndGrabHandler for GlobalState {
         }
     }
 }
-
-/*
-impl ServerDndGrabHandler for GlobalState {
-    fn send(&mut self, mime_type: String, fd: OwnedFd, seat: Seat<Self>) {
-        let seat = match self.server_state.seats.iter().find(|s| s.server.seat == seat) {
-            Some(s) => s,
-            None => return,
-        };
-        if let Some(offer) = seat.client.dnd_offer.as_ref() {
-            receive_to_fd(offer.inner(), mime_type, fd)
-        }
-    }
-
-    fn finished(&mut self, seat: Seat<Self>) {
-        let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
-            Some(s) => s,
-            None => return,
-        };
-        if let Some(offer) = seat.client.dnd_offer.take() {
-            offer.finish();
-        }
-    }
-
-    fn cancelled(&mut self, seat: Seat<Self>) {
-        let seat = match self.server_state.seats.iter_mut().find(|s| s.server.seat == seat) {
-            Some(s) => s,
-            None => return,
-        };
-        if let Some(offer) = seat.client.dnd_offer.take() {
-            offer.destroy();
-        }
-    }
-
-    fn action(&mut self, action: DndAction, seat: Seat<Self>) {
-        let seat = match self.server_state.seats.iter().find(|s| s.server.seat == seat) {
-            Some(s) => s,
-            None => return,
-        };
-        let mut c_action = ClientDndAction::empty();
-        if action.contains(DndAction::Copy) {
-            c_action |= ClientDndAction::Copy;
-        }
-        if action.contains(DndAction::Move) {
-            c_action |= ClientDndAction::Move;
-        }
-        if action.contains(DndAction::Ask) {
-            c_action |= ClientDndAction::Ask;
-        }
-
-        if let Some(offer) = seat.client.dnd_offer.as_ref() {
-            offer.set_actions(c_action, c_action)
-        }
-    }
-}
-*/
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
