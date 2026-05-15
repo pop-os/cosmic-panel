@@ -443,7 +443,7 @@ impl WrapperSpace for PanelSpace {
             let config_name = self.config.name.clone();
             let env_vars = vec![
                 ("COSMIC_PANEL_NAME".to_string(), config_name),
-                ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
+                ("COSMIC_PANEL_OUTPUT".to_string(), active_output.clone()),
                 ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
@@ -565,6 +565,11 @@ impl WrapperSpace for PanelSpace {
                     match security_context_manager.create_listener::<SpaceContainer>(qh) {
                         Ok(security_context) => {
                             security_context.set_sandbox_engine(NAME.to_string());
+                            security_context.set_app_id(panel_client.name.clone());
+                            security_context.set_instance_id(format!(
+                                "{}.{}",
+                                panel_client.name, active_output
+                            ));
                             security_context.commit();
 
                             let data = security_context.data::<SecurityContext>().unwrap();
@@ -623,6 +628,7 @@ impl WrapperSpace for PanelSpace {
                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
 
                 info!("Starting: {}", exec);
+                let active_output = active_output.clone();
 
                 let mut process = Process::new()
                     .with_executable(&exec)
@@ -672,11 +678,18 @@ impl WrapperSpace for PanelSpace {
                         let security_context = if requests_wayland_display && should_restart {
                             security_context_manager_clone.as_ref().and_then(
                                 |security_context_manager| {
+                                    let active_output = active_output.clone();
+
                                     security_context_manager
                                         .create_listener::<SpaceContainer>(&qh_clone)
                                         .ok()
                                         .inspect(|security_context| {
                                             security_context.set_sandbox_engine(NAME.to_string());
+                                            security_context.set_app_id(id_clone.clone());
+                                            security_context.set_instance_id(format!(
+                                                "{}.{}",
+                                                id_clone, active_output
+                                            ));
                                             security_context.commit();
 
                                             let data =
