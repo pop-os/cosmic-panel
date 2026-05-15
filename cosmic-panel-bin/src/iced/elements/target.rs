@@ -3,12 +3,19 @@ use super::{CosmicMappedInternal, PopupMappedInternal};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 use anyhow::bail;
-use smithay::input::keyboard::KeyboardTarget;
-use smithay::input::pointer::PointerTarget;
-use smithay::input::touch::TouchTarget;
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::IsAlive;
-use smithay::wayland::seat::WaylandFocus;
+use smithay::{
+    input::{
+        Seat,
+        dnd::{self, DndFocus},
+        keyboard::KeyboardTarget,
+        pointer::PointerTarget,
+        touch::TouchTarget,
+    },
+    reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
+    utils::IsAlive,
+    wayland::{seat::WaylandFocus, selection::data_device::WlOfferData},
+};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SpaceTarget {
@@ -346,6 +353,75 @@ impl WaylandFocus for SpaceTarget {
         match self {
             SpaceTarget::Surface(s) => Some(std::borrow::Cow::Borrowed(s)),
             SpaceTarget::OverflowButton(b) => b.wl_surface(),
+        }
+    }
+}
+
+impl DndFocus<GlobalState> for SpaceTarget {
+    type OfferData<S>
+        = WlOfferData<S>
+    where
+        S: dnd::Source;
+
+    fn enter<S>(
+        &self,
+        data: &mut GlobalState,
+        dh: &DisplayHandle,
+        source: Arc<S>,
+        seat: &Seat<GlobalState>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        serial: &smithay::utils::Serial,
+    ) -> std::option::Option<WlOfferData<S>>
+    where
+        S: dnd::Source,
+    {
+        match self {
+            SpaceTarget::Surface(s) => DndFocus::enter(s, data, dh, source, seat, location, serial),
+            SpaceTarget::OverflowButton(_b) => None,
+        }
+    }
+
+    fn motion<S>(
+        &self,
+        data: &mut GlobalState,
+        offer: Option<&mut WlOfferData<S>>,
+        seat: &Seat<GlobalState>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        time: u32,
+    ) where
+        S: dnd::Source,
+    {
+        match self {
+            SpaceTarget::Surface(s) => DndFocus::motion(s, data, offer, seat, location, time),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn leave<S>(
+        &self,
+        data: &mut GlobalState,
+        offer: Option<&mut WlOfferData<S>>,
+        seat: &Seat<GlobalState>,
+    ) where
+        S: dnd::Source,
+    {
+        match self {
+            SpaceTarget::Surface(s) => DndFocus::leave(s, data, offer, seat),
+            SpaceTarget::OverflowButton(_b) => {},
+        }
+    }
+
+    fn drop<S>(
+        &self,
+        data: &mut GlobalState,
+        offer: Option<&mut WlOfferData<S>>,
+        seat: &Seat<GlobalState>,
+    ) where
+        S: dnd::Source,
+    {
+        match self {
+            SpaceTarget::Surface(s) => DndFocus::drop(s, data, offer, seat),
+            SpaceTarget::OverflowButton(_b) => {},
         }
     }
 }

@@ -1,19 +1,31 @@
 use std::time::Instant;
 
 use cctk::wayland_client::protocol::wl_surface::WlSurface;
-use sctk::data_device_manager::data_device::{DataDeviceData, DataDeviceHandler};
-use sctk::data_device_manager::data_offer::DataOfferData;
-use sctk::reexports::client::Proxy;
-use sctk::reexports::client::protocol::wl_data_device::WlDataDevice;
-use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
-use sctk::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
-use smithay::input::pointer::GrabStartData;
-use smithay::reexports::wayland_server::Resource;
-use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
-use smithay::utils::SERIAL_COUNTER;
-use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::selection::data_device::{
-    SourceMetadata, set_data_device_focus, set_data_device_selection, start_dnd,
+use sctk::{
+    data_device_manager::{
+        data_device::{DataDeviceData, DataDeviceHandler},
+        data_offer::DataOfferData,
+    },
+    reexports::client::{
+        Proxy,
+        protocol::{
+            wl_data_device::WlDataDevice, wl_data_device_manager::DndAction as ClientDndAction,
+        },
+    },
+    seat::pointer::{PointerEvent, PointerEventKind, PointerHandler},
+};
+use smallvec::SmallVec;
+use smithay::{
+    input::{
+        dnd::{DndAction, SourceMetadata},
+        pointer::GrabStartData,
+    },
+    reexports::wayland_server::Resource,
+    utils::SERIAL_COUNTER,
+    wayland::{
+        seat::WaylandFocus,
+        selection::data_device::{set_data_device_focus, set_data_device_selection},
+    },
 };
 
 use crate::xdg_shell_wrapper::client_state::FocusStatus;
@@ -57,13 +69,13 @@ impl DataDeviceHandler for GlobalState {
             &seat.server.seat,
             mime_types,
             (),
-        )
+        );
     }
 
     fn enter(
         &mut self,
         _conn: &sctk::reexports::client::Connection,
-        _qh: &sctk::reexports::client::QueueHandle<Self>,
+        qh: &sctk::reexports::client::QueueHandle<Self>,
         data_device: &WlDataDevice,
         _x: f64,
         _y: f64,
@@ -108,17 +120,17 @@ impl DataDeviceHandler for GlobalState {
         let wl_offer = offer.inner();
 
         let mime_types = wl_offer.data::<DataOfferData>().unwrap().with_mime_types(|m| m.to_vec());
-        let mut dnd_action = DndAction::empty();
+        let mut dnd_actions = SmallVec::new();
         let c_action = offer.source_actions;
         if c_action.contains(ClientDndAction::Copy) {
-            dnd_action |= DndAction::Copy;
+            dnd_actions.push(DndAction::Copy);
         } else if c_action.contains(ClientDndAction::Move) {
-            dnd_action |= DndAction::Move;
+            dnd_actions.push(DndAction::Move);
         } else if c_action.contains(ClientDndAction::Ask) {
-            dnd_action |= DndAction::Ask;
+            dnd_actions.push(DndAction::Ask);
         }
 
-        let metadata = SourceMetadata { mime_types, dnd_action };
+        let metadata = SourceMetadata { mime_types, dnd_actions };
         let (x, y) = (offer.x, offer.y);
         let Some(ptr) = seat.client.ptr.as_ref().map(|p| p.pointer().clone()) else {
             tracing::error!("Missing pointer on seat for dnd enter");
@@ -131,23 +143,30 @@ impl DataDeviceHandler for GlobalState {
             &ptr,
         );
 
-        seat.client.dnd_offer = Some(offer);
         // TODO: touch vs pointer start data
         if !seat.client.next_dnd_offer_is_mine {
             let focus = server_focus;
-            start_dnd(
-                &self.server_state.display_handle.clone(),
-                &seat.server.seat.clone(),
-                self,
-                SERIAL_COUNTER.next_serial(),
-                Some(GrabStartData {
-                    focus: focus.map(|f| (f.surface, f.s_pos.to_f64())),
-                    button: 0x110, // assume left button for now, maybe there is another way..
-                    location: (x, y).into(),
-                }),
-                None,
-                metadata,
-            );
+
+            let pointer_start_data = GrabStartData {
+                focus: focus.map(|f| (f.surface, f.s_pos.to_f64())),
+                button: 0x110, // assume left button for now, maybe there is another way..
+                location: (x, y).into(),
+            };
+            if let Some(pointer) = seat.server.seat.get_pointer() {
+                use crate::xdg_shell_wrapper::server::handlers::ServerGrabSource;
+                use smithay::input::dnd::DnDGrab;
+                use smithay::input::pointer::Focus;
+                let source = ServerGrabSource { metadata, dnd_offer: offer };
+                let dnd_grab = DnDGrab::new_pointer(
+                    &self.server_state.display_handle,
+                    pointer_start_data,
+                    source,
+                    seat.server.seat.clone(),
+                );
+                pointer.set_grab(self, dnd_grab, SERIAL_COUNTER.next_serial(), Focus::Keep);
+            }
+        } else {
+            tracing::info!("Internal DND not starting server drag");
         }
     }
 
