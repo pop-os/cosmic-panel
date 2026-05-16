@@ -94,44 +94,41 @@ impl PanelSpace {
                 _ = s.send_configure()
             }
 
-            match config.kind {
-                popup::ConfigureKind::Initial => {
-                    tracing::info!("Popup Initial Configure");
-                    let width_scaled = (width as f64 * self.scale).ceil() as i32;
-                    let height_scaled = (height as f64 * self.scale).ceil() as i32;
-                    let wl_egl_surface = match WlEglSurface::new(
-                        p.c_popup.wl_surface().id(),
-                        width_scaled,
-                        height_scaled,
-                    ) {
-                        Ok(s) => s,
-                        Err(err) => {
-                            tracing::error!("Failed to create WlEglSurface: {:?}", err);
-                            return;
-                        },
-                    };
-                    let client_egl_surface = unsafe {
-                        ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
-                    };
-                    let egl_surface = unsafe {
-                        EGLSurface::new(
-                            renderer.egl_context().display(),
-                            renderer
-                                .egl_context()
-                                .pixel_format()
-                                .expect("Failed to get pixel format from EGL context "),
-                            renderer.egl_context().config_id(),
-                            client_egl_surface,
-                        )
-                        .expect("Failed to initialize EGL Surface")
-                    };
-                    p.egl_surface.replace(egl_surface);
-                    p.dirty = true;
-                },
-                popup::ConfigureKind::Reactive => {},
-                popup::ConfigureKind::Reposition { token: _token } => {},
-                _ => {},
-            };
+            // FIXME we do not always get an initial configure event
+            // instead we get a reposition sometimes
+            // so we create the egl surface after a configure if it does not exist yet
+            if p.egl_surface.is_none() {
+                let width_scaled = (width as f64 * self.scale).ceil() as i32;
+                let height_scaled = (height as f64 * self.scale).ceil() as i32;
+                let wl_egl_surface = match WlEglSurface::new(
+                    p.c_popup.wl_surface().id(),
+                    width_scaled,
+                    height_scaled,
+                ) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        tracing::error!("Failed to create WlEglSurface: {:?}", err);
+                        return;
+                    },
+                };
+                let client_egl_surface = unsafe {
+                    ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
+                };
+                let egl_surface = unsafe {
+                    EGLSurface::new(
+                        renderer.egl_context().display(),
+                        renderer
+                            .egl_context()
+                            .pixel_format()
+                            .expect("Failed to get pixel format from EGL context "),
+                        renderer.egl_context().config_id(),
+                        client_egl_surface,
+                    )
+                    .expect("Failed to initialize EGL Surface")
+                };
+                p.egl_surface = Some(egl_surface);
+            }
+            p.dirty = true;
         } else if self
             .overflow_popup
             .as_ref()
@@ -153,46 +150,38 @@ impl PanelSpace {
                 None | Some(WrapperPopupState::WaitConfigure) => None,
                 Some(r) => Some(r),
             };
-
-            match config.kind {
-                popup::ConfigureKind::Initial => {
-                    tracing::info!("Popup Initial Configure");
-                    let width_scaled = (width as f64 * self.scale).ceil() as i32;
-                    let height_scaled = (height as f64 * self.scale).ceil() as i32;
-                    let wl_egl_surface = match WlEglSurface::new(
-                        p.c_popup.wl_surface().id(),
-                        width_scaled,
-                        height_scaled,
-                    ) {
-                        Ok(s) => s,
-                        Err(err) => {
-                            tracing::error!("Failed to create WlEglSurface: {:?}", err);
-                            return;
-                        },
-                    };
-                    let client_egl_surface = unsafe {
-                        ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
-                    };
-                    let egl_surface = unsafe {
-                        EGLSurface::new(
-                            renderer.egl_context().display(),
-                            renderer
-                                .egl_context()
-                                .pixel_format()
-                                .expect("Failed to get pixel format from EGL context "),
-                            renderer.egl_context().config_id(),
-                            client_egl_surface,
-                        )
-                        .expect("Failed to initialize EGL Surface")
-                    };
-                    p.egl_surface.replace(egl_surface);
-                    p.dirty = true;
-                    tracing::info!("Popup configured");
-                },
-                popup::ConfigureKind::Reactive => {},
-                popup::ConfigureKind::Reposition { token: _token } => {},
-                _ => {},
-            };
+            if p.egl_surface.is_none() {
+                let width_scaled = (width as f64 * self.scale).ceil() as i32;
+                let height_scaled = (height as f64 * self.scale).ceil() as i32;
+                let wl_egl_surface = match WlEglSurface::new(
+                    p.c_popup.wl_surface().id(),
+                    width_scaled,
+                    height_scaled,
+                ) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        tracing::error!("Failed to create WlEglSurface: {:?}", err);
+                        return;
+                    },
+                };
+                let client_egl_surface = unsafe {
+                    ClientEglSurface::new(wl_egl_surface, p.c_popup.wl_surface().clone())
+                };
+                let egl_surface = unsafe {
+                    EGLSurface::new(
+                        renderer.egl_context().display(),
+                        renderer
+                            .egl_context()
+                            .pixel_format()
+                            .expect("Failed to get pixel format from EGL context "),
+                        renderer.egl_context().config_id(),
+                        client_egl_surface,
+                    )
+                    .expect("Failed to initialize EGL Surface")
+                };
+                p.egl_surface = Some(egl_surface);
+            }
+            p.dirty = true;
         }
     }
 }
