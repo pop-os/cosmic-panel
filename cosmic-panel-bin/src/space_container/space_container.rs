@@ -151,14 +151,14 @@ impl SpaceContainer {
 
     pub fn set_dark(&mut self, theme: theme::CosmicTheme, blur_enabled: bool) {
         self.dark_theme = cosmic::Theme::system(Arc::new(theme));
-
         for space in &mut self.space_list {
-            let is_dark = space.is_dark(self.is_dark);
+            let is_dark: bool = space.is_dark(self.is_dark);
+
             if is_dark {
-                space.set_theme(
-                    PanelColors::new(self.dark_theme.clone())
-                        .with_color_override(space.config.bg_color_override()),
-                );
+                let mut new_colors = PanelColors::new(self.dark_theme.clone())
+                    .with_color_override(space.config.bg_color_override());
+                new_colors.blur_enabled = blur_enabled;
+                space.set_theme(new_colors);
             }
         }
     }
@@ -168,11 +168,12 @@ impl SpaceContainer {
 
         for space in &mut self.space_list {
             let is_dark = space.is_dark(self.is_dark);
+
             if !is_dark {
-                space.set_theme(
-                    PanelColors::new(self.light_theme.clone())
-                        .with_color_override(space.config.bg_color_override()),
-                );
+                let mut new_colors = PanelColors::new(self.light_theme.clone())
+                    .with_color_override(space.config.bg_color_override());
+                new_colors.blur_enabled = blur_enabled;
+                space.set_theme(new_colors);
             }
         }
     }
@@ -219,12 +220,13 @@ impl SpaceContainer {
         self.is_dark = is_dark;
         if changed {
             let cur = self.cur_theme();
+
             for space in &mut self.space_list {
                 if matches!(space.config.background, CosmicPanelBackground::ThemeDefault) {
-                    space.set_theme(
-                        PanelColors::new(cur.clone())
-                            .with_color_override(space.config.bg_color_override()),
-                    );
+                    let mut new_colors = PanelColors::new(cur.clone())
+                        .with_color_override(space.config.bg_color_override());
+                    new_colors.blur_enabled = blur_enabled;
+                    space.set_theme(new_colors);
                 }
             }
         }
@@ -370,16 +372,21 @@ impl SpaceContainer {
         }
 
         let mut blur_manager = None;
+        let mut was_blurred = false;
         // remove old one if it exists
         self.space_list.retain(|s| {
             blur_manager = s.blur_manager.clone();
             // keep if the name is different or the output is different
-            s.config.name != entry.name
+            let keep = s.config.name != entry.name
                 || force_output.is_some()
                     && s.output
                         .as_ref()
                         .map(|(wl_output, ..)| Some(wl_output) != force_output.as_ref())
-                        .unwrap_or_default()
+                        .unwrap_or_default();
+            if !keep {
+                was_blurred = s.colors.panel_blur();
+            }
+            keep
         });
 
         let outputs: Vec<_> = match &entry.output {
@@ -399,6 +406,9 @@ impl SpaceContainer {
                     qh,
                     self.corner_radius_manager.as_ref(),
                 );
+                if was_blurred {
+                    space.colors.enable_blur();
+                }
                 space.enable_blur_capacity(blur_manager.as_ref());
                 space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
@@ -478,6 +488,9 @@ impl SpaceContainer {
                     qh,
                     self.corner_radius_manager.as_ref(),
                 );
+                if was_blurred {
+                    space.colors.enable_blur();
+                }
                 space.enable_blur_capacity(space_blur_manager.as_ref());
                 if let Some(s_display) = self.s_display.as_ref() {
                     space.set_display_handle(s_display.clone());
