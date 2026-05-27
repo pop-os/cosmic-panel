@@ -54,7 +54,7 @@ uninstall:
 # Vendor dependencies locally
 vendor:
     mkdir -p .cargo
-    cargo vendor --sync Cargo.toml \
+    cargo vendor --locked --sync Cargo.toml \
         | head -n -1 > .cargo/config
     echo 'directory = "vendor"' >> .cargo/config
     tar pcf vendor.tar vendor
