@@ -95,7 +95,20 @@ pub fn run(
     // TODO find better place for this
     // let set_clipboard_once = Rc::new(Cell::new(false));
 
-    let mut prev_dur = Duration::from_millis(16);
+    fn get_refresh_rate(global_state: &GlobalState) -> i32 {
+        global_state.space.space_list.iter()
+            .filter_map(|panel| {
+                panel.output.as_ref()?.2.modes.iter()
+                    .find(|mode| mode.current)
+                    .map(|mode| mode.refresh_rate)
+            })
+            .max()
+            .unwrap()
+    }
+
+    let mut prev_refresh_rate = get_refresh_rate(&global_state);
+    let mut prev_dur = Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64);
+
     loop {
         let iter_start = Instant::now();
 
@@ -104,7 +117,7 @@ pub fn run(
         let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
             Duration::from_millis(300)
         } else {
-            Duration::from_millis(16)
+            Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64)
         }
         .max(prev_dur);
 
@@ -141,17 +154,18 @@ pub fn run(
         let new_visibility_hidden = matches!(global_state.space.visibility(), Visibility::Hidden);
 
         if visibility != new_visibility_hidden {
-            prev_dur = Duration::from_millis(16);
+            prev_refresh_rate = get_refresh_rate(&global_state);
+            prev_dur = Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64);
             continue;
         }
         if let Some(dur) = Instant::now()
             .checked_duration_since(iter_start)
             .and_then(|spent| dur.checked_sub(spent))
         {
-            std::thread::sleep(dur.min(Duration::from_millis(if new_visibility_hidden {
-                50
+            std::thread::sleep(dur.min(Duration::from_nanos(if new_visibility_hidden {
+                50_000_000
             } else {
-                16
+                1_000_000_000_000 / prev_refresh_rate as u64
             })));
         } else {
             prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur).min(Duration::from_millis(100));
