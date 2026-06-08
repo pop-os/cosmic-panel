@@ -58,10 +58,6 @@ impl CornerRadiusState {
             );
         CornerRadiusState { instances: Vec::new(), global }
     }
-
-    pub fn global_id(&self) -> GlobalId {
-        self.global.clone()
-    }
 }
 
 pub trait CornerRadiusHandler: XdgShellHandler + WlrLayerShellHandler {
