@@ -96,14 +96,22 @@ pub fn run(
     // let set_clipboard_once = Rc::new(Cell::new(false));
 
     fn get_refresh_rate(global_state: &GlobalState) -> i32 {
-        global_state.space.space_list.iter()
+        global_state
+            .space
+            .space_list
+            .iter()
             .filter_map(|panel| {
-                panel.output.as_ref()?.2.modes.iter()
+                panel
+                    .output
+                    .as_ref()?
+                    .2
+                    .modes
+                    .iter()
                     .find(|mode| mode.current)
                     .map(|mode| mode.refresh_rate)
             })
             .max()
-            .unwrap()
+            .unwrap_or(60)
     }
 
     let mut prev_refresh_rate = get_refresh_rate(&global_state);
