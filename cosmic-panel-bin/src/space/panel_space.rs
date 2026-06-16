@@ -262,9 +262,12 @@ impl PanelColors {
         self
     }
 
-    pub fn bg_color(&self, mut alpha: f32) -> [f32; 4] {
+    pub fn bg_color(&self, mut alpha: f32, opaque: bool) -> [f32; 4] {
         if self.theme.cosmic().frosted_panel {
             alpha *= self.theme.cosmic().alpha_map.blurred_alpha(self.theme.cosmic().frosted);
+        }
+        if opaque {
+            alpha = 1.;
         }
 
         self.color_override.unwrap_or_else(|| {
@@ -713,7 +716,7 @@ impl PanelSpace {
         if let Some(animatable_state) = self.animate_state.as_ref() {
             animatable_state.cur.bg_color
         } else {
-            self.colors.bg_color(self.config.opacity)
+            self.colors.bg_color(self.config.opacity, self.maximized)
         }
     }
 
@@ -1531,12 +1534,12 @@ impl PanelSpace {
     }
 
     pub fn set_theme(&mut self, colors: PanelColors) {
-        let color = colors.bg_color(self.config.opacity);
+        let color = colors.bg_color(self.config.opacity, self.maximized);
         if let Some(animate_state) = self.animate_state.as_mut() {
             animate_state.end.bg_color = color;
         } else {
             let start = AnimatableState {
-                bg_color: self.colors.bg_color(self.config.opacity),
+                bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
                 border_radius: self.config.border_radius,
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
@@ -1668,7 +1671,8 @@ impl PanelSpace {
         bg_color: Option<[f32; 4]>,
         animate: bool,
     ) {
-        let bg_color = bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity));
+        let bg_color =
+            bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity, self.maximized));
         // avoid animating if currently maximized
         if self.maximized {
             return;
@@ -1767,7 +1771,7 @@ impl PanelSpace {
 
         if animate {
             let start = AnimatableState {
-                bg_color: self.colors.bg_color(self.config.opacity),
+                bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
                 border_radius: self.config.border_radius,
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
@@ -1862,7 +1866,7 @@ impl PanelSpace {
         if self.maximized == maximized {
             return;
         }
-        let bg_color = self.colors.bg_color(opacity);
+        let bg_color = self.colors.bg_color(opacity, self.maximized);
         if !self.maximized {
             self.update_config(config, Some(bg_color), self.config.autohide.is_none());
             self.maximized = maximized;
