@@ -795,6 +795,19 @@ impl PanelSpace {
         } else {
             (new_dim.w, new_dim.h)
         };
+
+        // Ensure expansion to the edge for fractional scaling
+        if self.config.expand_to_edges() && self.gap() == 0 {
+            let fill = |logical: i32| {
+                (((logical as f64 * self.scale).round() / self.scale).ceil() as i32).max(logical)
+            };
+            if self.config.is_horizontal() {
+                w = fill(w);
+            } else {
+                h = fill(h);
+            }
+        }
+
         if !self.background_element.as_ref().is_some_and(|e| {
             e.with_program(|p| {
                 p.logical_height == h
