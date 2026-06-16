@@ -376,6 +376,7 @@ impl PanelSpace {
         let name = format!("{}-{}", config.name, config.output);
         let visibility =
             if config.autohide.is_some() { Visibility::Hidden } else { Visibility::Visible };
+        let color_override = config.bg_color_override();
         Self {
             config,
             shared: shared.clone(),
@@ -405,7 +406,7 @@ impl PanelSpace {
             start_instant: Instant::now(),
             s_focused_surface: Default::default(),
             s_hovered_surface: Default::default(),
-            colors: PanelColors::new(theme),
+            colors: PanelColors::new(theme).with_color_override(color_override),
             actual_size: (0, 0).into(),
             input_region: None,
             damage_tracked_renderer: None,
