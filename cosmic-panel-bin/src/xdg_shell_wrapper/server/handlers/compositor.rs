@@ -15,7 +15,7 @@ use smithay::wayland::compositor::{CompositorHandler, CompositorState, get_role}
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{delegate_compositor, delegate_shm};
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
 use crate::xdg_shell_wrapper::client_state::{SurfaceState, WrapperClientCompositorState};

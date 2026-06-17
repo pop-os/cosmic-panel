@@ -1130,9 +1130,7 @@ impl PanelSpace {
         clients: impl Iterator<Item = &'a PanelClient>,
     ) -> OverflowClientPartition {
         let mut overflow_partition = OverflowClientPartition {
-            suggested_size: (self.config.size.get_applet_icon_size_with_padding(true) as f64
-                + 2. * self.config.get_applet_padding(true) as f64)
-                .round() as u32,
+            suggested_size: (self.config.size.get_applet_icon_size_with_padding(true)),
             ..Default::default()
         };
         for c in clients {
@@ -1149,7 +1147,13 @@ impl PanelSpace {
                 {
                     let w_clone = w.clone();
                     w_clone.refresh();
-                    Some((w_clone, c.shrink_priority.unwrap_or_default()))
+                    Some((
+                        w_clone,
+                        c.shrink_priority.unwrap_or_default(),
+                        w.bbox().size.w.saturating_mul(w.bbox().size.h).saturating_div(
+                            overflow_partition.suggested_size.saturating_pow(2) as i32,
+                        ),
+                    ))
                 } else {
                     None
                 }
@@ -1164,7 +1168,8 @@ impl PanelSpace {
                     padding_overlap: 0.0,
                 });
             } else if c.shrink_priority.is_some() {
-                overflow_partition.movable.push(w);
+                let p = weighted_priority(&w);
+                overflow_partition.movable.push((w.0, p));
             } else {
                 // make shrinkable if no shrink priority with lowest priority so it is moved
                 // last
@@ -1506,6 +1511,8 @@ impl PanelSpace {
         overflow
     }
 
+    // FIXME need protocol for up to date preffered size from applets
+    // otherwise, applets like audio applet with mpris controls can flicker back and forth
     fn move_from_overflow(
         mut extra_space: u32,
         is_horizontal: bool,
@@ -1513,7 +1520,6 @@ impl PanelSpace {
         overflow_space: &mut Space<PopupMappedInternal>,
         suggested_size: u32,
     ) -> u32 {
-        // TODO move applets until extra_space is as close as possible to 0
         let overflow_elements = overflow_space.elements().cloned().collect_vec();
         for w in overflow_elements {
             if extra_space < suggested_size {
@@ -1760,6 +1766,11 @@ impl PanelSpace {
             }
         }
     }
+}
+
+/// Weight priority so that bigger applets overflow last
+fn weighted_priority(w: &(Window, u32, i32)) -> u32 {
+    (w.1.saturating_mul(100_000) as u32).saturating_sub(w.2 as u32)
 }
 
 // if middle collides with left or right, it must be constrained
