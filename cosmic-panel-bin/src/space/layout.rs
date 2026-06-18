@@ -24,12 +24,13 @@ use cosmic_panel_config::PanelAnchor;
 use itertools::{Itertools, chain};
 use sctk::shell::WaylandSurface;
 use smithay::desktop::space::SpaceElement;
-use smithay::desktop::{Space, Window};
+use smithay::desktop::{Space, Window, WindowSurface};
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{IsAlive, Physical, Rectangle, Size};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::shell::xdg::SurfaceCachedState;
 use tracing::info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1511,8 +1512,6 @@ impl PanelSpace {
         overflow
     }
 
-    // FIXME need protocol for up to date preffered size from applets
-    // otherwise, applets like audio applet with mpris controls can flicker back and forth
     fn move_from_overflow(
         mut extra_space: u32,
         is_horizontal: bool,
@@ -1525,7 +1524,18 @@ impl PanelSpace {
             if extra_space < suggested_size {
                 break;
             }
-            let size: Size<i32, _> = w.geometry().size;
+            let mut size: Size<i32, _> = w.geometry().size;
+            if let PopupMappedInternal::Window(w) = &w {
+                let WindowSurface::Wayland(toplevel) = w.underlying_surface();
+
+                if let Some(s) = Some(with_states(toplevel.wl_surface(), |states| {
+                    states.cached_state.get::<SurfaceCachedState>().current().max_size
+                }))
+                .filter(|size| !(size.w == 0 && size.h == 0))
+                {
+                    size = s;
+                }
+            }
 
             let applet_len = if is_horizontal { size.w as u32 } else { size.h as u32 };
             if extra_space >= applet_len {
