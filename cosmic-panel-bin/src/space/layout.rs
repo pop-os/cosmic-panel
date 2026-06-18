@@ -448,6 +448,11 @@ impl PanelSpace {
             (new_dim.h, new_dim.w)
         };
 
+        if new_list_thickness_dim != list_cross {
+            self.pending_dimensions = Some(new_dim);
+            self.is_dirty = true;
+            anyhow::bail!("resizing list");
+        }
         let left_sum = left_sum_scaled / self.scale;
         let center_sum = center_sum_scaled / self.scale;
         let right_sum = right_sum_scaled / self.scale;
@@ -528,6 +533,7 @@ impl PanelSpace {
             self.relax_overflow_center(center_overflow.unsigned_abs(), &mut center_overflow_button)
         } else if center_overflow > 0 {
             let overflow = self.shrink_center((center_sum - target_center_len) as u32);
+            self.is_dirty = true;
             bail!("overflow: {}", overflow)
         }
 
@@ -539,6 +545,8 @@ impl PanelSpace {
             } else if left_overflow > 0 {
                 info!("target: {target_left_len}, actual: {left_sum}");
                 let overflow = self.shrink_left(left_overflow as u32);
+                self.is_dirty = true;
+
                 bail!("left overflow: {} {}", left_overflow, overflow)
             }
 
@@ -550,6 +558,8 @@ impl PanelSpace {
                 );
             } else if right_overflow > 0 {
                 let overflow = self.shrink_right(right_overflow as u32);
+                self.is_dirty = true;
+
                 bail!("right overflow: {} {}", right_overflow, overflow)
             }
         }
@@ -566,11 +576,6 @@ impl PanelSpace {
             (crosswise_dim as i32 - dim as i32) / 2
         }
 
-        if new_list_thickness_dim != list_cross {
-            self.pending_dimensions = Some(new_dim);
-            self.is_dirty = true;
-            anyhow::bail!("resizing list");
-        }
         // offset for centering
         let margin_offset = match anchor {
             PanelAnchor::Top | PanelAnchor::Left => gap,
@@ -838,6 +843,7 @@ impl PanelSpace {
             };
 
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
+                self.is_dirty = true;
                 bail!("output missing");
             };
             let mut loc = match self.config.anchor {
