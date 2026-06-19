@@ -8,7 +8,7 @@ use sctk::delegate_keyboard;
 use sctk::seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RawModifiers, RepeatInfo};
 use sctk::shell::WaylandSurface;
 use smithay::backend::input::KeyState;
-use smithay::input::keyboard::FilterResult;
+use smithay::input::keyboard::{FilterResult, ModifiersState};
 use smithay::utils::SERIAL_COUNTER;
 
 impl KeyboardHandler for GlobalState {
@@ -256,13 +256,33 @@ impl KeyboardHandler for GlobalState {
         &mut self,
         _conn: &sctk::reexports::client::Connection,
         _qh: &sctk::reexports::client::QueueHandle<Self>,
-        _keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
+        keyboard: &sctk::reexports::client::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
-        _modifiers: sctk::seat::keyboard::Modifiers,
+        modifiers: sctk::seat::keyboard::Modifiers,
         _: RawModifiers,
         _: u32,
     ) {
-        // TODO should these be handled specially
+        let Some(kbd) = self
+            .server_state
+            .seats
+            .iter()
+            .find(|SeatPair { client, .. }| {
+                client.kbd.as_ref().map(|k| k == keyboard).unwrap_or(false)
+            })
+            .and_then(|seat| seat.server.seat.get_keyboard())
+        else {
+            return;
+        };
+        let mut state = ModifiersState::default();
+        state.ctrl = modifiers.ctrl;
+        state.alt = modifiers.alt;
+        state.caps_lock = modifiers.caps_lock;
+        state.logo = modifiers.logo;
+        state.num_lock = modifiers.num_lock;
+        state.shift = modifiers.shift;
+
+        kbd.set_modifier_state(state);
+        kbd.advertise_modifier_state(self);
     }
 }
 
