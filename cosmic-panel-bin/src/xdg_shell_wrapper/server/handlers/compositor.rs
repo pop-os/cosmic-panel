@@ -15,7 +15,7 @@ use smithay::wayland::compositor::{CompositorHandler, CompositorState, get_role}
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{delegate_compositor, delegate_shm};
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
 use crate::xdg_shell_wrapper::client_state::{SurfaceState, WrapperClientCompositorState};
@@ -243,7 +243,6 @@ impl CompositorHandler for GlobalState {
                 }
             }
         } else if role == "dnd_icon".into() {
-            info!("dnd_icon commit");
             // render dnd icon to the active dnd icon surface
             on_commit_buffer_handler::<GlobalState>(surface);
             let seat = match self
@@ -262,7 +261,7 @@ impl CompositorHandler for GlobalState {
                 let size = bbox_from_surface_tree(surface, (0, 0)).size;
 
                 if let Some(renderer) = self.space.renderer() {
-                    match c_icon.0.as_mut() {
+                    match c_icon.egl_surface.as_mut() {
                         Some(egl_surface) => {
                             _ = unsafe {
                                 renderer.egl_context().make_current_with_surface(egl_surface)
@@ -273,7 +272,7 @@ impl CompositorHandler for GlobalState {
                             }
                         },
                         None => {
-                            let c_surface = &c_icon.1;
+                            let c_surface = &c_icon.surface;
                             let client_egl_surface = unsafe {
                                 ClientEglSurface::new(
                                     WlEglSurface::new(c_surface.id(), size.w.max(1), size.h.max(1))
@@ -298,20 +297,20 @@ impl CompositorHandler for GlobalState {
                                 renderer.egl_context().make_current_with_surface(&egl_surface)
                             };
                             _ = renderer.bind(&mut egl_surface);
-                            c_icon.0 = Some(egl_surface);
+                            c_icon.egl_surface = Some(egl_surface);
                         },
                     };
 
-                    c_icon.2 = OutputDamageTracker::new(
+                    c_icon.output_tracker = OutputDamageTracker::new(
                         (size.w.max(1), size.h.max(1)),
                         self.space.space_list[0].scale,
                         Transform::Flipped180,
                     );
                 }
 
-                c_icon.3 = true;
-                c_icon.1.commit();
-                c_icon.1.frame(&self.client_state.queue_handle, c_icon.1.clone());
+                c_icon.is_ready = true;
+                c_icon.surface.commit();
+                c_icon.surface.frame(&self.client_state.queue_handle, c_icon.surface.clone());
             }
         } else if role == "subsurface".into() {
             on_commit_buffer_handler::<GlobalState>(surface);

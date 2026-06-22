@@ -28,13 +28,19 @@ impl CompositorHandler for GlobalState {
         time: u32,
     ) {
         // TODO proxied layer surfaces
-        if let Some(seat) = self
-            .server_state
-            .seats
-            .iter_mut()
-            .find(|s| s.client.dnd_icon.iter().any(|dnd_icon| &dnd_icon.1 == surface))
-        {
-            seat.client.dnd_icon.as_mut().unwrap().4 = Some(time);
+        if let Some((icon, s_surface)) = self.server_state.seats.iter_mut().find_map(|s| {
+            s.client
+                .dnd_icon
+                .iter_mut()
+                .find(|dnd_icon| &dnd_icon.surface == surface)
+                .map(|dnd_icon| (dnd_icon, s.server.dnd_icon.clone()))
+        }) {
+            icon.has_frame = true;
+            if let Some(s_surface) = s_surface
+                && icon.egl_surface.is_none()
+            {
+                smithay::wayland::compositor::CompositorHandler::commit(self, &s_surface);
+            }
             self.draw_dnd_icon();
         } else {
             self.space.frame(surface, time);

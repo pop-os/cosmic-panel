@@ -94,7 +94,9 @@ where
         let location = space.element_location(e)?;
         let mut bbox = e.geometry().to_f64();
         bbox.loc += location.to_f64();
-        if let Some(configured_size) = e.toplevel().and_then(|t| t.current_state().size) {
+        if let Some(configured_size) =
+            e.toplevel().and_then(|t| t.with_committed_state(|s| s.as_ref().and_then(|s| s.size)))
+        {
             if configured_size.w > 0 {
                 bbox.size.w = bbox.size.w.min(configured_size.w as f64);
             }
@@ -708,10 +710,13 @@ impl WrapperSpace for PanelSpace {
                                     return;
                                 };
                                 if let Err(err) = pman
-                                    .update_process_env(&key, vec![(
-                                        "COSMIC_NOTIFICATIONS".to_string(),
-                                        fd.as_raw_fd().to_string(),
-                                    )])
+                                    .update_process_env(
+                                        &key,
+                                        vec![(
+                                            "COSMIC_NOTIFICATIONS".to_string(),
+                                            fd.as_raw_fd().to_string(),
+                                        )],
+                                    )
                                     .await
                                 {
                                     error!("Failed to update process env: {}", err);

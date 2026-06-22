@@ -16,6 +16,7 @@ use smithay::backend::renderer::{Bind, ImportDma, ImportEgl};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::input::keyboard::FilterResult;
 use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::protocol::wl_surface;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::dmabuf::DmabufState;
@@ -23,7 +24,7 @@ use smithay::wayland::fractional_scale::with_fractional_scale;
 use tracing::{error, info};
 
 use crate::space_container::SpaceContainer;
-use crate::xdg_shell_wrapper::client_state::ClientState;
+use crate::xdg_shell_wrapper::client_state::{ClientState, DndIcon};
 use crate::xdg_shell_wrapper::server_state::ServerState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 
@@ -153,7 +154,7 @@ impl GlobalState {
     pub fn draw_dnd_icon(&mut self) {
         // TODO proxied layer surfaces
         if let Some((
-            (egl_surface, wl_surface, dmg_tracked_renderer, is_dirty, has_frame),
+            DndIcon { egl_surface, surface: wl_surface, output_tracker, is_ready, has_frame },
             s_icon,
         )) = self
             .server_state
@@ -161,7 +162,7 @@ impl GlobalState {
             .iter_mut()
             .find_map(|s| s.client.dnd_icon.as_mut().zip(s.server.dnd_icon.as_mut()))
         {
-            if !*is_dirty || has_frame.is_none() {
+            if !*is_ready || !*has_frame {
                 return;
             }
             let Some(egl_surface) = egl_surface.as_mut() else {
@@ -194,7 +195,7 @@ impl GlobalState {
                     smithay::backend::renderer::element::Kind::Unspecified,
                 );
 
-            _ = dmg_tracked_renderer.render_output(renderer, &mut f, age, &elements, *clear_color);
+            _ = output_tracker.render_output(renderer, &mut f, age, &elements, *clear_color);
             drop(f);
             egl_surface.swap_buffers(None).unwrap();
             // FIXME: damage tracking issues on integrated graphics but not nvidia
@@ -217,8 +218,8 @@ impl GlobalState {
             wl_surface.frame(&self.client_state.queue_handle, wl_surface.clone());
             wl_surface.commit();
 
-            *is_dirty = false;
-            *has_frame = None;
+            *is_ready = false;
+            *has_frame = false;
         }
     }
 }
