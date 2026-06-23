@@ -21,7 +21,8 @@ use smithay::backend::renderer::element::{AsRenderElements, RenderElement, Under
 use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer};
 use smithay::backend::renderer::{Bind, Color32F, Frame, Renderer};
 use smithay::reexports::wayland_server::Resource;
-use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle, user_data::UserDataMap};
+use smithay::utils::user_data::UserDataMap;
+use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 pub(crate) enum PanelRenderElement {
@@ -134,10 +135,10 @@ impl PanelSpace {
                     anyhow::bail!("Failed to clear panel.");
                 };
 
-                _ = frame.clear(
-                    Color32F::new(0.0, 0.0, 0.0, 0.0),
-                    &[Rectangle::new((0, 0).into(), dim)],
-                );
+                _ = frame.clear(Color32F::new(0.0, 0.0, 0.0, 0.0), &[Rectangle::new(
+                    (0, 0).into(),
+                    dim,
+                )]);
                 if let Ok(sync_point) = frame.finish() {
                     if let Err(err) = sync_point.wait() {
                         tracing::error!("Error waiting for sync point: {:?}", err);

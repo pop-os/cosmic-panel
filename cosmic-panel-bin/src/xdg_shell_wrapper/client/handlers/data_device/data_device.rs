@@ -1,32 +1,19 @@
 use std::time::Instant;
 
 use cctk::wayland_client::protocol::wl_surface::WlSurface;
-use sctk::{
-    data_device_manager::{
-        data_device::{DataDeviceData, DataDeviceHandler},
-        data_offer::DataOfferData,
-    },
-    reexports::client::{
-        Proxy,
-        protocol::{
-            wl_data_device::WlDataDevice, wl_data_device_manager::DndAction as ClientDndAction,
-        },
-    },
-    seat::pointer::{PointerEvent, PointerEventKind, PointerHandler},
-};
+use sctk::data_device_manager::data_device::{DataDeviceData, DataDeviceHandler};
+use sctk::data_device_manager::data_offer::DataOfferData;
+use sctk::reexports::client::Proxy;
+use sctk::reexports::client::protocol::wl_data_device::WlDataDevice;
+use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
+use sctk::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smallvec::SmallVec;
-use smithay::{
-    input::{
-        dnd::{DndAction, SourceMetadata},
-        pointer::GrabStartData,
-    },
-    reexports::wayland_server::Resource,
-    utils::SERIAL_COUNTER,
-    wayland::{
-        seat::WaylandFocus,
-        selection::data_device::{set_data_device_focus, set_data_device_selection},
-    },
-};
+use smithay::input::dnd::{DndAction, SourceMetadata};
+use smithay::input::pointer::GrabStartData;
+use smithay::reexports::wayland_server::Resource;
+use smithay::utils::SERIAL_COUNTER;
+use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::selection::data_device::{set_data_device_focus, set_data_device_selection};
 
 use crate::xdg_shell_wrapper::client_state::FocusStatus;
 use crate::xdg_shell_wrapper::server_state::ServerPointerFocus;
