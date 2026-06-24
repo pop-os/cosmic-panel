@@ -124,7 +124,7 @@ impl PanelSpace {
             let age = egl_surface.buffer_age().unwrap_or_default() as usize;
             let mut f = renderer.bind(egl_surface)?;
             // if not visible, just clear and exit early
-            let not_visible = self.config.autohide.is_some()
+            let not_visible = self.config.autohide_enabled()
                 && matches!(self.visibility, crate::xdg_shell_wrapper::space::Visibility::Hidden);
             let dim = self.dimensions.to_f64().to_physical(self.scale).to_i32_round();
             // TODO check to make sure this is not going to cause damage issues
