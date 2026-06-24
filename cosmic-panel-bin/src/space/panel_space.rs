@@ -276,8 +276,8 @@ impl PanelColors {
         })
     }
 
-    pub fn panel_blur(&self) -> bool {
-        self.theme.cosmic().frosted_panel
+    pub fn panel_blur(&self, alpha: f32) -> bool {
+        self.theme.cosmic().frosted_panel && alpha > 0.001
     }
 }
 
@@ -2069,7 +2069,7 @@ impl PanelSpace {
         rect: smithay::utils::Rectangle<i32, Logical>,
         mut corners: [u32; 4],
     ) {
-        if self.colors.panel_blur() {
+        if self.colors.panel_blur(self.config.opacity) {
             if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
                 let gap =
                     (self.gap() as u32).min(rect.size.h as u32 / 2).min(rect.size.w as u32 / 2);
