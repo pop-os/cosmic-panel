@@ -85,6 +85,8 @@ impl WrapperSpace for SpaceContainer {
                             },
                             self.s_display.clone().unwrap(),
                             conn,
+                            qh,
+                            self.corner_radius_manager.as_ref(),
                         );
                         s.setup(
                             compositor_state,
@@ -182,6 +184,8 @@ impl WrapperSpace for SpaceContainer {
                                 c,
                                 self.s_display.clone().unwrap(),
                                 conn,
+                                qh,
+                                self.corner_radius_manager.as_ref(),
                             );
                             s.setup(
                                 compositor_state,
@@ -244,6 +248,8 @@ impl WrapperSpace for SpaceContainer {
                                 },
                                 self.s_display.clone().unwrap(),
                                 conn,
+                                qh,
+                                self.corner_radius_manager.as_ref(),
                             );
                             s.setup(
                                 compositor_state,

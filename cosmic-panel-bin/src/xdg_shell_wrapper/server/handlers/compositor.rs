@@ -185,6 +185,8 @@ impl CompositorHandler for GlobalState {
                     1.0,
                     scale,
                     viewport,
+                    None,
+                    None,
                 ));
             }
             if let Some((
@@ -196,6 +198,7 @@ impl CompositorHandler for GlobalState {
                 scale,
                 _,
                 viewport,
+                ..,
             )) = self
                 .client_state
                 .proxied_layer_surfaces

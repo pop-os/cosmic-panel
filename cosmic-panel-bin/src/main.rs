@@ -87,7 +87,6 @@ fn main() -> Result<()> {
     let usage = "USAGE: cosmic-panel";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
-            println!("{}", usage);
             std::process::exit(1);
         },
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
@@ -101,7 +100,6 @@ fn main() -> Result<()> {
             },
         },
         _ => {
-            println!("{}", usage);
             std::process::exit(1);
         },
     };
@@ -313,6 +311,7 @@ fn main() -> Result<()> {
     let mut server_state = ServerState::new(s_dh.clone());
 
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+    space.corner_radius_manager = client_state.cosmic_corner_radius_manager.clone();
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
     client_state.init_toplevel_manager_state();

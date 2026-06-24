@@ -38,7 +38,7 @@ use sctk::reexports::client::{Connection, Proxy, QueueHandle};
 use sctk::seat::pointer::{BTN_LEFT, PointerEvent};
 use sctk::shell::WaylandSurface;
 use sctk::shell::wlr_layer::{
-    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure,
+    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
 };
 use sctk::shell::xdg::popup;
 use shlex::Shlex;
@@ -327,6 +327,8 @@ impl WrapperSpace for PanelSpace {
                     .map(|p| p.wl_surface().clone())
                     .unwrap_or(self.layer.as_ref().unwrap().wl_surface().clone()),
                 grab: true,
+                blur_surface: None,
+                corner_radius: None,
             },
             s_surface,
         });
@@ -441,7 +443,7 @@ impl WrapperSpace for PanelSpace {
             let config_name = self.config.name.clone();
             let env_vars = vec![
                 ("COSMIC_PANEL_NAME".to_string(), config_name),
-                ("COSMIC_PANEL_OUTPUT".to_string(), active_output),
+                ("COSMIC_PANEL_OUTPUT".to_string(), active_output.clone()),
                 ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
                 ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
                 ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
@@ -563,6 +565,11 @@ impl WrapperSpace for PanelSpace {
                     match security_context_manager.create_listener::<SpaceContainer>(qh) {
                         Ok(security_context) => {
                             security_context.set_sandbox_engine(NAME.to_string());
+                            security_context.set_app_id(panel_client.name.clone());
+                            security_context.set_instance_id(format!(
+                                "{}.{}",
+                                panel_client.name, active_output
+                            ));
                             security_context.commit();
 
                             let data = security_context.data::<SecurityContext>().unwrap();
@@ -621,6 +628,7 @@ impl WrapperSpace for PanelSpace {
                 trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
 
                 info!("Starting: {}", exec);
+                let active_output = active_output.clone();
 
                 let mut process = Process::new()
                     .with_executable(&exec)
@@ -670,11 +678,18 @@ impl WrapperSpace for PanelSpace {
                         let security_context = if requests_wayland_display && should_restart {
                             security_context_manager_clone.as_ref().and_then(
                                 |security_context_manager| {
+                                    let active_output = active_output.clone();
+
                                     security_context_manager
                                         .create_listener::<SpaceContainer>(&qh_clone)
                                         .ok()
                                         .inspect(|security_context| {
                                             security_context.set_sandbox_engine(NAME.to_string());
+                                            security_context.set_app_id(id_clone.clone());
+                                            security_context.set_instance_id(format!(
+                                                "{}.{}",
+                                                id_clone, active_output
+                                            ));
                                             security_context.commit();
 
                                             let data =
@@ -1528,6 +1543,7 @@ impl WrapperSpace for PanelSpace {
         let input_region = Region::new(compositor_state)?;
         client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
         self.input_region.replace(input_region);
+        self.compositor_state = Some(compositor_state.clone());
 
         let fractional_scale =
             fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
@@ -1557,6 +1573,20 @@ impl WrapperSpace for PanelSpace {
 
         self.output =
             izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
+        if let Some(blur_manager) = self.blur_manager.as_ref() {
+            self.blur_surface =
+                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
+            self.corner_radius_wlr = self.corner_radius_manager.as_ref().map(|m| {
+                m.get_corner_radius_layer(
+                    match client_surface.kind() {
+                        SurfaceKind::Wlr(w) => w,
+                        _ => unimplemented!(),
+                    },
+                    &qh,
+                    (),
+                )
+            });
+        }
         self.layer = Some(client_surface);
         self.layer_fractional_scale = fractional_scale;
         self.layer_viewport = viewport;

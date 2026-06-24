@@ -222,4 +222,13 @@ impl GlobalState {
             *has_frame = false;
         }
     }
+
+    pub(crate) fn enable_blur_capacity(&mut self) {
+        self.client_state.blur_enabled = true;
+        for space in &mut self.space.space_list {
+            space.enable_blur_capacity(
+                self.client_state.ext_background_effect_manager.as_ref().map(|bm| &bm.manager),
+            );
+        }
+    }
 }
