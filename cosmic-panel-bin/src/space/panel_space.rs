@@ -77,7 +77,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use wayland_protocols::xdg::shell::client::xdg_positioner::ConstraintAdjustment;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
-use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+use cosmic_panel_config::{AutoHide, CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
 
 use crate::PanelCalloopMsg;
 use crate::iced::elements::CosmicMappedInternal;
@@ -407,7 +407,7 @@ impl PanelSpace {
     ) -> Self {
         let name = format!("{}-{}", config.name, config.output);
         let visibility =
-            if config.autohide.is_some() { Visibility::Hidden } else { Visibility::Visible };
+            if config.autohide_enabled() { Visibility::Hidden } else { Visibility::Visible };
         let color_override = config.bg_color_override();
         Self {
             config,
@@ -757,12 +757,7 @@ impl PanelSpace {
             *start_show_instant_opt = None;
             return true;
         }
-        let unhide_delay = if let Some(ref autohide) = self.config.autohide {
-            autohide.unhide_delay
-        } else {
-            *start_show_instant_opt = None;
-            return true;
-        };
+        let unhide_delay = self.config.autohide_behavior.unhide_delay;
         if let Some(start_show_instant) = *start_show_instant_opt {
             let start_show_duration =
                 match Instant::now().checked_duration_since(start_show_instant) {
@@ -794,9 +789,11 @@ impl PanelSpace {
             return;
         };
 
-        let intellihide = self.overlap_notify.is_some();
+        let intellihide =
+            matches!(self.config.autohide, AutoHide::OnOverlap) && self.overlap_notify.is_some();
+        let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
 
-        // Panel should remain visibile until workspaces overview is no longer shown
+        // Panel should remain visible until workspaces overview is no longer shown
         if self.shared.workspaces_shown.get() {
             return;
         }
@@ -808,7 +805,7 @@ impl PanelSpace {
             let no_hover_focus =
                 c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
                     && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
-            if self.config.autohide().is_none() {
+            if !self.config.autohide_enabled() {
                 if no_hover_focus && self.animate_state.is_none() {
                     self.visibility = Visibility::Hidden;
                 } else {
@@ -818,7 +815,7 @@ impl PanelSpace {
             };
 
             c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || (intellihide && !self.has_toplevel_overlap()) {
+                if self.animate_state.is_some() || intellihide_no_toplevel {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -856,9 +853,6 @@ impl PanelSpace {
             )
         };
 
-        let intellihide = self.overlap_notify.is_some();
-        let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
-
         match self.visibility {
             Visibility::Hidden => {
                 if matches!(cur_hover, FocusStatus::Focused) || intellihide_no_toplevel {
@@ -868,7 +862,7 @@ impl PanelSpace {
                         let margin = match self.config.anchor() {
                             PanelAnchor::Left | PanelAnchor::Right => -(self.dimensions.w),
                             PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
-                        } + self.config.get_hide_handle().unwrap() as i32;
+                        } + self.config.get_hide_handle() as i32;
                         self.is_dirty = true;
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: Instant::now(),
@@ -896,7 +890,7 @@ impl PanelSpace {
                         None => return,
                     };
 
-                    if duration_since_last_focus > self.config.get_hide_wait().unwrap()
+                    if duration_since_last_focus > self.config.get_hide_wait()
                         && (!intellihide || self.has_toplevel_overlap())
                     {
                         self.transitioning = true;
@@ -913,7 +907,7 @@ impl PanelSpace {
                 self.transitioning = true;
 
                 let now = Instant::now();
-                let total_t = self.config.get_hide_transition().unwrap();
+                let total_t = self.config.get_hide_transition();
                 let delta_t = match now.checked_duration_since(last_instant) {
                     Some(d) => d,
                     None => return,
@@ -925,7 +919,7 @@ impl PanelSpace {
                 };
                 let progress_norm =
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
-                let handle = self.config.get_hide_handle().unwrap() as i32;
+                let handle = self.config.get_hide_handle() as i32;
                 self.is_dirty = true;
 
                 if matches!(cur_hover, FocusStatus::Focused)
@@ -975,7 +969,7 @@ impl PanelSpace {
                 self.transitioning = true;
 
                 let now = Instant::now();
-                let total_t = self.config.get_hide_transition().unwrap();
+                let total_t = self.config.get_hide_transition();
                 let delta_t = match now.checked_duration_since(last_instant) {
                     Some(d) => d,
                     None => return,
@@ -987,7 +981,7 @@ impl PanelSpace {
                 };
                 let progress_norm =
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
-                let handle = self.config.get_hide_handle().unwrap() as i32;
+                let handle = self.config.get_hide_handle() as i32;
                 self.is_dirty = true;
 
                 if matches!(cur_hover, FocusStatus::LastFocused(_))
@@ -1051,7 +1045,7 @@ impl PanelSpace {
         };
 
         // If panel isn't autohide, nothing to do
-        if self.config.autohide.is_none() {
+        if !self.config.autohide_enabled() {
             return;
         }
 
@@ -1257,7 +1251,7 @@ impl PanelSpace {
                         PanelAnchor::Top | PanelAnchor::Bottom => height,
                     };
 
-                    if self.config.autohide.is_none() && self.config.exclusive_zone() {
+                    if !self.config.autohide_enabled() && self.config.exclusive_zone() {
                         self.layer.as_ref().unwrap().set_exclusive_zone(list_thickness as i32);
                         if self.config.get_effective_anchor_gap() > 0 {
                             Self::set_margin(
@@ -1268,7 +1262,7 @@ impl PanelSpace {
                             );
                             self.anchor_gap = 0;
                         }
-                    } else if self.config.autohide.is_some()
+                    } else if self.config.autohide_enabled()
                         && matches!(self.visibility, Visibility::Hidden)
                     {
                         if self.config.exclusive_zone() {
@@ -1280,8 +1274,8 @@ impl PanelSpace {
                             self.additional_gap,
                             layer_surface,
                         );
-                        self.anchor_gap = -(list_thickness as i32)
-                            + self.config.get_hide_handle().unwrap_or_default() as i32;
+                        self.anchor_gap =
+                            -(list_thickness as i32) + self.config.get_hide_handle() as i32;
                     }
                     layer_surface.wl_surface().commit();
                     layer_surface.wl_surface().frame(qh, layer_surface.wl_surface().clone());
@@ -1703,7 +1697,7 @@ impl PanelSpace {
             needs_commit = true;
         }
 
-        if config.autohide.is_none() && self.config.autohide.is_some() {
+        if !config.autohide_enabled() && self.config.autohide_enabled() {
             if let Some(l) = self.layer.as_ref() {
                 let margin = config.get_effective_anchor_gap() as i32;
                 Self::set_margin(config.anchor, margin, self.additional_gap, l);
@@ -1731,8 +1725,8 @@ impl PanelSpace {
         }
 
         // try to force rearrangement
-        if config.autohide.is_some() && self.config.autohide.is_none()
-            || config.autohide.is_none() && self.config.autohide.is_some()
+        if config.autohide_enabled() && !self.config.autohide_enabled()
+            || !config.autohide_enabled() && self.config.autohide_enabled()
         {
             if let Some(l) = self.layer.as_ref() {
                 let (w, h) = match self.config.anchor() {
@@ -1867,11 +1861,11 @@ impl PanelSpace {
         }
         let bg_color = self.colors.bg_color(opacity, self.maximized);
         if !self.maximized {
-            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), !self.config.autohide_enabled());
             self.maximized = maximized;
         } else {
             self.maximized = maximized;
-            self.update_config(config, Some(bg_color), self.config.autohide.is_none());
+            self.update_config(config, Some(bg_color), !self.config.autohide_enabled());
             if let Some(s) = self.animate_state.as_mut() {
                 s.end.bg_color[3] = self.config.opacity;
             }

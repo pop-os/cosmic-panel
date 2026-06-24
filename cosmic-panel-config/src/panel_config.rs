@@ -9,7 +9,7 @@ use anyhow::bail;
 use cosmic_config::cosmic_config_derive::CosmicConfigEntry;
 use cosmic_config::{Config, CosmicConfigEntry};
 use sctk::shell::wlr_layer::Anchor;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 #[cfg(feature = "wayland-rs")]
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 #[cfg(feature = "wayland-rs")]
@@ -291,7 +291,7 @@ const fn _default_true() -> bool {
 /// configurable autohide behavior
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct AutoHide {
+pub struct AutoHideBehavior {
     /// time in milliseconds without pointer focus before hiding
     pub wait_time: u32,
     /// time in milliseconds that it should take to transition
@@ -300,17 +300,50 @@ pub struct AutoHide {
     /// should be > 0
     pub handle_size: u32,
     /// time in milliseconds before the panel should un-hide
-    #[serde(default = "_unhide_delay_default")]
     pub unhide_delay: u32,
 }
 
-const fn _unhide_delay_default() -> u32 {
-    200
-}
-
-impl Default for AutoHide {
+impl Default for AutoHideBehavior {
     fn default() -> Self {
         Self { wait_time: 1000, transition_time: 200, handle_size: 4, unhide_delay: 200 }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub enum AutoHide {
+    /// Panel never hides
+    #[default]
+    Never,
+    /// Panel hides on window overlap (intellihide)
+    OnOverlap,
+    /// Panel always hides
+    Always,
+}
+
+// TODO: remove after some time (maybe Epoch 2 release)
+impl<'de> Deserialize<'de> for AutoHide {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        enum New {
+            Never,
+            OnOverlap,
+            Always,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Either {
+            New(New),
+            Legacy(Option<AutoHideBehavior>),
+        }
+
+        Ok(match Either::deserialize(d)? {
+            Either::New(New::Never) => Self::Never,
+            Either::New(New::OnOverlap) => Self::OnOverlap,
+            Either::New(New::Always) => Self::Always,
+            Either::Legacy(None) => Self::Never,
+            Either::Legacy(Some(_)) => Self::OnOverlap,
+        })
     }
 }
 
@@ -404,9 +437,10 @@ pub struct CosmicPanelConfig {
     // TODO autohide & exclusive zone should not be able to both be enabled at once
     /// exclusive zone
     pub exclusive_zone: bool,
-    /// enable autohide feature with the transitions lasting the supplied wait
-    /// time and duration in millis
-    pub autohide: Option<AutoHide>,
+    /// autohide mode
+    pub autohide: AutoHide,
+    /// autohide behavior
+    pub autohide_behavior: AutoHideBehavior,
     /// margin between the panel and the edge of the output
     pub margin: u16,
     /// opacity of the panel
@@ -465,7 +499,8 @@ impl Default for CosmicPanelConfig {
             padding: 4,
             spacing: 0,
             exclusive_zone: true,
-            autohide: Some(AutoHide::default()),
+            autohide: AutoHide::default(),
+            autohide_behavior: AutoHideBehavior::default(),
             border_radius: 8,
             margin: 4,
             opacity: 0.8,
@@ -529,7 +564,7 @@ impl CosmicPanelConfig {
     /// competing for space
     pub fn get_priority(&self) -> u32 {
         let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
-        if self.autohide().is_none() {
+        if !self.autohide_enabled() {
             priority += 1000;
         }
         if self.margin == 0 {
@@ -547,7 +582,7 @@ impl CosmicPanelConfig {
     pub fn get_stack_priority(&self) -> u32 {
         let mut priority = if self.expand_to_edges() { 10000 } else { 0 };
         // XXX for stack priority, most significant value is autohide
-        if self.autohide().is_none() {
+        if !self.autohide_enabled() {
             priority += 100000;
         }
         if self.margin == 0 {
@@ -572,26 +607,19 @@ impl CosmicPanelConfig {
         if self.anchor_gap { self.margin as u32 } else { 0 }
     }
 
-    /// if autohide is configured, returns the duration of time which the panel
-    /// should wait to hide when it has lost focus
-    pub fn get_hide_wait(&self) -> Option<Duration> {
-        self.autohide
-            .as_ref()
-            .map(|AutoHide { wait_time, .. }| Duration::from_millis((*wait_time).into()))
+    /// returns the duration of time which the panel should wait to hide when it has lost focus
+    pub fn get_hide_wait(&self) -> Duration {
+        Duration::from_millis(self.autohide_behavior.wait_time.into())
     }
 
-    /// if autohide is configured, returns the duration of time which the panel
-    /// hide / show transition should last
-    pub fn get_hide_transition(&self) -> Option<Duration> {
-        self.autohide.as_ref().map(|AutoHide { transition_time, .. }| {
-            Duration::from_millis((*transition_time).into())
-        })
+    /// returns the duration of time which the panel hide / show transition should last
+    pub fn get_hide_transition(&self) -> Duration {
+        Duration::from_millis(self.autohide_behavior.transition_time.into())
     }
 
-    /// if autohide is configured, returns the size of the handle of the panel
-    /// which should be exposed
-    pub fn get_hide_handle(&self) -> Option<u32> {
-        self.autohide.as_ref().map(|AutoHide { handle_size, .. }| *handle_size)
+    /// returns the size of the handle of the panel which should be exposed
+    pub fn get_hide_handle(&self) -> u32 {
+        self.autohide_behavior.handle_size
     }
 
     pub fn background(&self) -> CosmicPanelBackground {
@@ -603,11 +631,11 @@ impl CosmicPanelConfig {
     }
 
     pub fn exclusive_zone(&self) -> bool {
-        self.exclusive_zone || self.autohide.is_none()
+        self.exclusive_zone || !self.autohide_enabled()
     }
 
-    pub fn autohide(&self) -> Option<AutoHide> {
-        self.autohide.clone()
+    pub fn autohide_enabled(&self) -> bool {
+        matches!(self.autohide, AutoHide::OnOverlap | AutoHide::Always)
     }
 
     /// get whether the panel should expand to cover the edges of the output
@@ -690,7 +718,7 @@ impl CosmicPanelConfig {
 
     pub fn maximize(&mut self) {
         self.opacity = 1.0;
-        if self.autohide().is_some() {
+        if self.autohide_enabled() {
             return;
         }
         self.expand_to_edges = true;
