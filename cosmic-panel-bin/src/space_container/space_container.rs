@@ -384,7 +384,7 @@ impl SpaceContainer {
                         .map(|(wl_output, ..)| Some(wl_output) != force_output.as_ref())
                         .unwrap_or_default();
             if !keep {
-                was_blurred = s.colors.panel_blur();
+                was_blurred = s.colors.panel_blur(s.config.opacity);
             }
             keep
         });
