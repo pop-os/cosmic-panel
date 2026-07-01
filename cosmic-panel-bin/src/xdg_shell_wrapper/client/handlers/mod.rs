@@ -11,7 +11,9 @@ use sctk::{
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 pub mod compositor;
+pub mod cosmic_corner_radius;
 pub mod data_device;
+pub mod ext_background_effect;
 pub mod keyboard;
 pub mod layer_shell;
 /// output helpers

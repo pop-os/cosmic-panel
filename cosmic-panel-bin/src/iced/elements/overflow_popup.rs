@@ -55,15 +55,17 @@ impl Program for OverflowPopup {
                     let radius_m = cosmic.corner_radii.radius_m;
 
                     container::Style {
-                        text_color: Some(cosmic.background.on.into()),
-                        background: Some(Color::from(cosmic.background.base).into()),
+                        text_color: Some(cosmic.background(theme.transparent).on.into()),
+                        background: Some(
+                            Color::from(cosmic.background(theme.transparent).base).into(),
+                        ),
                         border: cosmic::iced::Border {
                             radius: radius_m.into(),
                             width: border_width,
-                            color: cosmic.background.divider.into(),
+                            color: cosmic.background(theme.transparent).divider.into(),
                         },
                         shadow: Shadow::default(),
-                        icon_color: Some(cosmic.background.on.into()),
+                        icon_color: Some(cosmic.background(theme.transparent).on.into()),
                         snap: true,
                     }
                 })),
