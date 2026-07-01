@@ -552,7 +552,7 @@ impl WrapperSpace for SpaceContainer {
                         FocusStatus::Focused,
                     ));
                 }
-                let to_apply = if s.config.autohide.is_none() {
+                let to_apply = if !s.config.autohide_enabled() {
                     no_autohide_additional_gap
                 } else {
                     additional_gap
@@ -563,7 +563,7 @@ impl WrapperSpace for SpaceContainer {
                     s.additional_gap = to_apply;
                 }
                 additional_gap += s.crosswise();
-                if s.config.autohide.is_none() {
+                if !s.config.autohide_enabled() {
                     no_autohide_additional_gap = 0;
                 } else {
                     no_autohide_additional_gap += s.crosswise();
@@ -691,7 +691,7 @@ impl WrapperSpace for SpaceContainer {
                     f.2 = FocusStatus::LastFocused(Instant::now());
                 }
             }
-            if s.config.autohide.is_none() {
+            if !s.config.autohide_enabled() {
                 s.set_additional_gap(0);
             }
         }
