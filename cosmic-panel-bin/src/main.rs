@@ -23,6 +23,7 @@ use minimize::MinimizeApplet;
 use notifications::notifications_conn;
 use smithay::reexports::calloop;
 use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::wayland::background_effect::BackgroundEffectState;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
@@ -311,6 +312,13 @@ fn main() -> Result<()> {
     let mut server_state = ServerState::new(s_dh.clone());
 
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+
+    // gate background effect protocol for clients on whether it is available to the panel
+    if client_state.ext_background_effect_manager.is_some() {
+        server_state.background_effect_state =
+            Some(BackgroundEffectState::new::<GlobalState>(&s_dh));
+    }
+
     space.corner_radius_manager = client_state.cosmic_corner_radius_manager.clone();
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();

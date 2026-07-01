@@ -1576,16 +1576,17 @@ impl WrapperSpace for PanelSpace {
         if let Some(blur_manager) = self.blur_manager.as_ref() {
             self.blur_surface =
                 Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
-            self.corner_radius_wlr = self.corner_radius_manager.as_ref().map(|m| {
-                m.get_corner_radius_layer(
-                    match client_surface.kind() {
-                        SurfaceKind::Wlr(w) => w,
-                        _ => unimplemented!(),
-                    },
-                    &qh,
-                    (),
-                )
-            });
+            self.corner_radius_wlr =
+                self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
+                    m.get_corner_radius_layer(
+                        match client_surface.kind() {
+                            SurfaceKind::Wlr(w) => w,
+                            _ => unimplemented!(),
+                        },
+                        &qh,
+                        (),
+                    )
+                });
         }
         self.layer = Some(client_surface);
         self.layer_fractional_scale = fractional_scale;

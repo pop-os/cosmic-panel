@@ -1,3 +1,4 @@
+use cctk::wayland_client::Proxy;
 // proxy requests from clients for popups or layer surfaces
 use cosmic_protocols::corner_radius::v1::server::cosmic_corner_radius_layer_v1::{
     self, CosmicCornerRadiusLayerV1,
@@ -770,6 +771,10 @@ impl CornerRadiusHandler for GlobalState {
             else {
                 break;
             };
+
+            if cosmic_corner_radius_manager.version() < 2 {
+                break;
+            }
 
             let SurfaceKind::Wlr(wlr) = c_layer_shell_surface.kind() else {
                 break;

@@ -1,8 +1,7 @@
 use anyhow::bail;
 use cctk::sctk::shell::xdg::{XdgPositioner, popup};
-use cctk::wayland_client::QueueHandle;
-use cctk::wayland_client::protocol::wl_region::WlRegion;
 use cctk::wayland_client::protocol::wl_seat::WlSeat;
+use cctk::wayland_client::{Proxy, QueueHandle};
 use cosmic::iced::id;
 
 use cosmic_panel_config::PanelAnchor;
@@ -132,6 +131,7 @@ impl PanelSpace {
 
         let corner_radius = if let Some(corner_radius) = self.corner_radius_manager.as_ref()
             && self.colors.theme.cosmic().frosted_applets
+            && corner_radius.version() >= 2
         {
             let c = corner_radius.get_corner_radius_surface(c_popup.xdg_surface(), &self.qh, ());
             c.set_radius(

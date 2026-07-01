@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use crate::iced::elements::background::BackgroundElement;
 use crate::iced::elements::{PanelSpaceElement, PopupMappedInternal};
 use crate::workspaces_dbus::CosmicWorkspaces;
-use crate::xdg_shell_wrapper::client::handlers::cosmic_corner_radius::CornerRadius;
 use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
 use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::{CacheableCorners, Corners};
@@ -263,7 +262,7 @@ impl PanelColors {
     }
 
     pub fn bg_color(&self, mut alpha: f32, opaque: bool) -> [f32; 4] {
-        if self.theme.cosmic().frosted_panel {
+        if self.theme.cosmic().frosted_panel && self.blur_enabled {
             alpha *= self.theme.cosmic().alpha_map.blurred_alpha(self.theme.cosmic().frosted);
         }
         if opaque {
@@ -2121,16 +2120,17 @@ impl PanelSpace {
             if let Some(surface) = self.layer.as_ref() {
                 self.blur_surface =
                     Some(blur_manager.get_background_effect(surface.wl_surface(), &self.qh, ()));
-                self.corner_radius_wlr = self.corner_radius_manager.as_ref().map(|m| {
-                    m.get_corner_radius_layer(
-                        match surface.kind() {
-                            SurfaceKind::Wlr(w) => w,
-                            _ => unimplemented!(),
-                        },
-                        &self.qh,
-                        (),
-                    )
-                });
+                self.corner_radius_wlr =
+                    self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
+                        m.get_corner_radius_layer(
+                            match surface.kind() {
+                                SurfaceKind::Wlr(w) => w,
+                                _ => unimplemented!(),
+                            },
+                            &self.qh,
+                            (),
+                        )
+                    });
             }
             self.blur_manager = Some(blur_manager.clone());
         } else if let Some(blur_surface) = self.blur_surface.take()
@@ -2154,6 +2154,10 @@ impl PanelSpace {
         let Some(corner_manager) = self.corner_radius_manager.as_ref() else {
             return false;
         };
+
+        if corner_manager.version() < 2 {
+            return false;
+        }
 
         let corners_surface = popup.popup.corner_radius.take().unwrap_or_else(|| {
             corner_manager.get_corner_radius_surface(
