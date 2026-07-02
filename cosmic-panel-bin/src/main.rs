@@ -105,6 +105,12 @@ fn main() -> Result<()> {
         },
     };
 
+    // TODO: remove
+    // migrate legacy configs
+    if cosmic_panel_config::NEEDS_MIGRATION.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        let _ = config.write_entries();
+    }
+
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
 
