@@ -607,12 +607,14 @@ impl CosmicPanelConfig {
         if self.anchor_gap { self.margin as u32 } else { 0 }
     }
 
-    /// returns the duration of time which the panel should wait to hide when it has lost focus
+    /// returns the duration of time which the panel should wait to hide when it
+    /// has lost focus
     pub fn get_hide_wait(&self) -> Duration {
         Duration::from_millis(self.autohide_behavior.wait_time.into())
     }
 
-    /// returns the duration of time which the panel hide / show transition should last
+    /// returns the duration of time which the panel hide / show transition
+    /// should last
     pub fn get_hide_transition(&self) -> Duration {
         Duration::from_millis(self.autohide_behavior.transition_time.into())
     }

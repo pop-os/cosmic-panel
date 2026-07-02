@@ -1,12 +1,8 @@
 use std::sync::Arc;
 
-use cctk::{
-    cosmic_protocols::corner_radius::v1::client::{
-        cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1,
-        cosmic_corner_radius_toplevel_v1::CosmicCornerRadiusToplevelV1,
-    },
-    sctk,
-};
+use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
+use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_toplevel_v1::CosmicCornerRadiusToplevelV1;
+use cctk::sctk;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
 use sctk::reexports::client::{Connection, Dispatch, Proxy};
 
