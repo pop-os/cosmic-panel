@@ -3,18 +3,16 @@ use super::{CosmicMappedInternal, PopupMappedInternal};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 use anyhow::bail;
-use smithay::{
-    input::{
-        Seat,
-        dnd::{self, DndFocus},
-        keyboard::KeyboardTarget,
-        pointer::PointerTarget,
-        touch::TouchTarget,
-    },
-    reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
-    utils::IsAlive,
-    wayland::{seat::WaylandFocus, selection::data_device::WlOfferData},
-};
+use smithay::input::Seat;
+use smithay::input::dnd::{self, DndFocus};
+use smithay::input::keyboard::KeyboardTarget;
+use smithay::input::pointer::PointerTarget;
+use smithay::input::touch::TouchTarget;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::IsAlive;
+use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::selection::data_device::WlOfferData;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

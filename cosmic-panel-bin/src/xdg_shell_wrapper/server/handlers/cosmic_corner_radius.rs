@@ -10,22 +10,16 @@ use cosmic_protocols::corner_radius::v1::server::{
 use sctk::shell::wlr_layer::SurfaceKind;
 use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_popup::XdgPopup;
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::server::zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
-use smithay::reexports::wayland_server::New;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{HookId, Logical, Point, Rectangle};
-use smithay::wayland::compositor::Cacheable;
-use smithay::wayland::compositor::add_pre_commit_hook;
-use smithay::wayland::compositor::with_states;
-use smithay::wayland::shell::wlr_layer::WlrLayerShellHandler;
-use smithay::wayland::shell::xdg::{SurfaceCachedState, XdgShellSurfaceUserData};
-use smithay::{
-    reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel,
-        wayland_server::{Client, Dispatch, DisplayHandle, GlobalDispatch, Resource, Weak},
-    },
-    wayland::shell::xdg::XdgShellHandler,
+use smithay::reexports::wayland_server::{
+    Client, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, Weak,
 };
+use smithay::utils::{HookId, Logical, Point, Rectangle};
+use smithay::wayland::compositor::{Cacheable, add_pre_commit_hook, with_states};
+use smithay::wayland::shell::wlr_layer::WlrLayerShellHandler;
+use smithay::wayland::shell::xdg::{SurfaceCachedState, XdgShellHandler, XdgShellSurfaceUserData};
 use std::sync::Mutex;
 use wayland_backend::server::GlobalId;
 
@@ -180,11 +174,12 @@ where
                     });
                     if radius_exists.unwrap_or_default() {
                         resource.post_error(
-                                cosmic_corner_radius_manager_v1::Error::CornerRadiusExists as u32,
-                                format!(
-                                    "{resource:?} CosmicCornerRadiusToplevelV1 object already exists for the surface"
-                                ),
-                            );
+                            cosmic_corner_radius_manager_v1::Error::CornerRadiusExists as u32,
+                            format!(
+                                "{resource:?} CosmicCornerRadiusToplevelV1 object already exists \
+                                 for the surface"
+                            ),
+                        );
                     }
                     let data = Mutex::new(CornerRadiusInternal {
                         surface: CornerRadiusSurface::Layer(layer.downgrade()),
@@ -688,6 +683,7 @@ impl Cacheable for CacheableCorners {
     fn commit(&mut self, _dh: &DisplayHandle) -> Self {
         *self
     }
+
     fn merge_into(self, into: &mut Self, _dh: &DisplayHandle) {
         *into = self;
     }
@@ -700,6 +696,7 @@ impl Cacheable for CacheablePadding {
     fn commit(&mut self, _dh: &DisplayHandle) -> Self {
         *self
     }
+
     fn merge_into(self, into: &mut Self, _dh: &DisplayHandle) {
         *into = self;
     }

@@ -1,18 +1,17 @@
 // proxy requests from clients for popups or layer surfaces
 
-use std::{any::TypeId, sync::Mutex};
+use std::any::TypeId;
+use std::sync::Mutex;
 
-use sctk::{compositor::Region, shell::WaylandSurface};
-use smithay::{
-    delegate_background_effect,
-    reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
-    utils::{HookId, Logical, Rectangle},
-    wayland::{
-        background_effect::{Capability, ExtBackgroundEffectHandler},
-        compositor::{
-            Cacheable, RectangleKind, RegionAttributes, add_pre_commit_hook, with_states,
-        },
-    },
+use sctk::compositor::Region;
+use sctk::shell::WaylandSurface;
+use smithay::delegate_background_effect;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{HookId, Logical, Rectangle};
+use smithay::wayland::background_effect::{Capability, ExtBackgroundEffectHandler};
+use smithay::wayland::compositor::{
+    Cacheable, RectangleKind, RegionAttributes, add_pre_commit_hook, with_states,
 };
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;

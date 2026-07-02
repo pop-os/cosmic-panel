@@ -313,7 +313,8 @@ fn main() -> Result<()> {
 
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
 
-    // gate background effect protocol for clients on whether it is available to the panel
+    // gate background effect protocol for clients on whether it is available to the
+    // panel
     if client_state.ext_background_effect_manager.is_some() {
         server_state.background_effect_state =
             Some(BackgroundEffectState::new::<GlobalState>(&s_dh));

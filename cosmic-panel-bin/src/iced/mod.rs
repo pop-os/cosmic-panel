@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use crate::iced::state::State;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use cosmic::Theme;
-use cosmic::iced::Renderer as IcedRenderer;
 use cosmic::iced::advanced::widget::Tree;
 use cosmic::iced::core::clipboard::Null as NullClipboard;
 use cosmic::iced::core::renderer::Style;
@@ -25,7 +24,9 @@ use cosmic::iced::runtime::Action;
 use cosmic::iced::runtime::task::into_stream;
 use cosmic::iced::touch::{Event as TouchEvent, Finger};
 use cosmic::iced::window::Event as WindowEvent;
-use cosmic::iced::{self, Limits, Point as IcedPoint, Size as IcedSize, Task};
+use cosmic::iced::{
+    self, Limits, Point as IcedPoint, Renderer as IcedRenderer, Size as IcedSize, Task,
+};
 use cosmic::widget::Id;
 use iced_tiny_skia::graphics::Viewport;
 use ordered_float::OrderedFloat;

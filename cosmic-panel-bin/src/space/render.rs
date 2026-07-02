@@ -22,7 +22,8 @@ use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer};
 use smithay::backend::renderer::{Bind, Color32F, Frame, Renderer};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::reexports::wayland_server::Resource;
-use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle, user_data::UserDataMap};
+use smithay::utils::user_data::UserDataMap;
+use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 pub(crate) enum PanelRenderElement {
