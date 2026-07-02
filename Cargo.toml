@@ -31,8 +31,8 @@ cosmic-protocols = { git = "https://github.com/pop-os//cosmic-protocols", rev = 
 # xdg-shell-wrapper = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 # xdg-shell-wrapper-config = { git = "https://github.com/pop-os/xdg-shell-wrapper//", branch = "update" }
 
-[patch."https://github.com/pop-os/libcosmic"]
-cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
-libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
-cosmic-theme = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
-iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# [patch."https://github.com/pop-os/libcosmic"]
+# cosmic-config = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# libcosmic = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# cosmic-theme = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
+# iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic//", branch = "theme-v2" }
