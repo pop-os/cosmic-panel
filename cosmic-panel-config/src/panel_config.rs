@@ -322,6 +322,9 @@ pub enum AutoHide {
 }
 
 // TODO: remove after some time (maybe Epoch 2 release)
+use std::sync::atomic::{AtomicBool, Ordering};
+pub static NEEDS_MIGRATION: AtomicBool = AtomicBool::new(false);
+
 impl<'de> Deserialize<'de> for AutoHide {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
@@ -341,8 +344,14 @@ impl<'de> Deserialize<'de> for AutoHide {
             Either::New(New::Never) => Self::Never,
             Either::New(New::OnOverlap) => Self::OnOverlap,
             Either::New(New::Always) => Self::Always,
-            Either::Legacy(None) => Self::Never,
-            Either::Legacy(Some(_)) => Self::OnOverlap,
+            Either::Legacy(None) => {
+                NEEDS_MIGRATION.store(true, Ordering::Relaxed);
+                Self::Never
+            },
+            Either::Legacy(Some(_)) => {
+                NEEDS_MIGRATION.store(true, Ordering::Relaxed);
+                Self::OnOverlap
+            },
         })
     }
 }
