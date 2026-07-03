@@ -430,12 +430,17 @@ impl DmabufHandler for GlobalState {
         &mut self,
         _global: &smithay::wayland::dmabuf::DmabufGlobal,
         dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
-        _: ImportNotifier,
+        notifier: ImportNotifier,
     ) {
-        if let Some(Err(err)) =
-            self.space.renderer().map(|renderer| renderer.import_dmabuf(&dmabuf, None))
-        {
-            error!("Failed to import dmabuf: {}", err);
+        match self.space.renderer().map(|renderer| renderer.import_dmabuf(&dmabuf, None)) {
+            Some(Ok(_)) => {
+                let _ = notifier.successful::<GlobalState>();
+            },
+            Some(Err(err)) => {
+                error!("Failed to import dmabuf: {}", err);
+                notifier.failed();
+            },
+            None => notifier.failed(),
         }
     }
 }
