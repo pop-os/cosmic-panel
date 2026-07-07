@@ -20,6 +20,7 @@ use smithay::backend::renderer::element::utils::CropRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer};
 use smithay::backend::renderer::{Bind, Color32F, Frame, Renderer};
+use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Buffer, IsAlive, Physical, Point, Rectangle, user_data::UserDataMap};
 use smithay::wayland::seat::WaylandFocus;
@@ -105,6 +106,19 @@ impl PanelSpace {
         {
             return Ok(());
         }
+
+        // Throttle frame callbacks for embedded applets to the frame duration
+        // of this panel's output, so applets can animate at the full refresh
+        // rate of high-refresh displays; the caller-provided value is only a
+        // fallback for when the output's current mode is unknown.
+        let throttle = self
+            .output
+            .as_ref()
+            .and_then(|(_, _, info)| info.modes.iter().find(|mode| mode.current))
+            .filter(|mode| mode.refresh_rate > 0)
+            .map_or(throttle, |mode| {
+                Some(Duration::from_nanos(1_000_000_000_000 / mode.refresh_rate as u64))
+            });
 
         let clear_color = [0., 0., 0., 0.];
 
@@ -298,6 +312,7 @@ impl PanelSpace {
             }
         }
         let clear_color = [0.0, 0.0, 0.0, 0.0];
+        let popup_output = self.output.as_ref().map(|(_, output, _)| output.clone());
         // TODO Popup rendering optimization
         for p in self.popups.iter_mut().filter(|p| {
             p.popup.dirty
@@ -338,6 +353,17 @@ impl PanelSpace {
             let mut dmg = res.damage.cloned();
 
             p.popup.egl_surface.as_ref().unwrap().swap_buffers(dmg.as_deref_mut())?;
+
+            if let Some(output) = popup_output.as_ref() {
+                let primary_output = output.clone();
+                send_frames_surface_tree(
+                    p.s_surface.wl_surface(),
+                    output,
+                    Duration::from_millis(time as u64),
+                    throttle,
+                    move |_, _| Some(primary_output.clone()),
+                );
+            }
 
             let wl_surface = p.popup.c_popup.wl_surface().clone();
             wl_surface.frame(qh, wl_surface.clone());
@@ -381,6 +407,17 @@ impl PanelSpace {
             let mut dmg = res.damage.cloned();
 
             subsurface.subsurface.egl_surface.swap_buffers(dmg.as_deref_mut())?;
+
+            if let Some(output) = popup_output.as_ref() {
+                let primary_output = output.clone();
+                send_frames_surface_tree(
+                    &subsurface.s_surface,
+                    output,
+                    Duration::from_millis(time as u64),
+                    throttle,
+                    move |_, _| Some(primary_output.clone()),
+                );
+            }
 
             let wl_surface = subsurface.subsurface.c_surface.clone();
             wl_surface.frame(qh, wl_surface.clone());

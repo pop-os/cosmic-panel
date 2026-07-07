@@ -3,7 +3,7 @@
 
 //! Provides the core functionality for cosmic-panel
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Result;
 use sctk::shm::multi::MultiPool;
@@ -36,11 +36,11 @@ pub fn run(
     client_state: ClientState,
     embedded_server_state: ServerState,
     mut event_loop: calloop::EventLoop<'static, GlobalState>,
-    mut server_display: Display<GlobalState>,
+    server_display: Display<GlobalState>,
 ) -> Result<()> {
     let start = std::time::Instant::now();
 
-    let s_dh = server_display.handle();
+    let mut s_dh = server_display.handle();
     space.set_display_handle(s_dh.clone());
 
     let mut global_state = GlobalState::new(client_state, embedded_server_state, space, start);
@@ -92,44 +92,51 @@ pub fn run(
         .expect("Failed to insert cleanup timer.");
     global_state.bind_display(&s_dh);
 
+    // Register the embedded applet server's poll fd as an event source, so
+    // that applet requests wake `event_loop.dispatch` and are handled
+    // immediately instead of being polled once per loop iteration. This is
+    // what allows the loop timeouts below to be generous without hurting
+    // applet responsiveness.
+    handle
+        .insert_source(
+            calloop::generic::Generic::new(
+                server_display,
+                calloop::Interest::READ,
+                calloop::Mode::Level,
+            ),
+            |_, display, state| {
+                // SAFETY: the display is neither dropped nor replaced
+                let display = unsafe { display.get_mut() };
+                display.dispatch_clients(state)?;
+                display.flush_clients()?;
+                Ok(calloop::PostAction::Continue)
+            },
+        )
+        .expect("Failed to insert embedded wayland server source.");
+
     // TODO find better place for this
     // let set_clipboard_once = Rc::new(Cell::new(false));
 
-    fn get_refresh_rate(global_state: &GlobalState) -> i32 {
-        global_state
-            .space
-            .space_list
-            .iter()
-            .filter_map(|panel| {
-                panel
-                    .output
-                    .as_ref()?
-                    .2
-                    .modes
-                    .iter()
-                    .find(|mode| mode.current)
-                    .map(|mode| mode.refresh_rate)
-            })
-            .max()
-            .unwrap_or(60)
-    }
-
-    let mut prev_refresh_rate = get_refresh_rate(&global_state);
-    let mut prev_dur = Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64);
-
+    // Pacing is driven by frame callbacks (`wl_surface.frame`), not a fixed
+    // timer. The Wayland client connection and the embedded applet server are
+    // both calloop sources, so `event_loop.dispatch` returns as soon as the
+    // compositor sends the next frame callback or an applet sends a request.
+    // Rendering is gated on `has_frame` (see `Space::render`), so the panel
+    // emits at most one frame per callback and animates at the display's
+    // presentation rate without needing to know the refresh rate.
     loop {
-        let iter_start = Instant::now();
-
-        let visibility = matches!(global_state.space.visibility(), Visibility::Hidden);
-        // dispatch desktop client events
-        let dur = if matches!(global_state.space.visibility(), Visibility::Hidden) {
+        // The timeout is only a ceiling for time-based state that is polled in
+        // `handle_events` rather than event-driven: the autohide
+        // `hide_wait`/show-delay checks in `PanelSpace::handle_focus` and the
+        // debounced iced updates. Everything latency-sensitive (input, frame
+        // callbacks, applet requests) wakes `dispatch` through its own source.
+        let dispatch_timeout = if matches!(global_state.space.visibility(), Visibility::Hidden) {
             Duration::from_millis(300)
         } else {
-            Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64)
-        }
-        .max(prev_dur);
+            Duration::from_millis(100)
+        };
 
-        event_loop.dispatch(dur, &mut global_state)?;
+        event_loop.dispatch(dispatch_timeout, &mut global_state)?;
 
         // rendering
         {
@@ -140,7 +147,10 @@ pub fn run(
                 &global_state.client_state.queue_handle,
                 &mut global_state.server_state.popup_manager,
                 global_state.start_time.elapsed().as_millis().try_into()?,
-                Some(dur),
+                // Fallback frame-callback throttle for embedded applets;
+                // panels override it with the frame duration of their own
+                // output (see `PanelSpace::render`).
+                Some(Duration::from_millis(16)),
             );
         }
         global_state.draw_dnd_icon();
@@ -152,31 +162,10 @@ pub fn run(
             );
         }
 
-        // dispatch server events
-        {
-            server_display.dispatch_clients(&mut global_state)?;
-            server_display.flush_clients()?;
-        }
+        // flush events generated for embedded clients while rendering (e.g.
+        // frame callbacks); their requests are dispatched by the server
+        // display's event source above
+        s_dh.flush_clients()?;
         global_state.iter_count += 1;
-
-        let new_visibility_hidden = matches!(global_state.space.visibility(), Visibility::Hidden);
-
-        if visibility != new_visibility_hidden {
-            prev_refresh_rate = get_refresh_rate(&global_state);
-            prev_dur = Duration::from_nanos(1_000_000_000_000 / prev_refresh_rate as u64);
-            continue;
-        }
-        if let Some(dur) = Instant::now()
-            .checked_duration_since(iter_start)
-            .and_then(|spent| dur.checked_sub(spent))
-        {
-            std::thread::sleep(dur.min(Duration::from_nanos(if new_visibility_hidden {
-                50_000_000
-            } else {
-                1_000_000_000_000 / prev_refresh_rate as u64
-            })));
-        } else {
-            prev_dur = prev_dur.checked_mul(2).unwrap_or(prev_dur).min(Duration::from_millis(100));
-        }
     }
 }
