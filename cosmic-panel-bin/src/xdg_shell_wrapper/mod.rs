@@ -22,7 +22,7 @@ pub use xdg_shell_wrapper_config as config;
 use crate::space_container::SpaceContainer;
 
 pub(crate) mod client;
-mod server;
+pub(crate) mod server;
 /// shared state
 pub mod shared_state;
 /// wrapper space abstraction

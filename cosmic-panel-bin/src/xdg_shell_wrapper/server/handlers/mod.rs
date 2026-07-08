@@ -4,7 +4,7 @@ use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 
 use itertools::Itertools;
-use sctk::data_device_manager::{data_device::DataDeviceData, data_offer::receive_to_fd};
+use sctk::data_device_manager::data_offer::receive_to_fd;
 use sctk::delegate_subcompositor;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::shm::multi::MultiPool;
@@ -17,10 +17,7 @@ use smithay::{
         dnd::{DndAction, DndGrabHandler, DndTarget, SourceMetadata},
         pointer::CursorImageAttributes,
     },
-    reexports::wayland_server::{
-        Resource,
-        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
-    },
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Transform},
     wayland::{
         compositor::{SurfaceAttributes, with_states},
@@ -44,7 +41,9 @@ use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::util::write_and_attach_buffer;
 
 pub(crate) mod compositor;
+pub(crate) mod cosmic_corner_radius;
 pub(crate) mod cursor;
+pub(crate) mod ext_background_effect;
 pub(crate) mod fractional;
 pub(crate) mod layer;
 pub(crate) mod viewporter;
@@ -362,7 +361,7 @@ impl WaylandDndGrabHandler for GlobalState {
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
-use crate::xdg_shell_wrapper::client_state::{ClientSeat, DndIcon};
+use crate::xdg_shell_wrapper::client_state::DndIcon;
 pub(crate) struct ServerGrabSource {
     pub metadata: smithay::input::dnd::SourceMetadata,
     pub dnd_offer: DragOffer,
@@ -376,6 +375,7 @@ impl smithay::utils::IsAlive for ServerGrabSource {
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
+        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
