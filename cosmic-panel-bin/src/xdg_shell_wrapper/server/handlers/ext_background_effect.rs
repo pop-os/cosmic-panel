@@ -51,14 +51,24 @@ impl BlurHandler for GlobalState {
                 continue;
             }
 
-            let Some(ext_background_effect_manager) =
-                self.client_state.ext_background_effect_manager.as_mut()
-            else {
-                break;
-            };
+            // Reuse an existing background-effect object for this surface instead of
+            // creating a new one on every commit: `ext_background_effect_v1` forbids
+            // attaching a second background-effect object to the same wl_surface, and
+            // doing so is a fatal protocol error that kills the whole connection.
+            let effect_surface = if let Some(existing) = blur_surface.as_ref() {
+                existing.clone()
+            } else {
+                let Some(ext_background_effect_manager) =
+                    self.client_state.ext_background_effect_manager.as_mut()
+                else {
+                    break;
+                };
 
-            let new_blur_surface = ext_background_effect_manager
-                .blur(c_layer_shell_surface.wl_surface(), &self.client_state.queue_handle);
+                let new_blur_surface = ext_background_effect_manager
+                    .blur(c_layer_shell_surface.wl_surface(), &self.client_state.queue_handle);
+                *blur_surface = Some(new_blur_surface.clone());
+                new_blur_surface
+            };
 
             if let Some(ref region) = region {
                 let Ok(wl_region) = Region::new(&self.client_state.compositor_state) else {
@@ -67,12 +77,10 @@ impl BlurHandler for GlobalState {
                 for r in region {
                     wl_region.add(r.loc.x, r.loc.y, r.size.w, r.size.h);
                 }
-                new_blur_surface.set_blur_region(Some(wl_region.wl_region()));
+                effect_surface.set_blur_region(Some(wl_region.wl_region()));
             } else {
-                new_blur_surface.set_blur_region(None);
+                effect_surface.set_blur_region(None);
             }
-
-            *blur_surface = Some(new_blur_surface);
         }
     }
 }
