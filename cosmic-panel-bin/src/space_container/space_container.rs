@@ -40,6 +40,7 @@ use smithay::reexports::wayland_server::{self};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use tokio::sync::mpsc;
 use tracing::{error, info};
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
 use wayland_server::Resource;
 
 pub struct SpaceContainer {
@@ -62,6 +63,7 @@ pub struct SpaceContainer {
     pub(crate) overlap_notify: Option<OverlapNotifyV1>,
     pub(crate) shared: Rc<PanelSharedState>,
     pub(crate) corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
+    pub(crate) blur_manager: Option<ExtBackgroundEffectManagerV1>,
 }
 
 impl SpaceContainer {
@@ -146,6 +148,7 @@ impl SpaceContainer {
                 workspaces_shown: Cell::new(false),
             }),
             corner_radius_manager: None,
+            blur_manager: None,
         }
     }
 
@@ -371,11 +374,10 @@ impl SpaceContainer {
             return;
         }
 
-        let mut blur_manager = None;
+        let blur_manager = self.blur_manager.clone();
         let mut was_blurred = false;
         // remove old one if it exists
         self.space_list.retain(|s| {
-            blur_manager = s.blur_manager.clone();
             // keep if the name is different or the output is different
             let keep = s.config.name != entry.name
                 || force_output.is_some()
@@ -460,10 +462,9 @@ impl SpaceContainer {
                 if !is_recreated {
                     continue;
                 }
-                let mut space_blur_manager = None;
+                let space_blur_manager = self.blur_manager.clone();
                 // remove old one if it exists
                 self.space_list.retain(|s| {
-                    space_blur_manager = s.blur_manager.clone();
                     // keep if the name is different or the output is different
                     s.config.name != c.name
                         || s.output.as_ref().is_some_and(|(_, o, _)| o.name() != output_name)
