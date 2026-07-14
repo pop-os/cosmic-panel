@@ -63,7 +63,7 @@ impl PanelSpace {
         let positioner = XdgPositioner::new(xdg_shell_state).unwrap();
         let popup_bbox = popup_element.geometry();
 
-        positioner.set_anchor_rect(loc.x, loc.y, bbox.size.w, bbox.size.h);
+        positioner.set_anchor_rect(loc.x, loc.y, bbox.size.w.max(1), bbox.size.h.max(1));
         let pixel_offset = 8;
         let (offset, anchor, gravity) = match self.config.anchor {
             PanelAnchor::Left => ((pixel_offset, 0), Anchor::Right, Gravity::Right),
@@ -82,7 +82,7 @@ impl PanelSpace {
         positioner.set_offset(offset.0, offset.1);
         positioner.set_reactive();
 
-        positioner.set_size(popup_bbox.size.w, popup_bbox.size.h);
+        positioner.set_size(popup_bbox.size.w.max(1), popup_bbox.size.h.max(1));
         let c_popup = popup::Popup::from_surface(
             None,
             &positioner,
