@@ -1638,8 +1638,8 @@ impl PanelSpace {
         positioner.set_anchor_rect(
             anchor_rect.loc.x + p_offset.x,
             anchor_rect.loc.y + p_offset.y,
-            anchor_rect.size.w,
-            anchor_rect.size.h,
+            anchor_rect.size.w.max(1),
+            anchor_rect.size.h.max(1),
         );
         positioner.set_anchor(Anchor::try_from(anchor_edges as u32).unwrap_or(Anchor::None));
         positioner.set_gravity(Gravity::try_from(gravity as u32).unwrap_or(Gravity::None));
