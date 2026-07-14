@@ -168,7 +168,7 @@ impl Program for OverflowButton {
                 layer_container(
                     cosmic::widget::icon(cosmic::widget::icon::from_name(self.icon.clone()).into())
                         .class(theme::Svg::Custom(Rc::new(|theme| cosmic::widget::svg::Style {
-                            color: Some(theme.cosmic().background.on.into()),
+                            color: Some(theme.cosmic().background(theme.transparent).on.into()),
                         })))
                         .width(Length::Fixed(self.icon_size as f32))
                         .height(Length::Fixed(self.icon_size as f32)),

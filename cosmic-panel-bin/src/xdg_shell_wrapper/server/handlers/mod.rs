@@ -4,37 +4,31 @@ use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 
 use itertools::Itertools;
-use sctk::data_device_manager::{data_device::DataDeviceData, data_offer::receive_to_fd};
+use sctk::data_device_manager::data_offer::receive_to_fd;
 use sctk::delegate_subcompositor;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::shm::multi::MultiPool;
+use smithay::backend::renderer::ImportDma;
+use smithay::input::dnd::{DndAction, DndGrabHandler, DndTarget, SourceMetadata};
+use smithay::input::pointer::CursorImageAttributes;
+use smithay::input::{Seat, SeatHandler, SeatState};
+use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Logical, Point, Transform};
+use smithay::wayland::compositor::{SurfaceAttributes, with_states};
+use smithay::wayland::dmabuf::{DmabufHandler, ImportNotifier};
+use smithay::wayland::output::OutputHandler;
+use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::selection::data_device::{
+    DataDeviceHandler, WaylandDndGrabHandler, set_data_device_focus,
+};
+use smithay::wayland::selection::primary_selection::{
+    PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+};
+use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 use smithay::{
-    backend::renderer::ImportDma,
     delegate_data_device, delegate_dmabuf, delegate_output, delegate_primary_selection,
     delegate_seat,
-    input::{
-        Seat, SeatHandler, SeatState,
-        dnd::{DndAction, DndGrabHandler, DndTarget, SourceMetadata},
-        pointer::CursorImageAttributes,
-    },
-    reexports::wayland_server::{
-        Resource,
-        protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
-    },
-    utils::{Logical, Point, Transform},
-    wayland::{
-        compositor::{SurfaceAttributes, with_states},
-        dmabuf::{DmabufHandler, ImportNotifier},
-        output::OutputHandler,
-        seat::WaylandFocus,
-        selection::{
-            SelectionHandler, SelectionSource, SelectionTarget,
-            data_device::{DataDeviceHandler, WaylandDndGrabHandler, set_data_device_focus},
-            primary_selection::{
-                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
-            },
-        },
-    },
 };
 use tracing::{error, info, trace};
 
@@ -44,7 +38,9 @@ use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::util::write_and_attach_buffer;
 
 pub(crate) mod compositor;
+pub(crate) mod cosmic_corner_radius;
 pub(crate) mod cursor;
+pub(crate) mod ext_background_effect;
 pub(crate) mod fractional;
 pub(crate) mod layer;
 pub(crate) mod viewporter;
@@ -255,9 +251,7 @@ impl DndGrabHandler for GlobalState {
 }
 
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::input::dnd::DnDGrab;
-use smithay::input::dnd::GrabType;
-use smithay::input::dnd::Source;
+use smithay::input::dnd::{DnDGrab, GrabType, Source};
 use smithay::input::pointer::Focus;
 use smithay::utils::Serial;
 impl WaylandDndGrabHandler for GlobalState {
@@ -327,7 +321,7 @@ impl WaylandDndGrabHandler for GlobalState {
             seat.client.dnd_source = Some(dnd_source);
         }
 
-        //seat.server.dnd_source = source;
+        // seat.server.dnd_source = source;
         seat.server.dnd_icon = icon;
 
         let seat = seat.server.seat.clone();
@@ -362,7 +356,7 @@ impl WaylandDndGrabHandler for GlobalState {
 
 use sctk::data_device_manager::data_offer::DragOffer;
 // TODO rename
-use crate::xdg_shell_wrapper::client_state::{ClientSeat, DndIcon};
+use crate::xdg_shell_wrapper::client_state::DndIcon;
 pub(crate) struct ServerGrabSource {
     pub metadata: smithay::input::dnd::SourceMetadata,
     pub dnd_offer: DragOffer,
@@ -376,6 +370,7 @@ impl smithay::utils::IsAlive for ServerGrabSource {
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
+        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
@@ -430,12 +425,17 @@ impl DmabufHandler for GlobalState {
         &mut self,
         _global: &smithay::wayland::dmabuf::DmabufGlobal,
         dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
-        _: ImportNotifier,
+        notifier: ImportNotifier,
     ) {
-        if let Some(Err(err)) =
-            self.space.renderer().map(|renderer| renderer.import_dmabuf(&dmabuf, None))
-        {
-            error!("Failed to import dmabuf: {}", err);
+        match self.space.renderer().map(|renderer| renderer.import_dmabuf(&dmabuf, None)) {
+            Some(Ok(_)) => {
+                let _ = notifier.successful::<GlobalState>();
+            },
+            Some(Err(err)) => {
+                error!("Failed to import dmabuf: {}", err);
+                notifier.failed();
+            },
+            None => notifier.failed(),
         }
     }
 }

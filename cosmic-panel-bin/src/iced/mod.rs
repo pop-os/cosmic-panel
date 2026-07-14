@@ -292,10 +292,11 @@ impl<P: Program + Send + 'static> IcedElement<P> {
         program: P,
         size: impl Into<Size<i32, Logical>>,
         handle: LoopHandle<'static, GlobalState>,
-        theme: cosmic::Theme,
+        mut theme: cosmic::Theme,
         panel_id: usize,
         request_redraws: bool,
     ) -> IcedElement<P> {
+        theme.transparent = theme.cosmic().frosted_applets;
         let size = size.into();
         let mut renderer = IcedRenderer::new(Font::default(), Pixels(16.0));
 
@@ -387,7 +388,8 @@ impl<P: Program + Send + 'static> IcedElement<P> {
         self.0.lock().unwrap().update(true);
     }
 
-    pub fn set_theme(&self, theme: cosmic::Theme) {
+    pub fn set_theme(&self, mut theme: cosmic::Theme) {
+        theme.transparent = theme.cosmic().frosted_applets;
         let mut guard = self.0.lock().unwrap();
         guard.theme = theme.clone();
     }

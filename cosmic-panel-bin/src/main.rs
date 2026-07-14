@@ -23,6 +23,7 @@ use minimize::MinimizeApplet;
 use notifications::notifications_conn;
 use smithay::reexports::calloop;
 use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::wayland::background_effect::BackgroundEffectState;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
@@ -87,7 +88,6 @@ fn main() -> Result<()> {
     let usage = "USAGE: cosmic-panel";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
-            println!("{}", usage);
             std::process::exit(1);
         },
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
@@ -101,10 +101,15 @@ fn main() -> Result<()> {
             },
         },
         _ => {
-            println!("{}", usage);
             std::process::exit(1);
         },
     };
+
+    // TODO: remove
+    // migrate legacy configs
+    if cosmic_panel_config::NEEDS_MIGRATION.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        let _ = config.write_entries();
+    }
 
     let (applet_tx, mut applet_rx) = mpsc::channel(200);
     let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
@@ -313,6 +318,15 @@ fn main() -> Result<()> {
     let mut server_state = ServerState::new(s_dh.clone());
 
     let mut client_state = ClientState::new(event_loop.handle(), &mut space, &mut server_state)?;
+
+    // gate background effect protocol for clients on whether it is available to the
+    // panel
+    if client_state.ext_background_effect_manager.is_some() {
+        server_state.background_effect_state =
+            Some(BackgroundEffectState::new::<GlobalState>(&s_dh));
+    }
+
+    space.corner_radius_manager = client_state.cosmic_corner_radius_manager.clone();
     client_state.init_workspace_state();
     client_state.init_toplevel_info_state();
     client_state.init_toplevel_manager_state();
