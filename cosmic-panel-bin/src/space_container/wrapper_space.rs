@@ -157,6 +157,7 @@ impl WrapperSpace for SpaceContainer {
         let cur = self.cur_theme();
         let dark = self.dark_theme.clone();
         let light = self.light_theme.clone();
+        let blur_manager = self.blur_manager.clone();
         // TODO error handling
         // create the spaces that are configured to use this output, including spaces
         // configured for All
@@ -213,6 +214,8 @@ impl WrapperSpace for SpaceContainer {
                             self.overlap_notify.clone(),
                         );
 
+                        s.enable_blur_capacity(blur_manager.as_ref());
+
                         if s.new_output(
                             compositor_state,
                             fractional_scale_manager,
@@ -267,6 +270,7 @@ impl WrapperSpace for SpaceContainer {
                             }
                             s
                         };
+                        s.enable_blur_capacity(blur_manager.as_ref());
                         if s.new_output(
                             compositor_state,
                             fractional_scale_manager,
