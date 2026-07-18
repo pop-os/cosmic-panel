@@ -548,34 +548,26 @@ fn xdg_radius_hook<D: 'static + CornerRadiusHandler>(
     surface: &WlSurface,
 ) {
     if let Some(corners) = with_states(surface, |surface_data| {
-        let corners = *surface_data.cached_state.get::<CacheableCorners>().pending();
-        if surface_data
+        let mut corners = *surface_data.cached_state.get::<CacheableCorners>().pending();
+        // Geometry and corner-radius are independently double-buffered Wayland
+        // state, so a transient mismatch during resize (radius committed against
+        // a since-shrunk surface) is expected, not a protocol violation worth a
+        // fatal disconnect. Clamp instead of post_error()'ing the client away.
+        // See: https://github.com/pop-os/cosmic-epoch/issues/3711
+        if let Some((geo, c)) = surface_data
             .cached_state
             .get::<SurfaceCachedState>()
             .pending()
             .geometry
-            .zip(corners.0.as_ref())
-            .is_some_and(|(geo, corners)| {
-                let half_min_dim = (geo.size.w.min(geo.size.h) / 2) as u32;
-                corners.top_right > half_min_dim
-                    || corners.top_left > half_min_dim
-                    || corners.bottom_right > half_min_dim
-                    || corners.bottom_left > half_min_dim
-            })
-            && let Some(hook) = surface_data.data_map.get::<ToplevelHookId>()
+            .zip(corners.0.as_mut())
         {
-            let hook_ref = hook.lock().unwrap();
-            if let Some((_, obj)) = hook_ref.as_ref()
-                && let Ok(obj) = obj.upgrade()
-            {
-                obj.post_error(
-                    cosmic_corner_radius_toplevel_v1::Error::RadiusTooLarge as u32,
-                    format!("{obj:?} corner radius too large"),
-                );
-                return None;
-            }
+            let half_min_dim = (geo.size.w.min(geo.size.h).max(0) / 2) as u32;
+            c.top_left = c.top_left.min(half_min_dim);
+            c.top_right = c.top_right.min(half_min_dim);
+            c.bottom_right = c.bottom_right.min(half_min_dim);
+            c.bottom_left = c.bottom_left.min(half_min_dim);
         }
-        return Some(corners);
+        Some(corners)
     }) {
         state.commit_xdg(corners, surface);
     }
@@ -601,7 +593,7 @@ fn layer_radius_hook<D: 'static + CornerRadiusHandler>(
 ) {
     let bbox = bbox_from_surface_tree(surface, Point::default());
     if let Some((corners, padding)) = with_states(surface, |surface_data| {
-        let corners = *surface_data.cached_state.get::<CacheableCorners>().pending();
+        let mut corners = *surface_data.cached_state.get::<CacheableCorners>().pending();
         let padding = *surface_data.cached_state.get::<CacheablePadding>().pending();
         let empty = Padding::default();
         let Some(padded_box) = pad_rect(bbox, padding.0.as_ref().unwrap_or(&empty)) else {
@@ -619,24 +611,17 @@ fn layer_radius_hook<D: 'static + CornerRadiusHandler>(
             return None;
         };
 
-        if corners.0.as_ref().is_some_and(|corners| {
-            let half_min_dim = (padded_box.size.w.min(padded_box.size.h) / 2) as u32;
-            corners.top_right > half_min_dim
-                || corners.top_left > half_min_dim
-                || corners.bottom_right > half_min_dim
-                || corners.bottom_left > half_min_dim
-        }) && let Some(hook) = surface_data.data_map.get::<LayerHookId>()
-        {
-            let hook_ref = hook.lock().unwrap();
-            if let Some((_, obj)) = hook_ref.as_ref()
-                && let Ok(obj) = obj.upgrade()
-            {
-                obj.post_error(
-                    cosmic_corner_radius_layer_v1::Error::RadiusTooLarge as u32,
-                    format!("{obj:?} corner radius too large"),
-                );
-            }
-            return None;
+        // Geometry and corner-radius are independently double-buffered Wayland
+        // state, so a transient mismatch during resize is expected, not a
+        // protocol violation worth a fatal disconnect. Clamp instead of
+        // post_error()'ing the client away.
+        // See: https://github.com/pop-os/cosmic-epoch/issues/3711
+        if let Some(c) = corners.0.as_mut() {
+            let half_min_dim = (padded_box.size.w.min(padded_box.size.h).max(0) / 2) as u32;
+            c.top_left = c.top_left.min(half_min_dim);
+            c.top_right = c.top_right.min(half_min_dim);
+            c.bottom_right = c.bottom_right.min(half_min_dim);
+            c.bottom_left = c.bottom_left.min(half_min_dim);
         }
         Some((corners, padding))
     }) {
