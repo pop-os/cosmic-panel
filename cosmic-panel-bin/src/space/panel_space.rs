@@ -1458,9 +1458,16 @@ impl PanelSpace {
                         };
                         let _ = renderer.bind(egl_surface);
 
-                        egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-                        if let Some(viewport) = self.layer_viewport.as_ref() {
-                            viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                        // The panel deliberately collapses to a degenerate size to force a
+                        // reconfigure but that size must not be *published*
+                        // to the compositor because a too-small surface causes fatal
+                        // `radius_too_large`. `render()` already refuses to
+                        // draw below 20px keep the published size in lockstep with that.
+                        if dim.w > 20 && dim.h > 20 {
+                            egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
+                            if let Some(viewport) = self.layer_viewport.as_ref() {
+                                viewport.set_destination(dim.w.max(1), dim.h.max(1));
+                            }
                         }
                     }
 
@@ -1502,10 +1509,13 @@ impl PanelSpace {
                     _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
                     let _ = renderer.bind(egl_surface);
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
-                    egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
-
-                    if let Some(viewport) = self.layer_viewport.as_ref() {
-                        viewport.set_destination(dim.w, dim.h);
+                    // See note in the other resize branch (never publish a degenerate intermediate
+                    // size)
+                    if dim.w > 20 && dim.h > 20 {
+                        egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
+                        if let Some(viewport) = self.layer_viewport.as_ref() {
+                            viewport.set_destination(dim.w, dim.h);
+                        }
                     }
                 }
                 self.dimensions = (dim.w, dim.h).into();
