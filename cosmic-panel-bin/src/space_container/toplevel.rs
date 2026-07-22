@@ -135,7 +135,7 @@ impl SpaceContainer {
             .filter(|s| s.output.as_ref().iter().any(|(o, ..)| o == output));
         for s in s_list.sorted_by(|a, b| a.config.get_priority().cmp(&b.config.get_priority())) {
             let c = self.config.config_list.iter().find(|c| c.name == s.config.name);
-            let mut config = s.config.clone();
+            let mut config = c.cloned().unwrap_or_else(|| s.config.clone());
 
             let effective_maximized = maximized && !config.keep_style_on_maximize;
 
@@ -149,7 +149,15 @@ impl SpaceContainer {
                 config.opacity
             };
 
+            config.output = s.config.output.clone();
+
             s.set_maximized(effective_maximized, config, opacity)
+        }
+    }
+
+    pub(crate) fn apply_current_maximized_state(&mut self) {
+        for output in self.maximized_outputs() {
+            self.apply_maximized(&output, true);
         }
     }
 
