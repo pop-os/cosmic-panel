@@ -340,7 +340,7 @@ impl WrapperSpace for SpaceContainer {
         // add popup to the space with a client that matches the window
         let p_client = s_surface.wl_surface().client().map(|c| c.id());
 
-        if let Some(space) = self.space_list.iter_mut().find(|space| {
+        let Some(idx) = self.space_list.iter().position(|space| {
             space
                 .clients_center
                 .lock()
@@ -349,23 +349,29 @@ impl WrapperSpace for SpaceContainer {
                 .chain(space.clients_left.lock().unwrap().iter())
                 .chain(space.clients_right.lock().unwrap().iter())
                 .any(|c| c.client.as_ref().zip(p_client.as_ref()).is_some_and(|c| c.0.id() == *c.1))
-        }) {
-            space.add_popup(
-                compositor_state,
-                fractional_scale_manager,
-                viewport,
-                conn,
-                qh,
-                xdg_shell_state,
-                s_surface,
-                positioner,
-                positioner_state,
-                c_seat,
-                last_serial,
-            )
-        } else {
+        }) else {
             anyhow::bail!("failed to find a matching panel space for this popup.")
+        };
+
+        for (i, space) in self.space_list.iter_mut().enumerate() {
+            if i != idx {
+                space.close_popups(|p| !p.grab);
+            }
         }
+
+        self.space_list[idx].add_popup(
+            compositor_state,
+            fractional_scale_manager,
+            viewport,
+            conn,
+            qh,
+            xdg_shell_state,
+            s_surface,
+            positioner,
+            positioner_state,
+            c_seat,
+            last_serial,
+        )
     }
 
     fn reposition_popup(
