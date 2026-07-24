@@ -137,6 +137,7 @@ impl WrapperSpace for PanelSpace {
 
     fn add_window(&mut self, w: Window) {
         self.is_dirty = true;
+        self.needs_layout = true;
         if let Some(t) = w.toplevel() {
             t.with_pending_state(|state| {
                 state.size = None;
@@ -820,6 +821,7 @@ impl WrapperSpace for PanelSpace {
 
     fn dirty_window(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
         self.is_dirty = true;
+        self.needs_layout = true;
         self.last_dirty = Some(Instant::now());
         if let Some(w) = self
             .space
@@ -853,6 +855,7 @@ impl WrapperSpace for PanelSpace {
 
     fn dirty_popup(&mut self, _dh: &DisplayHandle, s: &s_WlSurface) {
         self.is_dirty = true;
+        self.needs_layout = true;
         self.space.refresh();
 
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
@@ -1594,6 +1597,7 @@ impl WrapperSpace for PanelSpace {
         self.dimensions = dimensions;
         self.space_event = next_render_event;
         self.is_dirty = true;
+        self.needs_layout = true;
         self.left_overflow_button_id = id::Id::new(format!("left_overflow_button_{}", self.id()));
         self.right_overflow_button_id = id::Id::new(format!("right_overflow_button_{}", self.id()));
         self.center_overflow_button_id =
