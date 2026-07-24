@@ -370,6 +370,7 @@ impl SpaceContainer {
                 entry.output = space.config.output.clone();
                 space.update_config(entry.clone(), bg_color, true);
             }
+            self.apply_current_maximized_state();
             self.apply_toplevel_changes();
             return;
         }
@@ -514,6 +515,7 @@ impl SpaceContainer {
                 }
             }
         }
+        self.apply_current_maximized_state();
         self.apply_toplevel_changes();
     }
 

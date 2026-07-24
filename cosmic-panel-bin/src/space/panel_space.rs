@@ -1674,12 +1674,22 @@ impl PanelSpace {
         bg_color: Option<[f32; 4]>,
         animate: bool,
     ) {
-        let bg_color =
-            bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity, self.maximized));
         // avoid animating if currently maximized
         if self.maximized {
             return;
         }
+
+        self.apply_config(config, bg_color, animate);
+    }
+
+    fn apply_config(
+        &mut self,
+        config: CosmicPanelConfig,
+        bg_color: Option<[f32; 4]>,
+        animate: bool,
+    ) {
+        let bg_color =
+            bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity, self.maximized));
 
         // can't animate anchor changes
         // return early
@@ -1866,16 +1876,19 @@ impl PanelSpace {
     }
 
     pub fn set_maximized(&mut self, maximized: bool, config: CosmicPanelConfig, opacity: f32) {
-        if self.maximized == maximized {
+        let was_maximized = self.maximized;
+        if was_maximized == maximized && self.config == config {
             return;
         }
-        let bg_color = self.colors.bg_color(opacity, self.maximized);
-        if !self.maximized {
-            self.update_config(config, Some(bg_color), !self.config.autohide_enabled());
+
+        let bg_color = self.colors.bg_color(opacity, was_maximized);
+        let animate = !self.config.autohide_enabled();
+        if !was_maximized {
+            self.apply_config(config, Some(bg_color), animate);
             self.maximized = maximized;
         } else {
             self.maximized = maximized;
-            self.update_config(config, Some(bg_color), !self.config.autohide_enabled());
+            self.apply_config(config, Some(bg_color), animate);
             if let Some(s) = self.animate_state.as_mut() {
                 s.end.bg_color[3] = self.config.opacity;
             }
