@@ -67,6 +67,7 @@ impl ShrinkablePadding {
 
 impl PanelSpace {
     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
+        self.needs_layout = false;
         self.remap_attempts = self.remap_attempts.saturating_sub(1);
 
         let make_indices_contiguous =
@@ -451,6 +452,7 @@ impl PanelSpace {
         if new_list_thickness_dim != list_cross {
             self.pending_dimensions = Some(new_dim);
             self.is_dirty = true;
+            self.needs_layout = true;
             anyhow::bail!("resizing list");
         }
         let left_sum = left_sum_scaled / self.scale;
@@ -534,6 +536,7 @@ impl PanelSpace {
         } else if center_overflow > 0 {
             let overflow = self.shrink_center((center_sum - target_center_len) as u32);
             self.is_dirty = true;
+            self.needs_layout = true;
             bail!("overflow: {}", overflow)
         }
 
@@ -546,6 +549,7 @@ impl PanelSpace {
                 info!("target: {target_left_len}, actual: {left_sum}");
                 let overflow = self.shrink_left(left_overflow as u32);
                 self.is_dirty = true;
+                self.needs_layout = true;
 
                 bail!("left overflow: {} {}", left_overflow, overflow)
             }
@@ -559,6 +563,7 @@ impl PanelSpace {
             } else if right_overflow > 0 {
                 let overflow = self.shrink_right(right_overflow as u32);
                 self.is_dirty = true;
+                self.needs_layout = true;
 
                 bail!("right overflow: {} {}", right_overflow, overflow)
             }
@@ -852,6 +857,7 @@ impl PanelSpace {
 
             let Some(output) = self.output.as_ref().map(|o| o.1.clone()) else {
                 self.is_dirty = true;
+                self.needs_layout = true;
                 bail!("output missing");
             };
             let mut loc = match self.config.anchor {
@@ -1498,6 +1504,7 @@ impl PanelSpace {
             overflow_space.map_element(new_popup, (0, 0), false);
 
             self.is_dirty = true;
+            self.needs_layout = true;
             self.space.refresh();
         }
         let id = match section {
@@ -1534,6 +1541,7 @@ impl PanelSpace {
             );
             self.space.refresh();
             self.is_dirty = true;
+            self.needs_layout = true;
         }
         overflow
     }
@@ -1799,6 +1807,7 @@ impl PanelSpace {
                 });
                 w.refresh();
                 self.is_dirty = true;
+                self.needs_layout = true;
             }
         }
     }

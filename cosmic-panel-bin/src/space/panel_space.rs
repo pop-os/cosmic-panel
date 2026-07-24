@@ -340,6 +340,11 @@ pub struct PanelSpace {
     // Logical size of the panel, with the applied animation state
     pub container_length: i32,
     pub is_dirty: bool,
+    /// Set alongside `is_dirty`, cleared when a layout pass runs, unlike
+    /// `is_dirty`, which is only cleared after rendering.
+    /// Keeping these separate prevents a layout loop while frame callbacks
+    /// are not being processed for example when the session is locked.
+    pub needs_layout: bool,
     pub space_event: Rc<Cell<Option<SpaceEvent>>>,
     pub s_focused_surface: ServerFocus,
     pub s_hovered_surface: ServerPtrFocus,
@@ -443,6 +448,7 @@ impl PanelSpace {
             input_region: None,
             damage_tracked_renderer: None,
             is_dirty: false,
+            needs_layout: false,
             has_frame: true,
             scale: 1.0,
             animate_state: None,
@@ -509,6 +515,7 @@ impl PanelSpace {
 
     pub fn apply_layer_overlaps(&mut self) {
         self.is_dirty = true;
+        self.needs_layout = true;
         self.is_background_dirty = true;
         self.logical_layer_start_overlap = 0;
         self.logical_layer_end_overlap = 0;
@@ -864,6 +871,7 @@ impl PanelSpace {
                             PanelAnchor::Top | PanelAnchor::Bottom => -(self.dimensions.h),
                         } + self.config.get_hide_handle() as i32;
                         self.is_dirty = true;
+                        self.needs_layout = true;
                         self.visibility = Visibility::TransitionToVisible {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
@@ -895,6 +903,7 @@ impl PanelSpace {
                     {
                         self.transitioning = true;
                         self.is_dirty = true;
+                        self.needs_layout = true;
                         self.visibility = Visibility::TransitionToHidden {
                             last_instant: Instant::now(),
                             progress: Duration::new(0, 0),
@@ -921,6 +930,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle() as i32;
                 self.is_dirty = true;
+                self.needs_layout = true;
 
                 if matches!(cur_hover, FocusStatus::Focused)
                     || (intellihide && !self.has_toplevel_overlap())
@@ -983,6 +993,7 @@ impl PanelSpace {
                     smootherstep(progress.as_millis() as f32 / total_t.as_millis() as f32);
                 let handle = self.config.get_hide_handle() as i32;
                 self.is_dirty = true;
+                self.needs_layout = true;
 
                 if matches!(cur_hover, FocusStatus::LastFocused(_))
                     && (!intellihide || !self.has_toplevel_overlap())
@@ -1054,6 +1065,7 @@ impl PanelSpace {
 
             self.transitioning = true;
             self.is_dirty = true;
+            self.needs_layout = true;
             let _panel_size =
                 if self.config().is_horizontal() { self.dimensions.h } else { self.dimensions.w };
 
@@ -1140,6 +1152,7 @@ impl PanelSpace {
                 as f32)
                 / animation_state.duration.as_millis() as f32;
             self.is_dirty = true;
+            self.needs_layout = true;
             if progress >= 1.0 {
                 tracing::info!("Animation finished, setting bg_color to end value");
                 if let CosmicPanelBackground::Color(c) = self.config.background {
@@ -1192,6 +1205,7 @@ impl PanelSpace {
             return;
         }
         self.is_dirty = true;
+        self.needs_layout = true;
         self.additional_gap = gap;
         let intellihide = self.overlap_notify.is_some();
         if ((intellihide && !self.has_toplevel_overlap())
@@ -1283,7 +1297,7 @@ impl PanelSpace {
                     info!("{:?}", self.space_event);
                 } else if self.layer.is_some() {
                     should_render = true;
-                    if self.is_dirty {
+                    if self.needs_layout {
                         _ = self.layout_();
                     }
                 }
@@ -1340,6 +1354,7 @@ impl PanelSpace {
         renderer: &mut Option<GlesRenderer>,
     ) {
         self.is_dirty = true;
+        self.needs_layout = true;
         let (w, h) = configure.new_size;
         match self.space_event.take() {
             Some(e) => match e {
@@ -1585,6 +1600,7 @@ impl PanelSpace {
     /// clear the panel
     pub fn clear(&mut self) {
         self.is_dirty = true;
+        self.needs_layout = true;
         self.close_popups(|_| false);
         self.overflow_popup = None;
         self.damage_tracked_renderer = Some(OutputDamageTracker::new(
@@ -1752,6 +1768,7 @@ impl PanelSpace {
                 needs_commit = true;
             }
             self.is_dirty = true;
+            self.needs_layout = true;
         }
 
         if config.anchor_gap != self.config.anchor_gap {
@@ -1900,6 +1917,7 @@ impl PanelSpace {
             return;
         };
         self.is_dirty = true;
+        self.needs_layout = true;
         self.space.refresh();
 
         let mut s_bbox = bbox_from_surface_tree(wlsurface, (0, 0));
@@ -2144,6 +2162,7 @@ impl PanelSpace {
             self.blur_manager = None;
         }
         self.is_dirty = true;
+        self.needs_layout = true;
     }
 
     pub(crate) fn update_popup_corners(
