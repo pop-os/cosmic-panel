@@ -2103,6 +2103,9 @@ impl PanelSpace {
         rect: smithay::utils::Rectangle<i32, Logical>,
         mut corners: [u32; 4],
     ) {
+        if !self.has_frame {
+            return;
+        }
         if self.colors.panel_blur(self.config.opacity) {
             if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
                 let gap =
