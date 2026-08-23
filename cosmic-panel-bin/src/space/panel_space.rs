@@ -805,6 +805,8 @@ impl PanelSpace {
             return;
         }
 
+        let has_popups = !self.popups.is_empty() || self.overflow_popup.is_some();
+
         let cur_hover = {
             let c_focused_surface = self.shared.c_focused_surface.borrow();
             let c_hovered_surface = self.shared.c_hovered_surface.borrow();
@@ -813,7 +815,7 @@ impl PanelSpace {
                 c_focused_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)))
                     && c_hovered_surface.iter().all(|f| matches!(f.2, FocusStatus::LastFocused(_)));
             if !self.config.autohide_enabled() {
-                if no_hover_focus && self.animate_state.is_none() {
+                if no_hover_focus && self.animate_state.is_none() && !has_popups {
                     self.visibility = Visibility::Hidden;
                 } else {
                     self.visibility = Visibility::Visible;
@@ -822,7 +824,7 @@ impl PanelSpace {
             };
 
             c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || intellihide_no_toplevel {
+                if self.animate_state.is_some() || intellihide_no_toplevel || has_popups {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -830,13 +832,7 @@ impl PanelSpace {
                 |acc, (surface, _, f)| {
                     if surface.is_alive()
                         && (self.layer.as_ref().is_some_and(|s| *s.wl_surface() == *surface)
-                            || self.popups.iter().any(|p| {
-                                p.popup.c_popup.wl_surface() == surface
-                                    || self
-                                        .popups
-                                        .iter()
-                                        .any(|p| p.popup.c_popup.wl_surface() == surface)
-                            }))
+                            || self.popups.iter().any(|p| p.popup.c_popup.wl_surface() == surface))
                         || self
                             .overflow_popup
                             .as_ref()
