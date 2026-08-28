@@ -194,15 +194,22 @@ impl DataDeviceHandler for GlobalState {
         preferred: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
     ) -> smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction {
         use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction as WlDndAction;
+        use smithay::wayland::selection::data_device::default_action_chooser;
+
+        // We must return exactly one action. A nested client is allowed to
+        // leave `preferred` empty, and returning that verbatim negotiates
+        // "none", which makes the host compositor refuse the drop entirely.
+        let chosen = default_action_chooser(available, preferred);
+
         let dnd_seat =
             match self.server_state.seats.iter_mut().find(|s| s.client.dnd_source.is_some()) {
                 Some(s) => s,
-                None => return preferred,
+                None => return chosen,
             };
 
         let offer = match dnd_seat.client.data_device.data().drag_offer() {
             Some(offer) => offer,
-            None => return preferred,
+            None => return chosen,
         };
 
         let mut client_actions = ClientDndAction::empty();
@@ -226,7 +233,7 @@ impl DataDeviceHandler for GlobalState {
             client_preferred |= ClientDndAction::Ask;
         }
         offer.set_actions(client_actions, client_preferred);
-        preferred
+        chosen
     }
 }
 
