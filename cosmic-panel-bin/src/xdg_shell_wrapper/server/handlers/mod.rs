@@ -370,7 +370,6 @@ impl smithay::utils::IsAlive for ServerGrabSource {
 
 impl smithay::input::dnd::Source for ServerGrabSource {
     fn metadata(&self) -> Option<SourceMetadata> {
-        println!("FOO METADATA");
         Some(self.metadata.clone())
     }
 
