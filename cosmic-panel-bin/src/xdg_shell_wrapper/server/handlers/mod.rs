@@ -380,6 +380,13 @@ impl smithay::input::dnd::Source for ServerGrabSource {
         Some(self.metadata.clone())
     }
 
+    fn accepted(&self, mime_type: Option<String>) {
+        // The nested client accepted (or rejected) the offer. The host
+        // compositor only sends `drop` once *we* have accepted, so relay it.
+        tracing::debug!(?mime_type, "relaying dnd accept to the host compositor");
+        self.dnd_offer.accept_mime_type(self.dnd_offer.serial, mime_type);
+    }
+
     fn choose_action(&self, action: smithay::input::dnd::DndAction) {
         // XXX actions?
         //
