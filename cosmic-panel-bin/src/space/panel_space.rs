@@ -1255,6 +1255,9 @@ impl PanelSpace {
                 {
                     let width: u32 = size.w.try_into().unwrap();
                     let height: u32 = size.h.try_into().unwrap();
+                    if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
+                        corner_radius_wlr.set_radius(0, 0, 0, 0);
+                    }
                     if self.config.is_horizontal() {
                         layer_surface.set_size(0, height);
                     } else {
@@ -1291,6 +1294,7 @@ impl PanelSpace {
                         self.anchor_gap =
                             -(list_thickness as i32) + self.config.get_hide_handle() as i32;
                     }
+                    self.is_background_dirty = true;
                     layer_surface.wl_surface().commit();
                     layer_surface.wl_surface().frame(qh, layer_surface.wl_surface().clone());
 
