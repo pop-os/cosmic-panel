@@ -263,9 +263,11 @@ impl PanelSpace {
                     let pos = e.with_program(|p| p.logical_pos);
                     e.render_elements(
                         renderer,
+                        // Round like the compositor does for the blur box, otherwise the two
+                        // disagree by a pixel at fractional scales.
                         Point::from((
-                            (pos.0 as f64 * self.scale) as i32,
-                            (pos.1 as f64 * self.scale) as i32,
+                            (pos.0 as f64 * self.scale).round() as i32,
+                            (pos.1 as f64 * self.scale).round() as i32,
                         )),
                         self.scale.into(),
                         1.0,

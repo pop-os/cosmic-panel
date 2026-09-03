@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::iced::IcedElement;
-use crate::iced::elements::background::background_element;
+use crate::iced::elements::background::{PanelBorder, background_element};
 use crate::iced::elements::overflow_button::{
     self, OverflowButton, OverflowButtonElement, overflow_button_element,
 };
@@ -828,12 +828,24 @@ impl PanelSpace {
             (PanelAnchor::Top, 0) => [0., 0., border_radius, border_radius],
             _ => [border_radius, border_radius, border_radius, border_radius],
         };
+        // a panel flush on 3 sides (a normal panel) only shows its inner edge
+        let border = if self.config.border_width <= 0. {
+            PanelBorder::None
+        } else if self.config.expand_to_edges()
+            && self.gap() == 0
+            && !self.config.autohide_enabled()
+        {
+            PanelBorder::Side(self.config.anchor)
+        } else {
+            PanelBorder::Full
+        };
         if !self.background_element.as_ref().is_some_and(|e| {
             e.with_program(|p| {
                 p.logical_height == h
                     && p.logical_width == w
                     && self.bg_color() == p.color
                     && p.scale == self.scale
+                    && p.border == border
             })
         }) || self.animate_state.as_ref().is_some()
             || self.transitioning
@@ -906,6 +918,8 @@ impl PanelSpace {
                 loc,
                 self.bg_color(),
                 self.scale,
+                border,
+                self.config.border_width,
             );
             bg.output_enter(&output, Rectangle::default());
             self.background_element = Some(bg.clone());
