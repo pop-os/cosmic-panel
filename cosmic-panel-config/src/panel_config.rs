@@ -484,6 +484,7 @@ impl PartialEq for CosmicPanelConfig {
             && self.border_radius == other.border_radius
             && self.exclusive_zone == other.exclusive_zone
             && self.autohide == other.autohide
+            && self.autohide_behavior == other.autohide_behavior
             && self.margin == other.margin
             && self.size_center == other.size_center
             && self.size_wings == other.size_wings
