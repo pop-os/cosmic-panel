@@ -273,13 +273,15 @@ impl KeyboardHandler for GlobalState {
         else {
             return;
         };
-        let mut state = ModifiersState::default();
-        state.ctrl = modifiers.ctrl;
-        state.alt = modifiers.alt;
-        state.caps_lock = modifiers.caps_lock;
-        state.logo = modifiers.logo;
-        state.num_lock = modifiers.num_lock;
-        state.shift = modifiers.shift;
+        let state = ModifiersState {
+            ctrl: modifiers.ctrl,
+            alt: modifiers.alt,
+            caps_lock: modifiers.caps_lock,
+            logo: modifiers.logo,
+            num_lock: modifiers.num_lock,
+            shift: modifiers.shift,
+            ..Default::default()
+        };
 
         kbd.set_modifier_state(state);
         kbd.advertise_modifier_state(self);

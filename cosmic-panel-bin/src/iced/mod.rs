@@ -56,7 +56,6 @@ use smithay::utils::{
 use smithay::wayland::seat::WaylandFocus;
 
 pub mod elements;
-pub mod panel_message;
 
 static ID: LazyLock<Id> = LazyLock::new(|| Id::new("Program"));
 
@@ -102,18 +101,6 @@ pub trait IcedProgram {
         Task::none()
     }
     fn view(&self) -> Element<'_, Self::Message>;
-
-    fn background_color(&self) -> Color {
-        Color::TRANSPARENT
-    }
-
-    fn foreground(
-        &self,
-        _pixels: &mut tiny_skia::PixmapMut<'_>,
-        _damage: &[Rectangle<i32, BufferCoords>],
-        _scale: f32,
-    ) {
-    }
 }
 
 pub trait Program {
@@ -141,6 +128,7 @@ pub trait Program {
     }
 }
 
+#[allow(dead_code)] // Kept for the optional calloop-backed iced executor.
 pub struct MyExecutor {
     // scheduler: Scheduler<Option<<P as Program>::Message>>,
     // executor_token: Option<RegistrationToken>,

@@ -31,6 +31,7 @@ type LayerHookId = Mutex<Option<(HookId, Weak<CosmicCornerRadiusLayerV1>)>>;
 #[derive(Debug)]
 pub struct CornerRadiusState {
     instances: Vec<cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1>,
+    #[allow(dead_code)] // Keeps the Wayland global alive for the state lifetime.
     global: GlobalId,
 }
 
@@ -575,7 +576,7 @@ fn xdg_radius_hook<D: 'static + CornerRadiusHandler>(
                 return None;
             }
         }
-        return Some(corners);
+        Some(corners)
     }) {
         state.commit_xdg(corners, surface);
     }

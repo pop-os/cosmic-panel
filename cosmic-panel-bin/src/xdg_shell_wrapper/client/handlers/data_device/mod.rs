@@ -2,6 +2,7 @@ use sctk::delegate_data_device;
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
+#[allow(clippy::module_inception)] // Mirrors the Wayland data-device protocol name.
 pub mod data_device;
 pub mod data_offer;
 pub mod data_source;

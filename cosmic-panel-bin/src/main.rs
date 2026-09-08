@@ -85,7 +85,7 @@ fn main() -> Result<()> {
     log_panics::init();
 
     let arg = std::env::args().nth(1);
-    let usage = "USAGE: cosmic-panel";
+    let _usage = "USAGE: cosmic-panel";
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
             std::process::exit(1);

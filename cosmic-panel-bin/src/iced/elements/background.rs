@@ -11,6 +11,7 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 pub type BackgroundElement = IcedElement<Background>;
 
+#[allow(clippy::too_many_arguments)] // Construction requires the complete panel render context.
 pub fn background_element(
     id: id::Id,
     logical_width: i32,

@@ -14,7 +14,7 @@ use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::
 use sctk::compositor::CompositorState;
 use sctk::data_device_manager::DataDeviceManagerState;
 use sctk::data_device_manager::data_device::DataDevice;
-use sctk::data_device_manager::data_offer::{DragOffer, SelectionOffer};
+use sctk::data_device_manager::data_offer::SelectionOffer;
 use sctk::data_device_manager::data_source::{CopyPasteSource, DragSource};
 use sctk::output::OutputState;
 use sctk::reexports::calloop_wayland_source::WaylandSource;
@@ -119,6 +119,19 @@ pub enum FocusStatus {
 pub type ClientFocus = Vec<(wl_surface::WlSurface, String, FocusStatus)>;
 
 /// Wrapper client state
+type ProxiedLayerSurface = (
+    EGLSurface,
+    OutputDamageTracker,
+    SmithayLayerSurface,
+    LayerSurface,
+    SurfaceState,
+    f64,
+    Option<WpFractionalScaleV1>,
+    Option<WpViewport>,
+    Option<CosmicCornerRadiusLayerV1>,    // TODO destroy on drop
+    Option<ExtBackgroundEffectSurfaceV1>, // TODO destroy on drop
+);
+
 pub struct ClientState {
     /// state
     pub registry_state: RegistryState,
@@ -178,18 +191,7 @@ pub struct ClientState {
         String,
     )>,
 
-    pub(crate) proxied_layer_surfaces: Vec<(
-        EGLSurface,
-        OutputDamageTracker,
-        SmithayLayerSurface,
-        LayerSurface,
-        SurfaceState,
-        f64,
-        Option<WpFractionalScaleV1>,
-        Option<WpViewport>,
-        Option<CosmicCornerRadiusLayerV1>, // TODO destroy on drop
-        Option<ExtBackgroundEffectSurfaceV1>, // TODO destroy on drop
-    )>,
+    pub(crate) proxied_layer_surfaces: Vec<ProxiedLayerSurface>,
 }
 
 impl Debug for ClientState {
@@ -242,6 +244,7 @@ impl ClientData for WrapperClientCompositorState {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SurfaceState {
+    #[allow(dead_code)] // Retained for a surface's first-buffer synchronization state.
     WaitingFirst(u32, Size<i32, Logical>),
     Waiting(u32, Size<i32, Logical>),
     Dirty(u32),

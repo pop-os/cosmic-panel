@@ -124,6 +124,8 @@ impl PanelSpace {
         let clear_color = [0., 0., 0., 0.];
 
         if self.is_dirty && self.has_frame {
+            #[allow(clippy::mutable_key_type)]
+            // ObjectId is used only for this short-lived identity lookup.
             let hovered_clients: HashSet<_> = self
                 .s_hovered_surface
                 .iter()

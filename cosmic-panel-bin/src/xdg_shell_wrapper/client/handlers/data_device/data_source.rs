@@ -1,11 +1,9 @@
 use std::os::fd::AsFd;
 
-use crate::xdg_shell_wrapper::client_state::FocusStatus;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use sctk::data_device_manager::data_source::DataSourceHandler;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::reexports::client::protocol::wl_data_source::WlDataSource;
-use sctk::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::selection::data_device::request_data_device_client_selection;
@@ -70,8 +68,8 @@ impl DataSourceHandler for GlobalState {
 
     fn cancelled(
         &mut self,
-        conn: &sctk::reexports::client::Connection,
-        qh: &sctk::reexports::client::QueueHandle<Self>,
+        _conn: &sctk::reexports::client::Connection,
+        _qh: &sctk::reexports::client::QueueHandle<Self>,
         source: &WlDataSource,
     ) {
         let seat = match self.server_state.seats.iter_mut().find(|seat| {

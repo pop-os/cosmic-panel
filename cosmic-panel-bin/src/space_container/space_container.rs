@@ -13,7 +13,6 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
-use cctk::cosmic_protocols::corner_radius;
 use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::toplevel_info::ToplevelInfo;
 use cctk::wayland_client::protocol::wl_seat::WlSeat;
@@ -246,6 +245,7 @@ impl SpaceContainer {
     }
 
     /// apply a new or updated entry to the space list
+    #[allow(clippy::too_many_arguments)] // Updating a panel needs the Wayland state handles separately.
     pub fn update_space(
         &mut self,
         mut entry: CosmicPanelConfig,
@@ -330,11 +330,13 @@ impl SpaceContainer {
         output_count_mismatch
         || self.config.config_list.iter().any(|c| {
             // size changed
-            c.name == entry.name && c.size != entry.size
-            // spacing changed
-            || (c.name == entry.name && c.spacing != entry.spacing)
-            // size overrides changed
-            || (c.name == entry.name && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
+            c.name == entry.name
+                && (c.size != entry.size
+                    // spacing changed
+                    || c.spacing != entry.spacing
+                    // size overrides changed
+                    || c.size_center != entry.size_center
+                    || c.size_wings != entry.size_wings)
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
@@ -541,6 +543,7 @@ impl SpaceContainer {
         spaces
     }
 
+    #[allow(clippy::too_many_arguments)] // Forwarding popup creation requires the Wayland state handles separately.
     pub fn toggle_overflow_popup(
         &mut self,
         panel_id: usize,

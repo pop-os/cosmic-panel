@@ -24,6 +24,7 @@ use super::PanelSpace;
 use super::layout::OverflowSection;
 
 impl PanelSpace {
+    #[allow(clippy::too_many_arguments)] // Wayland popup creation requires these independent handles.
     pub fn toggle_overflow_popup(
         &mut self,
         element_id: id::Id,
@@ -211,7 +212,7 @@ impl PanelSpace {
             .overflow_popup
             .take()
             .into_iter()
-            .filter_map(|(mut p, section)| {
+            .map(|(mut p, section)| {
                 if let Some(WrapperPopupState::Rectangle { width, height, x, y }) = p.state {
                     p.dirty = true;
                     p.rectangle = Rectangle::new((x, y).into(), (width, height).into());
@@ -236,7 +237,7 @@ impl PanelSpace {
 
                     p.state = None;
                 }
-                Some((p, section))
+                (p, section)
             })
             .next();
     }

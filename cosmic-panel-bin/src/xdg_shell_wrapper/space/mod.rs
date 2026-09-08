@@ -2,6 +2,7 @@
 
 mod egl_surface;
 mod popup;
+#[allow(clippy::module_inception)] // Renaming would disrupt the internal module path.
 mod space;
 mod subsurface;
 mod toplevel;

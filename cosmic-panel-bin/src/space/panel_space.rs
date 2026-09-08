@@ -30,7 +30,7 @@ use cctk::cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notifica
 use cctk::sctk::shell::wlr_layer::Layer;
 use cctk::wayland_client::Connection;
 
-use cosmic::iced::{border, id};
+use cosmic::iced::id;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
 use freedesktop_desktop_entry::PathSource;
 use launch_pad::process::Process;
@@ -68,9 +68,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
 use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
-use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::{
-    self, ExtBackgroundEffectSurfaceV1,
-};
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::security_context::v1::client::wp_security_context_v1::WpSecurityContextV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
@@ -139,11 +137,11 @@ pub enum ClientShrinkSize {
 }
 
 impl ClientShrinkSize {
-    pub fn to_pixels(&self, applet_size: u32) -> u32 {
+    pub fn to_pixels(self, applet_size: u32) -> u32 {
         match self {
             // TODO get spacing / padding from the theme or panel config?
             Self::AppletUnit(units) => 4 + applet_size * units + 4 * units.saturating_sub(1),
-            Self::Pixel(pixels) => *pixels,
+            Self::Pixel(pixels) => pixels,
         }
     }
 }
@@ -1916,6 +1914,7 @@ impl PanelSpace {
         self.input_region = Some(Region::new(compositor_state).unwrap());
     }
 
+    #[allow(clippy::too_many_arguments)] // Wayland subsurface updates require these independent handles.
     pub fn dirty_subsurface(
         &mut self,
         renderer: Option<&mut GlesRenderer>,

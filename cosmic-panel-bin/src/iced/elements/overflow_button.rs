@@ -13,15 +13,15 @@ use cosmic::iced::core::id;
 use cosmic::iced::{Length, Padding};
 use cosmic::theme::{self, Button};
 use cosmic::widget::{Id, button, layer_container};
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::Size;
 
 use crate::iced::{IcedElement, Program};
 
 pub type OverflowButtonElement = IcedElement<OverflowButton>;
 
+#[allow(clippy::too_many_arguments)] // Construction requires the complete panel render context.
 pub fn overflow_button_element(
     id: id::Id,
-    pos: Point<i32, Logical>,
     icon_size: u16,
     button_padding: Padding,
     selected: Arc<AtomicBool>,
@@ -38,15 +38,7 @@ pub fn overflow_button_element(
         (icon_size + button_padding.y()).round() as i32,
     );
     IcedElement::new(
-        OverflowButton::new(
-            id,
-            pos,
-            icon_size.round() as u16,
-            button_padding,
-            selected,
-            icon,
-            panel_id,
-        ),
+        OverflowButton::new(id, icon_size.round() as u16, button_padding, selected, icon, panel_id),
         Size::from(size),
         handle,
         theme,
@@ -68,7 +60,6 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub struct OverflowButton {
     pub id: id::Id,
-    pos: Point<i32, Logical>,
     icon_size: u16,
     button_padding: Padding,
     /// Selected if the popup is open
@@ -80,14 +71,13 @@ pub struct OverflowButton {
 impl OverflowButton {
     pub fn new(
         id: id::Id,
-        pos: Point<i32, Logical>,
         icon_size: u16,
         button_padding: Padding,
         selected: Arc<AtomicBool>,
         icon: Cow<'static, str>,
         panel_id: usize,
     ) -> Self {
-        Self { id, pos, icon_size, button_padding, selected, icon, panel_id }
+        Self { id, icon_size, button_padding, selected, icon, panel_id }
     }
 }
 

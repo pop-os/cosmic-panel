@@ -50,19 +50,6 @@ impl ShrinkablePadding {
             ShrinkablePadding::None => 0,
         }
     }
-
-    pub fn from_bool(start: bool, end: bool) -> Self {
-        match (start, end) {
-            (true, true) => ShrinkablePadding::Both,
-            (true, false) => ShrinkablePadding::Start,
-            (false, true) => ShrinkablePadding::End,
-            (false, false) => ShrinkablePadding::None,
-        }
-    }
-
-    pub fn is_shrinkable(&self) -> bool {
-        matches!(self, ShrinkablePadding::Start | ShrinkablePadding::End | ShrinkablePadding::Both)
-    }
 }
 
 impl PanelSpace {
@@ -197,7 +184,7 @@ impl PanelSpace {
         let mut windows_right = map_clients(&self.clients_right);
 
         let is_dock = !self.config.expand_to_edges()
-            || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
+            || self.animate_state.as_ref().is_some_and(|a| a.cur.expanded <= 0.5);
 
         if is_dock {
             windows_center = windows_left
@@ -790,13 +777,6 @@ impl PanelSpace {
         }
         self.space.refresh();
 
-        let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
-        let container_length_scaled = self.container_length as f64 * self.scale;
-        if self.config.is_horizontal() {
-            panel_size.w = container_length_scaled;
-        } else {
-            panel_size.h = container_length_scaled;
-        }
         let (mut w, mut h) = if is_dock {
             if self.config.is_horizontal() {
                 (container_length, new_dim.h)
@@ -1189,7 +1169,6 @@ impl PanelSpace {
                     window: w.0,
                     priority: w.1 as i32,
                     shrink_size: shrink_min_size,
-                    padding_overlap: 0.0,
                 });
             } else if c.shrink_priority.is_some() {
                 let p = weighted_priority(&w);
@@ -1201,7 +1180,6 @@ impl PanelSpace {
                     window: w.0,
                     priority: -1,
                     shrink_size: ClientShrinkSize::AppletUnit(1),
-                    padding_overlap: 0.0,
                 });
             }
         }
@@ -1514,7 +1492,6 @@ impl PanelSpace {
             };
             let e = overflow_button_element(
                 id,
-                (0, 0).into(),
                 u16::try_from(icon_size).unwrap_or(32),
                 [v_padding, h_padding].into(),
                 Arc::new(AtomicBool::new(false)),
@@ -1806,7 +1783,7 @@ impl PanelSpace {
 
 /// Weight priority so that bigger applets overflow last
 fn weighted_priority(w: &(Window, u32, i32)) -> u32 {
-    (w.1.saturating_mul(100_000) as u32).saturating_sub(w.2 as u32)
+    w.1.saturating_mul(100_000).saturating_sub(w.2 as u32)
 }
 
 // if middle collides with left or right, it must be constrained
@@ -1847,7 +1824,6 @@ pub struct ShrinkableClient {
     window: Window,
     priority: i32,
     shrink_size: ClientShrinkSize,
-    padding_overlap: f32,
 }
 
 #[derive(Debug, Default, Clone)]

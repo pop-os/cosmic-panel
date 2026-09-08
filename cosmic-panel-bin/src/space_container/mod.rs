@@ -4,6 +4,7 @@
 
 use crate::space::PanelSpace;
 
+#[allow(clippy::module_inception)] // Renaming would disrupt the public module path.
 mod space_container;
 pub(crate) mod toplevel;
 pub(crate) mod workspace;

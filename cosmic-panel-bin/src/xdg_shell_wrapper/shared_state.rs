@@ -16,7 +16,6 @@ use smithay::backend::renderer::{Bind, ImportDma, ImportEgl};
 use smithay::desktop::utils::send_frames_surface_tree;
 use smithay::input::keyboard::FilterResult;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::reexports::wayland_server::protocol::wl_surface;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::dmabuf::DmabufState;

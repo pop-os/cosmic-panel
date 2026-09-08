@@ -209,6 +209,8 @@ impl SpaceContainer {
             })
             .flatten();
 
+        #[allow(clippy::mutable_key_type)]
+        // WlOutput is used only for this short-lived identity lookup.
         let sticky_outputs: HashSet<WlOutput> = self
             .maximized_toplevels
             .iter()

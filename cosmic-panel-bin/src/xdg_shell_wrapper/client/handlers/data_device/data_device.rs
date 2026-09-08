@@ -62,7 +62,7 @@ impl DataDeviceHandler for GlobalState {
     fn enter(
         &mut self,
         _conn: &sctk::reexports::client::Connection,
-        qh: &sctk::reexports::client::QueueHandle<Self>,
+        _qh: &sctk::reexports::client::QueueHandle<Self>,
         data_device: &WlDataDevice,
         _x: f64,
         _y: f64,

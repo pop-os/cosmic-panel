@@ -28,6 +28,9 @@ use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::wayland_client::protocol::wl_seat;
 use cosmic::iced::id;
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME, Side};
+
+type PanelClientList = Arc<Mutex<Vec<PanelClient>>>;
+type PanelClientEntry<'a> = (&'a mut PanelClient, PanelClientList, Side);
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::izip;
 use launch_pad::process::Process;
@@ -455,8 +458,7 @@ impl WrapperSpace for PanelSpace {
 
             let mut max_minimize_priority: u32 = 0;
 
-            let mut panel_clients: Vec<(&mut PanelClient, Arc<Mutex<Vec<PanelClient>>>, Side)> =
-                Vec::new();
+            let mut panel_clients: Vec<PanelClientEntry<'_>> = Vec::new();
             let locales = freedesktop_desktop_entry::get_languages_from_env();
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
@@ -1596,7 +1598,7 @@ impl WrapperSpace for PanelSpace {
             izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
         if let Some(blur_manager) = self.blur_manager.as_ref() {
             self.blur_surface =
-                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
+                Some(blur_manager.get_background_effect(client_surface.wl_surface(), qh, ()));
             self.corner_radius_wlr =
                 self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
                     m.get_corner_radius_layer(
@@ -1604,7 +1606,7 @@ impl WrapperSpace for PanelSpace {
                             SurfaceKind::Wlr(w) => w,
                             _ => unimplemented!(),
                         },
-                        &qh,
+                        qh,
                         (),
                     )
                 });

@@ -79,6 +79,7 @@ pub enum Visibility {
 
 /// Wrapper Space
 /// manages and renders xdg-shell-window(s) on a layer shell surface
+#[allow(clippy::too_many_arguments)] // The trait mirrors Wayland lifecycle operations and their handles.
 pub trait WrapperSpace {
     /// Wrapper config type
     type Config: WrapperConfig;

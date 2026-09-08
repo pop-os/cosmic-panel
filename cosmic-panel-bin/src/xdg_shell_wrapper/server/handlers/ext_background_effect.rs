@@ -121,10 +121,7 @@ impl ExtBackgroundEffectHandler for GlobalState {
 
 type BlurHookId = Mutex<Option<(HookId, TypeId)>>;
 
-fn hook_commit<D: BlurHandler + 'static>(wl_surface: &WlSurface)
-where
-    D: 'static,
-{
+fn hook_commit<D: BlurHandler + 'static>(wl_surface: &WlSurface) {
     struct Blur;
     let blur_exists = with_states(wl_surface, |surface_data| {
         let hook_id = surface_data.data_map.get_or_insert_threadsafe(|| BlurHookId::new(None));
@@ -148,11 +145,7 @@ fn blur_hook<D: 'static + BlurHandler>(state: &mut D, _dh: &DisplayHandle, surfa
     let region = with_states(surface, |states| {
         let mut blur_state = states.cached_state.get::<ComputedBlurRegionCachedState>();
         let pending = blur_state.pending().clone();
-        if *blur_state.current() != pending {
-            return None;
-        } else {
-            return Some(pending);
-        }
+        if *blur_state.current() != pending { None } else { Some(pending) }
     });
     if let Some(region) = region {
         state.commit_blur(region.blur_region, surface);

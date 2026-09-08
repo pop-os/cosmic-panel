@@ -1,6 +1,6 @@
 use super::IcedProgram as Program;
 use cosmic::iced::core::event::{self, Event};
-use cosmic::iced::core::widget::operation::{self, Operation};
+
 use cosmic::iced::core::{Clipboard, Size, id, mouse, renderer};
 use cosmic::iced::runtime::Task;
 use cosmic::iced::runtime::user_interface::{self, UserInterface};
@@ -69,17 +69,13 @@ where
         self.queued_events.is_empty() && self.queued_messages.is_empty()
     }
 
-    /// Returns the current [`mouse::Interaction`] of the [`State`].
-    pub fn mouse_interaction(&self) -> mouse::Interaction {
-        self.mouse_interaction
-    }
-
     /// Processes all the queued events and messages, rebuilding and redrawing
     /// the widgets of the linked [`Program`] if necessary.
     ///
     /// Returns a list containing the instances of [`Event`] that were not
     /// captured by any widget, and the [`Task`] obtained from [`Program`]
     /// after updating it, only if an update was necessary.
+    #[allow(clippy::too_many_arguments)] // Mirrors iced's UI update inputs.
     pub fn update(
         &mut self,
         id: id::Id,
@@ -153,41 +149,6 @@ where
         };
 
         (uncaptured_events, task)
-    }
-
-    /// Applies [`Operation`]s to the [`State`]
-    pub fn operate(
-        &mut self,
-        id: id::Id,
-        renderer: &mut cosmic::Renderer,
-        operations: impl Iterator<Item = Box<dyn Operation>>,
-        bounds: Size,
-    ) {
-        let mut user_interface = build_user_interface(
-            id,
-            &mut self.program,
-            self.cache.take().unwrap(),
-            renderer,
-            bounds,
-        );
-
-        for operation in operations {
-            let mut current_operation = Some(operation);
-
-            while let Some(mut operation) = current_operation.take() {
-                user_interface.operate(renderer, operation.as_mut());
-
-                match operation.finish() {
-                    operation::Outcome::None => {},
-                    operation::Outcome::Some(()) => {},
-                    operation::Outcome::Chain(next) => {
-                        current_operation = Some(next);
-                    },
-                };
-            }
-        }
-
-        self.cache = Some(user_interface.into_cache());
     }
 }
 
