@@ -8,6 +8,7 @@ use sctk::reexports::client::protocol::wl_data_device::WlDataDevice;
 use sctk::reexports::client::protocol::wl_data_device_manager::DndAction as ClientDndAction;
 use sctk::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smallvec::SmallVec;
+use smithay::backend::input::InputTime;
 use smithay::input::dnd::{DndAction, SourceMetadata};
 use smithay::input::pointer::GrabStartData;
 use smithay::reexports::wayland_server::Resource;
@@ -198,7 +199,7 @@ impl DataDeviceHandler for GlobalState {
             position: (0.0, 0.0),
         };
         if let Some(s) = s_ptr {
-            s.unset_grab(self, SERIAL_COUNTER.next_serial(), 0);
+            s.unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
         }
 
         if let Some(pointer) = c_ptr {

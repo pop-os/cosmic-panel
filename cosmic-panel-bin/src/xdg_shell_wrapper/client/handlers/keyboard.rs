@@ -7,7 +7,7 @@ use crate::xdg_shell_wrapper::space::WrapperSpace;
 use sctk::delegate_keyboard;
 use sctk::seat::keyboard::{KeyCode, KeyboardHandler, Keysym, RawModifiers, RepeatInfo};
 use sctk::shell::WaylandSurface;
-use smithay::backend::input::KeyState;
+use smithay::backend::input::{InputTime, KeyState};
 use smithay::input::keyboard::{FilterResult, ModifiersState};
 use smithay::utils::SERIAL_COUNTER;
 
@@ -142,7 +142,12 @@ impl KeyboardHandler for GlobalState {
         };
 
         if let Some(c_focus) = c_kbd_focus {
-            self.client_state.last_key_pressed.push((seat_name, (event.raw_code, serial), c_focus))
+            self.client_state.last_key_pressed.push((
+                seat_name,
+                // TODO raw code type
+                (event.raw_code, InputTime::from_millis(event.time)),
+                c_focus,
+            ))
         }
 
         let _ = kbd.input::<(), _>(
@@ -150,7 +155,7 @@ impl KeyboardHandler for GlobalState {
             KeyCode::new(event.raw_code.saturating_add(8)),
             KeyState::Pressed,
             SERIAL_COUNTER.next_serial(),
-            event.time,
+            InputTime::from_millis(event.time),
             move |_, _modifiers, _keysym| FilterResult::Forward,
         );
     }
@@ -197,7 +202,7 @@ impl KeyboardHandler for GlobalState {
             KeyCode::new(event.raw_code.saturating_add(8)),
             KeyState::Released,
             SERIAL_COUNTER.next_serial(),
-            event.time,
+            InputTime::from_millis(event.time),
             move |_, _modifiers, _keysym| FilterResult::Forward,
         );
     }

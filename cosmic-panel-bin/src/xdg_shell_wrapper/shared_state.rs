@@ -42,6 +42,8 @@ pub struct GlobalState {
     pub iter_count: u128,
 }
 
+smithay::delegate_dispatch2!(GlobalState);
+
 impl GlobalState {
     pub(crate) fn new(
         client_state: ClientState,
@@ -86,7 +88,7 @@ impl GlobalState {
                 key_pressed.1.0.into(),
                 KeyState::Released,
                 SERIAL_COUNTER.next_serial(),
-                key_pressed.1.1.wrapping_add(1),
+                key_pressed.1.1,
                 move |_, _modifiers, _keysym| FilterResult::Forward,
             );
         }

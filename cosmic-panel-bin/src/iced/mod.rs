@@ -31,7 +31,7 @@ use cosmic::widget::Id;
 use iced_tiny_skia::graphics::Viewport;
 use ordered_float::OrderedFloat;
 use smithay::backend::allocator::Fourcc;
-use smithay::backend::input::{ButtonState, KeyState};
+use smithay::backend::input::{ButtonState, InputTime, KeyState};
 use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
@@ -45,7 +45,7 @@ use smithay::input::pointer::{
     GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
     GestureSwipeUpdateEvent, MotionEvent, PointerTarget, RelativeMotionEvent,
 };
-use smithay::input::touch::TouchTarget;
+use smithay::input::touch::{FrameMarker, TouchTarget};
 use smithay::output::Output;
 use smithay::reexports::calloop::futures::Scheduler;
 use smithay::reexports::calloop::{self, LoopHandle, RegistrationToken};
@@ -207,6 +207,7 @@ struct IcedElementInternal<P: Program + Send + 'static> {
     cursor_pos: Option<Point<f64, Logical>>,
     panel_id: usize,
     touch_map: HashMap<Finger, IcedPoint>,
+    last_touch_frame: Option<FrameMarker>,
 
     // iced
     theme: Theme,
@@ -252,6 +253,7 @@ impl<P: Program + Send + Clone + 'static> Clone for IcedElementInternal<P> {
             theme: self.theme.clone(),
             panel_id: self.panel_id,
             touch_map: HashMap::new(),
+            last_touch_frame: None,
             renderer,
             state,
             handle,
@@ -322,6 +324,7 @@ impl<P: Program + Send + 'static> IcedElement<P> {
             size,
             cursor_pos: None,
             touch_map: HashMap::new(),
+            last_touch_frame: None,
             theme,
             renderer,
             state,
@@ -542,7 +545,7 @@ impl<P: Program + Send + 'static> PointerTarget<GlobalState> for IcedElement<P> 
         _seat: &Seat<GlobalState>,
         _data: &mut GlobalState,
         _serial: Serial,
-        _time: u32,
+        _time: InputTime,
     ) {
         let mut internal = self.0.lock().unwrap();
         if internal.request_redraws {
@@ -644,7 +647,7 @@ impl<P: Program + Send + 'static> KeyboardTarget<GlobalState> for IcedElement<P>
         _key: KeysymHandle<'_>,
         _state: KeyState,
         _serial: Serial,
-        _time: u32,
+        _time: InputTime,
     ) {
         // TODO convert keys
     }
@@ -681,7 +684,6 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
         event: &smithay::input::touch::DownEvent,
-        _serial: smithay::utils::Serial,
     ) {
         let mut internal = self.0.lock().unwrap();
         if internal.request_redraws {
@@ -700,7 +702,6 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
         event: &smithay::input::touch::UpEvent,
-        _serial: smithay::utils::Serial,
     ) {
         let mut internal = self.0.lock().unwrap();
         if internal.request_redraws {
@@ -718,7 +719,6 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
         event: &smithay::input::touch::MotionEvent,
-        _serial: smithay::utils::Serial,
     ) {
         let mut internal = self.0.lock().unwrap();
         if internal.request_redraws {
@@ -736,17 +736,19 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         &self,
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
-        _serial: smithay::utils::Serial,
+        frame: FrameMarker,
     ) {
+        self.0.lock().unwrap().last_touch_frame = Some(frame);
     }
 
     fn cancel(
         &self,
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
-        _serial: smithay::utils::Serial,
+        frame: FrameMarker,
     ) {
         let mut internal = self.0.lock().unwrap();
+        internal.last_touch_frame = Some(frame);
         if internal.request_redraws {
             internal.pending_update = Some(Instant::now());
         }
@@ -761,7 +763,6 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
         _event: &smithay::input::touch::ShapeEvent,
-        _serial: smithay::utils::Serial,
     ) {
     }
 
@@ -770,8 +771,15 @@ impl<P: Program + Send + 'static> TouchTarget<GlobalState> for IcedElement<P> {
         _seat: &smithay::input::Seat<GlobalState>,
         _data: &mut GlobalState,
         _event: &smithay::input::touch::OrientationEvent,
-        _serial: smithay::utils::Serial,
     ) {
+    }
+
+    fn last_frame(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+    ) -> Option<FrameMarker> {
+        self.0.lock().unwrap().last_touch_frame
     }
 }
 

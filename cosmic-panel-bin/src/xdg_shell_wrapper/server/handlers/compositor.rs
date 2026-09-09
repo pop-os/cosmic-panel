@@ -14,7 +14,6 @@ use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorHandler, CompositorState, get_role};
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
 use smithay::wayland::shm::{ShmHandler, ShmState};
-use smithay::{delegate_compositor, delegate_shm};
 use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
@@ -347,6 +346,3 @@ impl ShmHandler for GlobalState {
         &self.server_state.shm_state
     }
 }
-
-delegate_compositor!(GlobalState);
-delegate_shm!(GlobalState);

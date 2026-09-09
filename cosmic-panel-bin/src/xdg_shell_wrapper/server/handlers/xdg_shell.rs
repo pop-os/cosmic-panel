@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use sctk::shell::xdg::XdgPositioner;
-use smithay::delegate_xdg_shell;
 use smithay::desktop::{PopupKind, Window};
 use smithay::input::Seat;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -114,6 +113,3 @@ impl XdgShellHandler for GlobalState {
         self.space.maximize_window(surface.clone());
     }
 }
-
-// Xdg Shell
-delegate_xdg_shell!(GlobalState);

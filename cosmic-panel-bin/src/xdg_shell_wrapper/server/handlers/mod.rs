@@ -26,10 +26,6 @@ use smithay::wayland::selection::primary_selection::{
     PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
 };
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
-use smithay::{
-    delegate_data_device, delegate_dmabuf, delegate_output, delegate_primary_selection,
-    delegate_seat,
-};
 use tracing::{error, info, trace};
 
 use crate::iced::elements::target::SpaceTarget;
@@ -43,7 +39,7 @@ pub(crate) mod cursor;
 pub(crate) mod ext_background_effect;
 pub(crate) mod fractional;
 pub(crate) mod layer;
-pub(crate) mod viewporter;
+pub(crate) mod pointer_constraints;
 pub(crate) mod xdg_shell;
 
 delegate_subcompositor!(GlobalState);
@@ -53,8 +49,6 @@ impl PrimarySelectionHandler for GlobalState {
         &mut self.server_state.primary_selection_state
     }
 }
-
-delegate_primary_selection!(GlobalState);
 
 // Wl Seat
 //
@@ -175,8 +169,6 @@ impl SeatHandler for GlobalState {
         }
     }
 }
-
-delegate_seat!(GlobalState);
 
 // Wl Data Device
 //
@@ -406,12 +398,8 @@ impl smithay::input::dnd::Source for ServerGrabSource {
     }
 }
 
-delegate_data_device!(GlobalState);
-
 // Wl Output
 //
-
-delegate_output!(GlobalState);
 
 impl OutputHandler for GlobalState {}
 // Dmabuf
@@ -488,5 +476,3 @@ impl SelectionHandler for GlobalState {
         }
     }
 }
-
-delegate_dmabuf!(GlobalState);
