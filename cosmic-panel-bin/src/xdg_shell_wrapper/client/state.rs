@@ -14,7 +14,7 @@ use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::
 use sctk::compositor::CompositorState;
 use sctk::data_device_manager::DataDeviceManagerState;
 use sctk::data_device_manager::data_device::DataDevice;
-use sctk::data_device_manager::data_offer::{DragOffer, SelectionOffer};
+use sctk::data_device_manager::data_offer::SelectionOffer;
 use sctk::data_device_manager::data_source::{CopyPasteSource, DragSource};
 use sctk::output::OutputState;
 use sctk::reexports::calloop_wayland_source::WaylandSource;

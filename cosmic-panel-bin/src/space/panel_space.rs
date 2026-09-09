@@ -30,7 +30,7 @@ use cctk::cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notifica
 use cctk::sctk::shell::wlr_layer::Layer;
 use cctk::wayland_client::Connection;
 
-use cosmic::iced::{border, id};
+use cosmic::iced::id;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
 use freedesktop_desktop_entry::PathSource;
 use launch_pad::process::Process;
@@ -68,9 +68,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 use wayland_egl::WlEglSurface;
 use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
-use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::{
-    self, ExtBackgroundEffectSurfaceV1,
-};
+use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_protocols::wp::security_context::v1::client::wp_security_context_v1::WpSecurityContextV1;
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;

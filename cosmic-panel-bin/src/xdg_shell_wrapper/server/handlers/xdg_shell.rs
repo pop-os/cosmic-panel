@@ -11,7 +11,6 @@ use smithay::wayland::shell::xdg::{
 };
 
 use crate::iced::elements::target::SpaceTarget;
-use crate::xdg_shell_wrapper::client_state::FocusStatus;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 
