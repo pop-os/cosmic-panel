@@ -51,16 +51,19 @@ impl SeatHandler for GlobalState {
                 None
             };
 
-            // A lot of clients bind keyboard and pointer unconditionally once on launch..
-            // Initial clients might race the compositor on adding periheral and
-            // end up in a state, where they are not able to receive input.
-            // Additionally a lot of clients don't handle keyboards/pointer objects being
-            // removed very well either and we don't want to crash applications, because the
-            // user is replugging their keyboard or mouse.
+            // A lot of clients bind keyboard and pointer unconditionally once
+            // on launch.. Initial clients might race the compositor
+            // on adding periheral and end up in a state, where they
+            // are not able to receive input. Additionally a lot of
+            // clients don't handle keyboards/pointer objects being
+            // removed very well either and we don't want to crash applications,
+            // because the user is replugging their keyboard or
+            // mouse.
             //
-            // So instead of doing the right thing (and initialize these capabilities as
-            // matching devices appear), we have to surrender to reality and
-            // just always expose a keyboard and pointer.
+            // So instead of doing the right thing (and initialize these
+            // capabilities as matching devices appear), we have to
+            // surrender to reality and just always expose a
+            // keyboard and pointer.
             new_server_seat.add_keyboard(Default::default(), 200, 20).unwrap();
             new_server_seat.add_pointer();
             new_server_seat.add_touch();

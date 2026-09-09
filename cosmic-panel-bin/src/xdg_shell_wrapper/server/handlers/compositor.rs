@@ -63,9 +63,9 @@ impl CompositorHandler for GlobalState {
                     self.client_state.pending_layer_surfaces.swap_remove(pos);
                 // layer created by client
                 // request received here
-                // layer created in compositor & tracked by xdg-shell-wrapper in its own space
-                // that spans all outputs get renderer from wrapper space and
-                // draw to it
+                // layer created in compositor & tracked by xdg-shell-wrapper in
+                // its own space that spans all outputs get
+                // renderer from wrapper space and draw to it
                 let renderer = match self.space.renderer() {
                     Some(r) => r,
                     None => return,

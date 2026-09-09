@@ -257,9 +257,10 @@ impl SpaceContainer {
         force_output: Option<WlOutput>,
         _overlap_notify: Option<OverlapNotifyV1>,
     ) {
-        // if the output is set to "all", we need to check if the config is the same for
-        // all outputs if the output is set to a specific output, we need to
-        // make sure it doesn't exist on another output
+        // if the output is set to "all", we need to check if the config is the
+        // same for all outputs if the output is set to a specific
+        // output, we need to make sure it doesn't exist on another
+        // output
         let mut output_count = if matches!(entry.output, CosmicPanelOuput::All) {
             self.outputs.len()
         } else {
@@ -323,8 +324,8 @@ impl SpaceContainer {
             })
         };
         // recreate the original if: output changed
-        // or if the output is the same, but the priority changes to conflict with an
-        // adjacent panel or if applet size changes
+        // or if the output is the same, but the priority changes to conflict
+        // with an adjacent panel or if applet size changes
         let must_recreate =
         // implies that there is at least one output which needs to be recreated
         output_count_mismatch

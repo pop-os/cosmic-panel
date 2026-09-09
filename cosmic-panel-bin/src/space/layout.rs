@@ -246,7 +246,8 @@ impl PanelSpace {
         let spacing_u32 = self.config.spacing();
         let spacing_scaled = spacing_u32 as f64 * self.scale;
         // First try partitioning the panel evenly into N spaces.
-        // If all windows fit into each space, then set their offsets and return.
+        // If all windows fit into each space, then set their offsets and
+        // return.
         let (list_cross, layer_major) = match anchor {
             PanelAnchor::Left | PanelAnchor::Right => (self.dimensions.w, self.dimensions.h),
             PanelAnchor::Top | PanelAnchor::Bottom => (self.dimensions.h, self.dimensions.w),
@@ -611,8 +612,8 @@ impl PanelSpace {
             layer_major.saturating_sub(container_length) < 2 * self.logical_layer_start_overlap;
         let is_overlapping_end =
             layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
-        // XXX this is a bit of a hack around the fact that we want the spacer to be
-        // placed before the overflow button
+        // XXX this is a bit of a hack around the fact that we want the spacer
+        // to be placed before the overflow button
         if windows_left.is_empty() && !windows_center.is_empty() && is_overlapping_start {
             let (_, CosmicMappedInternal::Spacer(s), ..) = windows_center.remove(0) else {
                 panic!("No spacer found");
@@ -968,7 +969,8 @@ impl PanelSpace {
                     if self.config.is_horizontal() {
                         size.0 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     } else {
-                        // loc.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
+                        // loc.1 -= self.logical_layer_end_overlap -
+                        // container_lengthwise_pos;
                         size.1 -= self.logical_layer_end_overlap - container_lengthwise_pos;
                     }
                 }
@@ -1195,8 +1197,8 @@ impl PanelSpace {
                 let p = weighted_priority(&w);
                 overflow_partition.movable.push((w.0, p));
             } else {
-                // make shrinkable if no shrink priority with lowest priority so it is moved
-                // last
+                // make shrinkable if no shrink priority with lowest priority so
+                // it is moved last
                 overflow_partition.shrinkable.push(ShrinkableClient {
                     window: w.0,
                     priority: -1,

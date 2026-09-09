@@ -106,8 +106,9 @@ impl PanelPopup {
     /// For a popup proxied from an embedded client this is deferred until that
     /// client commits its own popup surface, because `xdg_popup.grab` is only
     /// valid before the popup is mapped and smithay reports the client's `grab`
-    /// request from the pre-commit hook of that first commit. Mapping any earlier
-    /// turns every forwarded grab into an `invalid_grab` protocol error.
+    /// request from the pre-commit hook of that first commit. Mapping any
+    /// earlier turns every forwarded grab into an `invalid_grab` protocol
+    /// error.
     pub fn map(&mut self) {
         if self.pending_initial_commit {
             self.pending_initial_commit = false;

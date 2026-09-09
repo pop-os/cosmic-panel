@@ -10,8 +10,8 @@ impl FractionalScaleHandler for GlobalState {
     fn new_fractional_scale(&mut self, surface: WlSurface) {
         // Here we can set the initial fractional scale
         //
-        // We find the space that the surface is in, and set the fractional scale
-        // to the fractional scale of the surface in the space
+        // We find the space that the surface is in, and set the fractional
+        // scale to the fractional scale of the surface in the space
 
         for tracked_surface in &self.client_state.proxied_layer_surfaces {
             if tracked_surface.2.wl_surface() == &surface {

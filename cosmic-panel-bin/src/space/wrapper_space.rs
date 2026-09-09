@@ -860,8 +860,9 @@ impl WrapperSpace for PanelSpace {
         self.space.refresh();
 
         if let Some(p) = self.popups.iter_mut().find(|p| p.s_surface.wl_surface() == s) {
-            // the client is done setting up its popup, and any `grab` it requested has
-            // been forwarded from the pre-commit hook that runs before this
+            // the client is done setting up its popup, and any `grab` it
+            // requested has been forwarded from the pre-commit hook
+            // that runs before this
             p.popup.map();
 
             let p_bbox = bbox_from_surface_tree(p.s_surface.wl_surface(), (0, 0));
@@ -871,7 +872,8 @@ impl WrapperSpace for PanelSpace {
         }
     }
 
-    // XXX the renderer is provided by the container, not tracked by the PanelSpace
+    // XXX the renderer is provided by the container, not tracked by the
+    // PanelSpace
     fn renderer(&mut self) -> Option<&mut GlesRenderer> {
         unimplemented!()
     }
@@ -951,7 +953,8 @@ impl WrapperSpace for PanelSpace {
             self.popups.iter().find(|p| p.popup.c_popup.wl_surface() == &c_wl_surface)
         {
             let geo = smithay::desktop::PopupKind::Xdg(p.s_surface.clone()).geometry();
-            // special handling for popup bc they exist on their own client surface
+            // special handling for popup bc they exist on their own client
+            // surface
 
             if let Some(prev_foc) = prev_foc {
                 prev_foc.0 = p.s_surface.wl_surface().clone().into();
@@ -1405,8 +1408,8 @@ impl WrapperSpace for PanelSpace {
                 return;
             }
 
-            // Ignore event for wl_surface that isn't our layer or popup (i.e. a different
-            // panel)
+            // Ignore event for wl_surface that isn't our layer or popup (i.e. a
+            // different panel)
             if !self.layer.as_ref().is_some_and(|l| l.wl_surface() == surface)
                 && !self
                     .overflow_popup

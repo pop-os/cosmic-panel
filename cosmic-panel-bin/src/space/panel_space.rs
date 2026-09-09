@@ -567,8 +567,8 @@ impl PanelSpace {
     }
 
     fn clear_spacer_start(&mut self) {
-        // remove fake client from start of left client list or middle client list if
-        // left is empty this is used to create a spacer element
+        // remove fake client from start of left client list or middle client
+        // list if left is empty this is used to create a spacer element
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
 
@@ -613,8 +613,8 @@ impl PanelSpace {
     }
 
     pub fn add_spacer_element_to_start(&mut self, dim: u32) {
-        // add fake client to start of left client list or middle client list if left is
-        // empty this is used to create a spacer element
+        // add fake client to start of left client list or middle client list if
+        // left is empty this is used to create a spacer element
         let mut left_guard = self.clients_left.lock().unwrap();
         let mut center_guard = self.clients_center.lock().unwrap();
 
@@ -800,7 +800,8 @@ impl PanelSpace {
             matches!(self.config.autohide, AutoHide::OnOverlap) && self.overlap_notify.is_some();
         let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
 
-        // Panel should remain visible until workspaces overview is no longer shown
+        // Panel should remain visible until workspaces overview is no longer
+        // shown
         if self.shared.workspaces_shown.get() {
             return;
         }
@@ -1078,8 +1079,8 @@ impl PanelSpace {
                 layer_surface,
             );
 
-            // Force panel to `Overlay` layer, so it will be above workspaces overlay.
-            // TODO: Better solution?
+            // Force panel to `Overlay` layer, so it will be above workspaces
+            // overlay. TODO: Better solution?
             layer_surface.set_layer(Layer::Overlay);
         } else {
             // Restore layer
@@ -1430,7 +1431,8 @@ impl PanelSpace {
                                 let capabilities =
                                     GlesRenderer::supported_capabilities(&egl_context)
                                         .expect("Failed to query EGL Context");
-                                // capabilities.retain(|cap| *cap != Capability::);
+                                // capabilities.retain(|cap| *cap !=
+                                // Capability::);
                                 GlesRenderer::with_capabilities(egl_context, capabilities)
                                     .expect("Failed to create EGL Surface")
                             }
@@ -1473,11 +1475,14 @@ impl PanelSpace {
                         };
                         let _ = renderer.bind(egl_surface);
 
-                        // The panel deliberately collapses to a degenerate size to force a
-                        // reconfigure but that size must not be *published*
-                        // to the compositor because a too-small surface causes fatal
-                        // `radius_too_large`. `render()` already refuses to
-                        // draw below 20px keep the published size in lockstep with that.
+                        // The panel deliberately collapses to a degenerate size
+                        // to force a reconfigure but
+                        // that size must not be *published*
+                        // to the compositor because a too-small surface causes
+                        // fatal `radius_too_large`.
+                        // `render()` already refuses to
+                        // draw below 20px keep the published size in lockstep
+                        // with that.
                         if dim.w > 20 && dim.h > 20 {
                             egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                             if let Some(viewport) = self.layer_viewport.as_ref() {
@@ -1524,8 +1529,8 @@ impl PanelSpace {
                     _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
                     let _ = renderer.bind(egl_surface);
                     let scaled_size = dim.to_f64().to_physical(self.scale).to_i32_round();
-                    // See note in the other resize branch (never publish a degenerate intermediate
-                    // size)
+                    // See note in the other resize branch (never publish a
+                    // degenerate intermediate size)
                     if dim.w > 20 && dim.h > 20 {
                         egl_surface.resize(scaled_size.w, scaled_size.h, 0, 0);
                         if let Some(viewport) = self.layer_viewport.as_ref() {

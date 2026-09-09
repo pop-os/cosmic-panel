@@ -58,8 +58,8 @@ impl GlobalState {
         self.server_state.popup_manager.cleanup();
 
         // handle funky keyboard state.
-        // if a client layer shell surface is closed, then it won't receive the release
-        // event then the client will keep receiving input
+        // if a client layer shell surface is closed, then it won't receive the
+        // release event then the client will keep receiving input
         // so we send the release here instead
         let press = if let Some((key_pressed, kbd)) = self
             .client_state
@@ -198,8 +198,8 @@ impl GlobalState {
             _ = output_tracker.render_output(renderer, &mut f, age, &elements, *clear_color);
             drop(f);
             egl_surface.swap_buffers(None).unwrap();
-            // FIXME: damage tracking issues on integrated graphics but not nvidia
-            // self.egl_surface
+            // FIXME: damage tracking issues on integrated graphics but not
+            // nvidia self.egl_surface
             //     .as_ref()
             //     .unwrap()
             //     .swap_buffers(res.0.as_deref_mut())?;
