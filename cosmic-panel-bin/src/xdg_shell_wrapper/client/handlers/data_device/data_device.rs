@@ -191,15 +191,15 @@ impl DataDeviceHandler for GlobalState {
             }
         }
 
-        let duration_since = Instant::now().duration_since(self.start_time).as_millis() as u32;
+        let time = InputTime::now();
 
         let leave_event = PointerEvent {
             surface,
-            kind: PointerEventKind::Motion { time: duration_since },
+            kind: PointerEventKind::Motion { time: time.millis() },
             position: (0.0, 0.0),
         };
         if let Some(s) = s_ptr {
-            s.unset_grab(self, SERIAL_COUNTER.next_serial(), InputTime::now());
+            s.unset_grab(self, SERIAL_COUNTER.next_serial(), time);
         }
 
         if let Some(pointer) = c_ptr {

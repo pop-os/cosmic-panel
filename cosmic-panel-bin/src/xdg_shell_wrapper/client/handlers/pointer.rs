@@ -36,18 +36,18 @@ impl GlobalState {
                     *serial = SERIAL_COUNTER.next_serial().into();
                 },
                 sctk::seat::pointer::PointerEventKind::Motion { time } => {
-                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *time = InputTime::now().millis();
                 },
                 sctk::seat::pointer::PointerEventKind::Press { time, serial, .. } => {
-                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *time = InputTime::now().millis();
                     *serial = SERIAL_COUNTER.next_serial().into();
                 },
                 sctk::seat::pointer::PointerEventKind::Release { time, serial, .. } => {
-                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *time = InputTime::now().millis();
                     *serial = SERIAL_COUNTER.next_serial().into();
                 },
                 sctk::seat::pointer::PointerEventKind::Axis { time, .. } => {
-                    *time = self.start_time.elapsed().as_millis().try_into().unwrap();
+                    *time = InputTime::now().millis();
                 },
             }
         }
@@ -59,9 +59,6 @@ impl GlobalState {
         pointer: &sctk::reexports::client::protocol::wl_pointer::WlPointer,
         events: &[sctk::seat::pointer::PointerEvent],
     ) {
-        let start_time = self.start_time;
-        let time = start_time.elapsed().as_millis();
-
         let seat_index = self
             .server_state
             .seats
@@ -83,7 +80,7 @@ impl GlobalState {
                         &MotionEvent {
                             location: (0.0, 0.0).into(),
                             serial: SERIAL_COUNTER.next_serial(),
-                            time: InputTime::from_millis(time.try_into().unwrap()),
+                            time: InputTime::now(),
                         },
                     );
                     ptr.frame(self);
@@ -138,7 +135,7 @@ impl GlobalState {
                             &MotionEvent {
                                 location: Point::from((surface_x, surface_y)),
                                 serial: SERIAL_COUNTER.next_serial(),
-                                time: InputTime::from_millis(time.try_into().unwrap()),
+                                time: InputTime::now(),
                             },
                         );
                         ptr.frame(self);
@@ -165,7 +162,7 @@ impl GlobalState {
                                 &MotionEvent {
                                     location: c_pos.to_f64() + Point::from((surface_x, surface_y)),
                                     serial: SERIAL_COUNTER.next_serial(),
-                                    time: InputTime::from_millis(time.try_into().unwrap()),
+                                    time: InputTime::now(),
                                 },
                             );
                             ptr.frame(self);
@@ -177,7 +174,7 @@ impl GlobalState {
                             &MotionEvent {
                                 location: Point::from((surface_x, surface_y)),
                                 serial: SERIAL_COUNTER.next_serial(),
-                                time: InputTime::from_millis(time.try_into().unwrap()),
+                                time: InputTime::now(),
                             },
                         );
                         ptr.frame(self);
