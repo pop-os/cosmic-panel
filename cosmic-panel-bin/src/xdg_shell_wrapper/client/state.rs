@@ -33,6 +33,7 @@ use sctk::shm::Shm;
 use sctk::shm::multi::MultiPool;
 use sctk::subcompositor::SubcompositorState;
 use smithay::backend::egl::EGLSurface;
+use smithay::backend::input::InputTime;
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::AsRenderElements;
@@ -165,7 +166,7 @@ pub struct ClientState {
     pub(crate) cursor_scale: Option<WpFractionalScaleV1>,
     pub(crate) cursor_vp: Option<WpViewport>,
     pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
-    pub(crate) last_key_pressed: Vec<(String, (u32, u32), wl_surface::WlSurface)>,
+    pub(crate) last_key_pressed: Vec<(String, (u32, InputTime), wl_surface::WlSurface)>,
     pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
     pub(crate) touch_surfaces: HashMap<i32, WlSurface>,
     pub(crate) blur_enabled: bool,

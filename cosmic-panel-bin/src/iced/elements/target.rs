@@ -3,11 +3,12 @@ use super::{CosmicMappedInternal, PopupMappedInternal};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
 use anyhow::bail;
+use smithay::backend::input::InputTime;
 use smithay::input::Seat;
 use smithay::input::dnd::{self, DndFocus};
 use smithay::input::keyboard::KeyboardTarget;
 use smithay::input::pointer::PointerTarget;
-use smithay::input::touch::TouchTarget;
+use smithay::input::touch::{FrameMarker, TouchTarget};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::IsAlive;
@@ -222,7 +223,7 @@ impl PointerTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         serial: smithay::utils::Serial,
-        time: u32,
+        time: InputTime,
     ) {
         self.inner_pointer_target().leave(seat, data, serial, time)
     }
@@ -255,7 +256,7 @@ impl KeyboardTarget<GlobalState> for SpaceTarget {
         key: smithay::input::keyboard::KeysymHandle<'_>,
         state: smithay::backend::input::KeyState,
         serial: smithay::utils::Serial,
-        time: u32,
+        time: InputTime,
     ) {
         self.inner_keyboard_target().key(seat, data, key, state, serial, time)
     }
@@ -278,9 +279,8 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         event: &smithay::input::touch::DownEvent,
-        serial: smithay::utils::Serial,
     ) {
-        self.inner_touch_target().down(seat, data, event, serial)
+        self.inner_touch_target().down(seat, data, event)
     }
 
     fn up(
@@ -288,9 +288,8 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         event: &smithay::input::touch::UpEvent,
-        serial: smithay::utils::Serial,
     ) {
-        self.inner_touch_target().up(seat, data, event, serial)
+        self.inner_touch_target().up(seat, data, event)
     }
 
     fn motion(
@@ -298,27 +297,26 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         event: &smithay::input::touch::MotionEvent,
-        serial: smithay::utils::Serial,
     ) {
-        self.inner_touch_target().motion(seat, data, event, serial)
+        self.inner_touch_target().motion(seat, data, event)
     }
 
     fn frame(
         &self,
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
-        serial: smithay::utils::Serial,
+        marker: FrameMarker,
     ) {
-        self.inner_touch_target().frame(seat, data, serial)
+        self.inner_touch_target().frame(seat, data, marker)
     }
 
     fn cancel(
         &self,
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
-        serial: smithay::utils::Serial,
+        marker: FrameMarker,
     ) {
-        self.inner_touch_target().cancel(seat, data, serial)
+        self.inner_touch_target().cancel(seat, data, marker)
     }
 
     fn shape(
@@ -326,9 +324,8 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         event: &smithay::input::touch::ShapeEvent,
-        serial: smithay::utils::Serial,
     ) {
-        self.inner_touch_target().shape(seat, data, event, serial)
+        self.inner_touch_target().shape(seat, data, event)
     }
 
     fn orientation(
@@ -336,9 +333,16 @@ impl TouchTarget<GlobalState> for SpaceTarget {
         seat: &smithay::input::Seat<GlobalState>,
         data: &mut GlobalState,
         event: &smithay::input::touch::OrientationEvent,
-        serial: smithay::utils::Serial,
     ) {
-        self.inner_touch_target().orientation(seat, data, event, serial)
+        self.inner_touch_target().orientation(seat, data, event)
+    }
+
+    fn last_frame(
+        &self,
+        seat: &smithay::input::Seat<GlobalState>,
+        data: &mut GlobalState,
+    ) -> Option<FrameMarker> {
+        self.inner_touch_target().last_frame(seat, data)
     }
 }
 
@@ -385,7 +389,7 @@ impl DndFocus<GlobalState> for SpaceTarget {
         offer: Option<&mut WlOfferData<S>>,
         seat: &Seat<GlobalState>,
         location: smithay::utils::Point<f64, smithay::utils::Logical>,
-        time: u32,
+        time: InputTime,
     ) where
         S: dnd::Source,
     {

@@ -1,9 +1,7 @@
-use smithay::delegate_layer_shell;
 use smithay::wayland::shell::wlr_layer::{Layer, WlrLayerShellHandler};
 
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 
-delegate_layer_shell!(GlobalState);
 impl WlrLayerShellHandler for GlobalState {
     fn shell_state(&mut self) -> &mut smithay::wayland::shell::wlr_layer::WlrLayerShellState {
         &mut self.server_state.layer_shell_state

@@ -5,7 +5,6 @@ use std::sync::Mutex;
 
 use sctk::compositor::Region;
 use sctk::shell::WaylandSurface;
-use smithay::delegate_background_effect;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{HookId, Logical, Rectangle};
@@ -160,5 +159,3 @@ fn blur_hook<D: 'static + BlurHandler>(state: &mut D, _dh: &DisplayHandle, surfa
         state.commit_blur(region.blur_region, surface);
     }
 }
-
-delegate_background_effect!(GlobalState);

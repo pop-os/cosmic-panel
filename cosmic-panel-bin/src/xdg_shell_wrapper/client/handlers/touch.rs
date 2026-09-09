@@ -6,6 +6,7 @@ use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use sctk::reexports::client::protocol::wl_touch::WlTouch;
 use sctk::reexports::client::{Connection, QueueHandle};
 use sctk::seat::touch::TouchHandler;
+use smithay::backend::input::InputTime;
 use smithay::input::touch::{self, TouchHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
@@ -59,7 +60,7 @@ impl TouchHandler for GlobalState {
                     slot: Some(id as u32).into(),
                     location: c_pos.to_f64() + Point::from(location),
                     serial: SERIAL_COUNTER.next_serial(),
-                    time,
+                    time: InputTime::from_millis(time),
                 },
             );
             touch.frame(self);
@@ -82,7 +83,7 @@ impl TouchHandler for GlobalState {
             &touch::UpEvent {
                 slot: Some(id as u32).into(),
                 serial: SERIAL_COUNTER.next_serial(),
-                time,
+                time: InputTime::from_millis(time),
             },
         );
     }
@@ -111,7 +112,7 @@ impl TouchHandler for GlobalState {
                 &touch::MotionEvent {
                     slot: Some(id as u32).into(),
                     location: c_pos.to_f64() + Point::from(location),
-                    time,
+                    time: InputTime::from_millis(time),
                 },
             );
             touch.frame(self);
