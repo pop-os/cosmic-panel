@@ -1,6 +1,5 @@
 use crate::xdg_shell_wrapper::space::{ClientEglSurface, PanelPopup, WrapperPopupState};
 use cctk::wayland_client::Proxy;
-use sctk::shell::xdg::popup::{self};
 use smithay::backend::egl::EGLSurface;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::utils::Rectangle;
