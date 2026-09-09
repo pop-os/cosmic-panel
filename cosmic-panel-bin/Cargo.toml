@@ -47,6 +47,7 @@ cosmic-panel-config = { path = "../cosmic-panel-config" }
 cosmic-theme = { git = "https://github.com/pop-os/libcosmic", package = "cosmic-theme" }
 # cosmic-theme = { path = "../../libcosmic/cosmic-theme", package = "cosmic-theme" }
 anyhow = "1.0.102"
+rustix = { version = "1.1.4", features = ["process"] }
 shlex = "1.3.0"
 log-panics = { version = "2", features = ["with-backtrace"] }
 freedesktop-desktop-entry = "0.8"
