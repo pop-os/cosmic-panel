@@ -67,8 +67,8 @@ impl PanelSpace {
             .map(|p| (&mut p.popup, Some(&mut p.s_surface)))
             .find(|(p, _)| popup.wl_surface() == p.c_popup.wl_surface())
         {
-            // is there a smithay bug? The acked configure is not valid, and cosmic-comp
-            // produces an error after sending it...
+            // is there a smithay bug? The acked configure is not valid, and
+            // cosmic-comp produces an error after sending it...
             // p.c_popup.xdg_surface().ack_configure(config.serial);
             // p.c_popup.wl_surface().commit();
             tracing::info!("Configuring popup: {:?}", config);
@@ -96,7 +96,8 @@ impl PanelSpace {
 
             // FIXME we do not always get an initial configure event
             // instead we get a reposition sometimes
-            // so we create the egl surface after a configure if it does not exist yet
+            // so we create the egl surface after a configure if it does not
+            // exist yet
             if p.egl_surface.is_none() {
                 let width_scaled = (width as f64 * self.scale).ceil() as i32;
                 let height_scaled = (height as f64 * self.scale).ceil() as i32;

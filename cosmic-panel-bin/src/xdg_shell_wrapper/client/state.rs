@@ -368,8 +368,8 @@ impl ClientState {
                 .unwrap();
             drop(f);
             egl_surface.swap_buffers(None).unwrap();
-            // FIXME: damage tracking issues on integrated graphics but not nvidia
-            // self.egl_surface
+            // FIXME: damage tracking issues on integrated graphics but not
+            // nvidia self.egl_surface
             //     .as_ref()
             //     .unwrap()
             //     .swap_buffers(res.0.as_deref_mut())?;

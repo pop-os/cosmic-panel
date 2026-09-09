@@ -51,10 +51,12 @@ impl BlurHandler for GlobalState {
                 continue;
             }
 
-            // Reuse an existing background-effect object for this surface instead of
-            // creating a new one on every commit: `ext_background_effect_v1` forbids
-            // attaching a second background-effect object to the same wl_surface, and
-            // doing so is a fatal protocol error that kills the whole connection.
+            // Reuse an existing background-effect object for this surface
+            // instead of creating a new one on every commit:
+            // `ext_background_effect_v1` forbids attaching a second
+            // background-effect object to the same wl_surface, and
+            // doing so is a fatal protocol error that kills the whole
+            // connection.
             let effect_surface = if let Some(existing) = blur_surface.as_ref() {
                 existing.clone()
             } else {

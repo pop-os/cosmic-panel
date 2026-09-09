@@ -65,8 +65,8 @@ impl WrapperSpace for SpaceContainer {
         self.connection = Some(conn.clone());
         *self.shared.security_context_manager.borrow_mut() = security_context_manager.clone();
 
-        // create a space for each config profile which is configured for Active output
-        // and call setup on each
+        // create a space for each config profile which is configured for Active
+        // output and call setup on each
         self.space_list.append(
             &mut self
                 .config
@@ -159,8 +159,8 @@ impl WrapperSpace for SpaceContainer {
         let light = self.light_theme.clone();
         let blur_manager = self.blur_manager.clone();
         // TODO error handling
-        // create the spaces that are configured to use this output, including spaces
-        // configured for All
+        // create the spaces that are configured to use this output, including
+        // spaces configured for All
         let mut new_spaces =
             self.config
                 .configs_for_output(&output_name)
@@ -459,10 +459,10 @@ impl WrapperSpace for SpaceContainer {
         self.renderer.as_mut()
     }
 
-    // all pointer / keyboard handling should be called on any space with an active
-    // popup first, then on the rest Eg: likely opening a popup on one panel,
-    // then without clicking anywhere else, opening a popup on another panel will
-    // crash
+    // all pointer / keyboard handling should be called on any space with an
+    // active popup first, then on the rest Eg: likely opening a popup on
+    // one panel, then without clicking anywhere else, opening a popup on
+    // another panel will crash
     fn update_pointer(
         &mut self,
         dim: (i32, i32),
@@ -518,7 +518,8 @@ impl WrapperSpace for SpaceContainer {
                 let Some(space_c_wl_surface) = s.layer.as_ref().map(|l| l.wl_surface()) else {
                     continue;
                 };
-                // skip if there is a popup here, because it should already have focus
+                // skip if there is a popup here, because it should already have
+                // focus
                 if !s.popups.is_empty() {
                     continue;
                 }
