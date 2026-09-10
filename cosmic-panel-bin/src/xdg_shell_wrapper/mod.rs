@@ -45,16 +45,7 @@ pub fn run(
 
     let mut global_state = GlobalState::new(client_state, embedded_server_state, space, start);
 
-    global_state.space.setup(
-        &global_state.client_state.compositor_state,
-        global_state.client_state.fractional_scaling_manager.as_ref(),
-        global_state.client_state.security_context_manager.clone(),
-        global_state.client_state.viewporter_state.as_ref(),
-        &mut global_state.client_state.layer_state,
-        &global_state.client_state.connection,
-        &global_state.client_state.qh,
-        global_state.client_state.overlap_notify.clone(),
-    );
+    global_state.space.setup(&global_state.client_state);
 
     let multipool = MultiPool::new(&global_state.client_state.shm_state);
 

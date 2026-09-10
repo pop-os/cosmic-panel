@@ -155,31 +155,31 @@ pub struct ClientState {
     pub ext_background_effect_manager: Option<ExtBackgroundEffectManager>,
     pub cosmic_corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
 
-    pub(crate) connection: Connection,
+    pub connection: Connection,
     /// queue handle
     pub qh: QueueHandle<GlobalState>, // TODO remove if never used
     /// state regarding the last embedded client surface with keyboard focus
     pub focused_surface: Rc<RefCell<ClientFocus>>,
     /// state regarding the last embedded client surface with keyboard focus
     pub hovered_surface: Rc<RefCell<ClientFocus>>,
-    pub(crate) cursor_surface: Option<wl_surface::WlSurface>,
-    pub(crate) cursor_scale: Option<WpFractionalScaleV1>,
-    pub(crate) cursor_vp: Option<WpViewport>,
-    pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
-    pub(crate) last_key_pressed: Vec<(String, (u32, InputTime), wl_surface::WlSurface)>,
-    pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
-    pub(crate) touch_surfaces: HashMap<i32, WlSurface>,
-    pub(crate) blur_enabled: bool,
+    pub(in super::super) cursor_surface: Option<wl_surface::WlSurface>,
+    pub(in super::super) cursor_scale: Option<WpFractionalScaleV1>,
+    pub(in super::super) cursor_vp: Option<WpViewport>,
+    pub(in super::super) multipool: Option<MultiPool<(WlSurface, usize)>>,
+    pub(in super::super) last_key_pressed: Vec<(String, (u32, InputTime), wl_surface::WlSurface)>,
+    pub(in super::super) outputs: Vec<(WlOutput, Output, GlobalId)>,
+    pub(in super::super) touch_surfaces: HashMap<i32, WlSurface>,
+    pub blur_enabled: bool,
 
     pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
 
-    pub(crate) pending_layer_surfaces: Vec<(
+    pub(in super::super) pending_layer_surfaces: Vec<(
         smithay::wayland::shell::wlr_layer::LayerSurface,
         Option<wl_output::WlOutput>,
         String,
     )>,
 
-    pub(crate) proxied_layer_surfaces: Vec<(
+    pub(in super::super) proxied_layer_surfaces: Vec<(
         EGLSurface,
         OutputDamageTracker,
         SmithayLayerSurface,

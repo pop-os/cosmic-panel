@@ -11,7 +11,8 @@ use crate::iced::elements::PopupMappedInternal;
 use crate::iced::elements::target::SpaceTarget;
 use crate::space::panel_space::ClientShrinkSize;
 use crate::space_container::SpaceContainer;
-use crate::xdg_shell_wrapper::client::handlers::overlap::{OverlapNotificationV1, OverlapNotifyV1};
+use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotificationV1;
+use crate::xdg_shell_wrapper::client::state::ClientState;
 use crate::xdg_shell_wrapper::client_state::ClientFocus;
 use crate::xdg_shell_wrapper::server_state::ServerPointerFocus;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
@@ -19,9 +20,7 @@ use crate::xdg_shell_wrapper::space::{
     PanelPopup, SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace,
 };
 use crate::xdg_shell_wrapper::util::get_client_sock;
-use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::{SecurityContext, SecurityContextManager};
-use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
 use anyhow::bail;
 use calloop::timer::Timer;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
@@ -31,14 +30,14 @@ use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, NAME, Side};
 use freedesktop_desktop_entry::{self, DesktopEntry, Iter};
 use itertools::izip;
 use launch_pad::process::Process;
-use sctk::compositor::{CompositorState, Region};
+use sctk::compositor::Region;
 use sctk::output::OutputInfo;
 use sctk::reexports::client::protocol::{wl_output as c_wl_output, wl_surface as c_wl_surface};
 use sctk::reexports::client::{Connection, Proxy, QueueHandle};
 use sctk::seat::pointer::{BTN_LEFT, PointerEvent};
 use sctk::shell::WaylandSurface;
 use sctk::shell::wlr_layer::{
-    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
+    KeyboardInteractivity, Layer, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
 };
 use sctk::shell::xdg::popup;
 use shlex::Shlex;
@@ -168,18 +167,13 @@ impl WrapperSpace for PanelSpace {
 
     fn add_popup(
         &mut self,
-        compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        _conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState>,
-        xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
+        client_state: &ClientState,
         s_surface: PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: PositionerState,
     ) -> anyhow::Result<()> {
         self.apply_positioner_state(&positioner, positioner_state, &s_surface);
-        let c_wl_surface = compositor_state.create_surface(qh);
+        let c_wl_surface = client_state.compositor_state.create_surface(&self.qh);
         let mut clear_exclude = Vec::new();
         let mut parent_parents = Vec::new();
         let parent = self
@@ -236,15 +230,15 @@ impl WrapperSpace for PanelSpace {
         let c_popup = popup::Popup::from_surface(
             parent.as_ref().map(|p| p.xdg_surface()),
             &positioner,
-            qh,
+            &self.qh,
             c_wl_surface.clone(),
-            xdg_shell_state,
+            &client_state.xdg_shell_state,
         )?;
         if parent.is_none() {
             self.layer.as_ref().unwrap().get_popup(c_popup.xdg_popup());
         }
 
-        let input_region = Region::new(compositor_state)?;
+        let input_region = Region::new(&client_state.compositor_state)?;
 
         if let Some(s_window_geometry) = with_states(s_surface.wl_surface(), |states| {
             let mut guard = states.cached_state.get::<SurfaceCachedState>();
@@ -271,16 +265,18 @@ impl WrapperSpace for PanelSpace {
             }
             c_wl_surface.set_input_region(Some(input_region.wl_region()));
         }
-        let fractional_scale =
-            fractional_scale_manager.map(|f| f.fractional_scaling(&c_wl_surface, qh));
+        let fractional_scale = client_state
+            .fractional_scaling_manager
+            .as_ref()
+            .map(|f| f.fractional_scaling(&c_wl_surface, &self.qh));
 
-        let viewport = viewport.map(|v| {
+        let viewport = client_state.viewporter_state.as_ref().map(|v| {
             with_states(s_surface.wl_surface(), |states| {
                 with_fractional_scale(states, |fractional_scale| {
                     fractional_scale.set_preferred_scale(self.scale);
                 });
             });
-            let viewport = v.get_viewport(&c_wl_surface, qh);
+            let viewport = v.get_viewport(&c_wl_surface, &self.qh);
             viewport.set_destination(
                 positioner_state.rect_size.w.max(1),
                 positioner_state.rect_size.h.max(1),
@@ -878,18 +874,8 @@ impl WrapperSpace for PanelSpace {
         unimplemented!()
     }
 
-    fn setup(
-        &mut self,
-        _compositor_state: &CompositorState,
-        _fractional_scale_manager: Option<&FractionalScalingManager>,
-        _security_context_manager: Option<SecurityContextManager>,
-        _viewport: Option<&ViewporterState>,
-        _layer_state: &LayerShell,
-        _conn: &Connection,
-        _qh: &QueueHandle<GlobalState>,
-        overlap_notify: Option<OverlapNotifyV1>,
-    ) {
-        self.overlap_notify = overlap_notify;
+    fn setup(&mut self, client_state: &ClientState) {
+        self.overlap_notify = client_state.overlap_notify.clone();
     }
 
     /// returns false to forward the button press, and true to intercept
@@ -1492,12 +1478,7 @@ impl WrapperSpace for PanelSpace {
 
     fn new_output(
         &mut self,
-        compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &LayerShell,
-        _conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState>,
+        client_state: &ClientState,
         c_output: Option<c_wl_output::WlOutput>,
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
@@ -1541,9 +1522,9 @@ impl WrapperSpace for PanelSpace {
             _ => bail!("Invalid layer"),
         };
 
-        let surface = compositor_state.create_surface(qh);
-        let client_surface = layer_state.create_layer_surface(
-            qh,
+        let surface = client_state.compositor_state.create_surface(&self.qh);
+        let client_surface = client_state.layer_state.create_layer_surface(
+            &self.qh,
             surface,
             layer,
             Some(self.config.name.clone()),
@@ -1564,15 +1545,20 @@ impl WrapperSpace for PanelSpace {
 
         client_surface.set_anchor(self.config.anchor.into());
 
-        let input_region = Region::new(compositor_state)?;
+        let input_region = Region::new(&client_state.compositor_state)?;
         client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
         self.input_region.replace(input_region);
-        self.compositor_state = Some(compositor_state.clone());
+        self.compositor_state = Some(client_state.compositor_state.clone());
 
-        let fractional_scale =
-            fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
+        let fractional_scale = client_state
+            .fractional_scaling_manager
+            .as_ref()
+            .map(|f| f.fractional_scaling(client_surface.wl_surface(), &self.qh));
 
-        let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), qh));
+        let viewport = client_state
+            .viewporter_state
+            .as_ref()
+            .map(|v| v.get_viewport(client_surface.wl_surface(), &self.qh));
 
         client_surface.commit();
         if let Some(notify) = self.overlap_notify.as_ref() {
@@ -1583,7 +1569,7 @@ impl WrapperSpace for PanelSpace {
                     },
                     _ => unimplemented!(),
                 },
-                qh,
+                &self.qh,
                 OverlapNotificationV1 { surface: client_surface.wl_surface().clone() },
             );
             self.notification_subscription = Some(notification);
@@ -1599,7 +1585,7 @@ impl WrapperSpace for PanelSpace {
             izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
         if let Some(blur_manager) = self.blur_manager.as_ref() {
             self.blur_surface =
-                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
+                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &self.qh, ()));
             self.corner_radius_wlr =
                 self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
                     m.get_corner_radius_layer(
@@ -1607,7 +1593,7 @@ impl WrapperSpace for PanelSpace {
                             SurfaceKind::Wlr(w) => w,
                             _ => unimplemented!(),
                         },
-                        &qh,
+                        &self.qh,
                         (),
                     )
                 });
@@ -1628,9 +1614,11 @@ impl WrapperSpace for PanelSpace {
         self.center_overflow_popup_id = id::Id::new(format!("center_overflow_popup_{}", self.id()));
 
         let security_context_manager = self.shared.security_context_manager.borrow().clone();
-        if let Err(err) =
-            self.spawn_clients(self.s_display.clone().unwrap(), qh, security_context_manager)
-        {
+        if let Err(err) = self.spawn_clients(
+            self.s_display.clone().unwrap(),
+            &client_state.qh,
+            security_context_manager,
+        ) {
             error!(?err, "Failed to spawn clients");
         }
         Ok(())

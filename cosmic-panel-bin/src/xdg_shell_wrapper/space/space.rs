@@ -6,12 +6,11 @@ use std::time::{Duration, Instant};
 
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::wayland_client::protocol::wl_seat::WlSeat;
-use sctk::compositor::CompositorState;
 use sctk::output::OutputInfo;
 use sctk::reexports::client::protocol::{wl_output as c_wl_output, wl_surface};
 use sctk::reexports::client::{Connection, QueueHandle};
-use sctk::shell::wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure};
-use sctk::shell::xdg::{XdgPositioner, XdgShell};
+use sctk::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
+use sctk::shell::xdg::XdgPositioner;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::{PopupManager, Window};
 use smithay::output::Output;
@@ -20,9 +19,7 @@ use smithay::reexports::wayland_server::{self, DisplayHandle};
 use smithay::wayland::shell::xdg::{PopupSurface, PositionerState};
 
 use crate::iced::elements::target::SpaceTarget;
-use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
-use crate::xdg_shell_wrapper::client::handlers::wp_fractional_scaling::FractionalScalingManager;
-use crate::xdg_shell_wrapper::client::handlers::wp_viewporter::ViewporterState;
+use crate::xdg_shell_wrapper::client::state::ClientState;
 use crate::xdg_shell_wrapper::client_state::ClientFocus;
 use crate::xdg_shell_wrapper::config::WrapperConfig;
 use crate::xdg_shell_wrapper::server_state::ServerPointerFocus;
@@ -93,27 +90,12 @@ pub trait WrapperSpace {
     fn get_client_focused_surface(&self) -> Rc<RefCell<ClientFocus>>;
 
     /// setup of the space after the wayland connection is ready
-    fn setup(
-        &mut self,
-        compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        security_context_manager: Option<SecurityContextManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &LayerShell,
-        conn: &Connection,
-        qh: &QueueHandle<GlobalState>,
-        overlap_notify: Option<OverlapNotifyV1>,
-    );
+    fn setup(&mut self, client_state: &ClientState);
 
     /// add the configured output to the space
     fn new_output(
         &mut self,
-        compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &LayerShell,
-        conn: &Connection,
-        qh: &QueueHandle<GlobalState>,
+        client_state: &ClientState,
         c_output: Option<c_wl_output::WlOutput>,
         s_output: Option<Output>,
         info: Option<OutputInfo>,
@@ -157,12 +139,7 @@ pub trait WrapperSpace {
     /// add a popup to the space
     fn add_popup(
         &mut self,
-        compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        conn: &Connection,
-        qh: &QueueHandle<GlobalState>,
-        xdg_shell_state: &mut XdgShell,
+        client_state: &ClientState,
         s_surface: PopupSurface,
         positioner: XdgPositioner,
         positioner_state: PositionerState,

@@ -155,16 +155,7 @@ pub fn watch_config(
                         .expect("Failed to watch cosmic config");
                     state.space.watchers.insert(entry.name.clone(), watcher);
 
-                    state.space.update_space(
-                        entry,
-                        &state.client_state.compositor_state,
-                        state.client_state.fractional_scaling_manager.as_ref(),
-                        state.client_state.viewporter_state.as_ref(),
-                        &mut state.client_state.layer_state,
-                        &state.client_state.qh,
-                        None,
-                        state.client_state.overlap_notify.clone(),
-                    );
+                    state.space.update_space(entry, &state.client_state, None);
                 }
                 info!("Removing entries: {:?}", entries);
                 let to_remove = state
@@ -180,16 +171,7 @@ pub fn watch_config(
                 }
             },
             channel::Event::Msg(ConfigUpdate::EntryChanged(config)) => {
-                state.space.update_space(
-                    config,
-                    &state.client_state.compositor_state,
-                    state.client_state.fractional_scaling_manager.as_ref(),
-                    state.client_state.viewporter_state.as_ref(),
-                    &mut state.client_state.layer_state,
-                    &state.client_state.qh,
-                    None,
-                    state.client_state.overlap_notify.clone(),
-                );
+                state.space.update_space(config, &state.client_state, None);
             },
             channel::Event::Closed => {},
         };
