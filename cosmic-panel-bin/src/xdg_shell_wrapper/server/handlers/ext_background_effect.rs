@@ -66,7 +66,7 @@ impl BlurHandler for GlobalState {
                 };
 
                 let new_blur_surface = ext_background_effect_manager
-                    .blur(c_layer_shell_surface.wl_surface(), &self.client_state.queue_handle);
+                    .blur(c_layer_shell_surface.wl_surface(), &self.client_state.qh);
                 *blur_surface = Some(new_blur_surface.clone());
                 new_blur_surface
             };

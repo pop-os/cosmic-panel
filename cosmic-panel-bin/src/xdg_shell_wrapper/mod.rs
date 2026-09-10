@@ -52,16 +52,14 @@ pub fn run(
         global_state.client_state.viewporter_state.as_ref(),
         &mut global_state.client_state.layer_state,
         &global_state.client_state.connection,
-        &global_state.client_state.queue_handle,
+        &global_state.client_state.qh,
         global_state.client_state.overlap_notify.clone(),
     );
 
     let multipool = MultiPool::new(&global_state.client_state.shm_state);
 
-    let cursor_surface = global_state
-        .client_state
-        .compositor_state
-        .create_surface(&global_state.client_state.queue_handle);
+    let cursor_surface =
+        global_state.client_state.compositor_state.create_surface(&global_state.client_state.qh);
     global_state.client_state.multipool = multipool.ok();
     if let Some((scale, vp)) = global_state
         .client_state
@@ -69,11 +67,10 @@ pub fn run(
         .as_ref()
         .zip(global_state.client_state.viewporter_state.as_ref())
     {
-        global_state.client_state.cursor_scale = Some(
-            scale.fractional_scaling(&cursor_surface, &global_state.client_state.queue_handle),
-        );
+        global_state.client_state.cursor_scale =
+            Some(scale.fractional_scaling(&cursor_surface, &global_state.client_state.qh));
         global_state.client_state.cursor_vp =
-            Some(vp.get_viewport(&cursor_surface, &global_state.client_state.queue_handle));
+            Some(vp.get_viewport(&cursor_surface, &global_state.client_state.qh));
     }
 
     global_state.client_state.cursor_surface = Some(cursor_surface);
@@ -144,7 +141,7 @@ pub fn run(
 
             let _ = space.handle_events(
                 &s_dh,
-                &global_state.client_state.queue_handle,
+                &global_state.client_state.qh,
                 &mut global_state.server_state.popup_manager,
                 global_state.start_time.elapsed().as_millis().try_into()?,
                 // Fallback frame-callback throttle for embedded applets;

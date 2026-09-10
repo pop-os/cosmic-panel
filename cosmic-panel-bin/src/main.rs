@@ -180,7 +180,7 @@ fn main() -> Result<()> {
                             state.client_state.fractional_scaling_manager.as_ref(),
                             state.client_state.viewporter_state.as_ref(),
                             &mut state.client_state.layer_state,
-                            &state.client_state.queue_handle,
+                            &state.client_state.qh,
                             Some(o),
                             state.client_state.overlap_notify.clone(),
                         );

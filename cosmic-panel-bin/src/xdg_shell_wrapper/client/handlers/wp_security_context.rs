@@ -36,11 +36,8 @@ impl Drop for SecurityContext {
 
 impl SecurityContextManager {
     /// Create new security context manager.
-    pub fn new(
-        globals: &GlobalList,
-        queue_handle: &QueueHandle<GlobalState>,
-    ) -> Result<Self, BindError> {
-        let manager = globals.bind(queue_handle, 1..=1, GlobalData)?;
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<GlobalState>) -> Result<Self, BindError> {
+        let manager = globals.bind(qh, 1..=1, GlobalData)?;
         Ok(Self { manager })
     }
 

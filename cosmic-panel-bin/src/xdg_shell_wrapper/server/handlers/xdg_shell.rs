@@ -37,7 +37,7 @@ impl XdgShellHandler for GlobalState {
                 self.client_state.fractional_scaling_manager.as_ref(),
                 self.client_state.viewporter_state.as_ref(),
                 &self.client_state.connection,
-                &self.client_state.queue_handle,
+                &self.client_state.qh,
                 &mut self.client_state.xdg_shell_state,
                 surface.clone(),
                 positioner,

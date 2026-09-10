@@ -85,10 +85,8 @@ impl CompositorHandler for GlobalState {
                     self.client_state.outputs.iter().find(|o| {
                         output.as_ref().map(|output| o.1.owns(output)).unwrap_or_default()
                     });
-                let surface = self
-                    .client_state
-                    .compositor_state
-                    .create_surface(&self.client_state.queue_handle);
+                let surface =
+                    self.client_state.compositor_state.create_surface(&self.client_state.qh);
 
                 let exclusive_zone = match state.exclusive_zone {
                     ExclusiveZone::Exclusive(area) => area as i32,
@@ -113,7 +111,7 @@ impl CompositorHandler for GlobalState {
                     },
                 };
                 let client_surface = self.client_state.layer_state.create_layer_surface(
-                    &self.client_state.queue_handle,
+                    &self.client_state.qh,
                     surface,
                     layer,
                     Some(namespace),
@@ -163,9 +161,9 @@ impl CompositorHandler for GlobalState {
                     .client_state
                     .fractional_scaling_manager
                     .as_ref()
-                    .map(|f| f.fractional_scaling(surface, &self.client_state.queue_handle));
+                    .map(|f| f.fractional_scaling(surface, &self.client_state.qh));
                 let viewport = self.client_state.viewporter_state.as_ref().map(|v| {
-                    let v = v.get_viewport(surface, &self.client_state.queue_handle);
+                    let v = v.get_viewport(surface, &self.client_state.qh);
                     if size.w > 0 && size.h > 0 {
                         v.set_destination(size.w, size.h);
                     }
@@ -312,7 +310,7 @@ impl CompositorHandler for GlobalState {
 
                 c_icon.is_ready = true;
                 c_icon.surface.commit();
-                c_icon.surface.frame(&self.client_state.queue_handle, c_icon.surface.clone());
+                c_icon.surface.frame(&self.client_state.qh, c_icon.surface.clone());
             }
         } else if role == "subsurface".into() {
             on_commit_buffer_handler::<GlobalState>(surface);
@@ -321,7 +319,7 @@ impl CompositorHandler for GlobalState {
                 &self.client_state.subcompositor,
                 self.client_state.fractional_scaling_manager.as_ref(),
                 self.client_state.viewporter_state.as_ref(),
-                &self.client_state.queue_handle,
+                &self.client_state.qh,
                 surface,
             );
         } else {

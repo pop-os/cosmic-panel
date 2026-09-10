@@ -157,7 +157,7 @@ pub struct ClientState {
 
     pub(crate) connection: Connection,
     /// queue handle
-    pub queue_handle: QueueHandle<GlobalState>, // TODO remove if never used
+    pub qh: QueueHandle<GlobalState>, // TODO remove if never used
     /// state regarding the last embedded client surface with keyboard focus
     pub focused_surface: Rc<RefCell<ClientFocus>>,
     /// state regarding the last embedded client surface with keyboard focus
@@ -214,7 +214,7 @@ impl Debug for ClientState {
             .field("ext_background_effect_manager", &self.ext_background_effect_manager)
             .field("cosmic_corner_radius_manager", &self.cosmic_corner_radius_manager)
             .field("connection", &self.connection)
-            .field("queue_handle", &self.queue_handle)
+            .field("qh", &self.qh)
             .field("focused_surface", &self.focused_surface)
             .field("hovered_surface", &self.hovered_surface)
             .field("cursor_surface", &self.cursor_surface)
@@ -300,7 +300,7 @@ impl ClientState {
                 proxied_layer_surfaces: Vec::new(),
                 pending_layer_surfaces: Vec::new(),
 
-                queue_handle: qh.clone(),
+                qh: qh.clone(),
                 connection: connection.clone(),
                 seat_state: SeatState::new(&globals, &qh),
                 output_state: OutputState::new(&globals, &qh),
@@ -388,18 +388,16 @@ impl ClientState {
 
     /// initialize the toplevel info state
     pub fn init_toplevel_info_state(&mut self) {
-        self.toplevel_info_state =
-            ToplevelInfoState::try_new(&self.registry_state, &self.queue_handle);
+        self.toplevel_info_state = ToplevelInfoState::try_new(&self.registry_state, &self.qh);
     }
 
     /// initialize the toplevel manager state
     pub fn init_toplevel_manager_state(&mut self) {
-        self.toplevel_manager_state =
-            ToplevelManagerState::try_new(&self.registry_state, &self.queue_handle);
+        self.toplevel_manager_state = ToplevelManagerState::try_new(&self.registry_state, &self.qh);
     }
 
     /// initialize the toplevel manager state
     pub fn init_workspace_state(&mut self) {
-        self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.queue_handle));
+        self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.qh));
     }
 }

@@ -17,20 +17,17 @@ pub struct ExtBackgroundEffectManager {
 }
 
 impl ExtBackgroundEffectManager {
-    pub fn new(
-        globals: &GlobalList,
-        queue_handle: &QueueHandle<GlobalState>,
-    ) -> Result<Self, BindError> {
-        let manager = globals.bind(queue_handle, 1..=1, GlobalData)?;
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<GlobalState>) -> Result<Self, BindError> {
+        let manager = globals.bind(qh, 1..=1, GlobalData)?;
         Ok(Self { manager, capabilities: Capability::empty() })
     }
 
     pub fn blur(
         &mut self,
         surface: &WlSurface,
-        queue_handle: &QueueHandle<GlobalState>,
+        qh: &QueueHandle<GlobalState>,
     ) -> ExtBackgroundEffectSurfaceV1 {
-        self.manager.get_background_effect(surface, queue_handle, ())
+        self.manager.get_background_effect(surface, qh, ())
     }
 
     pub fn capabilities(&self) -> Capability {
