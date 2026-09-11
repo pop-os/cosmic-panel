@@ -11,6 +11,7 @@ use cctk::toplevel_management::ToplevelManagerState;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::workspace::WorkspaceState;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
+use cosmic_protocols::session_lock_layer::v1::client::cosmic_session_lock_layer_manager_v1::CosmicSessionLockLayerManagerV1;
 use sctk::compositor::CompositorState;
 use sctk::data_device_manager::DataDeviceManagerState;
 use sctk::data_device_manager::data_device::DataDevice;
@@ -154,6 +155,7 @@ pub struct ClientState {
     pub overlap_notify: Option<OverlapNotifyV1>,
     pub ext_background_effect_manager: Option<ExtBackgroundEffectManager>,
     pub cosmic_corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
+    pub cosmic_session_lock_layer_manager: Option<CosmicSessionLockLayerManagerV1>,
 
     pub connection: Connection,
     /// queue handle
@@ -213,6 +215,7 @@ impl Debug for ClientState {
             .field("overlap_notify", &self.overlap_notify)
             .field("ext_background_effect_manager", &self.ext_background_effect_manager)
             .field("cosmic_corner_radius_manager", &self.cosmic_corner_radius_manager)
+            .field("cosmic_session_lock_layer_manager", &self.cosmic_session_lock_layer_manager)
             .field("connection", &self.connection)
             .field("qh", &self.qh)
             .field("focused_surface", &self.focused_surface)
@@ -322,6 +325,9 @@ impl ClientState {
                 cosmic_corner_radius_manager: registry_state
                     .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
                     .ok(),
+                cosmic_session_lock_layer_manager: registry_state
+                    .bind_one::<CosmicSessionLockLayerManagerV1, _, _>(&qh, 1..=1, ())
+                    .ok(),
 
                 outputs: Default::default(),
                 touch_surfaces: HashMap::new(),
@@ -401,3 +407,5 @@ impl ClientState {
         self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.qh));
     }
 }
+
+cctk::wayland_client::delegate_noop!(GlobalState: CosmicSessionLockLayerManagerV1);

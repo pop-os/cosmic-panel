@@ -22,8 +22,10 @@ sctk = { package = "smithay-client-toolkit", version = "0.20.0", features = [
 ] }
 
 [patch."https://github.com/pop-os/cosmic-protocols"]
-cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
-cosmic-protocols = { git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
+# cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
+# cosmic-protocols = { git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//cosmic-protocols", branch = "session-lock" }
+cosmic-protocols = { git = "https://github.com/pop-os//cosmic-protocols", branch = "session-lock" }
 
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }

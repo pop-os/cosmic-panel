@@ -1560,6 +1560,12 @@ impl WrapperSpace for PanelSpace {
             .as_ref()
             .map(|v| v.get_viewport(client_surface.wl_surface(), &self.qh));
 
+        if let Some(manager) = &client_state.cosmic_session_lock_layer_manager {
+            if let SurfaceKind::Wlr(wlr) = client_surface.kind() {
+                manager.set_show_on_lock(wlr);
+            }
+        }
+
         client_surface.commit();
         if let Some(notify) = self.overlap_notify.as_ref() {
             let notification = notify.notify.notify_on_overlap(
