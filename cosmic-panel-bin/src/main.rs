@@ -174,16 +174,7 @@ fn main() -> Result<()> {
                         state.space.cleanup_client(client_id);
                     },
                     PanelCalloopMsg::RestartSpace(config, o) => {
-                        state.space.update_space(
-                            config,
-                            &state.client_state.compositor_state,
-                            state.client_state.fractional_scaling_manager.as_ref(),
-                            state.client_state.viewporter_state.as_ref(),
-                            &mut state.client_state.layer_state,
-                            &state.client_state.queue_handle,
-                            Some(o),
-                            state.client_state.overlap_notify.clone(),
-                        );
+                        state.space.update_space(config, &state.client_state, Some(o));
                     },
                     PanelCalloopMsg::UpdateToplevel(toplevel) => {
                         minimize::update_toplevel(state, toplevel)

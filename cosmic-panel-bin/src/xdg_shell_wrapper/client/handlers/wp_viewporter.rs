@@ -18,21 +18,14 @@ pub struct ViewporterState {
 
 impl ViewporterState {
     /// Create new viewporter.
-    pub fn new(
-        globals: &GlobalList,
-        queue_handle: &QueueHandle<GlobalState>,
-    ) -> Result<Self, BindError> {
-        let viewporter = globals.bind(queue_handle, 1..=1, GlobalData)?;
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<GlobalState>) -> Result<Self, BindError> {
+        let viewporter = globals.bind(qh, 1..=1, GlobalData)?;
         Ok(Self { viewporter })
     }
 
     /// Get the viewport for the given object.
-    pub fn get_viewport(
-        &self,
-        surface: &WlSurface,
-        queue_handle: &QueueHandle<GlobalState>,
-    ) -> WpViewport {
-        self.viewporter.get_viewport(surface, queue_handle, GlobalData)
+    pub fn get_viewport(&self, surface: &WlSurface, qh: &QueueHandle<GlobalState>) -> WpViewport {
+        self.viewporter.get_viewport(surface, qh, GlobalData)
     }
 }
 

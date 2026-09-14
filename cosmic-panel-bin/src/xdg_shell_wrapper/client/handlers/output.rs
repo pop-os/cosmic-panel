@@ -11,8 +11,6 @@ use smithay::utils::Transform;
 use tracing::{error, info, warn};
 use xdg_shell_wrapper_config::WrapperConfig;
 
-use crate::xdg_shell_wrapper::client_state::ClientState;
-use crate::xdg_shell_wrapper::server_state::ServerState;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 
@@ -23,8 +21,8 @@ impl OutputHandler for GlobalState {
 
     fn new_output(
         &mut self,
-        conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
         let info = match self.output_state().info(&output) {
@@ -32,21 +30,7 @@ impl OutputHandler for GlobalState {
             _ => return,
         };
 
-        let GlobalState {
-            client_state:
-                ClientState {
-                    compositor_state,
-                    layer_state,
-                    viewporter_state,
-                    fractional_scaling_manager,
-                    ..
-                },
-            server_state: ServerState { display_handle, .. },
-            space,
-            ..
-        } = self;
-
-        let config = space.config();
+        let config = self.space.config();
         let configured_outputs = match config.outputs() {
             xdg_shell_wrapper_config::WrapperOutput::All => info.name.iter().cloned().collect(),
             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
@@ -54,16 +38,11 @@ impl OutputHandler for GlobalState {
 
         if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref()) {
             // construct a surface for an output if possible
-            let s_output = c_output_as_s_output(display_handle, &info);
+            let s_output = c_output_as_s_output(&self.server_state.display_handle, &info);
 
             self.client_state.outputs.push((output.clone(), s_output.0.clone(), s_output.1));
-            if let Err(err) = space.new_output(
-                compositor_state,
-                fractional_scaling_manager.as_ref(),
-                viewporter_state.as_ref(),
-                layer_state,
-                conn,
-                qh,
+            if let Err(err) = self.space.new_output(
+                &self.client_state,
                 Some(output),
                 Some(s_output.0),
                 Some(info),
@@ -75,8 +54,8 @@ impl OutputHandler for GlobalState {
 
     fn update_output(
         &mut self,
-        conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
         let info = match self.output_state().info(&output) {
@@ -84,21 +63,7 @@ impl OutputHandler for GlobalState {
             _ => return,
         };
 
-        let GlobalState {
-            client_state:
-                ClientState {
-                    compositor_state,
-                    layer_state,
-                    fractional_scaling_manager,
-                    viewporter_state,
-                    ..
-                },
-            server_state: ServerState { display_handle, .. },
-            space,
-            ..
-        } = self;
-
-        let config = space.config();
+        let config = self.space.config();
         let configured_outputs = match config.outputs() {
             xdg_shell_wrapper_config::WrapperOutput::All => info.name.iter().cloned().collect(),
             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
@@ -107,19 +72,15 @@ impl OutputHandler for GlobalState {
         if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
             && let Some(saved_output) = self.client_state.outputs.iter_mut().find(|o| o.0 == output)
         {
-            let res = space.update_output(output.clone(), saved_output.1.clone(), info.clone());
+            let res =
+                self.space.update_output(output.clone(), saved_output.1.clone(), info.clone());
             if let Err(err) = res {
                 error!("{}", err);
             } else if matches!(res, Ok(false)) {
-                let s_output = c_output_as_s_output(display_handle, &info);
+                let s_output = c_output_as_s_output(&self.server_state.display_handle, &info);
 
-                if let Err(err) = space.new_output(
-                    compositor_state,
-                    fractional_scaling_manager.as_ref(),
-                    viewporter_state.as_ref(),
-                    layer_state,
-                    conn,
-                    qh,
+                if let Err(err) = self.space.new_output(
+                    &self.client_state,
                     Some(output),
                     Some(s_output.0),
                     Some(info),

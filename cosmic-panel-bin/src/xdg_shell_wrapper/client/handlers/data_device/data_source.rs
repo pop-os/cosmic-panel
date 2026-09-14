@@ -69,8 +69,8 @@ impl DataSourceHandler for GlobalState {
 
     fn cancelled(
         &mut self,
-        conn: &sctk::reexports::client::Connection,
-        qh: &sctk::reexports::client::QueueHandle<Self>,
+        _conn: &sctk::reexports::client::Connection,
+        _qh: &sctk::reexports::client::QueueHandle<Self>,
         source: &WlDataSource,
     ) {
         let seat = match self.server_state.seats.iter_mut().find(|seat| {

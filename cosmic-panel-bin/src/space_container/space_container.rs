@@ -9,6 +9,7 @@ use crate::minimize::MinimizeApplet;
 use crate::space::{AppletMsg, PanelColors, PanelSharedState, PanelSpace};
 use crate::workspaces_dbus::CosmicWorkspaces;
 use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
+use crate::xdg_shell_wrapper::client::state::ClientState;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::WrapperSpace;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
@@ -30,7 +31,6 @@ use sctk::output::OutputInfo;
 use sctk::reexports::calloop;
 use sctk::reexports::client::protocol::wl_output::WlOutput;
 use sctk::reexports::client::{Connection, QueueHandle};
-use sctk::shell::wlr_layer::LayerShell;
 use sctk::subcompositor::SubcompositorState;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::output::Output;
@@ -248,13 +248,8 @@ impl SpaceContainer {
     pub fn update_space(
         &mut self,
         mut entry: CosmicPanelConfig,
-        compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &mut LayerShell,
-        qh: &QueueHandle<GlobalState>,
+        client_state: &ClientState,
         force_output: Option<WlOutput>,
-        _overlap_notify: Option<OverlapNotifyV1>,
     ) {
         // if the output is set to "all", we need to check if the config is the
         // same for all outputs if the output is set to a specific
@@ -411,7 +406,7 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.connection.as_ref().unwrap(),
-                    qh,
+                    &client_state.qh,
                     self.corner_radius_manager.as_ref(),
                 );
                 if was_blurred {
@@ -419,17 +414,7 @@ impl SpaceContainer {
                 }
                 space.enable_blur_capacity(blur_manager.as_ref());
                 space.overlap_notify = self.overlap_notify.clone();
-                if let Err(err) = space.new_output(
-                    compositor_state,
-                    fractional_scale_manager,
-                    viewport,
-                    layer_state,
-                    connection,
-                    qh,
-                    None,
-                    None,
-                    None,
-                ) {
+                if let Err(err) = space.new_output(client_state, None, None, None) {
                     error!("Failed to create space for active output: {}", err);
                 } else {
                     self.space_list.push(space);
@@ -492,7 +477,7 @@ impl SpaceContainer {
                     },
                     self.s_display.clone().unwrap(),
                     self.connection.as_ref().unwrap(),
-                    qh,
+                    &client_state.qh,
                     self.corner_radius_manager.as_ref(),
                 );
                 if was_blurred {
@@ -504,12 +489,7 @@ impl SpaceContainer {
                 }
                 space.overlap_notify = self.overlap_notify.clone();
                 if let Err(err) = space.new_output(
-                    compositor_state,
-                    fractional_scale_manager,
-                    viewport,
-                    layer_state,
-                    connection,
-                    qh,
+                    client_state,
                     Some(wl_output.clone()),
                     Some(output.clone()),
                     Some(info.clone()),

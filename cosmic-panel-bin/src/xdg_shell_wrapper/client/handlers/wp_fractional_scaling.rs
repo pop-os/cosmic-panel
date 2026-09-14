@@ -31,11 +31,8 @@ pub struct FractionalScaling {
 
 impl FractionalScalingManager {
     /// Create new viewporter.
-    pub fn new(
-        globals: &GlobalList,
-        queue_handle: &QueueHandle<GlobalState>,
-    ) -> Result<Self, BindError> {
-        let manager = globals.bind(queue_handle, 1..=1, GlobalData)?;
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<GlobalState>) -> Result<Self, BindError> {
+        let manager = globals.bind(qh, 1..=1, GlobalData)?;
         Ok(Self { manager })
     }
 
@@ -43,10 +40,10 @@ impl FractionalScalingManager {
     pub fn fractional_scaling(
         &self,
         surface: &WlSurface,
-        queue_handle: &QueueHandle<GlobalState>,
+        qh: &QueueHandle<GlobalState>,
     ) -> WpFractionalScaleV1 {
         let data = FractionalScaling { surface: surface.clone() };
-        self.manager.get_fractional_scale(surface, queue_handle, data)
+        self.manager.get_fractional_scale(surface, qh, data)
     }
 }
 
