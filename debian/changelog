@@ -1,5 +1,9 @@
-cosmic-panel (0.1.0) UNRELEASED; urgency=medium
+cosmic-panel (1.9.0) noble; urgency=medium
 
+  [ Ashley Wulber ]
   * Initial release.
 
- -- Ashley Wulber <ashley@system76.com>  Thu, 05 May 2022 09:39:19 -0700
+  [ Michael Murphy ]
+  * Epoch 1.9.0 version update
+
+ -- Michael Murphy <michael@mmurphy.dev>  Mon, 14 Sep 2026 21:57:19 +0200
