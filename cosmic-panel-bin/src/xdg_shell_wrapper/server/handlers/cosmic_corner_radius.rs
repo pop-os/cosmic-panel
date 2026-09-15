@@ -779,7 +779,7 @@ impl CornerRadiusHandler for GlobalState {
 
             let corner_surface = cosmic_corner_radius_manager.get_corner_radius_layer(
                 wlr,
-                &self.client_state.queue_handle,
+                &self.client_state.qh,
                 (),
             );
 

@@ -129,9 +129,7 @@ impl SeatHandler for GlobalState {
                     },
                 };
                 let cursor_surface = self.client_state.cursor_surface.get_or_insert_with(|| {
-                    self.client_state
-                        .compositor_state
-                        .create_surface(&self.client_state.queue_handle)
+                    self.client_state.compositor_state.create_surface(&self.client_state.qh)
                 });
 
                 let last_enter = seat_pair.client.last_enter;
@@ -274,7 +272,7 @@ impl WaylandDndGrabHandler for GlobalState {
             }
 
             let dnd_source = self.client_state.data_device_manager.create_drag_and_drop_source(
-                &self.client_state.queue_handle,
+                &self.client_state.qh,
                 metadata.mime_types.iter().map(|m| m.as_str()).collect_vec(),
                 actions,
             );
@@ -282,9 +280,7 @@ impl WaylandDndGrabHandler for GlobalState {
                 self.client_state.focused_surface.borrow().iter().find(|f| f.1 == seat.name)
             {
                 let c_icon_surface = icon.as_ref().map(|_| {
-                    self.client_state
-                        .compositor_state
-                        .create_surface(&self.client_state.queue_handle)
+                    self.client_state.compositor_state.create_surface(&self.client_state.qh)
                 });
 
                 dnd_source.start_drag(
@@ -294,7 +290,7 @@ impl WaylandDndGrabHandler for GlobalState {
                     seat.client.get_serial_of_last_seat_event(),
                 );
                 if let Some(client_surface) = c_icon_surface.as_ref() {
-                    client_surface.frame(&self.client_state.queue_handle, client_surface.clone());
+                    client_surface.frame(&self.client_state.qh, client_surface.clone());
                     client_surface.commit();
 
                     seat.client.dnd_icon = Some(DndIcon {
@@ -450,7 +446,7 @@ impl SelectionHandler for GlobalState {
             let copy_paste_source = self
                 .client_state
                 .data_device_manager
-                .create_copy_paste_source(&self.client_state.queue_handle, mime_types);
+                .create_copy_paste_source(&self.client_state.qh, mime_types);
             copy_paste_source.set_selection(&seat.client.data_device, serial);
             seat.client.copy_paste_source = Some(copy_paste_source);
             seat.server.selection_source = Some(source);

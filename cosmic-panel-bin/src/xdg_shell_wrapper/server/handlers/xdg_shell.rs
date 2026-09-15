@@ -32,17 +32,7 @@ impl XdgShellHandler for GlobalState {
         };
         if self
             .space
-            .add_popup(
-                &self.client_state.compositor_state,
-                self.client_state.fractional_scaling_manager.as_ref(),
-                self.client_state.viewporter_state.as_ref(),
-                &self.client_state.connection,
-                &self.client_state.queue_handle,
-                &mut self.client_state.xdg_shell_state,
-                surface.clone(),
-                positioner,
-                positioner_state,
-            )
+            .add_popup(&self.client_state, surface.clone(), positioner, positioner_state)
             .is_ok()
         {
             self.server_state.popup_manager.track_popup(PopupKind::Xdg(surface.clone())).unwrap();

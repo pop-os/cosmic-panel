@@ -11,6 +11,7 @@ use cctk::toplevel_management::ToplevelManagerState;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::workspace::WorkspaceState;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
+use cosmic_protocols::session_lock_layer::v1::client::cosmic_session_lock_layer_manager_v1::CosmicSessionLockLayerManagerV1;
 use sctk::compositor::CompositorState;
 use sctk::data_device_manager::DataDeviceManagerState;
 use sctk::data_device_manager::data_device::DataDevice;
@@ -154,32 +155,33 @@ pub struct ClientState {
     pub overlap_notify: Option<OverlapNotifyV1>,
     pub ext_background_effect_manager: Option<ExtBackgroundEffectManager>,
     pub cosmic_corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
+    pub cosmic_session_lock_layer_manager: Option<CosmicSessionLockLayerManagerV1>,
 
-    pub(crate) connection: Connection,
+    pub connection: Connection,
     /// queue handle
-    pub queue_handle: QueueHandle<GlobalState>, // TODO remove if never used
+    pub qh: QueueHandle<GlobalState>, // TODO remove if never used
     /// state regarding the last embedded client surface with keyboard focus
     pub focused_surface: Rc<RefCell<ClientFocus>>,
     /// state regarding the last embedded client surface with keyboard focus
     pub hovered_surface: Rc<RefCell<ClientFocus>>,
-    pub(crate) cursor_surface: Option<wl_surface::WlSurface>,
-    pub(crate) cursor_scale: Option<WpFractionalScaleV1>,
-    pub(crate) cursor_vp: Option<WpViewport>,
-    pub(crate) multipool: Option<MultiPool<(WlSurface, usize)>>,
-    pub(crate) last_key_pressed: Vec<(String, (u32, InputTime), wl_surface::WlSurface)>,
-    pub(crate) outputs: Vec<(WlOutput, Output, GlobalId)>,
-    pub(crate) touch_surfaces: HashMap<i32, WlSurface>,
-    pub(crate) blur_enabled: bool,
+    pub(in super::super) cursor_surface: Option<wl_surface::WlSurface>,
+    pub(in super::super) cursor_scale: Option<WpFractionalScaleV1>,
+    pub(in super::super) cursor_vp: Option<WpViewport>,
+    pub(in super::super) multipool: Option<MultiPool<(WlSurface, usize)>>,
+    pub(in super::super) last_key_pressed: Vec<(String, (u32, InputTime), wl_surface::WlSurface)>,
+    pub(in super::super) outputs: Vec<(WlOutput, Output, GlobalId)>,
+    pub(in super::super) touch_surfaces: HashMap<i32, WlSurface>,
+    pub blur_enabled: bool,
 
     pub delayed_surface_motion: HashMap<SmithayWlSurface, (PointerEvent, WlPointer, u128)>,
 
-    pub(crate) pending_layer_surfaces: Vec<(
+    pub(in super::super) pending_layer_surfaces: Vec<(
         smithay::wayland::shell::wlr_layer::LayerSurface,
         Option<wl_output::WlOutput>,
         String,
     )>,
 
-    pub(crate) proxied_layer_surfaces: Vec<(
+    pub(in super::super) proxied_layer_surfaces: Vec<(
         EGLSurface,
         OutputDamageTracker,
         SmithayLayerSurface,
@@ -213,8 +215,9 @@ impl Debug for ClientState {
             .field("overlap_notify", &self.overlap_notify)
             .field("ext_background_effect_manager", &self.ext_background_effect_manager)
             .field("cosmic_corner_radius_manager", &self.cosmic_corner_radius_manager)
+            .field("cosmic_session_lock_layer_manager", &self.cosmic_session_lock_layer_manager)
             .field("connection", &self.connection)
-            .field("queue_handle", &self.queue_handle)
+            .field("qh", &self.qh)
             .field("focused_surface", &self.focused_surface)
             .field("hovered_surface", &self.hovered_surface)
             .field("cursor_surface", &self.cursor_surface)
@@ -300,7 +303,7 @@ impl ClientState {
                 proxied_layer_surfaces: Vec::new(),
                 pending_layer_surfaces: Vec::new(),
 
-                queue_handle: qh.clone(),
+                qh: qh.clone(),
                 connection: connection.clone(),
                 seat_state: SeatState::new(&globals, &qh),
                 output_state: OutputState::new(&globals, &qh),
@@ -321,6 +324,9 @@ impl ClientState {
                     ext_background_effect::ExtBackgroundEffectManager::new(&globals, &qh).ok(),
                 cosmic_corner_radius_manager: registry_state
                     .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
+                    .ok(),
+                cosmic_session_lock_layer_manager: registry_state
+                    .bind_one::<CosmicSessionLockLayerManagerV1, _, _>(&qh, 1..=1, ())
                     .ok(),
 
                 outputs: Default::default(),
@@ -388,18 +394,18 @@ impl ClientState {
 
     /// initialize the toplevel info state
     pub fn init_toplevel_info_state(&mut self) {
-        self.toplevel_info_state =
-            ToplevelInfoState::try_new(&self.registry_state, &self.queue_handle);
+        self.toplevel_info_state = ToplevelInfoState::try_new(&self.registry_state, &self.qh);
     }
 
     /// initialize the toplevel manager state
     pub fn init_toplevel_manager_state(&mut self) {
-        self.toplevel_manager_state =
-            ToplevelManagerState::try_new(&self.registry_state, &self.queue_handle);
+        self.toplevel_manager_state = ToplevelManagerState::try_new(&self.registry_state, &self.qh);
     }
 
     /// initialize the toplevel manager state
     pub fn init_workspace_state(&mut self) {
-        self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.queue_handle));
+        self.workspace_state = Some(WorkspaceState::new(&self.registry_state, &self.qh));
     }
 }
+
+cctk::wayland_client::delegate_noop!(GlobalState: CosmicSessionLockLayerManagerV1);

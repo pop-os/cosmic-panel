@@ -3,25 +3,22 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::iced::elements::target::SpaceTarget;
-use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
+use crate::xdg_shell_wrapper::client::state::ClientState;
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
 use crate::xdg_shell_wrapper::server_state::ServerPointerFocus;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::{Visibility, WrapperSpace};
-use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
-use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
 use cctk::wayland_client::protocol::wl_pointer::WlPointer;
 use cctk::wayland_client::protocol::wl_seat::WlSeat;
 use cosmic_panel_config::{CosmicPanelBackground, CosmicPanelContainerConfig, CosmicPanelOuput};
 use itertools::Itertools;
-use sctk::compositor::CompositorState;
 use sctk::output::OutputInfo;
 use sctk::reexports::client::protocol::wl_output::WlOutput;
 use sctk::reexports::client::protocol::wl_surface as c_wl_surface;
 use sctk::reexports::client::{Connection, QueueHandle};
 use sctk::shell::WaylandSurface;
-use sctk::shell::wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure};
+use sctk::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure};
 use smithay::desktop::PopupManager;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface;
@@ -50,20 +47,11 @@ impl WrapperSpace for SpaceContainer {
     }
 
     /// run after the connection is ready
-    fn setup(
-        &mut self,
-        compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        security_context_manager: Option<SecurityContextManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &mut LayerShell,
-        conn: &Connection,
-        qh: &QueueHandle<GlobalState>,
-        overlap_notify: Option<OverlapNotifyV1>,
-    ) {
-        self.overlap_notify = overlap_notify.clone();
-        self.connection = Some(conn.clone());
-        *self.shared.security_context_manager.borrow_mut() = security_context_manager.clone();
+    fn setup(&mut self, client_state: &ClientState) {
+        self.overlap_notify = client_state.overlap_notify.clone();
+        self.connection = Some(client_state.connection.clone());
+        *self.shared.security_context_manager.borrow_mut() =
+            client_state.security_context_manager.clone();
 
         // create a space for each config profile which is configured for Active
         // output and call setup on each
@@ -84,34 +72,15 @@ impl WrapperSpace for SpaceContainer {
                                 CosmicPanelBackground::Light => self.light_theme.clone(),
                             },
                             self.s_display.clone().unwrap(),
-                            conn,
-                            qh,
+                            &client_state.connection,
+                            &client_state.qh,
                             self.corner_radius_manager.as_ref(),
                         );
-                        s.setup(
-                            compositor_state,
-                            fractional_scale_manager,
-                            security_context_manager.clone(),
-                            viewport,
-                            layer_state,
-                            conn,
-                            qh,
-                            overlap_notify.clone(),
-                        );
+                        s.setup(client_state);
                         if let Some(s_display) = self.s_display.as_ref() {
                             s.set_display_handle(s_display.clone());
                         }
-                        let _ = s.new_output(
-                            compositor_state,
-                            fractional_scale_manager,
-                            viewport,
-                            layer_state,
-                            conn,
-                            qh,
-                            None,
-                            None,
-                            None,
-                        );
+                        let _ = s.new_output(client_state, None, None, None);
                         Some(s)
                     } else {
                         None
@@ -123,12 +92,7 @@ impl WrapperSpace for SpaceContainer {
 
     fn new_output(
         &mut self,
-        compositor_state: &sctk::compositor::CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        layer_state: &mut LayerShell,
-        conn: &sctk::reexports::client::Connection,
-        qh: &QueueHandle<GlobalState>,
+        client_state: &ClientState,
         c_output: Option<WlOutput>,
         s_output: Option<Output>,
         output_info: Option<OutputInfo>,
@@ -184,45 +148,22 @@ impl WrapperSpace for SpaceContainer {
                                 &self.shared,
                                 c,
                                 self.s_display.clone().unwrap(),
-                                conn,
-                                qh,
+                                &client_state.connection,
+                                &client_state.qh,
                                 self.corner_radius_manager.as_ref(),
                             );
-                            s.setup(
-                                compositor_state,
-                                fractional_scale_manager,
-                                self.shared.security_context_manager.borrow().clone(),
-                                viewport,
-                                layer_state,
-                                conn,
-                                qh,
-                                self.overlap_notify.clone(),
-                            );
+                            s.setup(client_state);
                             if let Some(s_display) = self.s_display.as_ref() {
                                 s.set_display_handle(s_display.clone());
                             }
                             s
                         };
-                        s.setup(
-                            compositor_state,
-                            fractional_scale_manager,
-                            self.shared.security_context_manager.borrow().clone(),
-                            viewport,
-                            layer_state,
-                            conn,
-                            qh,
-                            self.overlap_notify.clone(),
-                        );
+                        s.setup(client_state);
 
                         s.enable_blur_capacity(blur_manager.as_ref());
 
                         if s.new_output(
-                            compositor_state,
-                            fractional_scale_manager,
-                            viewport,
-                            layer_state,
-                            conn,
-                            qh,
+                            client_state,
                             Some(c_output.clone()),
                             Some(s_output.clone()),
                             Some(output_info.clone()),
@@ -250,20 +191,11 @@ impl WrapperSpace for SpaceContainer {
                                     CosmicPanelBackground::Light => light.clone(),
                                 },
                                 self.s_display.clone().unwrap(),
-                                conn,
-                                qh,
+                                &client_state.connection,
+                                &client_state.qh,
                                 self.corner_radius_manager.as_ref(),
                             );
-                            s.setup(
-                                compositor_state,
-                                fractional_scale_manager,
-                                self.shared.security_context_manager.borrow().clone(),
-                                viewport,
-                                layer_state,
-                                conn,
-                                qh,
-                                self.overlap_notify.clone(),
-                            );
+                            s.setup(client_state);
 
                             if let Some(s_display) = self.s_display.as_ref() {
                                 s.set_display_handle(s_display.clone());
@@ -272,12 +204,7 @@ impl WrapperSpace for SpaceContainer {
                         };
                         s.enable_blur_capacity(blur_manager.as_ref());
                         if s.new_output(
-                            compositor_state,
-                            fractional_scale_manager,
-                            viewport,
-                            layer_state,
-                            conn,
-                            qh,
+                            client_state,
                             Some(c_output.clone()),
                             Some(s_output.clone()),
                             Some(output_info.clone()),
@@ -316,12 +243,7 @@ impl WrapperSpace for SpaceContainer {
 
     fn add_popup(
         &mut self,
-        compositor_state: &CompositorState,
-        fractional_scale_manager: Option<&FractionalScalingManager>,
-        viewport: Option<&ViewporterState>,
-        conn: &Connection,
-        qh: &QueueHandle<GlobalState>,
-        xdg_shell_state: &mut sctk::shell::xdg::XdgShell,
+        client_state: &ClientState,
         s_surface: smithay::wayland::shell::xdg::PopupSurface,
         positioner: sctk::shell::xdg::XdgPositioner,
         positioner_state: smithay::wayland::shell::xdg::PositionerState,
@@ -341,17 +263,7 @@ impl WrapperSpace for SpaceContainer {
             }
         }
 
-        self.space_list[idx].add_popup(
-            compositor_state,
-            fractional_scale_manager,
-            viewport,
-            conn,
-            qh,
-            xdg_shell_state,
-            s_surface,
-            positioner,
-            positioner_state,
-        )
+        self.space_list[idx].add_popup(client_state, s_surface, positioner, positioner_state)
     }
 
     fn grab_popup(

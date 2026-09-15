@@ -216,7 +216,7 @@ impl GlobalState {
                     move |_, _| Some(output.clone()),
                 );
             }
-            wl_surface.frame(&self.client_state.queue_handle, wl_surface.clone());
+            wl_surface.frame(&self.client_state.qh, wl_surface.clone());
             wl_surface.commit();
 
             *is_ready = false;
