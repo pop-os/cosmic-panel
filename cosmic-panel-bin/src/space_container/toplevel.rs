@@ -46,13 +46,25 @@ impl ToplevelInfoSpace for SpaceContainer {
         self.apply_toplevel_changes();
 
         let is_maximized = info.state.contains(&zcosmic_toplevel_handle_v1::State::Maximized);
-
         let was_maximized =
             self.maximized_toplevels.iter().any(|t| t.foreign_toplevel == info.foreign_toplevel);
+
         if is_maximized && !was_maximized {
             self.add_maximized(info);
         } else if !is_maximized && was_maximized {
             self.remove_maximized(&info.foreign_toplevel);
+        } else if is_maximized && was_maximized {
+            // When moving a maximimized window between workspaces/outputs, the toplevel info in
+            // maximized_toplevels is stale and needs to be updated.
+            self.sync_maximized(|sc| {
+                if let Some(t) = sc
+                    .maximized_toplevels
+                    .iter_mut()
+                    .find(|t| t.foreign_toplevel == info.foreign_toplevel)
+                {
+                    *t = info.clone();
+                }
+            });
         }
     }
 
@@ -86,9 +98,9 @@ impl ToplevelManagerSpace for SpaceContainer {
 }
 
 impl SpaceContainer {
-    fn add_maximized(&mut self, info: &ToplevelInfo) {
+    fn sync_maximized(&mut self, f: impl FnOnce(&mut Self)) {
         let pre_maximixed_outputs = self.maximized_outputs();
-        self.maximized_toplevels.push(info.clone());
+        f(self);
         let post_maximized_outputs = self.maximized_outputs();
         let outputs = self.outputs.clone();
         for (o, ..) in &outputs {
@@ -102,29 +114,24 @@ impl SpaceContainer {
         }
     }
 
+    fn add_maximized(&mut self, info: &ToplevelInfo) {
+        self.sync_maximized(|sc| sc.maximized_toplevels.push(info.clone()));
+    }
+
     fn remove_maximized(
         &mut self,
         toplevel: &ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     ) {
-        let pre_maximixed_outputs = self.maximized_outputs();
         if let Some(pos) =
             self.maximized_toplevels.iter().position(|t| t.foreign_toplevel == *toplevel)
         {
-            self.maximized_toplevels.remove(pos);
+            self.sync_maximized(|sc| {
+                sc.maximized_toplevels.remove(pos);
+            });
         } else {
             return;
         };
-        let post_maximized_outputs = self.maximized_outputs();
-        let outputs = self.outputs.clone();
-        for (o, ..) in &outputs {
-            let max_pre = pre_maximixed_outputs.iter().contains(o);
-            let max_post = post_maximized_outputs.iter().contains(o);
-            if max_post && !max_pre {
-                self.apply_maximized(o, true);
-            } else if !max_post && max_pre {
-                self.apply_maximized(o, false);
-            }
-        }
+
         self.apply_toplevel_changes();
     }
 
