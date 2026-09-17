@@ -777,11 +777,13 @@ impl CornerRadiusHandler for GlobalState {
                 break;
             };
 
-            let corner_surface = cosmic_corner_radius_manager.get_corner_radius_layer(
-                wlr,
-                &self.client_state.queue_handle,
-                (),
-            );
+            let corner_surface = corner.clone().unwrap_or_else(|| {
+                cosmic_corner_radius_manager.get_corner_radius_layer(
+                    wlr,
+                    &self.client_state.queue_handle,
+                    (),
+                )
+            });
 
             if let Some(padding) = padding.0 {
                 corner_surface.set_padding(
