@@ -18,6 +18,8 @@ use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewporterState;
 
+use cosmic_protocols::panel_applet::v1::server::cosmic_panel_applet_manager_v1::CosmicPanelAppletManagerV1;
+
 use crate::iced::elements::target::SpaceTarget;
 use crate::xdg_shell_wrapper::client_state::ClientSeat;
 use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::CornerRadiusState;
@@ -72,6 +74,8 @@ pub struct ServerState {
 impl ServerState {
     /// create a new server state
     pub fn new(dh: DisplayHandle) -> ServerState {
+        dh.create_global::<GlobalState, CosmicPanelAppletManagerV1, ()>(1, ());
+
         ServerState {
             popup_manager: PopupManager::default(),
             display_handle: dh.clone(),
@@ -95,7 +99,6 @@ impl ServerState {
         }
     }
 }
-
 pub(crate) struct ServerSeat {
     pub(crate) seat: Seat<GlobalState>,
     pub(crate) selection_source: Option<SelectionSource>,
