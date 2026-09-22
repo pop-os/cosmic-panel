@@ -39,6 +39,7 @@ pub(crate) mod cursor;
 pub(crate) mod ext_background_effect;
 pub(crate) mod fractional;
 pub(crate) mod layer;
+pub(crate) mod panel_applet;
 pub(crate) mod pointer_constraints;
 pub(crate) mod xdg_shell;
 

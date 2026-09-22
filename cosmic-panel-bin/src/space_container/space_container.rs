@@ -186,6 +186,10 @@ impl SpaceContainer {
         if self.is_dark { self.dark_theme.clone() } else { self.light_theme.clone() }
     }
 
+    pub fn space_for_client(&self, client: Option<&ClientId>) -> Option<&PanelSpace> {
+        self.space_list.iter().find(|space| super::space_has_client(space, client))
+    }
+
     pub fn cleanup_client(&mut self, old_client_id: ClientId) {
         for s in &mut self.space_list {
             // cleanup leftover windows
@@ -322,32 +326,43 @@ impl SpaceContainer {
                 PanelAnchor::Right => PanelAnchor::Left,
             })
         };
+
+        let applet_settings_changed = self.config.config_list.iter().any(|c| {
+            c.name == entry.name
+                && (c.size != entry.size
+                    || c.spacing != entry.spacing
+                    || c.size_center != entry.size_center
+                    || c.size_wings != entry.size_wings
+                    || c.background != entry.background)
+        });
+
+        let applet_settings_updated_at_runtime = self
+            .space_list
+            .iter()
+            .filter(|s| s.config.name == entry.name)
+            .all(PanelSpace::applets_use_settings_protocol);
+
         // recreate the original if: output changed
         // or if the output is the same, but the priority changes to conflict
-        // with an adjacent panel or if applet size changes
+        // with an adjacent panel, or if the applets cannot be updated at
+        // runtime through the panel applet settings protocol
         let must_recreate =
         // implies that there is at least one output which needs to be recreated
         output_count_mismatch
+        // applet settings changed, but at least one applet would keep its old
+        // settings because it does not bind the settings protocol
+        || (applet_settings_changed && !applet_settings_updated_at_runtime)
         || self.config.config_list.iter().any(|c| {
-            // size changed
-            c.name == entry.name && c.size != entry.size
-            // spacing changed
-            || (c.name == entry.name && c.spacing != entry.spacing)
-            // size overrides changed
-            || (c.name == entry.name && (c.size_center != entry.size_center || c.size_wings != entry.size_wings))
             // border width changed
-            || (c.name == entry.name && c.border_width != entry.border_width)
+            (c.name == entry.name && c.border_width != entry.border_width)
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
             // panel anchor change forces restart
             || opposite_anchor.is_some()
-            // applet restarts are required
+            // applets were added or removed
             || (c.name == entry.name
-                && (c.is_horizontal() != entry.is_horizontal()
-                || c.size != entry.size
-                || c.background != entry.background
-                || c.plugins_center != entry.plugins_center
+                && (c.plugins_center != entry.plugins_center
                 || c.plugins_wings != entry.plugins_wings))
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
@@ -362,6 +377,13 @@ impl SpaceContainer {
         self.config.config_list.push(entry.clone());
 
         if !must_recreate {
+            if applet_settings_changed {
+                info!(
+                    "Updating the settings of panel {} without restarting its applets",
+                    entry.name
+                );
+            }
+
             let bg_color = match entry.background {
                 CosmicPanelBackground::Color(c) => Some([c[0], c[1], c[2], entry.opacity]),
                 _ => None,

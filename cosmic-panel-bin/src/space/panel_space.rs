@@ -15,6 +15,7 @@ use crate::workspaces_dbus::CosmicWorkspaces;
 use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
 use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::{CacheableCorners, Corners};
+use crate::xdg_shell_wrapper::server::handlers::panel_applet::{AppletSettings, PanelSettings};
 use crate::xdg_shell_wrapper::server_state::{ServerFocus, ServerPtrFocus};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::{
@@ -56,7 +57,7 @@ use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::desktop::{PopupManager, Space};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
-use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::backend::{ClientId, ObjectId};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Rectangle, Size};
@@ -75,7 +76,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use wayland_protocols::xdg::shell::client::xdg_positioner::ConstraintAdjustment;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
-use cosmic_panel_config::{AutoHide, CosmicPanelBackground, CosmicPanelConfig, PanelAnchor};
+use cosmic_panel_config::{AutoHide, CosmicPanelBackground, CosmicPanelConfig, PanelAnchor, Side};
 
 use crate::PanelCalloopMsg;
 use crate::iced::elements::CosmicMappedInternal;
@@ -128,6 +129,7 @@ pub struct PanelClient {
     pub padding_shrinkable: bool,
     /// If there is an existing popup, this applet with be pressed when hovered.
     pub auto_popup_hover_press: Option<AppletAutoClickAnchor>,
+    pub applet_settings: Option<AppletSettings>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -197,6 +199,7 @@ impl PanelClient {
             padding_shrinkable: false,
             shrink_priority: None,
             shrink_min_size: None,
+            applet_settings: None,
         }
     }
 
@@ -205,6 +208,11 @@ impl PanelClient {
             return false;
         };
         matches!(PathSource::guess_from(path), PathSource::SystemFlatpak | PathSource::LocalFlatpak)
+    }
+
+    /// Whether this applet is the client with the given id.
+    fn has_client(&self, client: &ClientId) -> bool {
+        self.client.as_ref().is_some_and(|c| c.id() == *client)
     }
 }
 
@@ -630,6 +638,7 @@ impl PanelSpace {
             shrink_min_size: None,
             padding_shrinkable: false,
             auto_popup_hover_press: None,
+            applet_settings: None,
         };
 
         // add to list if not already there
@@ -681,6 +690,7 @@ impl PanelSpace {
             shrink_min_size: None,
             padding_shrinkable: false,
             auto_popup_hover_press: None,
+            applet_settings: None,
         };
         // add to list if not already there
         if right_guard.last().is_some_and(|c| c.name != "spacer-end") {
@@ -1252,6 +1262,11 @@ impl PanelSpace {
                 if let (Some(size), Some(layer_surface)) =
                     (self.pending_dimensions.take(), self.layer.as_ref())
                 {
+                    if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
+                        corner_radius_wlr.unset_radius();
+                        corner_radius_wlr.unset_padding();
+                    }
+
                     let width: u32 = size.w.try_into().unwrap();
                     let height: u32 = size.h.try_into().unwrap();
                     if self.config.is_horizontal() {
@@ -1711,7 +1726,6 @@ impl PanelSpace {
             bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity, self.maximized));
 
         // can't animate anchor changes
-        // return early
         if config.anchor() != self.config.anchor() {
             panic!(
                 "Can't apply anchor changes when orientation changes. Requires re-creation of the \
@@ -1832,9 +1846,113 @@ impl PanelSpace {
             }
         }
 
+        let applet_size_changed = config.size != self.config.size
+            || config.size_center != self.config.size_center
+            || config.size_wings != self.config.size_wings;
+        let spacing_changed =
+            config.spacing != self.config.spacing || config.margin != self.config.margin;
+
         self.config = config;
 
+        if applet_size_changed {
+            self.pending_dimensions =
+                Some(if self.config.is_horizontal() { (0, 1) } else { (1, 0) }.into());
+            self.is_dirty = true;
+            self.needs_layout = true;
+        }
+
+        if spacing_changed {
+            self.apply_layer_overlaps();
+        }
+
         self.clear();
+        self.update_applet_settings();
+    }
+
+    fn output_name(&self) -> String {
+        self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default()
+    }
+
+    fn clients_for(
+        &self,
+        client: &ClientId,
+    ) -> Option<(Side, std::sync::MutexGuard<'_, Vec<PanelClient>>)> {
+        for (side, clients) in [
+            (Side::WingStart, &self.clients_left),
+            (Side::Center, &self.clients_center),
+            (Side::WingEnd, &self.clients_right),
+        ] {
+            let guard = clients.lock().unwrap();
+            if guard.iter().any(|c| c.has_client(client)) {
+                return Some((side, guard));
+            }
+        }
+        None
+    }
+
+    pub fn panel_settings_for(&self, client: &ClientId) -> Option<PanelSettings> {
+        let (side, _clients) = self.clients_for(client)?;
+        Some(PanelSettings::new(&self.config, self.output_name(), side))
+    }
+
+    pub fn has_applet_settings(&self, client: &ClientId) -> bool {
+        self.clients_for(client).is_some_and(|(_, clients)| {
+            clients.iter().any(|c| {
+                c.has_client(client)
+                    && c.applet_settings.as_ref().is_some_and(AppletSettings::is_alive)
+            })
+        })
+    }
+
+    pub fn set_applet_settings(&self, client: &ClientId, settings: AppletSettings) {
+        if let Some((_, mut clients)) = self.clients_for(client)
+            && let Some(panel_client) = clients.iter_mut().find(|c| c.has_client(client))
+        {
+            panel_client.applet_settings = Some(settings);
+        }
+    }
+
+    pub fn remove_applet_settings(&self, client: &ClientId, object: ObjectId) {
+        if let Some((_, mut clients)) = self.clients_for(client)
+            && let Some(panel_client) = clients.iter_mut().find(|c| c.has_client(client))
+            && panel_client.applet_settings.as_ref().is_some_and(|s| s.object_id() == object)
+        {
+            panel_client.applet_settings = None;
+        }
+    }
+
+    pub fn update_applet_settings(&self) {
+        for (side, clients) in [
+            (Side::WingStart, &self.clients_left),
+            (Side::Center, &self.clients_center),
+            (Side::WingEnd, &self.clients_right),
+        ] {
+            let settings = PanelSettings::new(&self.config, self.output_name(), side);
+            let mut clients = clients.lock().unwrap();
+            for client in clients.iter_mut() {
+                if client.applet_settings.as_ref().is_some_and(|s| !s.is_alive()) {
+                    client.applet_settings = None;
+                    continue;
+                }
+                if let Some(applet_settings) = client.applet_settings.as_mut() {
+                    applet_settings.update(settings.clone());
+                }
+            }
+        }
+    }
+
+    pub fn applets_use_settings_protocol(&self) -> bool {
+        [&self.clients_left, &self.clients_center, &self.clients_right].into_iter().all(|clients| {
+            clients.lock().unwrap().iter().all(|client| {
+                if !(client.client.is_none()
+                    || client.applet_settings.as_ref().is_some_and(AppletSettings::is_alive))
+                {
+                    dbg!(&client.name);
+                }
+                client.client.is_none()
+                    || client.applet_settings.as_ref().is_some_and(AppletSettings::is_alive)
+            })
+        })
     }
 
     pub fn reset_overflow(&mut self) {
@@ -2158,17 +2276,19 @@ impl PanelSpace {
             if let Some(surface) = self.layer.as_ref() {
                 self.blur_surface =
                     Some(blur_manager.get_background_effect(surface.wl_surface(), &self.qh, ()));
-                self.corner_radius_wlr =
-                    self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
-                        m.get_corner_radius_layer(
-                            match surface.kind() {
-                                SurfaceKind::Wlr(w) => w,
-                                _ => unimplemented!(),
-                            },
-                            &self.qh,
-                            (),
-                        )
-                    });
+                if self.corner_radius_wlr.is_none() {
+                    self.corner_radius_wlr =
+                        self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
+                            m.get_corner_radius_layer(
+                                match surface.kind() {
+                                    SurfaceKind::Wlr(w) => w,
+                                    _ => unimplemented!(),
+                                },
+                                &self.qh,
+                                (),
+                            )
+                        });
+                }
             }
             self.blur_manager = Some(blur_manager.clone());
         } else if let Some(blur_surface) = self.blur_surface.take()
