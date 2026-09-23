@@ -736,6 +736,7 @@ dependencies = [
  "ordered-stream",
  "rand 0.10.2",
  "ron",
+ "rustix 1.1.4",
  "shlex 1.3.0",
  "smallvec",
  "smithay",

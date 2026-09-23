@@ -69,6 +69,20 @@ mod malloc {
     }
 }
 
+/// Raises the soft limit for open file descriptors to the hard limit, like
+/// cosmic-comp does. GPU drivers can consume many file descriptors for sync
+/// fences and dma-bufs, which otherwise exhausts the default soft limit.
+fn increase_nofile_limit() {
+    use rustix::process::{Resource, getrlimit, setrlimit};
+
+    let mut limits = getrlimit(Resource::Nofile);
+    limits.current = limits.maximum;
+
+    if let Err(err) = setrlimit(Resource::Nofile, limits) {
+        warn!("Failed to raise nofile soft limit: {:?}", err);
+    }
+}
+
 fn main() -> Result<()> {
     // Prevents glibc from hoarding memory via memory fragmentation.
     #[cfg(target_env = "gnu")]
@@ -83,6 +97,8 @@ fn main() -> Result<()> {
     }
 
     log_panics::init();
+
+    increase_nofile_limit();
 
     let arg = std::env::args().nth(1);
     let usage = "USAGE: cosmic-panel";
