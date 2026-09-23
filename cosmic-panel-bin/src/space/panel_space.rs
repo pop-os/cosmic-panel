@@ -85,8 +85,19 @@ use super::Spacer;
 use super::layout::OverflowSection;
 
 pub enum AppletMsg {
-    NewProcess(String, Process),
-    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
+    NewProcess {
+        panel: String,
+        applet: String,
+        process: Process,
+    },
+    NewNotificationsProcess {
+        panel: String,
+        applet: String,
+        process: Process,
+        env: Vec<(String, String)>,
+        fds: Vec<OwnedFd>,
+    },
+    StopApplet(String, String),
     NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
@@ -95,13 +106,19 @@ pub enum AppletMsg {
 impl Debug for AppletMsg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NewProcess(arg0, _) => f.debug_tuple("NewProcess").field(arg0).finish(),
-            Self::NewNotificationsProcess(arg0, _, arg2, arg3) => f
+            Self::NewProcess { panel, applet, .. } => {
+                f.debug_tuple("NewProcess").field(panel).field(applet).finish()
+            },
+            Self::NewNotificationsProcess { panel, applet, env, fds, .. } => f
                 .debug_tuple("NewNotificationsProcess")
-                .field(arg0)
-                .field(arg2)
-                .field(arg3)
+                .field(panel)
+                .field(applet)
+                .field(env)
+                .field(fds)
                 .finish(),
+            Self::StopApplet(panel, applet) => {
+                f.debug_tuple("StopApplet").field(panel).field(applet).finish()
+            },
             Self::NeedNewNotificationFd(arg0) => {
                 f.debug_tuple("NeedNewNotificationFd").field(arg0).finish()
             },
@@ -122,6 +139,7 @@ pub struct PanelClient {
     pub security_ctx: Option<WpSecurityContextV1>,
     pub exec: Option<String>,
     pub minimize_priority: Option<u32>,
+    pub is_minimize_applet: bool,
     pub requests_wayland_display: Option<bool>,
     pub is_notification_applet: Option<bool>,
     pub shrink_priority: Option<u32>,
@@ -193,6 +211,7 @@ impl PanelClient {
             security_ctx: None,
             exec: None,
             minimize_priority: None,
+            is_minimize_applet: false,
             requests_wayland_display: None,
             is_notification_applet: None,
             auto_popup_hover_press: None,
@@ -632,6 +651,7 @@ impl PanelSpace {
             security_ctx: None,
             exec: None,
             minimize_priority: None,
+            is_minimize_applet: false,
             requests_wayland_display: None,
             is_notification_applet: None,
             shrink_priority: None,
@@ -684,6 +704,7 @@ impl PanelSpace {
             security_ctx: None,
             exec: None,
             minimize_priority: None,
+            is_minimize_applet: false,
             requests_wayland_display: None,
             is_notification_applet: None,
             shrink_priority: None,
@@ -1869,7 +1890,7 @@ impl PanelSpace {
         self.update_applet_settings();
     }
 
-    fn output_name(&self) -> String {
+    pub(crate) fn output_name(&self) -> String {
         self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default()
     }
 

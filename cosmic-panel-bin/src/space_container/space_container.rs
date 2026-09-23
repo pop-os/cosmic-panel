@@ -360,10 +360,6 @@ impl SpaceContainer {
             (c.name == entry.name && c.output != entry.output))
             // panel anchor change forces restart
             || opposite_anchor.is_some()
-            // applets were added or removed
-            || (c.name == entry.name
-                && (c.plugins_center != entry.plugins_center
-                || c.plugins_wings != entry.plugins_wings))
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
@@ -389,13 +385,31 @@ impl SpaceContainer {
                 _ => None,
             };
 
+            // Applets that were added, removed or moved are started, stopped
+            // and moved instead of recreating the panel, so that the applets
+            // that are still configured keep running.
+            let mut removed = Vec::new();
             for space in &mut self.space_list {
                 if space.config.name != entry.name {
                     continue;
                 }
 
                 entry.output = space.config.output.clone();
+                if let Some(mut display) = self.s_display.clone() {
+                    let security_context_manager =
+                        self.shared.security_context_manager.borrow().clone();
+                    removed.extend(space.update_applet_clients(
+                        &entry,
+                        &mut display,
+                        qh,
+                        security_context_manager.as_ref(),
+                    ));
+                }
+
                 space.update_config(entry.clone(), bg_color, true);
+            }
+            for client_id in removed {
+                self.cleanup_client(client_id);
             }
             self.apply_current_maximized_state();
             self.apply_toplevel_changes();
