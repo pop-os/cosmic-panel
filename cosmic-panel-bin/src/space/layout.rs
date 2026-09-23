@@ -175,7 +175,7 @@ impl PanelSpace {
                             Some((
                                 i,
                                 w.clone(),
-                                c.minimize_priority,
+                                if c.is_minimize_applet { c.minimize_priority } else { None },
                                 if c.padding_shrinkable {
                                     ShrinkablePadding::Both
                                 } else {

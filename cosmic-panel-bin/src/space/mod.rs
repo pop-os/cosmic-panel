@@ -2,6 +2,7 @@
 //! separate process and compositing them in a layer shell surface as configured
 //! PanelSpace *partially* implements the WrapperSpace abstraction
 
+mod applets;
 mod layout;
 mod overflow;
 mod panel_space;
