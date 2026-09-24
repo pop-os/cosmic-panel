@@ -22,7 +22,7 @@ use cosmic::iced::id;
 use cosmic::theme;
 use cosmic_panel_config::{
     CosmicPanelBackground, CosmicPanelConfig, CosmicPanelContainerConfig, CosmicPanelOuput,
-    PanelAnchor,
+    PanelAnchor, Side,
 };
 use cosmic_theme::{Theme, ThemeMode};
 use notify::RecommendedWatcher;
@@ -346,9 +346,7 @@ impl SpaceContainer {
             || (c.name == entry.name
                 && (c.is_horizontal() != entry.is_horizontal()
                 || c.size != entry.size
-                || c.background != entry.background
-                || c.plugins_center != entry.plugins_center
-                || c.plugins_wings != entry.plugins_wings))
+                || c.background != entry.background))
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
@@ -357,6 +355,8 @@ impl SpaceContainer {
             // || self.space_list.iter().any(|s| s.has_layer_overlap())
 
         );
+
+        let old_config = self.config.config_list.iter().find(|c| c.name == entry.name).cloned();
 
         self.config.config_list.retain(|c| c.name != entry.name);
         self.config.config_list.push(entry.clone());
@@ -374,6 +374,12 @@ impl SpaceContainer {
 
                 entry.output = space.config.output.clone();
                 space.update_config(entry.clone(), bg_color, true);
+            }
+            if let Some(old) = old_config.filter(|old| {
+                old.plugins_center != entry.plugins_center
+                    || old.plugins_wings != entry.plugins_wings
+            }) {
+                self.hot_plug_applets(&old, &entry, qh);
             }
             self.apply_current_maximized_state();
             self.apply_toplevel_changes();
@@ -522,6 +528,42 @@ impl SpaceContainer {
         }
         self.apply_current_maximized_state();
         self.apply_toplevel_changes();
+    }
+
+    /// Start and stop applets to match a changed plugin list without recreating
+    /// the space.
+    fn hot_plug_applets(
+        &mut self,
+        old: &CosmicPanelConfig,
+        new: &CosmicPanelConfig,
+        qh: &QueueHandle<GlobalState>,
+    ) {
+        let plugins = |config: &CosmicPanelConfig| {
+            [
+                (Side::WingStart, config.plugins_left()),
+                (Side::Center, config.plugins_center()),
+                (Side::WingEnd, config.plugins_right()),
+            ]
+            .into_iter()
+            .flat_map(|(side, names)| {
+                names.unwrap_or_default().into_iter().map(move |name| (name, side))
+            })
+            .collect::<HashMap<_, _>>()
+        };
+        let old_plugins = plugins(old);
+        let new_plugins = plugins(new);
+
+        for space in self.space_list.iter_mut().filter(|s| s.config.name == new.name) {
+            for name in old_plugins.keys().filter(|n| !new_plugins.contains_key(*n)) {
+                space.remove_applet(name);
+            }
+            for (name, side) in new_plugins.iter().filter(|(n, _)| !old_plugins.contains_key(*n)) {
+                if let Err(err) = space.spawn_applet(name, *side, qh) {
+                    error!("Failed to start applet {name}: {err}");
+                }
+            }
+            space.reorder_applets();
+        }
     }
 
     pub fn stacked_spaces_by_priority(
