@@ -25,6 +25,9 @@ use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::util::get_client_sock;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 
+/// The number of sections a panel has.
+const SECTIONS: usize = 3;
+
 fn section(index: usize) -> Side {
     match index {
         0 => Side::WingStart,
@@ -162,7 +165,7 @@ impl PanelSpace {
         let mut moved: Vec<(usize, usize, String)> = Vec::new();
         let mut added: Vec<(usize, String)> = Vec::new();
 
-        for index in 0..3 {
+        for index in 0..SECTIONS {
             let side = section(index);
             for name in Self::configured_applets(config, side) {
                 if !placed.insert(name.clone()) {

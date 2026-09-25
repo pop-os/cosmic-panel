@@ -327,14 +327,15 @@ impl SpaceContainer {
             })
         };
 
-        let applet_settings_changed = self.config.config_list.iter().any(|c| {
-            c.name == entry.name
-                && (c.size != entry.size
-                    || c.spacing != entry.spacing
-                    || c.size_center != entry.size_center
-                    || c.size_wings != entry.size_wings
-                    || c.background != entry.background)
-        });
+        let applet_settings_changed = opposite_anchor.is_some()
+            || self.config.config_list.iter().any(|c| {
+                c.name == entry.name
+                    && (c.size != entry.size
+                        || c.spacing != entry.spacing
+                        || c.size_center != entry.size_center
+                        || c.size_wings != entry.size_wings
+                        || c.background != entry.background)
+            });
 
         let applet_settings_updated_at_runtime = self
             .space_list
@@ -358,8 +359,6 @@ impl SpaceContainer {
             // output changed
             || (entry.output != CosmicPanelOuput::All &&
             (c.name == entry.name && c.output != entry.output))
-            // panel anchor change forces restart
-            || opposite_anchor.is_some()
             // Priority change to conflict with adjacent panel
             || c.name != entry.name
                 && Some(c.anchor) != opposite_anchor
@@ -395,6 +394,21 @@ impl SpaceContainer {
                 }
 
                 entry.output = space.config.output.clone();
+                let anchor_changed = space.config.anchor != entry.anchor;
+
+                if anchor_changed
+                    && let Err(err) = space.recreate_layer_surface(
+                        &entry,
+                        compositor_state,
+                        fractional_scale_manager,
+                        viewport,
+                        layer_state,
+                        qh,
+                    )
+                {
+                    error!("Failed to recreate the layer surface of panel {}: {}", entry.name, err);
+                }
+
                 if let Some(mut display) = self.s_display.clone() {
                     let security_context_manager =
                         self.shared.security_context_manager.borrow().clone();
@@ -407,6 +421,10 @@ impl SpaceContainer {
                 }
 
                 space.update_config(entry.clone(), bg_color, true);
+
+                if anchor_changed {
+                    space.update_applet_settings();
+                }
             }
             for client_id in removed {
                 self.cleanup_client(client_id);

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use crate::iced::elements::background::BackgroundElement;
 use crate::iced::elements::{PanelSpaceElement, PopupMappedInternal};
 use crate::workspaces_dbus::CosmicWorkspaces;
-use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
+use crate::xdg_shell_wrapper::client::handlers::overlap::{OverlapNotificationV1, OverlapNotifyV1};
 use crate::xdg_shell_wrapper::client_state::{ClientFocus, FocusStatus};
 use crate::xdg_shell_wrapper::server::handlers::cosmic_corner_radius::{CacheableCorners, Corners};
 use crate::xdg_shell_wrapper::server::handlers::panel_applet::{AppletSettings, PanelSettings};
@@ -26,6 +26,7 @@ use crate::xdg_shell_wrapper::util::smootherstep;
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
 use crate::xdg_shell_wrapper::wp_viewporter::ViewporterState;
+use anyhow::bail;
 use cctk::cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_manager_v1::CosmicCornerRadiusManagerV1;
 use cctk::cosmic_protocols::overlap_notify::v1::client::zcosmic_overlap_notification_v1::ZcosmicOverlapNotificationV1;
 use cctk::sctk::shell::wlr_layer::Layer;
@@ -42,7 +43,9 @@ use sctk::reexports::client::protocol::wl_display::WlDisplay;
 use sctk::reexports::client::protocol::wl_output as c_wl_output;
 use sctk::reexports::client::{Proxy, QueueHandle};
 use sctk::shell::WaylandSurface;
-use sctk::shell::wlr_layer::{LayerSurface, LayerSurfaceConfigure, SurfaceKind};
+use sctk::shell::wlr_layer::{
+    KeyboardInteractivity, LayerShell, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
+};
 use sctk::shell::xdg::XdgPositioner;
 use sctk::subcompositor::SubcompositorState;
 use smithay::backend::egl::EGLContext;
@@ -544,6 +547,10 @@ impl PanelSpace {
         self.is_background_dirty = true;
         self.logical_layer_start_overlap = 0;
         self.logical_layer_end_overlap = 0;
+
+        if self.dimensions.w <= 0 || self.dimensions.h <= 0 {
+            return;
+        }
         for rect in self.layer_overlaps.values() {
             if self.config.is_horizontal() {
                 if rect.loc.x + rect.size.w < self.dimensions.w / 2 {
@@ -1171,6 +1178,193 @@ impl PanelSpace {
         (w, h).into()
     }
 
+    pub(crate) fn create_layer_surface(
+        &mut self,
+        config: &CosmicPanelConfig,
+        c_output: Option<&c_wl_output::WlOutput>,
+        compositor_state: &CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
+        layer_state: &mut LayerShell,
+        qh: &QueueHandle<GlobalState>,
+    ) -> anyhow::Result<()> {
+        let dimensions: Size<i32, Logical> =
+            self.constrain_dim((0, 0).into(), Some(self.gap() as u32));
+
+        let layer = match config.layer() {
+            zwlr_layer_shell_v1::Layer::Background => Layer::Background,
+            zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
+            zwlr_layer_shell_v1::Layer::Top => Layer::Top,
+            zwlr_layer_shell_v1::Layer::Overlay => Layer::Overlay,
+            _ => bail!("Invalid layer"),
+        };
+
+        let surface = compositor_state.create_surface(qh);
+        let client_surface = layer_state.create_layer_surface(
+            qh,
+            surface,
+            layer,
+            Some(config.name.clone()),
+            c_output,
+        );
+        client_surface.set_keyboard_interactivity(match config.keyboard_interactivity {
+            xdg_shell_wrapper_config::KeyboardInteractivity::None => KeyboardInteractivity::None,
+            xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
+                KeyboardInteractivity::Exclusive
+            },
+            xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
+                KeyboardInteractivity::OnDemand
+            },
+        });
+        client_surface.set_size(dimensions.w.try_into().unwrap(), dimensions.h.try_into().unwrap());
+
+        client_surface.set_anchor(config.anchor.into());
+
+        let input_region = Region::new(compositor_state)?;
+        client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
+        self.input_region.replace(input_region);
+        self.compositor_state = Some(compositor_state.clone());
+
+        let fractional_scale =
+            fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
+
+        let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), qh));
+
+        client_surface.commit();
+        if let Some(notify) = self.overlap_notify.as_ref() {
+            let notification = notify.notify.notify_on_overlap(
+                match client_surface.kind() {
+                    SurfaceKind::Wlr(zwlr_layer_surface_v1) => zwlr_layer_surface_v1,
+                    _ => unimplemented!(),
+                },
+                qh,
+                OverlapNotificationV1 { surface: client_surface.wl_surface().clone() },
+            );
+            self.notification_subscription = Some(notification);
+        }
+
+        if let Some(blur_manager) = self.blur_manager.as_ref() {
+            self.blur_surface =
+                Some(blur_manager.get_background_effect(client_surface.wl_surface(), qh, ()));
+            self.corner_radius_wlr =
+                self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
+                    m.get_corner_radius_layer(
+                        match client_surface.kind() {
+                            SurfaceKind::Wlr(w) => w,
+                            _ => unimplemented!(),
+                        },
+                        qh,
+                        (),
+                    )
+                });
+        }
+        self.layer = Some(client_surface);
+        self.layer_fractional_scale = fractional_scale;
+        self.layer_viewport = viewport;
+        self.dimensions = dimensions;
+        self.has_frame = true;
+        self.space_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
+            first: true,
+            width: dimensions.w,
+            height: dimensions.h,
+        })));
+        self.is_dirty = true;
+        self.needs_layout = true;
+        Ok(())
+    }
+
+    pub(crate) fn recreate_layer_surface(
+        &mut self,
+        config: &CosmicPanelConfig,
+        compositor_state: &CompositorState,
+        fractional_scale_manager: Option<&FractionalScalingManager>,
+        viewport: Option<&ViewporterState>,
+        layer_state: &mut LayerShell,
+        qh: &QueueHandle<GlobalState>,
+    ) -> anyhow::Result<()> {
+        info!("Recreating the layer surface of panel {} for anchor {:?}", self.id(), config.anchor);
+
+        self.close_popups(|_| false);
+        for mut subsurface in std::mem::take(&mut self.subsurfaces) {
+            if let Some(fractional_scale) = subsurface.subsurface.fractional_scale.take() {
+                fractional_scale.destroy();
+            }
+            if let Some(viewport) = subsurface.subsurface.viewport.take() {
+                viewport.destroy();
+            }
+            subsurface.subsurface.c_subsurface.destroy();
+            subsurface.subsurface.c_surface.destroy();
+        }
+
+        // objects referencing the previous layer surface
+        self.notification_subscription = None;
+        self.blur_surface = None;
+        self.corner_radius_wlr = None;
+        self.layer_fractional_scale = None;
+        self.layer_viewport = None;
+        self.input_region = None;
+
+        // XXX implicitly drops egl_surface first to avoid segfault
+        self.egl_surface = None;
+        let previous_surface = self.layer.take().map(|layer| layer.wl_surface().clone());
+        self.damage_tracked_renderer = None;
+
+        if let Some(previous_surface) = previous_surface {
+            self.shared
+                .c_focused_surface
+                .borrow_mut()
+                .retain(|(surface, _, _)| *surface != previous_surface);
+            self.shared
+                .c_hovered_surface
+                .borrow_mut()
+                .retain(|(surface, _, _)| *surface != previous_surface);
+        }
+
+        let mut config = config.clone();
+        if self.maximized && !config.keep_style_on_maximize {
+            config.maximize();
+        }
+
+        // state which is relative to the orientation of the panel or to the
+        // size of its layer surface
+        self.dimensions = Default::default();
+        self.actual_size = Default::default();
+        self.container_length = 0;
+        self.suggested_length = None;
+        self.pending_dimensions = None;
+        self.animate_state = None;
+        self.minimize_applet_rect = Default::default();
+
+        self.layer_overlaps.clear();
+        self.toplevel_overlaps.clear();
+        self.logical_layer_start_overlap = 0;
+        self.logical_layer_end_overlap = 0;
+        self.transitioning = false;
+        self.visibility =
+            if config.autohide_enabled() { Visibility::Hidden } else { Visibility::Visible };
+        self.anchor_gap = 0;
+        self.is_background_dirty = true;
+
+        if let Some(bg) = self.background_element.take() {
+            self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
+        }
+
+        self.config = config.clone();
+
+        let c_output = self.output.as_ref().map(|(o, _, _)| o.clone());
+        self.create_layer_surface(
+            &config,
+            c_output.as_ref(),
+            compositor_state,
+            fractional_scale_manager,
+            viewport,
+            layer_state,
+            qh,
+        )?;
+
+        Ok(())
+    }
+
     fn apply_animation_state(&mut self) {
         if let Some(animation_state) = self.animate_state.as_mut() {
             self.damage_tracked_renderer = Some(OutputDamageTracker::new(
@@ -1745,13 +1939,8 @@ impl PanelSpace {
     ) {
         let bg_color =
             bg_color.unwrap_or_else(|| self.colors.bg_color(config.opacity, self.maximized));
-
-        // can't animate anchor changes
         if config.anchor() != self.config.anchor() {
-            panic!(
-                "Can't apply anchor changes when orientation changes. Requires re-creation of the \
-                 panel."
-            );
+            panic!("Applying an anchor change without recreating the layer surface");
         }
 
         let mut needs_commit = false;
@@ -1965,11 +2154,6 @@ impl PanelSpace {
     pub fn applets_use_settings_protocol(&self) -> bool {
         [&self.clients_left, &self.clients_center, &self.clients_right].into_iter().all(|clients| {
             clients.lock().unwrap().iter().all(|client| {
-                if !(client.client.is_none()
-                    || client.applet_settings.as_ref().is_some_and(AppletSettings::is_alive))
-                {
-                    dbg!(&client.name);
-                }
                 client.client.is_none()
                     || client.applet_settings.as_ref().is_some_and(AppletSettings::is_alive)
             })
