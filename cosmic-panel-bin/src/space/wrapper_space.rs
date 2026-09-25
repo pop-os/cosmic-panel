@@ -1,16 +1,16 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::iced::elements::PopupMappedInternal;
 use crate::iced::elements::target::SpaceTarget;
-use crate::xdg_shell_wrapper::client::handlers::overlap::{OverlapNotificationV1, OverlapNotifyV1};
+use crate::xdg_shell_wrapper::client::handlers::overlap::OverlapNotifyV1;
 use crate::xdg_shell_wrapper::client_state::ClientFocus;
 use crate::xdg_shell_wrapper::server_state::ServerPointerFocus;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::{
-    PanelPopup, SpaceEvent, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace,
+    PanelPopup, Visibility, WrapperPopup, WrapperPopupState, WrapperSpace,
 };
 use crate::xdg_shell_wrapper::wp_fractional_scaling::FractionalScalingManager;
 use crate::xdg_shell_wrapper::wp_security_context::SecurityContextManager;
@@ -28,9 +28,7 @@ use sctk::reexports::client::protocol::{wl_output as c_wl_output, wl_surface as 
 use sctk::reexports::client::{Connection, Proxy, QueueHandle};
 use sctk::seat::pointer::{BTN_LEFT, PointerEvent};
 use sctk::shell::WaylandSurface;
-use sctk::shell::wlr_layer::{
-    KeyboardInteractivity, Layer, LayerShell, LayerSurface, LayerSurfaceConfigure, SurfaceKind,
-};
+use sctk::shell::wlr_layer::{LayerShell, LayerSurface, LayerSurfaceConfigure};
 use sctk::shell::xdg::popup;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -40,13 +38,12 @@ use smithay::desktop::{PopupManager, Space, Window};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as s_WlSurface;
 use smithay::reexports::wayland_server::{self, DisplayHandle, Resource};
-use smithay::utils::{Logical, Rectangle, Size};
+use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::compositor::{SurfaceAttributes, with_states};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState};
 use tracing::{error, info};
-use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use crate::iced::elements::{CosmicMappedInternal, PanelSpaceElement};
 use crate::space::panel_space::AppletAutoClickAnchor;
@@ -1095,95 +1092,20 @@ impl WrapperSpace for PanelSpace {
         } else if !matches!(self.config.output, CosmicPanelOuput::Active) {
             bail!("output does not match config");
         }
-        let dimensions: Size<i32, Logical> =
-            self.constrain_dim((0, 0).into(), Some(self.gap() as u32));
 
-        let layer = match self.config().layer() {
-            zwlr_layer_shell_v1::Layer::Background => Layer::Background,
-            zwlr_layer_shell_v1::Layer::Bottom => Layer::Bottom,
-            zwlr_layer_shell_v1::Layer::Top => Layer::Top,
-            zwlr_layer_shell_v1::Layer::Overlay => Layer::Overlay,
-            _ => bail!("Invalid layer"),
-        };
-
-        let surface = compositor_state.create_surface(qh);
-        let client_surface = layer_state.create_layer_surface(
-            qh,
-            surface,
-            layer,
-            Some(self.config.name.clone()),
+        let config = self.config.clone();
+        self.create_layer_surface(
+            &config,
             c_output.as_ref(),
-        );
-        // client_surface.set_margin(margin.top, margin.right, margin.bottom,
-        // margin.left);
-        client_surface.set_keyboard_interactivity(match self.config.keyboard_interactivity {
-            xdg_shell_wrapper_config::KeyboardInteractivity::None => KeyboardInteractivity::None,
-            xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
-                KeyboardInteractivity::Exclusive
-            },
-            xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
-                KeyboardInteractivity::OnDemand
-            },
-        });
-        client_surface.set_size(dimensions.w.try_into().unwrap(), dimensions.h.try_into().unwrap());
-
-        client_surface.set_anchor(self.config.anchor.into());
-
-        let input_region = Region::new(compositor_state)?;
-        client_surface.wl_surface().set_input_region(Some(input_region.wl_region()));
-        self.input_region.replace(input_region);
-        self.compositor_state = Some(compositor_state.clone());
-
-        let fractional_scale =
-            fractional_scale_manager.map(|f| f.fractional_scaling(client_surface.wl_surface(), qh));
-
-        let viewport = viewport.map(|v| v.get_viewport(client_surface.wl_surface(), qh));
-
-        client_surface.commit();
-        if let Some(notify) = self.overlap_notify.as_ref() {
-            let notification = notify.notify.notify_on_overlap(
-                match client_surface.kind() {
-                    sctk::shell::wlr_layer::SurfaceKind::Wlr(zwlr_layer_surface_v1) => {
-                        zwlr_layer_surface_v1
-                    },
-                    _ => unimplemented!(),
-                },
-                qh,
-                OverlapNotificationV1 { surface: client_surface.wl_surface().clone() },
-            );
-            self.notification_subscription = Some(notification);
-        }
-
-        let next_render_event = Rc::new(Cell::new(Some(SpaceEvent::WaitConfigure {
-            first: true,
-            width: dimensions.w,
-            height: dimensions.h,
-        })));
+            compositor_state,
+            fractional_scale_manager,
+            viewport,
+            layer_state,
+            qh,
+        )?;
 
         self.output =
             izip!(c_output.into_iter(), s_output.into_iter(), output_info.as_ref().cloned()).next();
-        if let Some(blur_manager) = self.blur_manager.as_ref() {
-            self.blur_surface =
-                Some(blur_manager.get_background_effect(client_surface.wl_surface(), &qh, ()));
-            self.corner_radius_wlr =
-                self.corner_radius_manager.as_ref().filter(|m| m.version() >= 2).map(|m| {
-                    m.get_corner_radius_layer(
-                        match client_surface.kind() {
-                            SurfaceKind::Wlr(w) => w,
-                            _ => unimplemented!(),
-                        },
-                        &qh,
-                        (),
-                    )
-                });
-        }
-        self.layer = Some(client_surface);
-        self.layer_fractional_scale = fractional_scale;
-        self.layer_viewport = viewport;
-        self.dimensions = dimensions;
-        self.space_event = next_render_event;
-        self.is_dirty = true;
-        self.needs_layout = true;
         self.left_overflow_button_id = id::Id::new(format!("left_overflow_button_{}", self.id()));
         self.right_overflow_button_id = id::Id::new(format!("right_overflow_button_{}", self.id()));
         self.center_overflow_button_id =
