@@ -384,6 +384,14 @@ impl SpaceContainer {
                 _ => None,
             };
 
+            let background_colors = match entry.background {
+                CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Color(_) => {
+                    self.cur_theme()
+                },
+                CosmicPanelBackground::Dark => self.dark_theme.clone(),
+                CosmicPanelBackground::Light => self.light_theme.clone(),
+            };
+
             // Applets that were added, removed or moved are started, stopped
             // and moved instead of recreating the panel, so that the applets
             // that are still configured keep running.
@@ -420,9 +428,16 @@ impl SpaceContainer {
                     ));
                 }
 
+                if space.config.background != entry.background {
+                    let mut colors = PanelColors::new(background_colors.clone())
+                        .with_color_override(entry.bg_color_override());
+                    colors.blur_enabled = space.colors.blur_enabled;
+                    space.set_theme(colors);
+                }
+
                 space.update_config(entry.clone(), bg_color, true);
 
-                if anchor_changed {
+                if applet_settings_changed {
                     space.update_applet_settings();
                 }
             }
