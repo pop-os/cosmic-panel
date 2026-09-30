@@ -1591,7 +1591,8 @@ impl PanelSpace {
         space: &mut Space<CosmicMappedInternal>,
         overflow_space: &mut Space<PopupMappedInternal>,
         suggested_size: u32,
-    ) -> u32 {
+    ) -> (u32, bool) {
+        let mut moved = false;
         let overflow_elements = overflow_space.elements().cloned().collect_vec();
         for w in overflow_elements {
             if extra_space < suggested_size {
@@ -1608,6 +1609,13 @@ impl PanelSpace {
                 {
                     size = s;
                 }
+
+                if let Some(bounds) = toplevel
+                    .with_committed_state(|s| s.as_ref().and_then(|s| s.bounds))
+                    .filter(|bounds| bounds.w > 0 && bounds.h > 0)
+                {
+                    size = bounds;
+                }
             }
 
             let applet_len = if is_horizontal { size.w as u32 } else { size.h as u32 };
@@ -1621,6 +1629,7 @@ impl PanelSpace {
                 overflow_space.refresh();
                 space.map_element(CosmicMappedInternal::Window(w.clone()), (0, 0), false);
                 space.refresh();
+                moved = true;
                 if let Some(t) = w.toplevel() {
                     t.with_pending_state(|s| {
                         s.size = None;
@@ -1631,7 +1640,7 @@ impl PanelSpace {
             }
         }
 
-        extra_space
+        (extra_space, moved)
     }
 
     fn relax_overflow_left(
@@ -1645,13 +1654,17 @@ impl PanelSpace {
         let suggested_size = self.config.size.get_applet_icon_size(true)
             + self.config.size.get_applet_padding(true) as u32 * 2;
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            Self::move_from_overflow(
+            let (_, moved) = Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
                 &mut self.space,
                 &mut self.overflow_left,
                 suggested_size,
             );
+            if moved {
+                self.is_dirty = true;
+                self.needs_layout = true;
+            }
             if self.overflow_left.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
                 && let Some(overflow_button) = left_overflow_button.take()
             {
@@ -1674,13 +1687,17 @@ impl PanelSpace {
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             let suggested_size = self.config.size.get_applet_icon_size(true)
                 + self.config.size.get_applet_padding(true) as u32 * 2;
-            Self::move_from_overflow(
+            let (_, moved) = Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
                 &mut self.space,
                 &mut self.overflow_center,
                 suggested_size,
             );
+            if moved {
+                self.is_dirty = true;
+                self.needs_layout = true;
+            }
             if self.overflow_center.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
                 && let Some(overflow_button) = center_overflow_button.take()
             {
@@ -1756,13 +1773,17 @@ impl PanelSpace {
         if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             let suggested_size = self.config.size.get_applet_icon_size(true)
                 + self.config.size.get_applet_padding(true) as u32 * 2;
-            Self::move_from_overflow(
+            let (_, moved) = Self::move_from_overflow(
                 extra_space,
                 self.config.is_horizontal(),
                 &mut self.space,
                 &mut self.overflow_right,
                 suggested_size,
             );
+            if moved {
+                self.is_dirty = true;
+                self.needs_layout = true;
+            }
             if self.overflow_right.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
                 && let Some(overflow_button) = right_overflow_button.take()
             {
