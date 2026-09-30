@@ -3,13 +3,11 @@ use std::ffi::OsString;
 use std::os::fd::OwnedFd;
 use std::os::unix::prelude::AsRawFd;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{fs, mem, panic};
 
 use crate::iced::elements::PopupMappedInternal;
 use crate::iced::elements::target::SpaceTarget;
-use crate::space::panel_space::ClientShrinkSize;
 use crate::space_container::SpaceContainer;
 use crate::xdg_shell_wrapper::client::handlers::overlap::{OverlapNotificationV1, OverlapNotifyV1};
 use crate::xdg_shell_wrapper::client_state::ClientFocus;
@@ -425,38 +423,15 @@ impl WrapperSpace for PanelSpace {
 
             let mut desktop_ids: Vec<_> = left_guard
                 .iter_mut()
-                .map(|c| (c, self.clients_left.clone(), Side::WingStart))
-                .chain(
-                    center_guard.iter_mut().map(|c| (c, self.clients_center.clone(), Side::Center)),
-                )
-                .chain(
-                    right_guard.iter_mut().map(|c| (c, self.clients_right.clone(), Side::WingEnd)),
-                )
+                .map(|c| (c, Side::WingStart))
+                .chain(center_guard.iter_mut().map(|c| (c, Side::Center)))
+                .chain(right_guard.iter_mut().map(|c| (c, Side::WingEnd)))
                 .collect();
 
-            let active_output =
-                self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default();
-
-            let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
-            let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
-            let config_spacing = ron::ser::to_string(&self.config.spacing).unwrap_or_default();
-            let config_padding_overlap =
-                ron::ser::to_string(&self.config.padding_overlap()).unwrap_or_default();
-            let config_name = self.config.name.clone();
-            let env_vars = vec![
-                ("COSMIC_PANEL_NAME".to_string(), config_name),
-                ("COSMIC_PANEL_OUTPUT".to_string(), active_output.clone()),
-                ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
-                ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
-                ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
-                ("COSMIC_PANEL_PADDING_OVERLAP".to_string(), config_padding_overlap),
-            ];
             info!("{:?}", &desktop_ids);
 
             let mut max_minimize_priority: u32 = 0;
-
-            let mut panel_clients: Vec<(&mut PanelClient, Arc<Mutex<Vec<PanelClient>>>, Side)> =
-                Vec::new();
+            let mut panel_clients: Vec<(&mut PanelClient, Side)> = Vec::new();
             let locales = freedesktop_desktop_entry::get_languages_from_env();
 
             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
@@ -467,29 +442,14 @@ impl WrapperSpace for PanelSpace {
                         Some(OsString::from(name).as_os_str()) == path.file_stem()
                     })
                 {
-                    let (panel_client, my_list, panel_side) = desktop_ids.remove(position);
+                    let (panel_client, panel_side) = desktop_ids.remove(position);
                     info!(panel_client.name);
 
                     if let Ok(bytes) = fs::read_to_string(&path)
                         && let Ok(entry) = DesktopEntry::from_str(&path, &bytes, Some(&locales))
-                        && let Some(exec) = entry.exec()
+                        && entry.exec().is_some()
                     {
-                        panel_client.path = Some(path.clone());
-                        panel_client.exec = Some(exec.to_string());
-                        panel_client.requests_wayland_display =
-                            Some(entry.desktop_entry("X-HostWaylandDisplay").is_some());
-                        panel_client.shrink_min_size = entry
-                            .desktop_entry("X-OverflowMinSize")
-                            .and_then(|x| x.parse::<u32>().ok())
-                            .map(ClientShrinkSize::AppletUnit);
-                        panel_client.shrink_priority = entry
-                            .desktop_entry("X-OverflowPriority")
-                            .and_then(|x| x.parse::<u32>().ok());
-                        panel_client.padding_shrinkable = entry
-                            .desktop_entry("X-CosmicShrinkable")
-                            .map(|x| x == "true")
-                            .unwrap_or_default();
-
+                        panel_client.apply_desktop_entry(path.clone(), &entry);
                         panel_client.minimize_priority = if let Some(x_minimize_entry) =
                             entry.desktop_entry("X-MinimizeApplet")
                         {
@@ -504,30 +464,14 @@ impl WrapperSpace for PanelSpace {
                             None
                         };
 
-                        panel_client.auto_popup_hover_press = entry
-                            .desktop_entry("X-CosmicHoverPopup")
-                            .map(|v| v.parse::<AppletAutoClickAnchor>().unwrap_or_default());
-
-                        panel_client.is_notification_applet =
-                            Some(entry.desktop_entry("X-NotificationsApplet").is_some());
-
-                        panel_clients.push((panel_client, my_list, panel_side));
+                        panel_clients.push((panel_client, panel_side));
                     }
                 }
             }
 
             // only allow 1 per panel
             let mut has_minimize = false;
-            for (panel_client, my_list, panel_side) in panel_clients {
-                if panel_client.exec.is_none() {
-                    continue;
-                }
-
-                let Some(socket) = panel_client.stream.take() else {
-                    error!("Failed to get socket for {}", &panel_client.name);
-                    continue;
-                };
-
+            for (panel_client, panel_side) in panel_clients {
                 // Ensure there is only one applet per panel with minimize
                 panel_client.minimize_priority = if panel_client
                     .minimize_priority
@@ -539,266 +483,12 @@ impl WrapperSpace for PanelSpace {
                     None
                 };
 
-                let is_notification_applet = panel_client.is_notification_applet.unwrap_or(false);
-                let requests_wayland_display =
-                    panel_client.requests_wayland_display.unwrap_or(false);
-
-                let mut exec_iter = Shlex::new(panel_client.exec.as_deref().unwrap());
-                let exec = exec_iter.next().expect("exec parameter must contain at least on word");
-
-                let mut args = Vec::new();
-                for arg in exec_iter {
-                    trace!("child argument: {}", &arg);
-                    args.push(arg);
-                }
-                let mut fds = Vec::with_capacity(2);
-                let mut applet_env = Vec::new();
-                applet_env.push((
-                    "X_MINIMIZE_APPLET".to_string(),
-                    panel_client.minimize_priority.is_some().to_string(),
-                ));
-                let config_size =
-                    ron::ser::to_string(&self.config.get_effective_applet_size(panel_side))
-                        .unwrap_or_default();
-                applet_env.push(("COSMIC_PANEL_SIZE".to_string(), config_size));
-                if requests_wayland_display
-                    && let Some(security_context_manager) = security_context_manager.as_ref()
-                {
-                    match security_context_manager.create_listener::<SpaceContainer>(qh) {
-                        Ok(security_context) => {
-                            security_context.set_sandbox_engine(NAME.to_string());
-                            security_context.set_app_id(panel_client.name.clone());
-                            security_context.set_instance_id(format!(
-                                "{}.{}",
-                                panel_client.name, active_output
-                            ));
-                            security_context.commit();
-
-                            let data = security_context.data::<SecurityContext>().unwrap();
-                            let privileged_socket = data.conn.lock().unwrap().take().unwrap();
-                            applet_env.push((
-                                "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
-                                privileged_socket.0.as_raw_fd().to_string(),
-                            ));
-
-                            fds.push(privileged_socket.0.into());
-                            panel_client.security_ctx = Some(security_context);
-                        },
-                        Err(why) => {
-                            error!(?why, "Failed to create a listener");
-                        },
-                    }
-                }
-
-                for (key, val) in &env_vars {
-                    if !requests_wayland_display && *key == "WAYLAND_DISPLAY" {
-                        continue;
-                    }
-                    applet_env.push((key.clone(), val.clone()));
-                }
-                applet_env.push(("WAYLAND_SOCKET".to_string(), socket.as_raw_fd().to_string()));
-
-                fds.push(socket.into());
-                let display_handle = display.clone();
-                let applet_tx_clone = self.shared.applet_tx.clone();
-                let id_clone = panel_client.name.clone();
-                let id_clone_info = panel_client.name.clone();
-                let id_clone_err = panel_client.name.clone();
-                let Some(client) = panel_client.client.as_ref() else {
-                    panic!("Failed to get client");
-                };
-                let client_id = client.id();
-                let client_id_info = client.id();
-                let client_id_err = client.id();
-                let security_context_manager_clone = security_context_manager.clone();
-                let qh_clone = qh.clone();
-
-                // arg forwarding WAYLAND_SOCKET is required
-                // env must be passed in args
-                let is_flatpak = panel_client.is_flatpak();
-
-                if is_flatpak {
-                    args.insert(
-                        args.len().saturating_sub(2),
-                        "--socket=inherit-wayland-socket".to_string(),
-                    );
-                    args.insert(args.len().saturating_sub(2), "--die-with-parent".to_string());
-                    for (k, v) in &applet_env {
-                        args.insert(args.len().saturating_sub(2), format!("--env={k}={v}"))
-                    }
-                }
-                trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
-
-                info!("Starting: {}", exec);
-                let active_output = active_output.clone();
-
-                let mut process = Process::new()
-                    .with_executable(&exec)
-                    .with_args(args.clone())
-                    .with_on_stderr(move |_, _, out| {
-                        // TODO why is span not included in logs to journald
-                        let id_clone = id_clone_err.clone();
-                        let client_id = client_id_err.clone();
-
-                        async move {
-                            error_span!("stderr", client = ?client_id).in_scope(|| {
-                                error!("{}: {}", id_clone, out);
-                            });
-                        }
-                    })
-                    .with_on_stdout(move |_, _, out| {
-                        let id_clone = id_clone_info.clone();
-                        let client_id = client_id_info.clone();
-                        // TODO why is span not included in logs to journald
-                        async move {
-                            info_span!("stdout", client = ?client_id).in_scope(|| {
-                                info!("{}: {}", id_clone, out);
-                            });
-                        }
-                    })
-                    .with_on_exit(move |mut pman, key, err_code, is_restarting| {
-                        let client_id_clone = client_id.clone();
-                        let id_clone = id_clone.clone();
-
-                        if let Some(err_code) = err_code {
-                            error_span!("stderr", client = ?client_id).in_scope(|| {
-                                error!("{}: exited with code {}", id_clone, err_code);
-                            });
-                        } else {
-                            info_span!("stderr", client = ?client_id).in_scope(|| {
-                                error!("{}: exited without error", id_clone);
-                            });
-                        }
-                        let my_list = my_list.clone();
-                        let mut display_handle = display_handle.clone();
-                        let applet_tx_clone = applet_tx_clone.clone();
-                        let (c, client_socket) = get_client_sock(&mut display_handle);
-                        let raw_client_socket = client_socket.as_raw_fd();
-                        let mut applet_env = Vec::with_capacity(1);
-                        let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
-                        let should_restart = is_restarting && err_code.is_some();
-                        let security_context = if requests_wayland_display && should_restart {
-                            security_context_manager_clone.as_ref().and_then(
-                                |security_context_manager| {
-                                    let active_output = active_output.clone();
-
-                                    security_context_manager
-                                        .create_listener::<SpaceContainer>(&qh_clone)
-                                        .ok()
-                                        .inspect(|security_context| {
-                                            security_context.set_sandbox_engine(NAME.to_string());
-                                            security_context.set_app_id(id_clone.clone());
-                                            security_context.set_instance_id(format!(
-                                                "{}.{}",
-                                                id_clone, active_output
-                                            ));
-                                            security_context.commit();
-
-                                            let data =
-                                                security_context.data::<SecurityContext>().unwrap();
-                                            let privileged_socket =
-                                                data.conn.lock().unwrap().take().unwrap();
-                                            applet_env.push((
-                                                "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
-                                                privileged_socket.0.as_raw_fd().to_string(),
-                                            ));
-                                            fds.push(privileged_socket.0.into());
-                                        })
-                                },
-                            )
-                        } else {
-                            None
-                        };
-
-                        let args = args.clone();
-                        async move {
-                            if !should_restart {
-                                _ = pman.stop_process(key).await;
-                                return;
-                            }
-
-                            if is_notification_applet {
-                                let (tx, rx) = oneshot::channel();
-                                _ = applet_tx_clone
-                                    .send(AppletMsg::NeedNewNotificationFd(tx))
-                                    .await;
-                                let Ok(fd) = rx.await else {
-                                    error!("Failed to get new fd");
-                                    return;
-                                };
-                                if let Err(err) = pman
-                                    .update_process_env(
-                                        &key,
-                                        vec![(
-                                            "COSMIC_NOTIFICATIONS".to_string(),
-                                            fd.as_raw_fd().to_string(),
-                                        )],
-                                    )
-                                    .await
-                                {
-                                    error!("Failed to update process env: {}", err);
-                                    return;
-                                }
-                                fds.push(fd);
-                                fds.push(client_socket.into());
-                                if let Err(err) = pman.update_process_fds(&key, move || fds).await {
-                                    error!("Failed to update process fds: {}", err);
-                                    return;
-                                }
-                            } else {
-                                fds.push(client_socket.into());
-                                if let Err(err) = pman.update_process_fds(&key, move || fds).await {
-                                    error!("Failed to update process fds: {}", err);
-                                    return;
-                                }
-                            }
-
-                            if let Some(old_client) = my_list
-                                .lock()
-                                .unwrap()
-                                .iter_mut()
-                                .find(|PanelClient { name, .. }| name == &id_clone)
-                            {
-                                old_client.client = Some(c);
-                                old_client.security_ctx = security_context;
-                                info!("Replaced the client socket");
-                            } else {
-                                error!("Failed to find matching client... {}", &id_clone)
-                            }
-                            let _ = applet_tx_clone
-                                .send(AppletMsg::ClientSocketPair(client_id_clone))
-                                .await;
-
-                            applet_env.retain(|(k, _)| k.as_str() != "WAYLAND_SOCKET");
-                            applet_env.push((
-                                "WAYLAND_SOCKET".to_string(),
-                                raw_client_socket.to_string(),
-                            ));
-
-                            let mut args = args.clone();
-                            if is_flatpak {
-                                args.retain(|arg| !arg.contains("WAYLAND_SOCKET"));
-                                args.insert(
-                                    args.len().saturating_sub(2),
-                                    format!("--env=WAYLAND_SOCKET={}", raw_client_socket),
-                                );
-                            }
-                            let _ = pman.update_process_env(&key, applet_env.clone()).await;
-                            let _ = pman.update_process_args(&key, args).await;
-                        }
-                    });
-
-                let msg = if is_notification_applet {
-                    AppletMsg::NewNotificationsProcess(self.id(), process, applet_env, fds)
-                } else {
-                    process = process.with_fds(move || fds);
-
-                    AppletMsg::NewProcess(self.id(), process.with_env(applet_env))
-                };
-                match self.shared.applet_tx.try_send(msg) {
-                    Ok(_) => {},
-                    Err(e) => error!("{e}"),
-                };
+                self.spawn_applet_process(
+                    panel_client,
+                    panel_side,
+                    qh,
+                    security_context_manager.clone(),
+                );
             }
 
             info!("Done spawning applets");
@@ -1840,5 +1530,320 @@ impl WrapperSpace for PanelSpace {
         _new_transform: cctk::sctk::reexports::client::protocol::wl_output::Transform,
     ) {
         // TODO handle the preferred transform
+    }
+}
+
+impl PanelSpace {
+    fn spawn_applet_process(
+        &self,
+        panel_client: &mut PanelClient,
+        panel_side: Side,
+        qh: &QueueHandle<GlobalState>,
+        security_context_manager: Option<SecurityContextManager>,
+    ) {
+        if panel_client.exec.is_none() {
+            return;
+        }
+
+        let Some(socket) = panel_client.stream.take() else {
+            error!("Failed to get socket for {}", &panel_client.name);
+            return;
+        };
+
+        let is_notification_applet = panel_client.is_notification_applet.unwrap_or(false);
+        let requests_wayland_display = panel_client.requests_wayland_display.unwrap_or(false);
+
+        let mut exec_iter = Shlex::new(panel_client.exec.as_deref().unwrap());
+        let exec = exec_iter.next().expect("exec parameter must contain at least on word");
+
+        let mut args = Vec::new();
+        for arg in exec_iter {
+            trace!("child argument: {}", &arg);
+            args.push(arg);
+        }
+        let mut fds = Vec::with_capacity(2);
+        let mut applet_env = Vec::new();
+        applet_env.push((
+            "X_MINIMIZE_APPLET".to_string(),
+            panel_client.minimize_priority.is_some().to_string(),
+        ));
+        let config_size = ron::ser::to_string(&self.config.get_effective_applet_size(panel_side))
+            .unwrap_or_default();
+        applet_env.push(("COSMIC_PANEL_SIZE".to_string(), config_size));
+
+        let active_output = self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default();
+        if requests_wayland_display
+            && let Some(security_context_manager) = security_context_manager.as_ref()
+        {
+            match security_context_manager.create_listener::<SpaceContainer>(qh) {
+                Ok(security_context) => {
+                    security_context.set_sandbox_engine(NAME.to_string());
+                    security_context.set_app_id(panel_client.name.clone());
+                    security_context
+                        .set_instance_id(format!("{}.{}", panel_client.name, active_output));
+                    security_context.commit();
+
+                    let data = security_context.data::<SecurityContext>().unwrap();
+                    let privileged_socket = data.conn.lock().unwrap().take().unwrap();
+                    applet_env.push((
+                        "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
+                        privileged_socket.0.as_raw_fd().to_string(),
+                    ));
+
+                    fds.push(privileged_socket.0.into());
+                    panel_client.security_ctx = Some(security_context);
+                },
+                Err(why) => {
+                    error!(?why, "Failed to create a listener");
+                },
+            }
+        }
+
+        let config_anchor = ron::ser::to_string(&self.config.anchor).unwrap_or_default();
+        let config_bg = ron::ser::to_string(&self.config.background).unwrap_or_default();
+        let config_spacing = ron::ser::to_string(&self.config.spacing).unwrap_or_default();
+        let config_padding_overlap =
+            ron::ser::to_string(&self.config.padding_overlap()).unwrap_or_default();
+        applet_env.extend([
+            ("COSMIC_PANEL_NAME".to_string(), self.config.name.clone()),
+            ("COSMIC_PANEL_OUTPUT".to_string(), active_output.clone()),
+            ("COSMIC_PANEL_SPACING".to_string(), config_spacing),
+            ("COSMIC_PANEL_ANCHOR".to_string(), config_anchor),
+            ("COSMIC_PANEL_BACKGROUND".to_string(), config_bg),
+            ("COSMIC_PANEL_PADDING_OVERLAP".to_string(), config_padding_overlap),
+        ]);
+        applet_env.push(("WAYLAND_SOCKET".to_string(), socket.as_raw_fd().to_string()));
+
+        fds.push(socket.into());
+        let display_handle = self.s_display.clone().unwrap();
+        let applet_tx_clone = self.shared.applet_tx.clone();
+        let id_clone = panel_client.name.clone();
+        let id_clone_info = panel_client.name.clone();
+        let id_clone_err = panel_client.name.clone();
+        let Some(client) = panel_client.client.as_ref() else {
+            panic!("Failed to get client");
+        };
+        let client_id = client.id();
+        let client_id_info = client.id();
+        let client_id_err = client.id();
+        let security_context_manager_clone = security_context_manager.clone();
+        let qh_clone = qh.clone();
+        // the applet may have been moved to another side by the time it
+        // restarts
+        let clients =
+            [self.clients_left.clone(), self.clients_center.clone(), self.clients_right.clone()];
+
+        // arg forwarding WAYLAND_SOCKET is required
+        // env must be passed in args
+        let is_flatpak = panel_client.is_flatpak();
+
+        if is_flatpak {
+            args.insert(
+                args.len().saturating_sub(2),
+                "--socket=inherit-wayland-socket".to_string(),
+            );
+            args.insert(args.len().saturating_sub(2), "--die-with-parent".to_string());
+            for (k, v) in &applet_env {
+                args.insert(args.len().saturating_sub(2), format!("--env={k}={v}"))
+            }
+        }
+        trace!("child: {}, {:?} {:?}", &exec, args, applet_env);
+
+        info!("Starting: {}", exec);
+
+        let mut process = Process::new()
+            .with_executable(&exec)
+            .with_args(args.clone())
+            .with_on_stderr(move |_, _, out| {
+                // TODO why is span not included in logs to journald
+                let id_clone = id_clone_err.clone();
+                let client_id = client_id_err.clone();
+
+                async move {
+                    error_span!("stderr", client = ?client_id).in_scope(|| {
+                        error!("{}: {}", id_clone, out);
+                    });
+                }
+            })
+            .with_on_stdout(move |_, _, out| {
+                let id_clone = id_clone_info.clone();
+                let client_id = client_id_info.clone();
+                // TODO why is span not included in logs to journald
+                async move {
+                    info_span!("stdout", client = ?client_id).in_scope(|| {
+                        info!("{}: {}", id_clone, out);
+                    });
+                }
+            })
+            .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+                let client_id_clone = client_id.clone();
+                let id_clone = id_clone.clone();
+
+                if let Some(err_code) = err_code {
+                    error_span!("stderr", client = ?client_id).in_scope(|| {
+                        error!("{}: exited with code {}", id_clone, err_code);
+                    });
+                } else {
+                    info_span!("stderr", client = ?client_id).in_scope(|| {
+                        error!("{}: exited without error", id_clone);
+                    });
+                }
+                let clients = clients.clone();
+                let mut display_handle = display_handle.clone();
+                let applet_tx_clone = applet_tx_clone.clone();
+                let (c, client_socket) = get_client_sock(&mut display_handle);
+                let raw_client_socket = client_socket.as_raw_fd();
+                let mut applet_env = Vec::with_capacity(1);
+                let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
+                let should_restart = is_restarting && err_code.is_some();
+                let security_context = if requests_wayland_display && should_restart {
+                    security_context_manager_clone.as_ref().and_then(|security_context_manager| {
+                        security_context_manager
+                            .create_listener::<SpaceContainer>(&qh_clone)
+                            .ok()
+                            .inspect(|security_context| {
+                                security_context.set_sandbox_engine(NAME.to_string());
+                                security_context.set_app_id(id_clone.clone());
+                                security_context
+                                    .set_instance_id(format!("{}.{}", id_clone, active_output));
+                                security_context.commit();
+
+                                let data = security_context.data::<SecurityContext>().unwrap();
+                                let privileged_socket = data.conn.lock().unwrap().take().unwrap();
+                                applet_env.push((
+                                    "X_PRIVILEGED_WAYLAND_SOCKET".to_string(),
+                                    privileged_socket.0.as_raw_fd().to_string(),
+                                ));
+                                fds.push(privileged_socket.0.into());
+                            })
+                    })
+                } else {
+                    None
+                };
+
+                let args = args.clone();
+                async move {
+                    if !should_restart {
+                        _ = pman.stop_process(key).await;
+                        return;
+                    }
+
+                    if is_notification_applet {
+                        let (tx, rx) = oneshot::channel();
+                        _ = applet_tx_clone.send(AppletMsg::NeedNewNotificationFd(tx)).await;
+                        let Ok(fd) = rx.await else {
+                            error!("Failed to get new fd");
+                            return;
+                        };
+                        if let Err(err) = pman
+                            .update_process_env(
+                                &key,
+                                vec![(
+                                    "COSMIC_NOTIFICATIONS".to_string(),
+                                    fd.as_raw_fd().to_string(),
+                                )],
+                            )
+                            .await
+                        {
+                            error!("Failed to update process env: {}", err);
+                            return;
+                        }
+                        fds.push(fd);
+                        fds.push(client_socket.into());
+                        if let Err(err) = pman.update_process_fds(&key, move || fds).await {
+                            error!("Failed to update process fds: {}", err);
+                            return;
+                        }
+                    } else {
+                        fds.push(client_socket.into());
+                        if let Err(err) = pman.update_process_fds(&key, move || fds).await {
+                            error!("Failed to update process fds: {}", err);
+                            return;
+                        }
+                    }
+
+                    let mut found = false;
+                    for list in &clients {
+                        let mut list = list.lock().unwrap();
+                        if let Some(old_client) = list.iter_mut().find(|c| c.name == id_clone) {
+                            old_client.client = Some(c);
+                            old_client.security_ctx = security_context;
+                            info!("Replaced the client socket");
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        error!("Failed to find matching client... {}", &id_clone)
+                    }
+                    let _ =
+                        applet_tx_clone.send(AppletMsg::ClientSocketPair(client_id_clone)).await;
+
+                    applet_env.retain(|(k, _)| k.as_str() != "WAYLAND_SOCKET");
+                    applet_env.push(("WAYLAND_SOCKET".to_string(), raw_client_socket.to_string()));
+
+                    let mut args = args.clone();
+                    if is_flatpak {
+                        args.retain(|arg| !arg.contains("WAYLAND_SOCKET"));
+                        args.insert(
+                            args.len().saturating_sub(2),
+                            format!("--env=WAYLAND_SOCKET={}", raw_client_socket),
+                        );
+                    }
+                    let _ = pman.update_process_env(&key, applet_env.clone()).await;
+                    let _ = pman.update_process_args(&key, args).await;
+                }
+            });
+
+        let name = panel_client.name.clone();
+        let msg = if is_notification_applet {
+            AppletMsg::NewNotificationsProcess(self.id(), name, process, applet_env, fds)
+        } else {
+            process = process.with_fds(move || fds);
+
+            AppletMsg::NewProcess(self.id(), name, process.with_env(applet_env))
+        };
+        match self.shared.applet_tx.try_send(msg) {
+            Ok(_) => {},
+            Err(e) => error!("{e}"),
+        };
+    }
+
+    /// Start an applet that was added to the config while the panel is running.
+    pub fn spawn_applet(
+        &mut self,
+        name: &str,
+        side: Side,
+        qh: &QueueHandle<GlobalState>,
+    ) -> anyhow::Result<()> {
+        let Some(mut display) = self.s_display.clone() else {
+            bail!("no display handle");
+        };
+        let locales = freedesktop_desktop_entry::get_languages_from_env();
+        let Some(path) = Iter::new(freedesktop_desktop_entry::default_paths())
+            .find(|path| Some(OsString::from(name).as_os_str()) == path.file_stem())
+        else {
+            bail!("no desktop file found for {name}");
+        };
+        let entry = DesktopEntry::from_str(&path, &fs::read_to_string(&path)?, Some(&locales))?;
+        if entry.exec().is_none() {
+            bail!("{} has no Exec", path.display());
+        }
+
+        let (client, socket) = get_client_sock(&mut display);
+        let mut panel_client = PanelClient::new(name.to_string(), None, client, Some(socket));
+        panel_client.apply_desktop_entry(path, &entry);
+        let security_context_manager = self.shared.security_context_manager.borrow().clone();
+        self.spawn_applet_process(&mut panel_client, side, qh, security_context_manager);
+
+        match side {
+            Side::WingStart => &self.clients_left,
+            Side::Center => &self.clients_center,
+            Side::WingEnd => &self.clients_right,
+        }
+        .lock()
+        .unwrap()
+        .push(panel_client);
+        Ok(())
     }
 }

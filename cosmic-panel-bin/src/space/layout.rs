@@ -528,8 +528,7 @@ impl PanelSpace {
         .min(layer_major as f64);
         let suggested_size = ((self.config.size.get_applet_icon_size(true) as f64
             + self.config.size.get_applet_padding(true) as f64 * 2.)
-            * -1.5 // allows some wiggle room
-            * self.scale) as i32;
+            * -1.5) as i32; // allows some wiggle room
         let center_overflow = (center_sum - target_center_len) as i32;
         if center_overflow < suggested_size {
             // check if it can be expanded
@@ -1612,21 +1611,22 @@ impl PanelSpace {
         drop(left);
         let suggested_size = self.config.size.get_applet_icon_size(true)
             + self.config.size.get_applet_padding(true) as u32 * 2;
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            Self::move_from_overflow(
-                extra_space,
-                self.config.is_horizontal(),
-                &mut self.space,
-                &mut self.overflow_left,
-                suggested_size,
-            );
-            if self.overflow_left.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
-                && let Some(overflow_button) = left_overflow_button.take()
-            {
-                self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
-                self.space.refresh();
-            }
-        } else if extra_space > suggested_size {
+        Self::move_from_overflow(
+            extra_space,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_left,
+            suggested_size,
+        );
+        if self.overflow_left.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
+            && let Some(overflow_button) = left_overflow_button.take()
+        {
+            self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
+            self.space.refresh();
+        }
+        if !clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale)
+            && extra_space > suggested_size
+        {
             self.relax_overflow_clients(&mut clients, extra_space);
         }
     }
@@ -1639,23 +1639,22 @@ impl PanelSpace {
         let center: MutexGuard<Vec<PanelClient>> = self.clients_center.lock().unwrap();
         let mut clients = self.shrinkable_clients(center.iter());
         drop(center);
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            let suggested_size = self.config.size.get_applet_icon_size(true)
-                + self.config.size.get_applet_padding(true) as u32 * 2;
-            Self::move_from_overflow(
-                extra_space,
-                self.config.is_horizontal(),
-                &mut self.space,
-                &mut self.overflow_center,
-                suggested_size,
-            );
-            if self.overflow_center.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
-                && let Some(overflow_button) = center_overflow_button.take()
-            {
-                self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
-                self.space.refresh();
-            }
-        } else {
+        let suggested_size = self.config.size.get_applet_icon_size(true)
+            + self.config.size.get_applet_padding(true) as u32 * 2;
+        Self::move_from_overflow(
+            extra_space,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_center,
+            suggested_size,
+        );
+        if self.overflow_center.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
+            && let Some(overflow_button) = center_overflow_button.take()
+        {
+            self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
+            self.space.refresh();
+        }
+        if !clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             self.relax_overflow_clients(&mut clients, extra_space);
         }
     }
@@ -1720,24 +1719,23 @@ impl PanelSpace {
     ) {
         let right = self.clients_right.lock().unwrap();
         let mut clients = self.shrinkable_clients(right.iter());
-
-        if clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
-            let suggested_size = self.config.size.get_applet_icon_size(true)
-                + self.config.size.get_applet_padding(true) as u32 * 2;
-            Self::move_from_overflow(
-                extra_space,
-                self.config.is_horizontal(),
-                &mut self.space,
-                &mut self.overflow_right,
-                suggested_size,
-            );
-            if self.overflow_right.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
-                && let Some(overflow_button) = right_overflow_button.take()
-            {
-                self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
-                self.space.refresh();
-            }
-        } else {
+        drop(right);
+        let suggested_size = self.config.size.get_applet_icon_size(true)
+            + self.config.size.get_applet_padding(true) as u32 * 2;
+        Self::move_from_overflow(
+            extra_space,
+            self.config.is_horizontal(),
+            &mut self.space,
+            &mut self.overflow_right,
+            suggested_size,
+        );
+        if self.overflow_right.elements().all(|e| matches!(e, PopupMappedInternal::Popup(_)))
+            && let Some(overflow_button) = right_overflow_button.take()
+        {
+            self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(overflow_button));
+            self.space.refresh();
+        }
+        if !clients.shrinkable_is_relaxed(self.config.is_horizontal(), self.scale) {
             self.relax_overflow_clients(&mut clients, extra_space);
         }
     }

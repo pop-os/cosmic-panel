@@ -32,7 +32,7 @@ use cctk::wayland_client::Connection;
 
 use cosmic::iced::id;
 use cosmic_protocols::corner_radius::v1::client::cosmic_corner_radius_layer_v1::CosmicCornerRadiusLayerV1;
-use freedesktop_desktop_entry::PathSource;
+use freedesktop_desktop_entry::{DesktopEntry, PathSource};
 use launch_pad::process::Process;
 use sctk::compositor::{CompositorState, Region};
 use sctk::output::OutputInfo;
@@ -84,28 +84,35 @@ use super::Spacer;
 use super::layout::OverflowSection;
 
 pub enum AppletMsg {
-    NewProcess(String, Process),
-    NewNotificationsProcess(String, Process, Vec<(String, String)>, Vec<OwnedFd>),
+    NewProcess(String, String, Process),
+    NewNotificationsProcess(String, String, Process, Vec<(String, String)>, Vec<OwnedFd>),
     NeedNewNotificationFd(oneshot::Sender<OwnedFd>),
     ClientSocketPair(ClientId),
     Cleanup(String),
+    CleanupApplet(String, String),
 }
 
 impl Debug for AppletMsg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NewProcess(arg0, _) => f.debug_tuple("NewProcess").field(arg0).finish(),
-            Self::NewNotificationsProcess(arg0, _, arg2, arg3) => f
+            Self::NewProcess(arg0, arg1, _) => {
+                f.debug_tuple("NewProcess").field(arg0).field(arg1).finish()
+            },
+            Self::NewNotificationsProcess(arg0, arg1, _, arg3, arg4) => f
                 .debug_tuple("NewNotificationsProcess")
                 .field(arg0)
-                .field(arg2)
+                .field(arg1)
                 .field(arg3)
+                .field(arg4)
                 .finish(),
             Self::NeedNewNotificationFd(arg0) => {
                 f.debug_tuple("NeedNewNotificationFd").field(arg0).finish()
             },
             Self::ClientSocketPair(arg0) => f.debug_tuple("ClientSocketPair").field(arg0).finish(),
             Self::Cleanup(arg0) => f.debug_tuple("Cleanup").field(arg0).finish(),
+            Self::CleanupApplet(arg0, arg1) => {
+                f.debug_tuple("CleanupApplet").field(arg0).field(arg1).finish()
+            },
         }
     }
 }
@@ -198,6 +205,24 @@ impl PanelClient {
             shrink_priority: None,
             shrink_min_size: None,
         }
+    }
+
+    pub fn apply_desktop_entry(&mut self, path: PathBuf, entry: &DesktopEntry) {
+        self.path = Some(path);
+        self.exec = entry.exec().map(String::from);
+        self.requests_wayland_display = Some(entry.desktop_entry("X-HostWaylandDisplay").is_some());
+        self.shrink_min_size = entry
+            .desktop_entry("X-OverflowMinSize")
+            .and_then(|x| x.parse::<u32>().ok())
+            .map(ClientShrinkSize::AppletUnit);
+        self.shrink_priority =
+            entry.desktop_entry("X-OverflowPriority").and_then(|x| x.parse::<u32>().ok());
+        self.padding_shrinkable =
+            entry.desktop_entry("X-CosmicShrinkable").map(|x| x == "true").unwrap_or_default();
+        self.auto_popup_hover_press = entry
+            .desktop_entry("X-CosmicHoverPopup")
+            .map(|v| v.parse::<AppletAutoClickAnchor>().unwrap_or_default());
+        self.is_notification_applet = Some(entry.desktop_entry("X-NotificationsApplet").is_some());
     }
 
     pub fn is_flatpak(&self) -> bool {
@@ -2099,6 +2124,68 @@ impl PanelSpace {
         } else {
             false
         }
+    }
+
+    /// Stop an applet that was removed from the config and drop its windows.
+    pub fn remove_applet(&mut self, name: &str) {
+        let mut client_id = None;
+        for list in [&self.clients_left, &self.clients_center, &self.clients_right] {
+            let mut list = list.lock().unwrap();
+            if let Some(i) = list.iter().position(|c| c.name == name) {
+                client_id = list.remove(i).client.as_ref().map(|c| c.id());
+                break;
+            }
+        }
+
+        if let Some(client_id) = client_id {
+            let owned =
+                |t: &ToplevelSurface| t.wl_surface().client().is_some_and(|c| c.id() == client_id);
+            let window = self.space.elements().find(|e| e.toplevel().is_some_and(owned)).cloned();
+            if let Some(w) = window {
+                self.space.unmap_elem(&w);
+            }
+            for overflow in
+                [&mut self.overflow_left, &mut self.overflow_center, &mut self.overflow_right]
+            {
+                let window = overflow.elements().find(|e| e.toplevel().is_some_and(owned)).cloned();
+                if let Some(w) = window {
+                    overflow.unmap_elem(&w);
+                }
+            }
+        }
+
+        let _ =
+            self.shared.applet_tx.try_send(AppletMsg::CleanupApplet(self.id(), name.to_string()));
+        self.is_dirty = true;
+        self.needs_layout = true;
+    }
+
+    /// Sort the client lists to match the config, moving applets that changed
+    /// sides.
+    pub fn reorder_applets(&mut self) {
+        let sides = [
+            (&self.clients_left, self.config.plugins_left()),
+            (&self.clients_center, self.config.plugins_center()),
+            (&self.clients_right, self.config.plugins_right()),
+        ];
+        let mut lists: Vec<_> = sides.iter().map(|(l, _)| l.lock().unwrap()).collect();
+        let mut clients = Vec::new();
+        for (i, list) in lists.iter_mut().enumerate() {
+            clients.extend(list.drain(..).map(|c| (i, c)));
+        }
+        for (i, (_, names)) in sides.iter().enumerate() {
+            for name in names.iter().flatten() {
+                if let Some(pos) = clients.iter().position(|(_, c)| c.name == *name) {
+                    lists[i].push(clients.remove(pos).1);
+                }
+            }
+        }
+        // anything not in the config stays where it was
+        for (i, c) in clients {
+            lists[i].push(c);
+        }
+        self.is_dirty = true;
+        self.needs_layout = true;
     }
 
     pub(crate) fn blur(

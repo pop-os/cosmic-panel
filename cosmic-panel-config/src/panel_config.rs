@@ -529,7 +529,7 @@ impl Default for CosmicPanelConfig {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Side {
     WingStart,
     Center,
