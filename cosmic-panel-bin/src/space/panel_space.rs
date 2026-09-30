@@ -2216,6 +2216,9 @@ impl PanelSpace {
             }
         }
         self.close_popups(|_| false);
+
+        self.is_dirty = true;
+        self.needs_layout = true;
     }
 
     pub fn set_maximized(&mut self, maximized: bool, config: CosmicPanelConfig, opacity: f32) {
