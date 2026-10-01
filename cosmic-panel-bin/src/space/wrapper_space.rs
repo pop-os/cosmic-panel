@@ -480,10 +480,12 @@ impl WrapperSpace for PanelSpace {
                             Some(entry.desktop_entry("X-HostWaylandDisplay").is_some());
                         panel_client.shrink_min_size = entry
                             .desktop_entry("X-OverflowMinSize")
+                            .or_else(|| entry.desktop_entry("X-CosmicOverflowMinSize"))
                             .and_then(|x| x.parse::<u32>().ok())
                             .map(ClientShrinkSize::AppletUnit);
                         panel_client.shrink_priority = entry
                             .desktop_entry("X-OverflowPriority")
+                            .or_else(|| entry.desktop_entry("X-CosmicOverflowPriority"))
                             .and_then(|x| x.parse::<u32>().ok());
                         panel_client.padding_shrinkable = entry
                             .desktop_entry("X-CosmicShrinkable")
