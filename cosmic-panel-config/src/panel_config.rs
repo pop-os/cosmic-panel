@@ -462,7 +462,11 @@ pub struct CosmicPanelConfig {
     pub autohover_delay_ms: Option<u32>,
     /// padding overlap ratio
     pub padding_overlap: f32,
-    /// keep panel styling when windows are maximized
+    /// Preserve the floating panel style when a window is maximized.
+    ///
+    /// When enabled, the panel keeps its configured width, margin, border radius, and opacity
+    /// instead of expanding to the output edges. This is intended for docks that should remain
+    /// visually detached, such as the macOS dock.
     #[serde(default)]
     pub keep_style_on_maximize: bool,
 }
@@ -761,5 +765,51 @@ impl WrapperConfig for CosmicPanelConfig {
 
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+#[cfg(all(test, feature = "wayland-rs"))]
+mod tests {
+    use super::CosmicPanelConfig;
+
+    #[test]
+    fn keeps_floating_style_when_maximized() {
+        let mut config = CosmicPanelConfig {
+            keep_style_on_maximize: true,
+            expand_to_edges: false,
+            margin: 4,
+            border_radius: 8,
+            opacity: 0.8,
+            anchor_gap: true,
+            ..Default::default()
+        };
+
+        config.maximize();
+
+        assert!(!config.expand_to_edges);
+        assert_eq!(config.margin, 4);
+        assert_eq!(config.border_radius, 8);
+        assert_eq!(config.opacity, 0.8);
+        assert!(config.anchor_gap);
+    }
+
+    #[test]
+    fn maximization_uses_full_width_style_by_default() {
+        let mut config = CosmicPanelConfig {
+            expand_to_edges: false,
+            margin: 4,
+            border_radius: 8,
+            opacity: 0.8,
+            anchor_gap: true,
+            ..Default::default()
+        };
+
+        config.maximize();
+
+        assert!(config.expand_to_edges);
+        assert_eq!(config.margin, 0);
+        assert_eq!(config.border_radius, 0);
+        assert_eq!(config.opacity, 1.0);
+        assert!(!config.anchor_gap);
     }
 }
