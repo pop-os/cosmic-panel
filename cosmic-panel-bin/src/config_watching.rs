@@ -201,7 +201,7 @@ pub fn watch_config(
 
     let entries_tx_clone = entries_tx.clone();
     let entries_watcher = cosmic_config_entries
-        .watch(move |helper, keys| match helper.get::<Vec<String>>(&keys[0]) {
+        .watch(move |helper, keys| match helper.get::<Vec<String>>("entries") {
             Ok(entries) => {
                 entries_tx_clone
                     .send(ConfigUpdate::Entries(entries))
