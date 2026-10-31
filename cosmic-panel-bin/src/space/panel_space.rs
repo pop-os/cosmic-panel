@@ -361,6 +361,7 @@ pub struct PanelSpace {
     pub blur_surface: Option<ExtBackgroundEffectSurfaceV1>,
     pub corner_radius_manager: Option<CosmicCornerRadiusManagerV1>,
     pub corner_radius_wlr: Option<CosmicCornerRadiusLayerV1>,
+    pub render_failing_since: Option<Instant>,
     pub compositor_state: Option<CompositorState>,
     pub input_region: Option<Region>,
     pub has_frame: bool,
@@ -486,7 +487,12 @@ impl PanelSpace {
             compositor_state: None,
             corner_radius_manager: corner_radius_manager.cloned(),
             corner_radius_wlr: None,
+            render_failing_since: None,
         }
+    }
+
+    pub fn render_stuck(&self) -> bool {
+        self.render_failing_since.is_some_and(|since| since.elapsed() > Duration::from_secs(15))
     }
 
     pub fn has_toplevel_overlap(&self) -> bool {
@@ -1335,11 +1341,17 @@ impl PanelSpace {
             });
             self.subsurfaces.retain_mut(|s: &mut WrapperSubsurface| s.handle_events());
             self.handle_overflow_popup_events(renderer);
-            if prev == self.popups.len()
-                && should_render
-                && let Err(e) = self.render(renderer, time, throttle, qh)
-            {
-                error!("Failed to render, error: {:?}", e);
+            if prev == self.popups.len() && should_render {
+                let frame_due = self.is_dirty && self.has_frame;
+                let res = self.render(renderer, time, throttle, qh);
+                if res.is_err() && frame_due && self.is_dirty && self.has_frame {
+                    self.render_failing_since.get_or_insert_with(Instant::now);
+                } else {
+                    self.render_failing_since = None;
+                }
+                if let Err(e) = res {
+                    error!("Failed to render, error: {:?}", e);
+                }
             }
         }
 
