@@ -186,6 +186,10 @@ impl SpaceContainer {
         if self.is_dark { self.dark_theme.clone() } else { self.light_theme.clone() }
     }
 
+    pub fn render_stuck(&self) -> Option<&str> {
+        self.space_list.iter().find(|s| s.render_stuck()).map(|s| s.config.name.as_str())
+    }
+
     pub fn cleanup_client(&mut self, old_client_id: ClientId) {
         for s in &mut self.space_list {
             // cleanup leftover windows
