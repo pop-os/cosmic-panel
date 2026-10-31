@@ -294,8 +294,14 @@ fn main() -> Result<()> {
                             warn!("Can't start notifications applet without a connection");
                             continue;
                         };
-                        let fd = match proxy.get_fd().await {
-                            Ok(fd) => fd,
+                        let fd = match tokio::time::timeout(Duration::from_secs(1), proxy.get_fd())
+                            .await
+                        {
+                            Ok(Ok(fd)) => fd,
+                            Ok(Err(err)) => {
+                                error!("Failed to get fd for the notifications applet {}", err);
+                                continue;
+                            },
                             Err(err) => {
                                 error!("Failed to get fd for the notifications applet {}", err);
                                 continue;
