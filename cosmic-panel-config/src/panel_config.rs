@@ -755,7 +755,9 @@ impl CosmicPanelConfig {
         self.expand_to_edges = true;
         self.margin = 0;
         self.border_radius = 0;
-        self.border_width = 0.0;
+        if !self.keep_transparency_on_maximize {
+            self.border_width = 0.0;
+        }
         self.anchor_gap = false;
     }
 }
