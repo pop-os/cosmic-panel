@@ -1234,7 +1234,12 @@ impl PanelSpace {
         mut renderer: Option<&mut GlesRenderer>,
         qh: &QueueHandle<GlobalState>,
     ) -> Instant {
+        let mapped = self.space.elements().count();
         self.space.refresh();
+        if self.space.elements().count() != mapped {
+            self.is_dirty = true;
+            self.needs_layout = true;
+        }
         self.apply_animation_state();
 
         self.handle_focus();
