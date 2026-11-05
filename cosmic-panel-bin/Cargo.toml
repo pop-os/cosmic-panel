@@ -66,10 +66,10 @@ iced_tiny_skia = { git = "https://github.com/pop-os/libcosmic/" }
 tiny-skia = "0.11"
 ron = "0.12"
 rand = "0.10"
-cosmic-notifications-config = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false }
+cosmic-notifications-config = { git = "https://github.com/pop-os/cosmic-notifications", default-features = false, branch = "updates" }
 # cosmic-notifications-util = { path = "../../cosmic-notifications/cosmic-notifications-config", default-features = false }
 wayland-backend = { version = "0.3.15", features = ["client_system"] }
-zbus = { version = "5.15", features = ["tokio", "p2p"] }
+zbus = { version = "6.2.1", features = ["tokio", "p2p"] }
 ordered-stream = "0.2.0"
 futures = "0.3.31"
 smallvec = "1.15.1"

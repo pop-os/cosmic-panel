@@ -38,8 +38,7 @@ pub async fn notifications_conn() -> Result<NotificationsSocketProxy<'static>> {
     };
     daemon_stream.set_nonblocking(true)?;
 
-    let stream = tokio::net::UnixStream::from_std(daemon_stream)?;
-    let conn = Builder::socket(stream).p2p().build().await?;
+    let conn = Builder::unix_stream(daemon_stream).p2p().build().await?;
     info!("Made socket connection");
     let proxy = NotificationsSocketProxy::new(&conn).await?;
     info!("Connected to notifications");
