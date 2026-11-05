@@ -290,7 +290,7 @@ const fn _default_true() -> bool {
 // TODO configurable interpolation type?
 /// configurable autohide behavior
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct AutoHideBehavior {
     /// time in milliseconds without pointer focus before hiding
     pub wait_time: u32,
