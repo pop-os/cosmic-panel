@@ -438,11 +438,14 @@ pub struct CosmicPanelConfig {
     pub size_center: Option<PanelSize>,
     /// whether the panel should stretch to the edges of output
     pub expand_to_edges: bool,
-    /// padding around the panel
-    pub padding: u32,
+    /// explicit padding override; when unset the padding follows the theme
+    #[serde(default)]
+    pub padding_override: Option<u32>,
     /// space between panel plugins
     pub spacing: u32,
-    pub border_radius: u32,
+    /// explicit border radius override; when unset the radius follows the theme
+    #[serde(default)]
+    pub border_radius_override: Option<u32>,
     /// width of the outline drawn around the panel, 0.0 to disable
     #[serde(default)]
     pub border_width: f32,
@@ -482,9 +485,9 @@ impl PartialEq for CosmicPanelConfig {
             && self.size_center == other.size_center
             && self.size_wings == other.size_wings
             && self.expand_to_edges == other.expand_to_edges
-            && self.padding == other.padding
+            && self.padding_override == other.padding_override
             && self.spacing == other.spacing
-            && self.border_radius == other.border_radius
+            && self.border_radius_override == other.border_radius_override
             && self.border_width == other.border_width
             && self.exclusive_zone == other.exclusive_zone
             && self.autohide == other.autohide
@@ -513,12 +516,12 @@ impl Default for CosmicPanelConfig {
             size_wings: Default::default(),
             size_center: Default::default(),
             expand_to_edges: true,
-            padding: 4,
+            padding_override: None,
             spacing: 0,
             exclusive_zone: true,
             autohide: AutoHide::default(),
             autohide_behavior: AutoHideBehavior::default(),
-            border_radius: 8,
+            border_radius_override: None,
             border_width: 0.0,
             margin: 4,
             opacity: 0.8,
@@ -680,10 +683,6 @@ impl CosmicPanelConfig {
         self.anchor
     }
 
-    pub fn padding(&self) -> u32 {
-        self.padding
-    }
-
     pub fn layer(&self) -> zwlr_layer_shell_v1::Layer {
         self.layer.into()
     }
@@ -709,6 +708,7 @@ impl CosmicPanelConfig {
         output_dims: Option<(u32, u32)>,
         suggested_length: Option<u32>,
         gap: Option<u32>,
+        padding: u32,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let gap = gap.unwrap_or_else(|| self.get_effective_anchor_gap());
         let bar_thickness = match &self.size {
@@ -722,7 +722,7 @@ impl CosmicPanelConfig {
                 8 + gap..s * 2 + 1 + gap
             },
         };
-        assert!(2 * self.padding + gap < bar_thickness.end);
+        assert!(2 * padding + gap < bar_thickness.end);
         let o_h = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().1);
         let o_w = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().0);
 
@@ -747,7 +747,7 @@ impl CosmicPanelConfig {
         }
         self.expand_to_edges = true;
         self.margin = 0;
-        self.border_radius = 0;
+        self.border_radius_override = Some(0);
         self.border_width = 0.0;
         self.anchor_gap = false;
     }

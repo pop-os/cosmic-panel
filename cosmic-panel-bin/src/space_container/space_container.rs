@@ -227,7 +227,10 @@ impl SpaceContainer {
             let cur = self.cur_theme();
 
             for space in &mut self.space_list {
-                if matches!(space.config.background, CosmicPanelBackground::ThemeDefault) {
+                if matches!(
+                    space.config.background,
+                    CosmicPanelBackground::ThemeDefault | CosmicPanelBackground::Color(_)
+                ) {
                     let mut new_colors = PanelColors::new(cur.clone())
                         .with_color_override(space.config.bg_color_override());
                     new_colors.blur_enabled = blur_enabled;
