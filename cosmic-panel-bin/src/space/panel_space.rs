@@ -744,14 +744,7 @@ impl PanelSpace {
 
     fn max_corner_radius(&self) -> u32 {
         let min_dim = self.actual_size.h.min(self.actual_size.w) as u32;
-        min_dim
-            .saturating_sub(self.config.margin as u32)
-            .saturating_div(2)
-    }
-
-    pub(crate) fn clamped_corner_radius(&self) -> u32 {
-        let max_radius = self.max_corner_radius();
-        max_radius.saturating_sub((self.gap() as u32).min(max_radius))
+        min_dim.saturating_div(2)
     }
 
     fn padding_with_theme(&self, config: &CosmicPanelConfig, theme: &cosmic::Theme) -> u32 {
@@ -759,8 +752,7 @@ impl PanelSpace {
             return padding;
         }
         if config.name == "Dock" {
-            let roundness: cosmic::cosmic_theme::Roundness =
-                theme.cosmic().corner_radii.into();
+            let roundness: cosmic::cosmic_theme::Roundness = theme.cosmic().corner_radii.into();
             match roundness {
                 cosmic::cosmic_theme::Roundness::Round
                 | cosmic::cosmic_theme::Roundness::SlightlyRound => 4,
@@ -1179,13 +1171,12 @@ impl PanelSpace {
             })
             .map(|(w, h)| (w as u32, h as u32));
 
-        let (constrained_w, constrained_h) =
-            self.config.get_dimensions(
-                output_dims,
-                self.suggested_length,
-                active_gap,
-                self.padding(),
-            );
+        let (constrained_w, constrained_h) = self.config.get_dimensions(
+            output_dims,
+            self.suggested_length,
+            active_gap,
+            self.padding(),
+        );
         if let Some(w_range) = constrained_w {
             w = w.clamp(w_range.start as i32, w_range.end as i32 - 1);
         }
@@ -1866,7 +1857,7 @@ impl PanelSpace {
         if animate {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
-                border_radius: self.border_radius_for(&self.config),
+                border_radius: self.max_corner_radius(),
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
@@ -2169,9 +2160,8 @@ impl PanelSpace {
     ) {
         if self.colors.panel_blur(self.config.opacity) {
             if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
-                let max_radius = self.max_corner_radius().min(
-                    rect.size.h.min(rect.size.w) as u32 / 2,
-                );
+                let max_radius =
+                    self.max_corner_radius().min(rect.size.h.min(rect.size.w) as u32 / 2);
                 let gap = (self.gap() as u32).min(max_radius);
 
                 let padding = match self.config.anchor {
@@ -2183,9 +2173,8 @@ impl PanelSpace {
                 corner_radius_wlr.set_padding(padding[0], padding[1], padding[2], padding[3]);
 
                 for corner in &mut corners {
-                    *corner = (*corner).min(max_radius.saturating_sub(gap));
+                    *corner = (*corner).min(max_radius);
                 }
-
                 corner_radius_wlr.set_radius(corners[0], corners[1], corners[2], corners[3]);
             }
             if let Some((blur_surface, compositor_state)) =
