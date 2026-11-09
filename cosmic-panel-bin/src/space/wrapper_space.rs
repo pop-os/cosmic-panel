@@ -1454,7 +1454,7 @@ impl WrapperSpace for PanelSpace {
     }
 
     fn close_popup(&mut self, popup: &sctk::shell::xdg::popup::Popup) {
-        self.close_popups(|p| p.c_popup.wl_surface() == popup.wl_surface());
+        self.close_popups(|p| p.c_popup.wl_surface() != popup.wl_surface());
     }
 
     // handled by custom method with access to renderer instead
