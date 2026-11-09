@@ -990,9 +990,8 @@ impl PanelSpace {
                 }
                 if self.animate_state.is_none() {
                     input_region.add(loc.0, loc.1, size.0, size.1);
-
-                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
                 }
+                self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => ((0, 0), (new_dim.w + anim_gap, new_dim.h)),
@@ -1019,8 +1018,8 @@ impl PanelSpace {
                 }
                 if self.animate_state.is_none() {
                     input_region.add(loc.0, loc.1, size.0, size.1);
-                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
                 }
+                self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
             };
         }
 

@@ -1857,7 +1857,7 @@ impl PanelSpace {
         if animate {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
-                border_radius: self.border_radius_for(&self.config),
+                border_radius: self.max_corner_radius(),
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
@@ -2175,7 +2175,6 @@ impl PanelSpace {
                 for corner in &mut corners {
                     *corner = (*corner).min(max_radius);
                 }
-
                 corner_radius_wlr.set_radius(corners[0], corners[1], corners[2], corners[3]);
             }
             if let Some((blur_surface, compositor_state)) =
