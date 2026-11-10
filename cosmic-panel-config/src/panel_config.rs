@@ -468,6 +468,9 @@ pub struct CosmicPanelConfig {
     /// keep panel styling when windows are maximized
     #[serde(default)]
     pub keep_style_on_maximize: bool,
+    /// keep panel transparency when windows are maximized
+    #[serde(default)]
+    pub keep_transparency_on_maximize: bool,
 }
 
 impl PartialEq for CosmicPanelConfig {
@@ -496,6 +499,7 @@ impl PartialEq for CosmicPanelConfig {
             && self.size_wings == other.size_wings
             && (self.opacity - other.opacity).abs() < 0.01
             && self.keep_style_on_maximize == other.keep_style_on_maximize
+            && self.keep_transparency_on_maximize == other.keep_transparency_on_maximize
     }
 }
 
@@ -528,6 +532,7 @@ impl Default for CosmicPanelConfig {
             autohover_delay_ms: Some(500),
             padding_overlap: 0.5,
             keep_style_on_maximize: false,
+            keep_transparency_on_maximize: false,
         }
     }
 }
@@ -741,14 +746,18 @@ impl CosmicPanelConfig {
         if self.keep_style_on_maximize {
             return;
         }
-        self.opacity = 1.0;
+        if !self.keep_transparency_on_maximize {
+            self.opacity = 1.0;
+        }
         if self.autohide_enabled() {
             return;
         }
         self.expand_to_edges = true;
         self.margin = 0;
-        self.border_radius_override = Some(0);
-        self.border_width = 0.0;
+        self.border_radius = 0;
+        if !self.keep_transparency_on_maximize {
+            self.border_width = 0.0;
+        }
         self.anchor_gap = false;
     }
 }
