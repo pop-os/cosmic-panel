@@ -137,7 +137,10 @@ impl SpaceContainer {
             let c = self.config.config_list.iter().find(|c| c.name == s.config.name);
             let mut config = c.cloned().unwrap_or_else(|| s.config.clone());
 
-            let effective_maximized = maximized && !config.keep_style_on_maximize;
+            let keep_style = config.keep_style_on_maximize;
+            let keep_transparency = config.keep_transparency_on_maximize;
+
+            let effective_maximized = maximized && !keep_style && !keep_transparency;
 
             let opacity = if effective_maximized {
                 config.maximize();
@@ -145,6 +148,9 @@ impl SpaceContainer {
             } else {
                 if let Some(c) = c {
                     config = c.clone();
+                }
+                if maximized && !keep_style {
+                    config.maximize();
                 }
                 config.opacity
             };
