@@ -1694,6 +1694,11 @@ impl WrapperSpace for PanelSpace {
             || self.overflow_popup.as_ref().is_some_and(|p| p.0.c_popup.wl_surface() == surface)
         {
             self.scale = scale;
+            if let Some(c) = self.corner_radius_wlr.as_ref() {
+                // will be reset after the next layout
+                c.unset_padding();
+                c.unset_radius();
+            }
 
             if legacy && self.layer_fractional_scale.is_none() {
                 surface.set_buffer_scale(scale as i32);
@@ -1782,8 +1787,8 @@ impl WrapperSpace for PanelSpace {
                 self.reset_overflow();
             }
 
-            let scaled = self.dimensions.to_f64();
-            self.dimensions = scaled.to_i32_round();
+            self.container_length = 1;
+            self.dimensions = Size::new(1, 1);
             self.pending_dimensions =
                 Some(if self.config.is_horizontal() { (0, 1) } else { (1, 0) }.into());
             self.clear();

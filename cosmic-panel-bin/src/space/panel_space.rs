@@ -2170,12 +2170,20 @@ impl PanelSpace {
                     PanelAnchor::Top => [gap as i32, rect.loc.x, 0, rect.loc.x],
                     PanelAnchor::Bottom => [0, rect.loc.x, gap as i32, rect.loc.x],
                 };
-                corner_radius_wlr.set_padding(padding[0], padding[1], padding[2], padding[3]);
-
+                if self.actual_size.w <= 1 || self.actual_size.h <= 1 {
+                    corner_radius_wlr.unset_padding();
+                } else {
+                    corner_radius_wlr.set_padding(padding[0], padding[1], padding[2], padding[3]);
+                }
                 for corner in &mut corners {
                     *corner = (*corner).min(max_radius);
                 }
-                corner_radius_wlr.set_radius(corners[0], corners[1], corners[2], corners[3]);
+
+                if self.actual_size.w <= 1 || self.actual_size.h <= 1 {
+                    corner_radius_wlr.unset_radius();
+                } else {
+                    corner_radius_wlr.set_radius(corners[0], corners[1], corners[2], corners[3]);
+                }
             }
             if let Some((blur_surface, compositor_state)) =
                 self.blur_surface.as_ref().zip(self.compositor_state.as_ref())
