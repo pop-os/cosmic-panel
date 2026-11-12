@@ -678,7 +678,7 @@ impl WrapperSpace for PanelSpace {
                         let raw_client_socket = client_socket.as_raw_fd();
                         let mut applet_env = Vec::with_capacity(1);
                         let mut fds: Vec<OwnedFd> = Vec::with_capacity(2);
-                        let should_restart = is_restarting && err_code.is_some();
+                        let should_restart = is_restarting;
                         let security_context = if requests_wayland_display && should_restart {
                             security_context_manager_clone.as_ref().and_then(
                                 |security_context_manager| {

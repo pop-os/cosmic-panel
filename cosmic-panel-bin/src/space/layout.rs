@@ -820,7 +820,11 @@ impl PanelSpace {
             }
         }
 
-        let border_radius = (self.border_radius() as f32).min(w as f32 / 2.).min(h as f32 / 2.);
+        let border_radius = (self.border_radius() as f32)
+            .min(new_logical_crosswise_dim as f32 / 2.)
+            .min(new_logical_length as f32 / 2.)
+            .min(self.actual_size.w as f32 / 2.)
+            .min(self.actual_size.h as f32 / 2.);
         let radius = match (self.config.anchor, self.gap()) {
             (PanelAnchor::Right, 0) => [border_radius, 0., 0., border_radius],
             (PanelAnchor::Left, 0) => [0., border_radius, border_radius, 0.],
@@ -991,7 +995,11 @@ impl PanelSpace {
                 if self.animate_state.is_none() {
                     input_region.add(loc.0, loc.1, size.0, size.1);
                 }
-                self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                if !((self.actual_size.w <= 20 && self.actual_size.h <= 20)
+                    && !(self.dimensions.w <= 20 && self.dimensions.h <= 20))
+                {
+                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                }
             } else {
                 let (mut loc, mut size) = match self.config.anchor {
                     PanelAnchor::Left => ((0, 0), (new_dim.w + anim_gap, new_dim.h)),
@@ -1019,7 +1027,11 @@ impl PanelSpace {
                 if self.animate_state.is_none() {
                     input_region.add(loc.0, loc.1, size.0, size.1);
                 }
-                self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                if !((self.actual_size.w <= 20 && self.actual_size.h <= 20)
+                    && !(self.dimensions.w <= 20 && self.dimensions.h <= 20))
+                {
+                    self.blur(smithay::utils::Rectangle::new(loc.into(), size.into()), radius);
+                }
             };
         }
 
