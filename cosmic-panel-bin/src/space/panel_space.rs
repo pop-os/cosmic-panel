@@ -1603,17 +1603,26 @@ impl PanelSpace {
 
     pub fn set_theme(&mut self, colors: PanelColors) {
         let color = colors.bg_color(self.config.opacity, self.maximized);
-        let border_radius = self.border_radius_with_theme(&self.config, &colors.theme);
+
+        // clamp border radius
+        let border_radius = self
+            .border_radius_with_theme(&self.config, &colors.theme)
+            .min(self.actual_size.w as u32 / 2)
+            .min(self.actual_size.h as u32 / 2);
         if let Some(animate_state) = self.animate_state.as_mut() {
             animate_state.end.bg_color = color;
             animate_state.end.border_radius = border_radius;
         } else {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
-                border_radius: self.border_radius_for(&self.config),
+                border_radius: self
+                    .border_radius()
+                    .min(self.actual_size.w as u32 / 2)
+                    .min(self.actual_size.h as u32 / 2),
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
+
             let cur = start.clone();
             let mut end = start.clone();
             end.bg_color = color;
@@ -1857,13 +1866,19 @@ impl PanelSpace {
         if animate {
             let start = AnimatableState {
                 bg_color: self.colors.bg_color(self.config.opacity, self.maximized),
-                border_radius: self.max_corner_radius(),
+                border_radius: self
+                    .border_radius()
+                    .min(self.actual_size.w as u32 / 2)
+                    .min(self.actual_size.h as u32 / 2),
                 expanded: if self.config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: self.gap(),
             };
             let end = AnimatableState {
                 bg_color,
-                border_radius: self.border_radius_with_theme(&config, &self.colors.theme),
+                border_radius: self
+                    .border_radius_with_theme(&config, &self.colors.theme)
+                    .min(self.actual_size.w as u32 / 2)
+                    .min(self.actual_size.h as u32 / 2),
                 expanded: if config.expand_to_edges { 1.0 } else { 0.0 },
                 gap: config.get_effective_anchor_gap() as u16,
             };
@@ -2160,8 +2175,11 @@ impl PanelSpace {
     ) {
         if self.colors.panel_blur(self.config.opacity) {
             if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
-                let max_radius =
-                    self.max_corner_radius().min(rect.size.h.min(rect.size.w) as u32 / 2);
+                let max_radius = self.max_corner_radius().min(
+                    rect.size.h.min(rect.size.w).min(self.actual_size.w).min(self.actual_size.h)
+                        as u32
+                        / 2,
+                );
                 let gap = (self.gap() as u32).min(max_radius);
 
                 let padding = match self.config.anchor {
