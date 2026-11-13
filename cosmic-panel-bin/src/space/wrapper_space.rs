@@ -659,7 +659,6 @@ impl WrapperSpace for PanelSpace {
                         }
                     })
                     .with_on_exit(move |mut pman, key, err_code, is_restarting| {
-                        let client_id_clone = client_id.clone();
                         let id_clone = id_clone.clone();
 
                         if let Some(err_code) = err_code {
@@ -755,21 +754,25 @@ impl WrapperSpace for PanelSpace {
                                 }
                             }
 
-                            if let Some(old_client) = my_list
+                            let old_client_id = if let Some(old_client) = my_list
                                 .lock()
                                 .unwrap()
                                 .iter_mut()
                                 .find(|PanelClient { name, .. }| name == &id_clone)
                             {
-                                old_client.client = Some(c);
+                                let old_client_id = old_client.client.replace(c).map(|c| c.id());
                                 old_client.security_ctx = security_context;
                                 info!("Replaced the client socket");
+                                old_client_id
                             } else {
-                                error!("Failed to find matching client... {}", &id_clone)
+                                error!("Failed to find matching client... {}", &id_clone);
+                                None
+                            };
+                            if let Some(old_client_id) = old_client_id {
+                                let _ = applet_tx_clone
+                                    .send(AppletMsg::ClientSocketPair(old_client_id))
+                                    .await;
                             }
-                            let _ = applet_tx_clone
-                                .send(AppletMsg::ClientSocketPair(client_id_clone))
-                                .await;
 
                             applet_env.retain(|(k, _)| k.as_str() != "WAYLAND_SOCKET");
                             applet_env.push((
