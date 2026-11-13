@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use sctk::shm::multi::MultiPool;
 use smithay::reexports::calloop;
 use smithay::reexports::wayland_server::Display;
@@ -137,6 +137,10 @@ pub fn run(
         };
 
         event_loop.dispatch(dispatch_timeout, &mut global_state)?;
+
+        if let Some(err) = global_state.client_state.connection.backend().last_error() {
+            bail!("wayland connection is dead, exiting so the session can restart us: {err}");
+        }
 
         // rendering
         {
