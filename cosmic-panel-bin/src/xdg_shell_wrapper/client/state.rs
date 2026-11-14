@@ -82,6 +82,7 @@ pub(crate) struct ClientSeat {
     pub(crate) last_enter: u32,
     pub(crate) last_key_press: (u32, u32),
     pub(crate) last_pointer_press: (u32, u32),
+    pub(crate) pressed_buttons: Vec<u32>,
     pub(crate) last_touch_down: (u32, u32),
     pub(crate) data_device: DataDevice,
     pub(crate) copy_paste_source: Option<CopyPasteSource>,
