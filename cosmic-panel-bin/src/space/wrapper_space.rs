@@ -1273,7 +1273,7 @@ impl WrapperSpace for PanelSpace {
             }
 
             self.container_length = 1;
-            self.dimensions = Size::new(1, 1);
+            self.dimensions = smithay::utils::Size::new(1, 1);
             self.pending_dimensions =
                 Some(if self.config.is_horizontal() { (0, 1) } else { (1, 0) }.into());
             self.clear();
