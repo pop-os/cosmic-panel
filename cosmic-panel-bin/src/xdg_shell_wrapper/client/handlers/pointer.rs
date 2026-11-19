@@ -105,6 +105,31 @@ impl GlobalState {
                 },
                 sctk::seat::pointer::PointerEventKind::Enter { serial } => {
                     seat.client.last_enter = serial;
+                    let stale_buttons = std::mem::take(&mut seat.client.pressed_buttons);
+
+                    if !stale_buttons.is_empty() {
+                        ptr.motion(
+                            self,
+                            None,
+                            &MotionEvent {
+                                location: (-1.0, -1.0).into(),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: InputTime::now(),
+                            },
+                        );
+                        for button in stale_buttons {
+                            ptr.button(
+                                self,
+                                &ButtonEvent {
+                                    serial: SERIAL_COUNTER.next_serial(),
+                                    time: InputTime::now(),
+                                    button,
+                                    state: ButtonState::Released,
+                                },
+                            );
+                        }
+                        ptr.frame(self);
+                    }
 
                     let (surface_x, surface_y) = e.position;
 
@@ -265,6 +290,7 @@ impl GlobalState {
                 sctk::seat::pointer::PointerEventKind::Press { time, button, serial, .. } => {
                     self.server_state.last_button.replace(button);
                     seat.client.last_pointer_press = (serial, time);
+                    seat.client.pressed_buttons.push(button);
                     // check tracked layer shell surface
                     let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
                         |(_, _, s, c, ..)| {
@@ -308,6 +334,7 @@ impl GlobalState {
                 },
                 sctk::seat::pointer::PointerEventKind::Release { time, button, .. } => {
                     self.server_state.last_button.replace(button);
+                    seat.client.pressed_buttons.retain(|b| *b != button);
 
                     // check tracked layer shell surface
                     let s_surface = self.client_state.proxied_layer_surfaces.iter_mut().find_map(
