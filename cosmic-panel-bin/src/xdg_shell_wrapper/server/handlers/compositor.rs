@@ -58,6 +58,11 @@ impl CompositorHandler for GlobalState {
                 .iter()
                 .position(|s| s.0.wl_surface() == surface)
             {
+                // Keep the surface pending until a renderer exists; otherwise it would be dropped
+                // here and never proxied (and never configured).
+                if self.space.renderer().is_none() {
+                    return;
+                }
                 let (surface, output, namespace) =
                     self.client_state.pending_layer_surfaces.swap_remove(pos);
                 // layer created by client
@@ -69,9 +74,12 @@ impl CompositorHandler for GlobalState {
                     Some(r) => r,
                     None => return,
                 };
-                let mut size = surface.with_pending_state(|s| s.size).unwrap_or_default();
                 let server_surface = SmithayLayerSurface::new(surface, namespace.clone());
                 let state = server_surface.cached_state();
+                // The size the *client* requested (`zwlr_layer_surface_v1.set_size`). The pending
+                // state of the server surface is the not-yet-sent configure and is always empty
+                // here, which used to collapse every non-stretched surface to 1x1.
+                let mut size = state.size;
                 let anchor = Anchor::from_bits(state.anchor.bits());
 
                 if !state.anchor.anchored_horizontally() {

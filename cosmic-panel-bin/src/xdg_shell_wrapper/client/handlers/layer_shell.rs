@@ -41,32 +41,25 @@ impl LayerShellHandler for GlobalState {
             .iter_mut()
             .find(|(_, _, _, s, ..)| s.wl_surface() == layer.wl_surface())
         {
-            let mut requested_size = configure.new_size;
             let generation = match state {
-                SurfaceState::Waiting(generation, size) => {
-                    requested_size.0 = size.w as u32;
-                    requested_size.1 = size.h as u32;
+                SurfaceState::Waiting(generation, _) | SurfaceState::WaitingFirst(generation, _) => {
                     let generation = *generation;
                     *state = SurfaceState::Dirty(generation);
                     generation
                 },
                 SurfaceState::Dirty(generation) => *generation,
-                SurfaceState::WaitingFirst(generation, size) => {
-                    requested_size.0 = size.w as u32;
-                    requested_size.1 = size.h as u32;
-                    let generation = *generation;
-                    *state = SurfaceState::Dirty(generation);
-                    generation
-                },
             };
             tracing::trace!("Layer surface configure: {configure:?}, generation: {generation}");
-            if requested_size != configure.new_size {
-                s_layer_surface.layer_surface().with_pending_state(|pending_state| {
-                    pending_state.size =
-                        Some((configure.new_size.0 as i32, configure.new_size.1 as i32).into());
-                });
-                s_layer_surface.layer_surface().send_configure();
-            }
+            // Always relay the compositor's size to the proxied client. `send_pending_configure`
+            // sends the initial configure (a client may not attach a buffer before it) and skips
+            // later ones that would not change anything. Comparing against the size the proxy had
+            // requested skipped the initial configure whenever the compositor granted exactly that
+            // size, which is the normal case for a surface that is not stretched.
+            s_layer_surface.layer_surface().with_pending_state(|pending_state| {
+                pending_state.size =
+                    Some((configure.new_size.0 as i32, configure.new_size.1 as i32).into());
+            });
+            s_layer_surface.layer_surface().send_pending_configure();
         } else {
             self.space.configure_layer(layer, configure);
         }
