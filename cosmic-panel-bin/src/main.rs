@@ -86,6 +86,7 @@ fn main() -> Result<()> {
 
     let arg = std::env::args().nth(1);
     let usage = "USAGE: cosmic-panel";
+    let mut read_error = false;
     let config = match arg.as_ref().map(|s| &s[..]) {
         Some(arg) if arg == "--help" || arg == "-h" => {
             std::process::exit(1);
@@ -93,10 +94,13 @@ fn main() -> Result<()> {
         None => match cosmic_panel_config::CosmicPanelContainerConfig::load() {
             Ok(c) => c,
             Err((errors, c)) => {
-                for e in errors {
+                for e in &errors {
                     error!("Panel Entry Error: {:?}", e);
                 }
-                let _ = c.write_entries();
+                read_error = errors.iter().any(|e| e.is_err());
+                if !read_error {
+                    let _ = c.write_entries();
+                }
                 c
             },
         },
@@ -107,7 +111,9 @@ fn main() -> Result<()> {
 
     // TODO: remove
     // migrate legacy configs
-    if cosmic_panel_config::NEEDS_MIGRATION.swap(false, std::sync::atomic::Ordering::Relaxed) {
+    if cosmic_panel_config::NEEDS_MIGRATION.swap(false, std::sync::atomic::Ordering::Relaxed)
+        && !read_error
+    {
         let _ = config.write_entries();
     }
 
