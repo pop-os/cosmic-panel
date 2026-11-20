@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "cosmic-panel-bin",
-    "cosmic-panel-config",
-    "xdg-shell-wrapper-config",
+  "cosmic-panel-bin",
+  "cosmic-panel-config",
+  "xdg-shell-wrapper-config",
 ]
 resolver = "3"
 
@@ -17,13 +17,17 @@ lto = "thin"
 
 [workspace.dependencies]
 sctk = { package = "smithay-client-toolkit", version = "0.20.0", features = [
-    "calloop",
-    "xkbcommon",
+  "calloop",
+  "xkbcommon",
 ] }
+cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os/cosmic-protocols", rev = "32283d7" }
 
-[patch."https://github.com/pop-os/cosmic-protocols"]
-cctk = { package = "cosmic-client-toolkit", git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
-cosmic-protocols = { git = "https://github.com/pop-os//cosmic-protocols", rev = "32283d7" }
+[workspace.dependencies.cosmic-protocols]
+git = "https://github.com/pop-os/cosmic-protocols"
+rev = "32283d7"
+default-features = false
+features = ["client", "server"]
+
 
 # [patch."https://github.com/pop-os/xdg-shell-wrapper"]
 # xdg-shell-wrapper-config = { path = "../xdg-shell-wrapper/xdg-shell-wrapper-config" }
