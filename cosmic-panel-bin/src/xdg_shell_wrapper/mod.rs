@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use sctk::shm::multi::MultiPool;
 use smithay::reexports::calloop;
 use smithay::reexports::wayland_server::Display;
@@ -152,6 +152,9 @@ pub fn run(
                 // output (see `PanelSpace::render`).
                 Some(Duration::from_millis(16)),
             );
+        }
+        if let Some(name) = global_state.space.render_stuck() {
+            bail!("panel {name} fails to render; exiting so the session can restart");
         }
         global_state.draw_dnd_icon();
 
