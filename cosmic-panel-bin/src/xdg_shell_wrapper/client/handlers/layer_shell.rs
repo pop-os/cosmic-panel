@@ -21,6 +21,8 @@ impl LayerShellHandler for GlobalState {
             .iter()
             .position(|(_, _, _, s, ..)| s.wl_surface() == layer.wl_surface())
         {
+            let server_surface = self.client_state.proxied_layer_surfaces[i].2.wl_surface().clone();
+            self.client_state.proxied_layer_props.remove(&server_surface);
             self.client_state.proxied_layer_surfaces.remove(i);
         } else {
             self.space.close_layer(layer);
