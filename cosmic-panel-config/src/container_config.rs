@@ -91,6 +91,7 @@ impl CosmicPanelContainerConfig {
                 },
             };
         }
+        config_list.iter_mut().for_each(CosmicPanelConfig::sanitize);
         if entry_errors.is_empty() {
             Ok(Self { config_list })
         } else {
