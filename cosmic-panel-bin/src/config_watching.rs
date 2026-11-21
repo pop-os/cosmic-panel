@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::space_container::SpaceContainer;
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use anyhow::anyhow;
 use cosmic::cosmic_config::{ConfigGet, CosmicConfigEntry};
@@ -28,6 +29,7 @@ enum ThemeUpdate {
 
 pub fn watch_cosmic_theme(
     handle: LoopHandle<GlobalState>,
+    space: &mut SpaceContainer,
 ) -> Result<Vec<RecommendedWatcher>, Box<dyn std::error::Error>> {
     let (entries_tx, entries_rx) = channel::sync_channel::<ThemeUpdate>(30);
     let config_dark_helper = Theme::dark_config().map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -63,6 +65,13 @@ pub fn watch_cosmic_theme(
             },
         })
         .map_err(|e| anyhow!(format!("{:?}", e)))?;
+
+    // Re-read after arming the watcher so updates written between
+    // SpaceContainer::new() and watch registration (e.g. cosmic-settings-daemon
+    // auto-switching light/dark mode on login) are not missed.
+    space.is_dark = match ThemeMode::get_entry(&config_mode_helper) {
+        Ok(entry) | Err((_, entry)) => entry.is_dark,
+    };
 
     let entries_tx_clone = entries_tx.clone();
     let theme_watcher_light = config_light_helper

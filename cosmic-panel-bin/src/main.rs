@@ -133,7 +133,7 @@ fn main() -> Result<()> {
         },
         Err(e) => warn!("Failed to watch config: {:?}", e),
     };
-    match watch_cosmic_theme(event_loop.handle()) {
+    match watch_cosmic_theme(event_loop.handle(), &mut space) {
         Ok(w) => mem::forget(w),
         Err(e) => error!("Error while watching cosmic theme: {:?}", e),
     };
