@@ -12,14 +12,47 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Transform;
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorHandler, CompositorState, get_role};
-use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
+use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer, LayerSurfaceCachedState};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use tracing::{error, trace};
 use wayland_egl::WlEglSurface;
 
-use crate::xdg_shell_wrapper::client_state::{SurfaceState, WrapperClientCompositorState};
+use crate::xdg_shell_wrapper::client_state::{LayerProps, SurfaceState, WrapperClientCompositorState};
 use crate::xdg_shell_wrapper::shared_state::GlobalState;
 use crate::xdg_shell_wrapper::space::{ClientEglSurface, WrapperSpace};
+
+/// The properties of a layer surface that can change after creation, in a comparable form.
+fn layer_props(state: &LayerSurfaceCachedState) -> LayerProps {
+    LayerProps {
+        anchor: state.anchor.bits(),
+        margin: (state.margin.top, state.margin.right, state.margin.bottom, state.margin.left),
+        exclusive_zone: match state.exclusive_zone {
+            ExclusiveZone::Exclusive(area) => area as i32,
+            ExclusiveZone::Neutral => 0,
+            ExclusiveZone::DontCare => -1,
+        },
+        keyboard_interactivity: match state.keyboard_interactivity {
+            smithay::wayland::shell::wlr_layer::KeyboardInteractivity::None => 0,
+            smithay::wayland::shell::wlr_layer::KeyboardInteractivity::Exclusive => 1,
+            smithay::wayland::shell::wlr_layer::KeyboardInteractivity::OnDemand => 2,
+        },
+    }
+}
+
+/// Forwards changed layer surface properties to the compositor (the caller commits).
+fn apply_layer_props(surface: &wlr_layer::LayerSurface, props: &LayerProps) {
+    let (top, right, bottom, left) = props.margin;
+    surface.set_margin(top, right, bottom, left);
+    surface.set_exclusive_zone(props.exclusive_zone);
+    surface.set_keyboard_interactivity(match props.keyboard_interactivity {
+        1 => KeyboardInteractivity::Exclusive,
+        2 => KeyboardInteractivity::OnDemand,
+        _ => KeyboardInteractivity::None,
+    });
+    if let Some(anchor) = Anchor::from_bits(props.anchor) {
+        surface.set_anchor(anchor);
+    }
+}
 
 impl CompositorHandler for GlobalState {
     fn compositor_state(&mut self) -> &mut CompositorState {
@@ -58,6 +91,11 @@ impl CompositorHandler for GlobalState {
                 .iter()
                 .position(|s| s.0.wl_surface() == surface)
             {
+                // Keep the surface pending until a renderer exists; otherwise it would be dropped
+                // here and never proxied (and never configured).
+                if self.space.renderer().is_none() {
+                    return;
+                }
                 let (surface, output, namespace) =
                     self.client_state.pending_layer_surfaces.swap_remove(pos);
                 // layer created by client
@@ -69,9 +107,12 @@ impl CompositorHandler for GlobalState {
                     Some(r) => r,
                     None => return,
                 };
-                let mut size = surface.with_pending_state(|s| s.size).unwrap_or_default();
                 let server_surface = SmithayLayerSurface::new(surface, namespace.clone());
                 let state = server_surface.cached_state();
+                // The size the *client* requested (`zwlr_layer_surface_v1.set_size`). The pending
+                // state of the server surface is the not-yet-sent configure and is always empty
+                // here, which used to collapse every non-stretched surface to 1x1.
+                let mut size = state.size;
                 let anchor = Anchor::from_bits(state.anchor.bits());
 
                 if !state.anchor.anchored_horizontally() {
@@ -171,6 +212,9 @@ impl CompositorHandler for GlobalState {
                     }
                     v
                 });
+                self.client_state
+                    .proxied_layer_props
+                    .insert(server_surface.wl_surface().clone(), layer_props(&state));
                 self.client_state.proxied_layer_surfaces.push((
                     egl_surface,
                     OutputDamageTracker::new(
@@ -206,6 +250,15 @@ impl CompositorHandler for GlobalState {
             {
                 let old_size = s_layer_surface.bbox().size;
                 on_commit_buffer_handler::<GlobalState>(surface);
+                // A client may change anchor, margin, exclusive zone or keyboard interactivity after
+                // creating the surface (e.g. to move it to another corner). They were only read once,
+                // at creation, so such requests never reached the compositor.
+                let props = layer_props(&s_layer_surface.cached_state());
+                if self.client_state.proxied_layer_props.get(surface) != Some(&props) {
+                    apply_layer_props(c_layer_surface, &props);
+                    c_layer_surface.commit();
+                    self.client_state.proxied_layer_props.insert(surface.clone(), props);
+                }
                 let size = s_layer_surface.bbox().size;
                 let scaled_size = size.to_f64().to_physical_precise_round(*scale);
 

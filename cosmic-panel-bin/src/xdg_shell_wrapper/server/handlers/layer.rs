@@ -19,6 +19,7 @@ impl WlrLayerShellHandler for GlobalState {
 
     fn layer_destroyed(&mut self, surface: smithay::wayland::shell::wlr_layer::LayerSurface) {
         // cleanup proxied surfaces
+        self.client_state.proxied_layer_props.remove(surface.wl_surface());
         self.client_state
             .proxied_layer_surfaces
             .retain(|s| s.2.wl_surface() != surface.wl_surface());

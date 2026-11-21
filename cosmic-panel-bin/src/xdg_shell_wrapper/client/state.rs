@@ -179,6 +179,10 @@ pub struct ClientState {
         String,
     )>,
 
+    /// Anchor, margin, exclusive zone and keyboard interactivity last sent to the compositor for each
+    /// proxied layer surface, so that later changes requested by the client can be forwarded.
+    pub(crate) proxied_layer_props: HashMap<SmithayWlSurface, LayerProps>,
+
     pub(crate) proxied_layer_surfaces: Vec<(
         EGLSurface,
         OutputDamageTracker,
@@ -191,6 +195,17 @@ pub struct ClientState {
         Option<CosmicCornerRadiusLayerV1>, // TODO destroy on drop
         Option<ExtBackgroundEffectSurfaceV1>, // TODO destroy on drop
     )>,
+}
+
+/// Properties of a layer surface that a client may change after creation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayerProps {
+    pub anchor: u32,
+    /// top, right, bottom, left
+    pub margin: (i32, i32, i32, i32),
+    pub exclusive_zone: i32,
+    /// 0 = none, 1 = exclusive, 2 = on demand
+    pub keyboard_interactivity: u8,
 }
 
 impl Debug for ClientState {
@@ -298,6 +313,7 @@ impl ClientState {
                 focused_surface: space.get_client_focused_surface(),
                 hovered_surface: space.get_client_hovered_surface(),
                 proxied_layer_surfaces: Vec::new(),
+                proxied_layer_props: HashMap::new(),
                 pending_layer_surfaces: Vec::new(),
 
                 queue_handle: qh.clone(),
