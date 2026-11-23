@@ -307,6 +307,8 @@ pub struct PanelSharedState {
     pub panel_tx: calloop::channel::Sender<PanelCalloopMsg>,
     pub loop_handle: calloop::LoopHandle<'static, GlobalState>,
     pub workspaces_shown: Cell<bool>,
+    /// Session-only auto-hide override shared by all outputs of the `Panel` profile.
+    pub panel_pinned: Cell<bool>,
 }
 
 // space for the cosmic panel
@@ -756,9 +758,9 @@ impl PanelSpace {
         }
     }
 
-    fn show_delay_done(&self, intellihide: bool) -> bool {
+    fn show_delay_done(&self, skip_delay: bool) -> bool {
         let mut start_show_instant_opt = self.start_show_instant.borrow_mut();
-        if intellihide {
+        if skip_delay {
             *start_show_instant_opt = None;
             return true;
         }
@@ -804,6 +806,9 @@ impl PanelSpace {
             return;
         }
 
+        // Match the panel profile, not the screen edge: the Dock uses this
+        // same state machine and either profile can be moved in Settings.
+        let pinned = self.config.name == "Panel" && self.shared.panel_pinned.get();
         let cur_hover = {
             let c_focused_surface = self.shared.c_focused_surface.borrow();
             let c_hovered_surface = self.shared.c_hovered_surface.borrow();
@@ -821,7 +826,7 @@ impl PanelSpace {
             };
 
             c_hovered_surface.iter().fold(
-                if self.animate_state.is_some() || intellihide_no_toplevel {
+                if pinned || self.animate_state.is_some() || intellihide_no_toplevel {
                     FocusStatus::Focused
                 } else {
                     FocusStatus::LastFocused(self.start_instant)
@@ -862,7 +867,7 @@ impl PanelSpace {
         match self.visibility {
             Visibility::Hidden => {
                 if matches!(cur_hover, FocusStatus::Focused) || intellihide_no_toplevel {
-                    if self.show_delay_done(intellihide_no_toplevel) {
+                    if self.show_delay_done(pinned || intellihide_no_toplevel) {
                         self.transitioning = true;
                         // start transition to visible
                         let margin = match self.config.anchor() {

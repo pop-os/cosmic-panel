@@ -2,6 +2,7 @@ mod config_watching;
 mod iced;
 mod minimize;
 mod notifications;
+mod panel_dbus;
 mod space;
 mod space_container;
 mod workspaces_dbus;
@@ -41,6 +42,7 @@ pub enum PanelCalloopMsg {
     RestartSpace(CosmicPanelConfig, WlOutput),
     MinimizeRect { output: String, applet_info: MinimizeApplet },
     UpdateToplevel(ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1),
+    TogglePanelPin,
 }
 
 /// Access glibc malloc tunables.
@@ -191,6 +193,10 @@ fn main() -> Result<()> {
                     PanelCalloopMsg::MinimizeRect { output, applet_info } => {
                         minimize::set_rectangles(state, output, applet_info)
                     },
+                    PanelCalloopMsg::TogglePanelPin => {
+                        let pinned = &state.space.shared.panel_pinned;
+                        pinned.set(!pinned.get());
+                    },
                 },
                 calloop::channel::Event::Closed => {},
             };
@@ -202,6 +208,13 @@ fn main() -> Result<()> {
         let mut process_ids: HashMap<String, Vec<ProcessKey>> = HashMap::new();
 
         rt.block_on(async move {
+            let panel_tx = calloop_tx.clone();
+            tokio::spawn(async move {
+                if let Err(err) = panel_dbus::serve(panel_tx).await {
+                    warn!("Failed to serve the panel D-Bus interface: {err}");
+                }
+            });
+
             let process_manager = ProcessManager::new().await;
             let _ = process_manager
                 .set_restart_mode(launch_pad::RestartMode::ExponentialBackoff(

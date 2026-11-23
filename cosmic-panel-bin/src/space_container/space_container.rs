@@ -147,6 +147,7 @@ impl SpaceContainer {
                 loop_handle,
                 cosmic_workspaces,
                 workspaces_shown: Cell::new(false),
+                panel_pinned: Cell::new(false),
             }),
             corner_radius_manager: None,
             blur_manager: None,

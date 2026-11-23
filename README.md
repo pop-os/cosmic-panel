@@ -17,6 +17,19 @@ After making changes to copies of the provided config in data `data/`, you may i
 ### Usage  
 cosmic-panel
 
+#### Keyboard shortcut to pin the panel
+
+In COSMIC Settings, add a custom keyboard shortcut with this command:
+
+```sh
+busctl --user call com.system76.CosmicPanel /com/system76/CosmicPanel com.system76.CosmicPanel TogglePanelPin
+```
+
+The first press reveals and keeps the auto-hiding panel visible on all displays
+where it is configured. Press again to resume normal hover and overlap behavior.
+The dock and saved settings are not changed. Restarting `cosmic-panel` clears
+the override.
+
 ### Installing Plugins and Applets  
 See the following for examples of applets and plugins which can be installed and used:  
 https://github.com/pop-os/cosmic-applets  
