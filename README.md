@@ -1,3 +1,45 @@
+> [!TIP]
+> **Try the panel pin shortcut on your COSMIC desktop**
+>
+> You can try this build without replacing the system package. These steps
+> assume `cosmic-session` manages the panel and finds `~/.local/bin` before
+> `/usr/bin` in its `PATH` (tested on Fedora).
+>
+> **Build and switch.** In a terminal in your COSMIC session, run this from
+> the root of this checkout. Use a release build for smooth animations.
+>
+> ```sh
+> patched="$PWD/target/release/cosmic-panel"
+> link="$HOME/.local/bin/cosmic-panel"
+> cargo build --locked --release -p cosmic-panel-bin &&
+>   test -x "$patched" &&
+>   mkdir -p "$HOME/.local/bin" &&
+>   { test -L "$link" || test ! -e "$link"; } &&
+>   ln -sfnT -- "$patched" "$link" &&
+>   pkill -TERM -u "$(id -u)" -x cosmic-panel
+> ```
+>
+> The panel and dock may briefly disappear while COSMIC restarts them.
+>
+> **Bind the shortcut.** In **COSMIC Settings → Keyboard Shortcuts → Custom
+> Shortcuts**, pick an unused key combination and give it this command:
+>
+> ```sh
+> busctl --user call com.system76.CosmicPanel /com/system76/CosmicPanel com.system76.CosmicPanel TogglePanelPin
+> ```
+>
+> With panel auto-hide enabled, the first press pins the panel on all displays
+> where it is configured. The second press restores normal hover and overlap
+> behavior. It doesn't change the dock or any saved settings.
+>
+> **Switch back.** Remove the symlink and let COSMIC restart the packaged panel:
+>
+> ```sh
+> link="$HOME/.local/bin/cosmic-panel"
+> test -L "$link" && unlink "$link" &&
+>   pkill -TERM -u "$(id -u)" -x cosmic-panel
+> ```
+
 # Cosmic Panel (WIP)
 
 ### Building and Installing .deb
@@ -16,19 +58,6 @@ After making changes to copies of the provided config in data `data/`, you may i
 
 ### Usage  
 cosmic-panel
-
-#### Keyboard shortcut to pin the panel
-
-In COSMIC Settings, add a custom keyboard shortcut with this command:
-
-```sh
-busctl --user call com.system76.CosmicPanel /com/system76/CosmicPanel com.system76.CosmicPanel TogglePanelPin
-```
-
-The first press reveals and keeps the auto-hiding panel visible on all displays
-where it is configured. Press again to resume normal hover and overlap behavior.
-The dock and saved settings are not changed. Restarting `cosmic-panel` clears
-the override.
 
 ### Installing Plugins and Applets  
 See the following for examples of applets and plugins which can be installed and used:  
