@@ -749,7 +749,7 @@ impl PanelSpace {
 
     fn padding_with_theme(&self, config: &CosmicPanelConfig, theme: &cosmic::Theme) -> u32 {
         if let Some(padding) = config.padding_override {
-            return padding;
+            return padding.min(config.max_padding());
         }
         if config.name == "Dock" {
             let roundness: cosmic::cosmic_theme::Roundness = theme.cosmic().corner_radii.into();

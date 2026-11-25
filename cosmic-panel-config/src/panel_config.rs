@@ -711,17 +711,7 @@ impl CosmicPanelConfig {
         padding: u32,
     ) -> (Option<Range<u32>>, Option<Range<u32>>) {
         let gap = gap.unwrap_or_else(|| self.get_effective_anchor_gap());
-        let bar_thickness = match &self.size {
-            PanelSize::XS => 8 + gap..61 + gap,
-            PanelSize::S => 8 + gap..81 + gap,
-            PanelSize::M => 8 + gap..101 + gap,
-            PanelSize::L => 8 + gap..121 + gap,
-            PanelSize::XL => 8 + gap..141 + gap,
-            PanelSize::Custom(s) => {
-                let s = (*s).max(16) / 4 * 4;
-                8 + gap..s * 2 + 1 + gap
-            },
-        };
+        let bar_thickness = 8 + gap..self.max_thickness() + gap;
         assert!(2 * padding + gap < bar_thickness.end);
         let o_h = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().1);
         let o_w = suggested_length.unwrap_or_else(|| output_dims.unwrap_or_default().0);
@@ -729,6 +719,21 @@ impl CosmicPanelConfig {
         match self.anchor {
             PanelAnchor::Left | PanelAnchor::Right => (Some(bar_thickness), Some(o_h..o_h + 1)),
             PanelAnchor::Top | PanelAnchor::Bottom => (Some(o_w..o_w + 1), Some(bar_thickness)),
+        }
+    }
+
+    pub fn max_padding(&self) -> u32 {
+        (self.max_thickness() - 1) / 2
+    }
+
+    fn max_thickness(&self) -> u32 {
+        match &self.size {
+            PanelSize::XS => 61,
+            PanelSize::S => 81,
+            PanelSize::M => 101,
+            PanelSize::L => 121,
+            PanelSize::XL => 141,
+            PanelSize::Custom(s) => (*s).max(16) / 4 * 4 * 2 + 1,
         }
     }
 
