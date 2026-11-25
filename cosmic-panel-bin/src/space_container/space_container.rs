@@ -76,9 +76,10 @@ impl SpaceContainer {
     ) -> Self {
         let is_dark = ThemeMode::config()
             .ok()
-            .and_then(|c| ThemeMode::get_entry(&c).ok())
-            .unwrap_or_default()
-            .is_dark;
+            .map(|c| match ThemeMode::get_entry(&c) {
+                Ok(entry) | Err((_, entry)) => entry.is_dark,
+            })
+            .unwrap_or_else(|| ThemeMode::default().is_dark);
 
         let light = Theme::light_config()
             .ok()
