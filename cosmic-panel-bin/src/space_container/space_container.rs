@@ -259,6 +259,7 @@ impl SpaceContainer {
         force_output: Option<WlOutput>,
         _overlap_notify: Option<OverlapNotifyV1>,
     ) {
+        entry.sanitize();
         // if the output is set to "all", we need to check if the config is the
         // same for all outputs if the output is set to a specific
         // output, we need to make sure it doesn't exist on another

@@ -545,6 +545,18 @@ impl CosmicPanelConfig {
         self.padding_overlap.clamp(0., 1.)
     }
 
+    pub fn sanitize(&mut self) {
+        self.opacity = if self.opacity.is_nan() { 1.0 } else { self.opacity.clamp(0.0, 1.0) };
+        if !self.border_width.is_finite() || self.border_width < 0.0 {
+            self.border_width = 0.0;
+        }
+        if let CosmicPanelBackground::Color(color) = &mut self.background {
+            for c in color.iter_mut() {
+                *c = if c.is_nan() { 0.0 } else { c.clamp(0.0, 1.0) };
+            }
+        }
+    }
+
     /// get the applet size given its side
     pub fn get_effective_applet_size(&self, side: Side) -> PanelSize {
         match side {
